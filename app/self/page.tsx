@@ -1,7 +1,9 @@
 "use client";
 
 import Link from "next/link";
-import { useState } from "react";
+import { useRouter } from "next/navigation";
+import { useEffect, useState, type ReactNode } from "react";
+import { createClient } from "@/lib/supabase/client";
 
 type Screen =
   | "dashboard"
@@ -17,67 +19,30 @@ type Screen =
 const navigation: {
   id: Screen;
   label: string;
-  short: string;
 }[] = [
-  {
-    id: "dashboard",
-    label: "Dashboard",
-    short: "Overview",
-  },
-  {
-    id: "ai",
-    label: "AI Guide",
-    short: "AI",
-  },
-  {
-    id: "assessments",
-    label: "Self-Assessments",
-    short: "Assess",
-  },
-  {
-    id: "monitoring",
-    label: "Daily Monitoring",
-    short: "Monitor",
-  },
-  {
-    id: "regulation",
-    label: "Self-Regulation",
-    short: "Regulate",
-  },
-  {
-    id: "progress",
-    label: "Progress",
-    short: "Progress",
-  },
-  {
-    id: "wearables",
-    label: "Wearables",
-    short: "Wearables",
-  },
-  {
-    id: "notifications",
-    label: "Notifications",
-    short: "Alerts",
-  },
-  {
-    id: "privacy",
-    label: "Privacy & Sharing",
-    short: "Privacy",
-  },
+  { id: "dashboard", label: "Dashboard" },
+  { id: "ai", label: "AI Guide" },
+  { id: "assessments", label: "Self-Assessments" },
+  { id: "monitoring", label: "Daily Monitoring" },
+  { id: "regulation", label: "Self-Regulation" },
+  { id: "progress", label: "Progress" },
+  { id: "wearables", label: "Wearables" },
+  { id: "notifications", label: "Notifications" },
+  { id: "privacy", label: "Privacy & Sharing" },
 ];
 
 function Icon({
   children,
   dark = false,
 }: {
-  children: React.ReactNode;
+  children: ReactNode;
   dark?: boolean;
 }) {
   return (
     <div
       className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-xl text-sm font-semibold ${
         dark
-          ? "bg-slate-900 text-white"
+          ? "bg-slate-950 text-white"
           : "border border-cyan-100 bg-cyan-50 text-cyan-800"
       }`}
     >
@@ -153,7 +118,7 @@ function Panel({
 }: {
   title: string;
   description?: string;
-  children: React.ReactNode;
+  children: ReactNode;
 }) {
   return (
     <section className="rounded-2xl border border-slate-200 bg-white">
@@ -198,9 +163,9 @@ function ProgressBar({
   );
 }
 
-/* ------------------------------------------------------- */
-/* DASHBOARD */
-/* ------------------------------------------------------- */
+/* =========================================================
+   DASHBOARD
+   ========================================================= */
 
 function Dashboard({
   changeScreen,
@@ -241,13 +206,12 @@ function Dashboard({
           description="Your assessments and regulation activities."
         >
           <div className="divide-y divide-slate-100">
-            <div className="flex items-center justify-between gap-5 py-4 first:pt-0">
+            <div className="flex items-center justify-between gap-5 py-4 pt-0">
               <div className="flex items-center gap-3">
                 <Icon>✓</Icon>
 
                 <div>
                   <p className="font-medium">Morning check-in</p>
-
                   <p className="mt-1 text-sm text-slate-500">
                     Completed at 09:05
                   </p>
@@ -265,7 +229,6 @@ function Dashboard({
 
                 <div>
                   <p className="font-medium">Midday check-in</p>
-
                   <p className="mt-1 text-sm text-slate-500">
                     A short momentary assessment
                   </p>
@@ -287,7 +250,6 @@ function Dashboard({
 
                 <div>
                   <p className="font-medium">Evening reflection</p>
-
                   <p className="mt-1 text-sm text-slate-500">
                     Scheduled for 20:30
                   </p>
@@ -319,7 +281,7 @@ function Dashboard({
             <button
               type="button"
               onClick={() => changeScreen("assessments")}
-              className="mt-5 flex items-center gap-2 text-sm font-semibold text-slate-950"
+              className="mt-5 flex items-center gap-2 text-sm font-semibold"
             >
               View assessments
               <ArrowIcon />
@@ -357,8 +319,8 @@ function Dashboard({
           <p className="font-medium">Reduce study-related stress</p>
 
           <p className="mt-1 text-sm text-slate-500">
-            Two-week plan combining check-ins, reminders and short
-            regulation practices.
+            Two-week plan combining check-ins, reminders and short regulation
+            practices.
           </p>
 
           <div className="mt-5 space-y-4">
@@ -415,9 +377,9 @@ function Dashboard({
   );
 }
 
-/* ------------------------------------------------------- */
-/* AI GUIDE */
-/* ------------------------------------------------------- */
+/* =========================================================
+   AI GUIDE
+   ========================================================= */
 
 function AIGuide({
   changeScreen,
@@ -452,7 +414,7 @@ function AIGuide({
       },
       {
         from: "ai",
-        text: "For this prototype, the AI conversation is simulated. Later, PsyLattice will use an approved assessment catalogue to suggest relevant self-checks without making a diagnosis.",
+        text: "For this prototype, the AI conversation is simulated. Later, PsyLattice can use an approved assessment catalogue to suggest relevant self-checks without making a diagnosis.",
       },
     ]);
 
@@ -487,7 +449,7 @@ function AIGuide({
             ),
           )}
 
-          <div className="ml-13 max-w-lg rounded-2xl border border-cyan-100 bg-cyan-50 p-4">
+          <div className="max-w-lg rounded-2xl border border-cyan-100 bg-cyan-50 p-4">
             <p className="text-xs font-semibold uppercase tracking-[0.14em] text-cyan-800">
               Suggested self-check
             </p>
@@ -560,7 +522,6 @@ function AIGuide({
 
                 <div>
                   <p className="text-sm font-medium">{title}</p>
-
                   <p className="mt-1 text-xs leading-5 text-slate-500">
                     {text}
                   </p>
@@ -584,9 +545,9 @@ function AIGuide({
   );
 }
 
-/* ------------------------------------------------------- */
-/* ASSESSMENTS */
-/* ------------------------------------------------------- */
+/* =========================================================
+   ASSESSMENTS
+   ========================================================= */
 
 function Assessments() {
   const assessments = [
@@ -701,7 +662,6 @@ function Assessments() {
             >
               <div>
                 <p className="text-sm font-medium">{name}</p>
-
                 <p className="mt-1 text-xs text-slate-400">{date}</p>
               </div>
 
@@ -716,9 +676,9 @@ function Assessments() {
   );
 }
 
-/* ------------------------------------------------------- */
-/* AMBULATORY MONITORING */
-/* ------------------------------------------------------- */
+/* =========================================================
+   MONITORING
+   ========================================================= */
 
 function Monitoring() {
   const [stress, setStress] = useState(6);
@@ -728,21 +688,18 @@ function Monitoring() {
     <div className="space-y-5">
       <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
         <StatCard label="Protocol" value="7 days" detail="Stress monitoring" />
-
         <StatCard label="Prompts" value="3 / day" detail="Brief assessments" />
-
         <StatCard label="Completed" value="82%" detail="Past 5 days" />
-
         <StatCard label="Next prompt" value="16:20" detail="Afternoon window" />
       </div>
 
-      <div className="grid gap-5 xl:grid-cols-[1fr_1fr]">
+      <div className="grid gap-5 xl:grid-cols-2">
         <Panel
           title="Momentary check-in"
           description="Usually takes less than one minute."
         >
           <div>
-            <div className="flex items-center justify-between">
+            <div className="flex items-center justify-between gap-4">
               <p className="font-medium">
                 How stressed do you feel right now?
               </p>
@@ -815,7 +772,6 @@ function Monitoring() {
               >
                 <div>
                   <p className="font-medium">{title}</p>
-
                   <p className="mt-1 text-sm text-slate-500">{description}</p>
                 </div>
 
@@ -839,9 +795,9 @@ function Monitoring() {
   );
 }
 
-/* ------------------------------------------------------- */
-/* SELF REGULATION */
-/* ------------------------------------------------------- */
+/* =========================================================
+   SELF REGULATION
+   ========================================================= */
 
 function Regulation() {
   return (
@@ -881,7 +837,6 @@ function Regulation() {
               >
                 <div>
                   <p className="text-sm font-medium">{title}</p>
-
                   <p className="mt-1 text-xs text-slate-400">{completion}</p>
                 </div>
 
@@ -900,11 +855,10 @@ function Regulation() {
             ].map(([title, description, duration]) => (
               <div
                 key={title}
-                className="flex justify-between gap-4 py-4 first:pt-0"
+                className="flex justify-between gap-4 py-4 first:pt-0 last:pb-0"
               >
                 <div>
                   <p className="text-sm font-medium">{title}</p>
-
                   <p className="mt-1 text-sm text-slate-500">{description}</p>
                 </div>
 
@@ -913,7 +867,10 @@ function Regulation() {
             ))}
           </div>
 
-          <button className="mt-5 w-full rounded-xl bg-slate-950 px-5 py-3 text-sm font-semibold text-white">
+          <button
+            type="button"
+            className="mt-5 w-full rounded-xl bg-slate-950 px-5 py-3 text-sm font-semibold text-white"
+          >
             Start today's practice
           </button>
         </Panel>
@@ -934,9 +891,9 @@ function Regulation() {
   );
 }
 
-/* ------------------------------------------------------- */
-/* PROGRESS */
-/* ------------------------------------------------------- */
+/* =========================================================
+   PROGRESS
+   ========================================================= */
 
 function Progress() {
   return (
@@ -1007,7 +964,6 @@ function Progress() {
 
                 <div>
                   <p className="text-sm font-medium">{title}</p>
-
                   <p className="mt-1 text-sm leading-6 text-slate-500">
                     {description}
                   </p>
@@ -1041,18 +997,19 @@ function Progress() {
               "Sleep Self-Check",
               "Initial sleep baseline recorded",
             ],
-          ].map(([date, title, description]) => (
-            <div key={date} className="flex gap-4">
+          ].map(([date, title, description], index) => (
+            <div key={`${date}-${index}`} className="flex gap-4">
               <div className="mt-1 flex flex-col items-center">
                 <div className="h-3 w-3 rounded-full bg-cyan-700" />
-                <div className="mt-2 h-12 w-px bg-slate-200" />
+
+                {index < 2 && (
+                  <div className="mt-2 h-12 w-px bg-slate-200" />
+                )}
               </div>
 
               <div>
                 <p className="text-xs text-slate-400">{date}</p>
-
                 <p className="mt-1 font-medium">{title}</p>
-
                 <p className="mt-1 text-sm text-slate-500">{description}</p>
               </div>
             </div>
@@ -1063,9 +1020,9 @@ function Progress() {
   );
 }
 
-/* ------------------------------------------------------- */
-/* WEARABLES */
-/* ------------------------------------------------------- */
+/* =========================================================
+   WEARABLES
+   ========================================================= */
 
 function Wearables() {
   return (
@@ -1094,7 +1051,6 @@ function Wearables() {
             >
               <div>
                 <p className="text-sm font-medium">{name}</p>
-
                 <p className="mt-1 text-xs text-slate-400">{description}</p>
               </div>
 
@@ -1116,7 +1072,6 @@ function Wearables() {
         <Panel title="Today's signals">
           <div className="grid gap-3 sm:grid-cols-2">
             <StatCard label="Sleep" value="6h 42m" detail="Last night" />
-
             <StatCard label="Activity" value="6,820" detail="Steps today" />
           </div>
         </Panel>
@@ -1143,7 +1098,6 @@ function Wearables() {
             ].map(([title, description]) => (
               <div key={title}>
                 <p className="text-sm font-medium">{title}</p>
-
                 <p className="mt-1 text-sm leading-6 text-slate-500">
                   {description}
                 </p>
@@ -1156,9 +1110,9 @@ function Wearables() {
   );
 }
 
-/* ------------------------------------------------------- */
-/* NOTIFICATIONS */
-/* ------------------------------------------------------- */
+/* =========================================================
+   NOTIFICATIONS
+   ========================================================= */
 
 function Notifications() {
   return (
@@ -1166,21 +1120,18 @@ function Notifications() {
       <Panel title="Your reminder rhythm">
         <div className="divide-y divide-slate-100">
           {[
-            ["Morning check-in", "One prompt between 08:00–10:00", true],
-            ["Afternoon check-in", "One prompt between 15:00–17:00", true],
-            ["Evening reflection", "20:30", true],
-            ["Self-regulation reminder", "After a long study period", true],
+            ["Morning check-in", "One prompt between 08:00–10:00"],
+            ["Afternoon check-in", "One prompt between 15:00–17:00"],
+            ["Evening reflection", "20:30"],
+            ["Self-regulation reminder", "After a long study period"],
           ].map(([title, description]) => (
             <div
-              key={String(title)}
+              key={title}
               className="flex items-center justify-between gap-5 py-4 first:pt-0 last:pb-0"
             >
               <div>
-                <p className="text-sm font-medium">{String(title)}</p>
-
-                <p className="mt-1 text-xs text-slate-400">
-                  {String(description)}
-                </p>
+                <p className="text-sm font-medium">{title}</p>
+                <p className="mt-1 text-xs text-slate-400">{description}</p>
               </div>
 
               <div className="relative h-6 w-11 rounded-full bg-cyan-700">
@@ -1225,9 +1176,9 @@ function Notifications() {
   );
 }
 
-/* ------------------------------------------------------- */
-/* PRIVACY */
-/* ------------------------------------------------------- */
+/* =========================================================
+   PRIVACY
+   ========================================================= */
 
 function Privacy() {
   return (
@@ -1262,7 +1213,6 @@ function Privacy() {
             >
               <div>
                 <p className="text-sm font-medium">{title}</p>
-
                 <p className="mt-1 text-xs text-slate-400">{description}</p>
               </div>
 
@@ -1285,7 +1235,10 @@ function Privacy() {
             trends or wearable summaries appear in a therapist summary.
           </p>
 
-          <button className="mt-5 rounded-xl border border-cyan-200 bg-white px-4 py-2.5 text-sm font-semibold text-cyan-900">
+          <button
+            type="button"
+            className="mt-5 rounded-xl border border-cyan-200 bg-white px-4 py-2.5 text-sm font-semibold text-cyan-900"
+          >
             Prepare therapist summary
           </button>
         </div>
@@ -1293,17 +1246,21 @@ function Privacy() {
 
       <Panel title="Data controls">
         <div className="grid gap-3 sm:grid-cols-2">
-          <button className="rounded-xl border border-slate-200 p-4 text-left">
+          <button
+            type="button"
+            className="rounded-xl border border-slate-200 p-4 text-left"
+          >
             <p className="text-sm font-medium">Download my data</p>
-
             <p className="mt-1 text-xs text-slate-400">
               Request a portable copy of your PsyLattice information.
             </p>
           </button>
 
-          <button className="rounded-xl border border-slate-200 p-4 text-left">
+          <button
+            type="button"
+            className="rounded-xl border border-slate-200 p-4 text-left"
+          >
             <p className="text-sm font-medium">Consent centre</p>
-
             <p className="mt-1 text-xs text-slate-400">
               Review optional data and sharing permissions.
             </p>
@@ -1314,14 +1271,87 @@ function Privacy() {
   );
 }
 
-/* ------------------------------------------------------- */
-/* MAIN */
-/* ------------------------------------------------------- */
+/* =========================================================
+   MAIN SELF WORKSPACE
+   ========================================================= */
 
 export default function SelfWorkspace() {
-  const [screen, setScreen] = useState<Screen>("dashboard");
+  const router = useRouter();
 
-  const activeNavigation = navigation.find((item) => item.id === screen)!;
+  const [screen, setScreen] = useState<Screen>("dashboard");
+  const [fullName, setFullName] = useState("");
+  const [signingOut, setSigningOut] = useState(false);
+
+  useEffect(() => {
+    async function loadProfile() {
+      const supabase = createClient();
+
+      const {
+        data: { user },
+        error: userError,
+      } = await supabase.auth.getUser();
+
+      if (userError || !user) {
+        router.replace("/signin");
+        return;
+      }
+
+      const { data: profile, error: profileError } = await supabase
+        .from("profiles")
+        .select("full_name")
+        .eq("id", user.id)
+        .single();
+
+      if (profileError) {
+        console.error("Could not load profile:", profileError.message);
+
+        setFullName(user.email?.split("@")[0] || "User");
+        return;
+      }
+
+      setFullName(
+        profile?.full_name?.trim() ||
+          user.email?.split("@")[0] ||
+          "User",
+      );
+    }
+
+    void loadProfile();
+  }, [router]);
+
+  async function handleSignOut() {
+    setSigningOut(true);
+
+    const supabase = createClient();
+
+    const { error } = await supabase.auth.signOut();
+
+    if (error) {
+      console.error("Sign out failed:", error.message);
+      setSigningOut(false);
+      return;
+    }
+
+    router.replace("/signin");
+    router.refresh();
+  }
+
+  const firstName =
+    fullName.trim().split(/\s+/)[0] || "there";
+
+  const initials =
+    fullName
+      .trim()
+      .split(/\s+/)
+      .filter(Boolean)
+      .slice(0, 2)
+      .map((part) => part.charAt(0))
+      .join("")
+      .toUpperCase() || "PL";
+
+  const activeNavigation = navigation.find(
+    (item) => item.id === screen,
+  )!;
 
   function renderScreen() {
     switch (screen) {
@@ -1357,12 +1387,45 @@ export default function SelfWorkspace() {
     }
   }
 
+  function getDescription() {
+    switch (screen) {
+      case "dashboard":
+        return "A clear view of your self-assessments, daily monitoring and self-regulation.";
+
+      case "ai":
+        return "Explore suitable self-checks and monitoring approaches through guided conversation.";
+
+      case "assessments":
+        return "Structured questionnaires for personal reflection and repeated self-checks.";
+
+      case "monitoring":
+        return "Short assessments delivered during everyday life.";
+
+      case "regulation":
+        return "Turn what you notice into simple, trackable actions.";
+
+      case "progress":
+        return "Review changes across assessments, check-ins and daily routines.";
+
+      case "wearables":
+        return "Optionally combine your self-reports with authorised wearable summaries.";
+
+      case "notifications":
+        return "Control how and when PsyLattice reminds you to check in.";
+
+      case "privacy":
+        return "Control your data and exactly what you choose to share.";
+    }
+  }
+
   return (
     <main className="min-h-screen bg-[#f6f8f8] text-slate-950">
-      {/* TOPBAR */}
+      {/* TOP BAR */}
 
       <header className="sticky top-0 z-50 border-b border-slate-200 bg-white/95 backdrop-blur">
         <div className="flex min-h-20 items-center justify-between gap-4 px-5 lg:px-7">
+          {/* Logo */}
+
           <div className="flex items-center gap-3">
             <Link
               href="/"
@@ -1373,31 +1436,41 @@ export default function SelfWorkspace() {
 
             <div>
               <p className="font-semibold tracking-tight">PsyLattice</p>
-
               <p className="text-xs text-slate-400">Personal workspace</p>
             </div>
           </div>
+
+          {/* Desktop account controls */}
 
           <div className="hidden items-center gap-3 sm:flex">
             <span className="rounded-full bg-cyan-50 px-3 py-1.5 text-xs font-medium text-cyan-800">
               For myself
             </span>
 
-            <div className="flex h-9 w-9 items-center justify-center rounded-full bg-slate-100 text-xs font-semibold text-slate-600">
-              PD
+            <div
+              title={fullName || "PsyLattice user"}
+              className="flex h-9 w-9 items-center justify-center rounded-full bg-slate-100 text-xs font-semibold text-slate-600"
+            >
+              {initials}
             </div>
 
-            <Link
-              href="/signin"
-              className="rounded-xl border border-slate-200 bg-white px-4 py-2 text-xs font-semibold text-slate-600 transition hover:bg-slate-50"
+            <button
+              type="button"
+              onClick={() => void handleSignOut()}
+              disabled={signingOut}
+              className="rounded-xl border border-slate-200 bg-white px-4 py-2 text-xs font-semibold text-slate-600 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50"
             >
-              Sign out
-            </Link>
+              {signingOut ? "Signing out..." : "Sign out"}
+            </button>
           </div>
+
+          {/* Mobile navigation */}
 
           <select
             value={screen}
-            onChange={(event) => setScreen(event.target.value as Screen)}
+            onChange={(event) =>
+              setScreen(event.target.value as Screen)
+            }
             className="max-w-[190px] rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm lg:hidden"
           >
             {navigation.map((item) => (
@@ -1461,7 +1534,9 @@ export default function SelfWorkspace() {
           >
             <span
               className={`h-1.5 w-1.5 rounded-full ${
-                screen === "privacy" ? "bg-cyan-700" : "bg-slate-300"
+                screen === "privacy"
+                  ? "bg-cyan-700"
+                  : "bg-slate-300"
               }`}
             />
 
@@ -1470,12 +1545,12 @@ export default function SelfWorkspace() {
 
           <div className="mt-8 rounded-2xl bg-slate-950 p-4 text-white">
             <p className="text-xs font-medium text-cyan-200">
-              PsyLattice prototype
+              PsyLattice
             </p>
 
             <p className="mt-2 text-xs leading-5 text-slate-400">
-              All information displayed in this workspace is fictional demo
-              data.
+              The account itself is now authenticated. Assessment and
+              monitoring information shown here is still demo data.
             </p>
           </div>
         </aside>
@@ -1491,42 +1566,19 @@ export default function SelfWorkspace() {
                     Personal / Self
                   </span>
 
-                  <span className="text-xs text-slate-400">Demo workspace</span>
+                  <span className="text-xs text-slate-400">
+                    Authenticated workspace
+                  </span>
                 </div>
 
                 <h1 className="text-2xl font-semibold tracking-[-0.025em] sm:text-3xl">
                   {screen === "dashboard"
-                    ? "Good afternoon, Priyangshu."
+                    ? `Good afternoon, ${firstName}.`
                     : activeNavigation.label}
                 </h1>
 
                 <p className="mt-2 max-w-2xl text-sm leading-6 text-slate-500">
-                  {screen === "dashboard" &&
-                    "A clear view of your self-assessments, daily monitoring and self-regulation."}
-
-                  {screen === "ai" &&
-                    "Explore suitable self-checks and monitoring approaches through guided conversation."}
-
-                  {screen === "assessments" &&
-                    "Structured questionnaires for personal reflection and repeated self-checks."}
-
-                  {screen === "monitoring" &&
-                    "Short assessments delivered during everyday life."}
-
-                  {screen === "regulation" &&
-                    "Turn what you notice into simple, trackable actions."}
-
-                  {screen === "progress" &&
-                    "Review changes across assessments, check-ins and daily routines."}
-
-                  {screen === "wearables" &&
-                    "Optionally combine your self-reports with authorised wearable summaries."}
-
-                  {screen === "notifications" &&
-                    "Control how and when PsyLattice reminds you to check in."}
-
-                  {screen === "privacy" &&
-                    "Control your data and exactly what you choose to share."}
+                  {getDescription()}
                 </p>
               </div>
             </div>

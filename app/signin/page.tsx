@@ -40,16 +40,17 @@ export default function SignInPage() {
       return;
     }
 
-    const { data, error } = await supabase.auth.signUp({
-      email: email.trim(),
-      password,
-      options: {
-        data: {
-          full_name: fullName.trim(),
-          workspace_role: workspace,
-        },
-      },
-    });
+const { data, error } = await supabase.auth.signUp({
+  email: email.trim(),
+  password,
+  options: {
+    emailRedirectTo: `${window.location.origin}/auth/callback`,
+    data: {
+      full_name: fullName.trim(),
+      workspace_role: workspace,
+    },
+  },
+});
 
     if (error) {
       setError(error.message);

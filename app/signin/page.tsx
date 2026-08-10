@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
+import PsyLatticeLogo from "@/components/PsyLatticeLogo";
 
 type Workspace = "self" | "researcher" | "clinician";
 type Mode = "signin" | "signup";
@@ -154,18 +155,7 @@ const { data, error } = await supabase.auth.signUp({
     <main className="min-h-screen bg-[#f7faf9] text-slate-950">
       <header className="border-b border-slate-200 bg-white">
         <div className="mx-auto flex h-20 max-w-6xl items-center justify-between px-6">
-          <Link href="/" className="flex items-center gap-3">
-            <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-cyan-50 font-semibold text-cyan-800">
-              Ψ
-            </div>
-
-            <div>
-              <p className="font-semibold">PsyLattice</p>
-              <p className="text-xs text-slate-400">
-                Psychological measurement, connected.
-              </p>
-            </div>
-          </Link>
+         <PsyLatticeLogo />
 
           <Link href="/" className="text-sm text-slate-500">
             Back to website

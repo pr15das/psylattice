@@ -1,4 +1,5 @@
 import Link from "next/link";
+import PsyLatticeLogo from "@/components/PsyLatticeLogo";
 
 const solutions = [
   {
@@ -113,32 +114,13 @@ function ArrowIcon() {
   );
 }
 
-function PsyLatticeMark() {
-  return (
-    <div className="flex h-10 w-10 items-center justify-center rounded-xl border border-cyan-200/70 bg-cyan-50 text-lg font-semibold text-cyan-800">
-      Ψ
-    </div>
-  );
-}
-
 export default function Home() {
   return (
     <main className="min-h-screen bg-[#f7faf9] text-slate-950">
       {/* Navigation */}
       <header className="sticky top-0 z-50 border-b border-slate-200/80 bg-[#f7faf9]/90 backdrop-blur-xl">
         <div className="mx-auto flex h-20 max-w-7xl items-center justify-between px-6 lg:px-8">
-          <Link href="/" className="flex items-center gap-3">
-            <PsyLatticeMark />
-
-            <div>
-              <div className="text-[17px] font-semibold tracking-tight">
-                PsyLattice
-              </div>
-              <div className="text-[11px] tracking-wide text-slate-500">
-                Psychological measurement, connected.
-              </div>
-            </div>
-          </Link>
+          <PsyLatticeLogo />
 
           <nav className="hidden items-center gap-8 text-sm text-slate-600 lg:flex">
             <a
@@ -147,24 +129,28 @@ export default function Home() {
             >
               Platform
             </a>
+
             <a
               href="#solutions"
               className="transition-colors hover:text-slate-950"
             >
               Solutions
             </a>
+
             <a
               href="#research"
               className="transition-colors hover:text-slate-950"
             >
               Research
             </a>
+
             <a
               href="#security"
               className="transition-colors hover:text-slate-950"
             >
               Security
             </a>
+
             <a
               href="#about"
               className="transition-colors hover:text-slate-950"
@@ -259,9 +245,13 @@ export default function Home() {
             <div className="relative w-full max-w-xl overflow-hidden rounded-[28px] border border-slate-200 bg-white shadow-[0_30px_80px_-32px_rgba(15,23,42,0.32)]">
               <div className="flex items-center justify-between border-b border-slate-100 px-5 py-4">
                 <div className="flex items-center gap-3">
-                  <PsyLatticeMark />
+                  <PsyLatticeLogo size={36} />
+
                   <div>
-                    <p className="text-sm font-semibold">Personal workspace</p>
+                    <p className="text-sm font-semibold">
+                      Personal workspace
+                    </p>
+
                     <p className="text-xs text-slate-400">
                       Monday, 9 August
                     </p>
@@ -276,9 +266,11 @@ export default function Home() {
                   <p className="text-xs font-medium uppercase tracking-[0.15em] text-slate-400">
                     Your overview
                   </p>
+
                   <h2 className="mt-2 text-2xl font-semibold tracking-tight">
                     Good afternoon.
                   </h2>
+
                   <p className="mt-1 text-sm text-slate-500">
                     Here is your psychological self-check overview.
                   </p>
@@ -287,15 +279,25 @@ export default function Home() {
                 <div className="grid grid-cols-2 gap-3">
                   <div className="rounded-2xl border border-slate-100 bg-slate-50 p-4">
                     <p className="text-xs text-slate-500">Check-ins</p>
-                    <p className="mt-2 text-2xl font-semibold">2 / 3</p>
+
+                    <p className="mt-2 text-2xl font-semibold">
+                      2 / 3
+                    </p>
+
                     <p className="mt-1 text-xs text-slate-400">
                       completed today
                     </p>
                   </div>
 
                   <div className="rounded-2xl border border-slate-100 bg-slate-50 p-4">
-                    <p className="text-xs text-slate-500">Current plan</p>
-                    <p className="mt-2 text-lg font-semibold">Day 8</p>
+                    <p className="text-xs text-slate-500">
+                      Current plan
+                    </p>
+
+                    <p className="mt-2 text-lg font-semibold">
+                      Day 8
+                    </p>
+
                     <p className="mt-1 text-xs text-slate-400">
                       stress regulation
                     </p>
@@ -308,7 +310,10 @@ export default function Home() {
                       <p className="text-xs text-slate-400">
                         Latest self-assessment
                       </p>
-                      <p className="mt-1 font-medium">Perceived Stress</p>
+
+                      <p className="mt-1 font-medium">
+                        Perceived Stress
+                      </p>
                     </div>
 
                     <span className="rounded-full bg-cyan-50 px-3 py-1 text-xs font-medium text-cyan-800">
@@ -322,7 +327,10 @@ export default function Home() {
                 </div>
 
                 <div className="mt-4 rounded-2xl bg-slate-950 p-5 text-white">
-                  <p className="text-xs text-slate-400">PsyLattice AI Guide</p>
+                  <p className="text-xs text-slate-400">
+                    PsyLattice AI Guide
+                  </p>
+
                   <p className="mt-2 text-sm leading-6 text-slate-200">
                     Not sure what to assess? Describe what you have been
                     experiencing and explore suitable self-checks.
@@ -427,6 +435,7 @@ export default function Home() {
                     <span className="mt-1 text-cyan-700">
                       <CheckIcon />
                     </span>
+
                     {feature}
                   </li>
                 ))}
@@ -465,7 +474,10 @@ export default function Home() {
 
           <div className="grid gap-4 sm:grid-cols-2">
             {[
-              ["Self-Assessments", "Structured psychological self-checks."],
+              [
+                "Self-Assessments",
+                "Structured psychological self-checks.",
+              ],
               [
                 "AI Guide",
                 "Navigate appropriate assessments without automated diagnosis.",
@@ -492,8 +504,14 @@ export default function Home() {
                 className="rounded-2xl border border-slate-800 bg-slate-900/70 p-5"
               >
                 <div className="mb-5 h-8 w-8 rounded-lg border border-slate-700 bg-slate-800" />
-                <h3 className="font-medium">{title}</h3>
-                <p className="mt-2 text-sm leading-6 text-slate-400">{text}</p>
+
+                <h3 className="font-medium">
+                  {title}
+                </h3>
+
+                <p className="mt-2 text-sm leading-6 text-slate-400">
+                  {text}
+                </p>
               </div>
             ))}
           </div>
@@ -541,6 +559,7 @@ export default function Home() {
                   <h3 className="text-xl font-semibold">
                     Daily Stress in University Students
                   </h3>
+
                   <p className="mt-1 text-sm text-slate-500">
                     14-day ambulatory protocol
                   </p>
@@ -563,33 +582,45 @@ export default function Home() {
                   key={label}
                   className="rounded-xl bg-slate-50 px-4 py-4"
                 >
-                  <p className="text-xl font-semibold">{value}</p>
-                  <p className="mt-1 text-xs text-slate-500">{label}</p>
+                  <p className="text-xl font-semibold">
+                    {value}
+                  </p>
+
+                  <p className="mt-1 text-xs text-slate-500">
+                    {label}
+                  </p>
                 </div>
               ))}
             </div>
 
             <div className="rounded-xl border border-slate-100 p-4">
-              <p className="text-sm font-medium">Study workflow</p>
+              <p className="text-sm font-medium">
+                Study workflow
+              </p>
 
               <div className="mt-4 grid gap-3 sm:grid-cols-4">
-                {["Measures", "EMA protocol", "Participants", "Export"].map(
-                  (item, index) => (
-                    <div key={item}>
-                      <div className="mb-2 flex items-center">
-                        <span className="flex h-7 w-7 items-center justify-center rounded-full bg-cyan-50 text-xs font-semibold text-cyan-800">
-                          {index + 1}
-                        </span>
+                {[
+                  "Measures",
+                  "EMA protocol",
+                  "Participants",
+                  "Export",
+                ].map((item, index) => (
+                  <div key={item}>
+                    <div className="mb-2 flex items-center">
+                      <span className="flex h-7 w-7 items-center justify-center rounded-full bg-cyan-50 text-xs font-semibold text-cyan-800">
+                        {index + 1}
+                      </span>
 
-                        {index < 3 && (
-                          <div className="ml-2 hidden h-px flex-1 bg-slate-200 sm:block" />
-                        )}
-                      </div>
-
-                      <p className="text-xs text-slate-500">{item}</p>
+                      {index < 3 && (
+                        <div className="ml-2 hidden h-px flex-1 bg-slate-200 sm:block" />
+                      )}
                     </div>
-                  ),
-                )}
+
+                    <p className="text-xs text-slate-500">
+                      {item}
+                    </p>
+                  </div>
+                ))}
               </div>
             </div>
           </div>
@@ -611,10 +642,17 @@ export default function Home() {
 
           <div className="mt-14 grid gap-px overflow-hidden rounded-2xl border border-slate-200 bg-slate-200 md:grid-cols-4">
             {process.map((step) => (
-              <div key={step.number} className="bg-white p-7">
-                <p className="text-sm text-cyan-800">{step.number}</p>
+              <div
+                key={step.number}
+                className="bg-white p-7"
+              >
+                <p className="text-sm text-cyan-800">
+                  {step.number}
+                </p>
 
-                <h3 className="mt-10 text-xl font-semibold">{step.title}</h3>
+                <h3 className="mt-10 text-xl font-semibold">
+                  {step.title}
+                </h3>
 
                 <p className="mt-3 text-sm leading-6 text-slate-500">
                   {step.description}
@@ -666,7 +704,9 @@ export default function Home() {
               >
                 <div className="h-9 w-9 rounded-xl bg-cyan-50" />
 
-                <h3 className="mt-6 font-semibold">{title}</h3>
+                <h3 className="mt-6 font-semibold">
+                  {title}
+                </h3>
 
                 <p className="mt-2 text-sm leading-6 text-slate-500">
                   {description}
@@ -678,7 +718,10 @@ export default function Home() {
       </section>
 
       {/* CTA */}
-      <section id="about" className="px-6 pb-20 lg:px-8">
+      <section
+        id="about"
+        className="px-6 pb-20 lg:px-8"
+      >
         <div className="mx-auto max-w-7xl overflow-hidden rounded-[30px] bg-cyan-900 px-7 py-14 text-white sm:px-10 lg:px-14 lg:py-16">
           <div className="flex flex-col justify-between gap-10 lg:flex-row lg:items-end">
             <div className="max-w-3xl">
@@ -712,16 +755,7 @@ export default function Home() {
         <div className="mx-auto max-w-7xl px-6 py-12 lg:px-8">
           <div className="flex flex-col justify-between gap-10 md:flex-row">
             <div>
-              <Link href="/" className="flex items-center gap-3">
-                <PsyLatticeMark />
-
-                <div>
-                  <p className="font-semibold">PsyLattice</p>
-                  <p className="text-xs text-slate-400">
-                    Psychological measurement, connected.
-                  </p>
-                </div>
-              </Link>
+              <PsyLatticeLogo />
 
               <p className="mt-5 max-w-sm text-sm leading-6 text-slate-500">
                 A modular platform for psychological assessment, research,
@@ -731,7 +765,10 @@ export default function Home() {
 
             <div className="grid grid-cols-2 gap-x-16 gap-y-8 text-sm sm:grid-cols-3">
               <div>
-                <p className="font-semibold">Platform</p>
+                <p className="font-semibold">
+                  Platform
+                </p>
+
                 <div className="mt-4 space-y-3 text-slate-500">
                   <p>Self</p>
                   <p>Research</p>
@@ -740,28 +777,81 @@ export default function Home() {
               </div>
 
               <div>
-                <p className="font-semibold">Company</p>
-                <div className="mt-4 space-y-3 text-slate-500">
-                  <p>About</p>
-                  <p>Security</p>
-                  <p>Contact</p>
-                </div>
+                <p className="font-semibold">
+                  Company
+                </p>
+
+              <div>
+  
+
+  <div className="mt-4 space-y-3 text-slate-500">
+    <Link
+      href="/about"
+      className="block transition hover:text-slate-950"
+    >
+      About
+    </Link>
+
+    <Link
+      href="/security"
+      className="block transition hover:text-slate-950"
+    >
+      Security
+    </Link>
+
+    <Link
+      href="/contact"
+      className="block transition hover:text-slate-950"
+    >
+      Contact
+    </Link>
+  </div>
+</div>
               </div>
 
               <div>
-                <p className="font-semibold">Legal</p>
-                <div className="mt-4 space-y-3 text-slate-500">
-                  <p>Privacy</p>
-                  <p>Terms</p>
-                  <p>Data policy</p>
-                </div>
+                <p className="font-semibold">
+                  Legal
+                </p>
+
+               <div>
+ 
+
+  <div className="mt-4 space-y-3 text-slate-500">
+    <Link
+      href="/privacy"
+      className="block transition hover:text-slate-950"
+    >
+      Privacy
+    </Link>
+
+    <Link
+      href="/terms"
+      className="block transition hover:text-slate-950"
+    >
+      Terms
+    </Link>
+
+    <Link
+      href="/data-policy"
+      className="block transition hover:text-slate-950"
+    >
+      Data policy
+    </Link>
+  </div>
+</div>
               </div>
             </div>
           </div>
 
           <div className="mt-12 flex flex-col justify-between gap-3 border-t border-slate-100 pt-6 text-xs text-slate-400 sm:flex-row">
-            <p>© 2026 PsyLattice. Concept platform.</p>
-            <p>Designed for responsible psychological measurement.</p>
+            <p>
+              © 2026 PsyLattice. Concept platform.
+            </p>
+
+            <p>
+              Designed for responsible psychological measurement.
+            </p>
           </div>
         </div>
       </footer>

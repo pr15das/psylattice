@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { useState } from "react";
+import PsyLatticeLogo from "@/components/PsyLatticeLogo";
 
 type Screen =
   | "dashboard"
@@ -1827,20 +1828,13 @@ export default function ResearcherWorkspace() {
       <header className="sticky top-0 z-50 border-b border-slate-200 bg-white/95 backdrop-blur">
         <div className="flex min-h-20 items-center justify-between gap-4 px-5 lg:px-7">
           <div className="flex items-center gap-3">
-            <Link
-              href="/"
-              className="flex h-10 w-10 items-center justify-center rounded-xl border border-cyan-200 bg-cyan-50 text-lg font-semibold text-cyan-800"
-            >
-              Ψ
-            </Link>
+           <div>
+  <PsyLatticeLogo size={38} />
 
-            <div>
-              <p className="font-semibold tracking-tight">
-                PsyLattice Research
-              </p>
-
-              <p className="text-xs text-slate-400">Researcher workspace</p>
-            </div>
+  <p className="mt-1 pl-[50px] text-xs text-slate-400">
+    Research workspace
+  </p>
+</div>
           </div>
 
           <div className="hidden items-center gap-3 sm:flex">

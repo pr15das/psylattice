@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useState, type ReactNode } from "react";
 import { createClient } from "@/lib/supabase/client";
+import PsyLatticeLogo from "@/components/PsyLatticeLogo";
 
 type Screen =
   | "dashboard"
@@ -1426,19 +1427,13 @@ export default function SelfWorkspace() {
         <div className="flex min-h-20 items-center justify-between gap-4 px-5 lg:px-7">
           {/* Logo */}
 
-          <div className="flex items-center gap-3">
-            <Link
-              href="/"
-              className="flex h-10 w-10 items-center justify-center rounded-xl border border-cyan-200 bg-cyan-50 text-lg font-semibold text-cyan-800"
-            >
-              Ψ
-            </Link>
+   <div>
+  <PsyLatticeLogo size={38} />
 
-            <div>
-              <p className="font-semibold tracking-tight">PsyLattice</p>
-              <p className="text-xs text-slate-400">Personal workspace</p>
-            </div>
-          </div>
+  <p className="mt-0 pl-[50px] text-xs text-slate-400">
+    Personal workspace
+  </p>
+</div>
 
           {/* Desktop account controls */}
 

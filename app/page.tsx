@@ -1,5 +1,13 @@
 import Link from "next/link";
 import PsyLatticeLogo from "@/components/PsyLatticeLogo";
+import {
+  ClipboardCheck,
+  Sparkles,
+  Activity,
+  Target,
+  Watch,
+  FileText,
+} from "lucide-react";
 
 const solutions = [
   {
@@ -192,18 +200,33 @@ export default function Home() {
             <h1 className="max-w-4xl text-5xl font-semibold leading-[1.03] tracking-[-0.045em] text-slate-950 sm:text-6xl lg:text-[72px]">
               Psychological
               <br />
-              measurement,
+              measurements,
               <br />
               <span className="text-cyan-800">connected.</span>
             </h1>
+  <Link
+  href="/self?screen=ai"
+  className="ai-orbit-button mt-7"
+>
+  <span className="text-cyan-300">
+    ✦
+  </span>
 
-            <p className="mt-7 max-w-2xl text-lg leading-8 text-slate-600">
-              PsyLattice connects psychological self-assessment, ambulatory
-              measurement, research workflows and professional monitoring
-              within one carefully structured platform.
-            </p>
+  <span>Now equipped with AI</span>
 
-            <div className="mt-9 flex flex-wrap gap-3">
+  <span className="ai-orbit-arrow">
+    →
+  </span>
+</Link>
+           <p className="mt-5 max-w-2xl text-lg leading-8 text-slate-600">
+  PsyLattice connects psychological self-assessment, ambulatory
+  measurement, research workflows and professional monitoring
+  within one carefully structured platform.
+
+</p>
+
+
+            <div className="mt-5 flex flex-wrap gap-3">
               <Link
                 href="/signin"
                 className="inline-flex items-center gap-2 rounded-xl bg-slate-950 px-6 py-3.5 text-sm font-medium text-white transition hover:bg-slate-800"
@@ -471,50 +494,64 @@ export default function Home() {
               context.
             </p>
           </div>
+<div className="grid gap-4 sm:grid-cols-2">
+  {[
+    {
+      title: "Self-Assessments",
+      text: "Structured psychological self-checks.",
+      icon: ClipboardCheck,
+    },
+    {
+      title: "AI Guide",
+      text: "Navigate appropriate assessments without automated diagnosis.",
+      icon: Sparkles,
+    },
+    {
+      title: "Daily Monitoring",
+      text: "Capture experiences as they occur in everyday life.",
+      icon: Activity,
+    },
+    {
+      title: "Self-Regulation",
+      text: "Turn reflection into small, trackable routines.",
+      icon: Target,
+    },
+    {
+      title: "Wearables",
+      text: "Optionally add sleep, activity and physiological context.",
+      icon: Watch,
+    },
+    {
+      title: "Therapist Summary",
+      text: "Prepare selected information to discuss with your therapist.",
+      icon: FileText,
+    },
+  ].map((item) => {
+    const FeatureIcon = item.icon;
 
-          <div className="grid gap-4 sm:grid-cols-2">
-            {[
-              [
-                "Self-Assessments",
-                "Structured psychological self-checks.",
-              ],
-              [
-                "AI Guide",
-                "Navigate appropriate assessments without automated diagnosis.",
-              ],
-              [
-                "Daily Monitoring",
-                "Capture experiences as they occur in everyday life.",
-              ],
-              [
-                "Self-Regulation",
-                "Turn reflection into small, trackable routines.",
-              ],
-              [
-                "Wearables",
-                "Optionally add sleep, activity and physiological context.",
-              ],
-              [
-                "Therapist Summary",
-                "Prepare selected information to discuss with your therapist.",
-              ],
-            ].map(([title, text]) => (
-              <div
-                key={title}
-                className="rounded-2xl border border-slate-800 bg-slate-900/70 p-5"
-              >
-                <div className="mb-5 h-8 w-8 rounded-lg border border-slate-700 bg-slate-800" />
+    return (
+      <div
+        key={item.title}
+        className="group rounded-2xl border border-slate-800 bg-slate-900/70 p-5 transition duration-300 hover:border-slate-700 hover:bg-slate-900"
+      >
+        <div className="mb-5 flex h-10 w-10 items-center justify-center rounded-xl border border-cyan-900/60 bg-cyan-950/50 text-cyan-300 transition group-hover:border-cyan-800 group-hover:bg-cyan-950">
+          <FeatureIcon
+            size={19}
+            strokeWidth={1.8}
+          />
+        </div>
 
-                <h3 className="font-medium">
-                  {title}
-                </h3>
+        <h3 className="font-medium text-white">
+          {item.title}
+        </h3>
 
-                <p className="mt-2 text-sm leading-6 text-slate-400">
-                  {text}
-                </p>
-              </div>
-            ))}
-          </div>
+        <p className="mt-2 text-sm leading-6 text-slate-400">
+          {item.text}
+        </p>
+      </div>
+    );
+  })}
+</div>
         </div>
       </section>
 

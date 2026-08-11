@@ -1761,7 +1761,17 @@ export default function SelfWorkspace() {
             )}
           </span>
 
-          {!sidebarCollapsed && item.label}
+          {!sidebarCollapsed && (
+  <div className="flex items-center gap-2">
+    <span>{item.label}</span>
+
+    {item.id === "ai" && (
+      <span className="rounded-full border border-yellow-500 bg-yellow-200 px-2 py-0.5 text-[9px] font-bold uppercase tracking-[0.12em] text-yellow-500">
+        New
+      </span>
+    )}
+  </div>
+)}
         </button>
       );
     })}

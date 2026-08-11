@@ -24,3 +24,96 @@ body {
   color: var(--foreground);
   font-family: Arial, Helvetica, sans-serif;
 }
+/* =========================================================
+   PSYLATTICE AI ORBIT BUTTON
+   ========================================================= */
+
+@property --ai-border-angle {
+  syntax: "<angle>";
+  initial-value: 0deg;
+  inherits: false;
+}
+
+.ai-orbit-button {
+  --ai-border-angle: 0deg;
+
+  display: inline-flex;
+  width: fit-content;
+  align-items: center;
+  gap: 10px;
+
+  padding: 11px 18px;
+
+  border: 1px solid transparent;
+  border-radius: 9999px;
+
+  background:
+    linear-gradient(
+      #ffffff,
+      #ffffff
+    ) padding-box,
+
+    conic-gradient(
+      from var(--ai-border-angle),
+      rgba(34, 211, 238, 0.12) 0deg,
+      rgba(34, 211, 238, 0.12) 265deg,
+      #22d3ee 305deg,
+      #ffffff 326deg,
+      #67e8f9 344deg,
+      rgba(34, 211, 238, 0.12) 360deg
+    ) border-box;
+
+  color: rgb(0, 0, 0);
+
+  font-size: 14px;
+  font-weight: 600;
+  line-height: 1;
+
+  text-decoration: none;
+
+  box-shadow:
+    0 4px 14px rgba(15, 23, 42, 0.12),
+    0 0 18px rgba(34, 211, 238, 0.05);
+
+  animation:
+    ai-border-orbit 3.2s linear infinite;
+
+  transition:
+    transform 0.25s ease,
+    box-shadow 0.25s ease,
+    background-color 0.25s ease;
+}
+
+.ai-orbit-button:hover {
+  transform: translateY(-1px);
+
+  box-shadow:
+    0 8px 24px rgba(15, 23, 42, 0.16),
+    0 0 22px rgba(34, 211, 238, 0.12);
+}
+
+.ai-orbit-arrow {
+  margin-left: 4px;
+  color: #64748b;
+
+  transition:
+    transform 0.25s ease,
+    color 0.25s ease;
+}
+
+.ai-orbit-button:hover .ai-orbit-arrow {
+  transform: translateX(3px);
+  color: #67e8f9;
+}
+
+@keyframes ai-border-orbit {
+  to {
+    --ai-border-angle: 360deg;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .ai-orbit-button {
+    animation: none;
+  }
+}

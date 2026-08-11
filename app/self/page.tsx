@@ -387,142 +387,266 @@ function AIGuide({
 }: {
   changeScreen: (screen: Screen) => void;
 }) {
+  type GuideMessage = {
+    from: "ai" | "user";
+    text: string;
+  };
+
   const [message, setMessage] = useState("");
 
-  const [messages, setMessages] = useState([
-    {
-      from: "ai",
-      text: "Tell me what you have been noticing recently. I can help you explore a suitable self-assessment or monitoring approach, but I do not diagnose conditions.",
-    },
-    {
-      from: "user",
-      text: "I've been feeling overwhelmed while studying and I keep thinking that I am falling behind.",
-    },
-    {
-      from: "ai",
-      text: "A stress-focused self-check may be useful. Because this seems connected to specific study periods, short daily check-ins could also help you understand when the feeling tends to appear.",
-    },
-  ]);
-
-  function sendMessage() {
-    if (!message.trim()) return;
-
-    setMessages((previous) => [
-      ...previous,
-      {
-        from: "user",
-        text: message,
-      },
+  const [messages, setMessages] =
+    useState<GuideMessage[]>([
       {
         from: "ai",
-        text: "For this prototype, the AI conversation is simulated. Later, PsyLattice can use an approved assessment catalogue to suggest relevant self-checks without making a diagnosis.",
+        text:
+          "Hi. I’m the PsyLattice AI Guide. I can help you explore what you may want to assess, reflect on patterns you’ve been noticing, or understand psychological concepts. What would you like to explore?",
       },
     ]);
 
+  const [sending, setSending] = useState(false);
+  const [chatError, setChatError] = useState("");
+
+  async function sendMessage() {
+    const text = message.trim();
+
+    if (!text || sending) {
+      return;
+    }
+
+    const userMessage: GuideMessage = {
+      from: "user",
+      text,
+    };
+
+    const updatedMessages = [
+      ...messages,
+      userMessage,
+    ];
+
+    // Show the user's message immediately.
+    setMessages(updatedMessages);
+
+    // Clear the text box.
     setMessage("");
+
+    // Show loading state.
+    setSending(true);
+    setChatError("");
+
+    try {
+      const response = await fetch(
+        "/api/ai-guide",
+        {
+          method: "POST",
+
+          headers: {
+            "Content-Type": "application/json",
+          },
+
+          body: JSON.stringify({
+            messages: updatedMessages.map(
+              (item) => ({
+                role:
+                  item.from === "user"
+                    ? "user"
+                    : "assistant",
+
+                content: item.text,
+              })
+            ),
+          }),
+        }
+      );
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(
+          data.error ||
+            "The AI Guide could not respond."
+        );
+      }
+
+      const aiMessage: GuideMessage = {
+        from: "ai",
+        text: data.reply,
+      };
+
+      setMessages((previous) => [
+        ...previous,
+        aiMessage,
+      ]);
+    } catch (error) {
+      console.error(
+        "AI Guide request failed:",
+        error
+      );
+
+      setChatError(
+        error instanceof Error
+          ? error.message
+          : "Something went wrong. Please try again."
+      );
+    } finally {
+      setSending(false);
+    }
   }
 
   return (
     <div className="grid gap-5 xl:grid-cols-[1.15fr_.85fr]">
+      {/* MAIN CHAT */}
       <Panel
         title="PsyLattice AI Guide"
         description="A conversational guide for assessment navigation and reflection."
       >
-        <div className="min-h-[430px] space-y-4">
-          {messages.map((item, index) =>
-            item.from === "ai" ? (
-              <div key={index} className="flex max-w-[88%] gap-3">
-                <Icon dark>AI</Icon>
+        <div className="flex min-h-[560px] flex-col">
+          {/* Messages */}
+          <div className="max-h-[520px] flex-1 space-y-4 overflow-y-auto pr-1">
+            {messages.map((item, index) =>
+              item.from === "ai" ? (
+                <div
+                  key={index}
+                  className="flex max-w-[88%] gap-3"
+                >
+                  <Icon dark>AI</Icon>
 
-                <div className="rounded-2xl rounded-tl-sm border border-slate-200 bg-slate-50 px-4 py-3">
-                  <p className="text-sm leading-6 text-slate-700">
+                  <div className="rounded-2xl rounded-tl-sm border border-slate-200 bg-slate-50 px-4 py-3">
+                    <p className="whitespace-pre-wrap text-sm leading-6 text-slate-700">
+                      {item.text}
+                    </p>
+                  </div>
+                </div>
+              ) : (
+                <div
+                  key={index}
+                  className="ml-auto max-w-[82%] rounded-2xl rounded-tr-sm bg-slate-950 px-4 py-3 text-white"
+                >
+                  <p className="whitespace-pre-wrap text-sm leading-6">
                     {item.text}
                   </p>
                 </div>
+              )
+            )}
+
+            {/* Thinking indicator */}
+            {sending && (
+              <div className="flex max-w-[88%] gap-3">
+                <Icon dark>AI</Icon>
+
+                <div className="rounded-2xl rounded-tl-sm border border-slate-200 bg-slate-50 px-4 py-3">
+                  <div className="flex items-center gap-2">
+                    <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-slate-400" />
+                    <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-slate-400" />
+                    <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-slate-400" />
+
+                    <span className="ml-1 text-xs text-slate-400">
+                      Thinking...
+                    </span>
+                  </div>
+                </div>
               </div>
-            ) : (
-              <div
-                key={index}
-                className="ml-auto max-w-[82%] rounded-2xl rounded-tr-sm bg-slate-950 px-4 py-3 text-white"
-              >
-                <p className="text-sm leading-6">{item.text}</p>
+            )}
+
+            {/* Error */}
+            {chatError && (
+              <div className="rounded-xl border border-red-200 bg-red-50 px-4 py-3">
+                <p className="text-sm text-red-700">
+                  {chatError}
+                </p>
               </div>
-            ),
-          )}
+            )}
+          </div>
 
-          <div className="max-w-lg rounded-2xl border border-cyan-100 bg-cyan-50 p-4">
-            <p className="text-xs font-semibold uppercase tracking-[0.14em] text-cyan-800">
-              Suggested self-check
+          {/* Safety line */}
+          <div className="mt-5 border-t border-slate-100 pt-4">
+            <p className="text-center text-[11px] leading-5 text-slate-400">
+              PsyLattice AI Guide provides
+              informational and navigational
+              support. It does not provide
+              diagnosis, treatment, or emergency
+              services.
             </p>
+          </div>
 
-            <p className="mt-2 font-semibold">Perceived Stress Scale</p>
-
-            <p className="mt-1 text-sm leading-6 text-slate-600">
-              A brief self-report measure focused on perceived stress.
-            </p>
+          {/* Message input */}
+          <div className="mt-4 flex items-end gap-2">
+            <textarea
+              value={message}
+              onChange={(event) =>
+                setMessage(event.target.value)
+              }
+              onKeyDown={(event) => {
+                if (
+                  event.key === "Enter" &&
+                  !event.shiftKey
+                ) {
+                  event.preventDefault();
+                  void sendMessage();
+                }
+              }}
+              placeholder="Tell PsyLattice what you've been noticing..."
+              rows={2}
+              maxLength={4000}
+              disabled={sending}
+              className="min-h-[52px] min-w-0 flex-1 resize-none rounded-xl border border-slate-200 px-4 py-3 text-sm outline-none transition focus:border-cyan-700 focus:ring-2 focus:ring-cyan-100 disabled:bg-slate-50"
+            />
 
             <button
               type="button"
-              onClick={() => changeScreen("assessments")}
-              className="mt-4 rounded-xl bg-slate-950 px-4 py-2 text-xs font-semibold text-white"
+              onClick={() =>
+                void sendMessage()
+              }
+              disabled={
+                sending || !message.trim()
+              }
+              className="rounded-xl bg-slate-950 px-5 py-3 text-sm font-semibold text-white transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-40"
             >
-              View assessment
+              {sending ? "Sending..." : "Send"}
             </button>
           </div>
-        </div>
 
-        <div className="mt-6 flex gap-2 border-t border-slate-100 pt-5">
-          <input
-            type="text"
-            value={message}
-            onChange={(event) => setMessage(event.target.value)}
-            onKeyDown={(event) => {
-              if (event.key === "Enter") {
-                sendMessage();
-              }
-            }}
-            placeholder="Tell PsyLattice what you've been noticing..."
-            className="min-w-0 flex-1 rounded-xl border border-slate-200 px-4 py-3 text-sm outline-none focus:border-cyan-700 focus:ring-2 focus:ring-cyan-100"
-          />
-
-          <button
-            type="button"
-            onClick={sendMessage}
-            className="rounded-xl bg-slate-950 px-5 py-3 text-sm font-semibold text-white"
-          >
-            Send
-          </button>
+          <p className="mt-2 text-[11px] text-slate-400">
+            Press Enter to send · Shift + Enter
+            for a new line
+          </p>
         </div>
       </Panel>
 
+      {/* RIGHT SIDEBAR */}
       <div className="space-y-5">
         <Panel title="What the AI Guide can do">
           <div className="space-y-5">
             {[
               [
-                "Suggest self-assessments",
-                "Navigate PsyLattice's approved assessment catalogue.",
+                "Explore self-assessments",
+                "Help identify areas you may want to assess.",
               ],
               [
                 "Suggest monitoring",
-                "Recommend repeated check-ins when patterns may be useful.",
+                "Discuss when repeated daily check-ins may help reveal patterns.",
               ],
               [
-                "Explain results",
-                "Present self-assessment outputs in plain language.",
+                "Explain concepts",
+                "Explain psychological ideas in clear, accessible language.",
               ],
               [
                 "Prepare for therapy",
-                "Help organise information you choose to discuss with a therapist.",
+                "Help organise information you may choose to discuss with a qualified professional.",
               ],
             ].map(([title, text]) => (
-              <div key={title} className="flex gap-3">
+              <div
+                key={title}
+                className="flex gap-3"
+              >
                 <span className="mt-1 text-cyan-700">
                   <CheckIcon />
                 </span>
 
                 <div>
-                  <p className="text-sm font-medium">{title}</p>
+                  <p className="text-sm font-medium">
+                    {title}
+                  </p>
+
                   <p className="mt-1 text-xs leading-5 text-slate-500">
                     {text}
                   </p>
@@ -532,12 +656,41 @@ function AIGuide({
           </div>
         </Panel>
 
+        <Panel title="Assessment catalogue">
+          <div className="rounded-2xl border border-cyan-100 bg-cyan-50/60 p-4">
+            <p className="text-sm font-medium text-cyan-950">
+              Assessment recommendations are
+              being developed carefully.
+            </p>
+
+            <p className="mt-2 text-xs leading-5 text-cyan-900/70">
+              The AI Guide can currently help you
+              identify an area to explore. Direct
+              questionnaire recommendations will
+              later be connected to PsyLattice's
+              approved assessment catalogue.
+            </p>
+
+            <button
+              type="button"
+              onClick={() =>
+                changeScreen("assessments")
+              }
+              className="mt-4 rounded-xl border border-cyan-200 bg-white px-4 py-2 text-xs font-semibold text-cyan-900"
+            >
+              Browse assessments
+            </button>
+          </div>
+        </Panel>
+
         <Panel title="Important boundary">
           <div className="rounded-2xl bg-amber-50 p-4">
             <p className="text-sm leading-6 text-amber-900">
-              The AI Guide supports navigation and reflection. It does not
-              diagnose psychiatric disorders, prescribe treatment or replace
-              a qualified professional.
+              The AI Guide supports navigation,
+              education, and reflection. It does
+              not diagnose psychiatric disorders,
+              prescribe treatment, or replace a
+              qualified professional.
             </p>
           </div>
         </Panel>
@@ -1282,6 +1435,7 @@ export default function SelfWorkspace() {
   const [screen, setScreen] = useState<Screen>("dashboard");
   const [fullName, setFullName] = useState("");
   const [signingOut, setSigningOut] = useState(false);
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
 
   useEffect(() => {
     async function loadProfile() {
@@ -1420,7 +1574,7 @@ export default function SelfWorkspace() {
   }
 
   return (
-    <main className="min-h-screen bg-[#f6f8f8] text-slate-950">
+    <main className="h-screen overflow-hidden bg-[#f6f8f8] text-slate-950">
       {/* TOP BAR */}
 
       <header className="sticky top-0 z-50 border-b border-slate-200 bg-white/95 backdrop-blur">
@@ -1477,82 +1631,217 @@ export default function SelfWorkspace() {
         </div>
       </header>
 
-      <div className="grid min-h-[calc(100vh-80px)] lg:grid-cols-[240px_minmax(0,1fr)]">
+      <div
+  className={`grid h-[calc(100vh-80px)] transition-[grid-template-columns] duration-300 ${
+    sidebarCollapsed
+      ? "lg:grid-cols-[80px_minmax(0,1fr)]"
+      : "lg:grid-cols-[240px_minmax(0,1fr)]"
+  }`}
+>
         {/* SIDEBAR */}
 
-        <aside className="hidden border-r border-slate-200 bg-white p-4 lg:block">
-          <p className="px-3 pb-3 pt-2 text-[10px] font-semibold uppercase tracking-[0.17em] text-slate-400">
-            Personal space
-          </p>
+        <aside className="hidden h-full overflow-y-auto border-r border-slate-200 bg-white lg:flex lg:flex-col">
+  {/* Collapse button */}
+  <div
+    className={`flex border-b border-slate-100 p-3 ${
+      sidebarCollapsed
+        ? "justify-center"
+        : "justify-end"
+    }`}
+  >
+    <button
+      type="button"
+      onClick={() =>
+        setSidebarCollapsed(
+          (previous) => !previous
+        )
+      }
+      title={
+        sidebarCollapsed
+          ? "Expand sidebar"
+          : "Collapse sidebar"
+      }
+      className="flex h-9 w-9 items-center justify-center rounded-xl border border-slate-200 bg-white text-slate-500 transition hover:bg-slate-50 hover:text-slate-950"
+    >
+      <svg
+        viewBox="0 0 20 20"
+        fill="none"
+        className={`h-4 w-4 transition-transform duration-300 ${
+          sidebarCollapsed
+            ? "rotate-180"
+            : ""
+        }`}
+        aria-hidden="true"
+      >
+        <path
+          d="M12.5 5.5 8 10l4.5 4.5"
+          stroke="currentColor"
+          strokeWidth="1.7"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+        />
+      </svg>
+    </button>
+  </div>
 
-          <nav className="space-y-1">
-            {navigation.slice(0, 8).map((item) => {
-              const active = item.id === screen;
+  {/* Personal space */}
+  {!sidebarCollapsed && (
+    <p className="px-7 pb-3 pt-5 text-[10px] font-semibold uppercase tracking-[0.17em] text-slate-400">
+      Personal space
+    </p>
+  )}
 
-              return (
-                <button
-                  key={item.id}
-                  type="button"
-                  onClick={() => setScreen(item.id)}
-                  className={`flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-left text-sm transition ${
-                    active
-                      ? "bg-cyan-50 font-semibold text-cyan-900"
-                      : "text-slate-500 hover:bg-slate-50 hover:text-slate-950"
-                  }`}
-                >
-                  <span
-                    className={`h-1.5 w-1.5 rounded-full ${
-                      active ? "bg-cyan-700" : "bg-slate-300"
-                    }`}
-                  />
+  <nav
+    className={`space-y-1 ${
+      sidebarCollapsed
+        ? "px-3 pt-4"
+        : "px-4"
+    }`}
+  >
+    {navigation.slice(0, 8).map((item) => {
+      const active = item.id === screen;
 
-                  {item.label}
-                </button>
-              );
-            })}
-          </nav>
-
-          <div className="my-5 h-px bg-slate-100" />
-
-          <p className="px-3 pb-2 text-[10px] font-semibold uppercase tracking-[0.17em] text-slate-400">
-            Account
-          </p>
-
-          <button
-            type="button"
-            onClick={() => setScreen("privacy")}
-            className={`flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-left text-sm ${
-              screen === "privacy"
-                ? "bg-cyan-50 font-semibold text-cyan-900"
-                : "text-slate-500 hover:bg-slate-50"
+      return (
+        <button
+          key={item.id}
+          type="button"
+          title={
+            sidebarCollapsed
+              ? item.label
+              : undefined
+          }
+          onClick={() => setScreen(item.id)}
+          className={`flex w-full items-center rounded-xl py-2.5 text-sm transition ${
+            sidebarCollapsed
+              ? "justify-center px-2"
+              : "gap-3 px-3 text-left"
+          } ${
+            active
+              ? "bg-cyan-50 font-semibold text-cyan-900"
+              : "text-slate-500 hover:bg-slate-50 hover:text-slate-950"
+          }`}
+        >
+          <span
+            className={`flex shrink-0 items-center justify-center ${
+              sidebarCollapsed
+                ? "h-8 w-8 rounded-lg text-[11px] font-semibold"
+                : ""
+            } ${
+              sidebarCollapsed && active
+                ? "bg-cyan-100 text-cyan-900"
+                : ""
             }`}
           >
-            <span
-              className={`h-1.5 w-1.5 rounded-full ${
-                screen === "privacy"
-                  ? "bg-cyan-700"
-                  : "bg-slate-300"
-              }`}
-            />
+            {sidebarCollapsed ? (
+              item.id === "dashboard" ? (
+                "D"
+              ) : item.id === "ai" ? (
+                "AI"
+              ) : item.id === "assessments" ? (
+                "A"
+              ) : item.id === "monitoring" ? (
+                "M"
+              ) : item.id === "regulation" ? (
+                "R"
+              ) : item.id === "progress" ? (
+                "P"
+              ) : item.id === "wearables" ? (
+                "W"
+              ) : (
+                "N"
+              )
+            ) : (
+              <span
+                className={`h-1.5 w-1.5 rounded-full ${
+                  active
+                    ? "bg-cyan-700"
+                    : "bg-slate-300"
+                }`}
+              />
+            )}
+          </span>
 
-            Privacy & Sharing
-          </button>
+          {!sidebarCollapsed && item.label}
+        </button>
+      );
+    })}
+  </nav>
 
-          <div className="mt-8 rounded-2xl bg-slate-950 p-4 text-white">
-            <p className="text-xs font-medium text-cyan-200">
-              PsyLattice
-            </p>
+  <div className="mx-4 my-5 h-px bg-slate-100" />
 
-            <p className="mt-2 text-xs leading-5 text-slate-400">
-              The account itself is now authenticated. Assessment and
-              monitoring information shown here is still demo data.
-            </p>
-          </div>
-        </aside>
+  {/* Account */}
+  {!sidebarCollapsed && (
+    <p className="px-7 pb-2 text-[10px] font-semibold uppercase tracking-[0.17em] text-slate-400">
+      Account
+    </p>
+  )}
+
+  <div
+    className={
+      sidebarCollapsed
+        ? "px-3"
+        : "px-4"
+    }
+  >
+    <button
+      type="button"
+      title={
+        sidebarCollapsed
+          ? "Privacy & Sharing"
+          : undefined
+      }
+      onClick={() => setScreen("privacy")}
+      className={`flex w-full items-center rounded-xl py-2.5 text-sm ${
+        sidebarCollapsed
+          ? "justify-center px-2"
+          : "gap-3 px-3 text-left"
+      } ${
+        screen === "privacy"
+          ? "bg-cyan-50 font-semibold text-cyan-900"
+          : "text-slate-500 hover:bg-slate-50"
+      }`}
+    >
+      {sidebarCollapsed ? (
+        <span className="flex h-8 w-8 items-center justify-center rounded-lg text-xs font-semibold">
+          P
+        </span>
+      ) : (
+        <>
+          <span
+            className={`h-1.5 w-1.5 rounded-full ${
+              screen === "privacy"
+                ? "bg-cyan-700"
+                : "bg-slate-300"
+            }`}
+          />
+
+          Privacy & Sharing
+        </>
+      )}
+    </button>
+  </div>
+
+  {/* Bottom info card */}
+  {!sidebarCollapsed && (
+    <div className="mt-auto p-4">
+      <div className="rounded-2xl bg-slate-950 p-4 text-white">
+        <p className="text-xs font-medium text-cyan-200">
+          PsyLattice
+        </p>
+
+        <p className="mt-2 text-xs leading-5 text-slate-400">
+          The account itself is now authenticated.
+          Assessment and monitoring information
+          shown here is still demo data.
+        </p>
+      </div>
+    </div>
+  )}
+</aside>
 
         {/* CONTENT */}
 
-        <section className="min-w-0 p-5 sm:p-6 lg:p-8">
+        <section className="min-w-0 overflow-y-auto p-5 sm:p-6 lg:p-8">
           <div className="mx-auto max-w-[1400px]">
             <div className="mb-7 flex items-end justify-between gap-5">
               <div>

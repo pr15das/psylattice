@@ -2,9 +2,10 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useEffect, useState, type ReactNode } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import { createClient } from "@/lib/supabase/client";
 import PsyLatticeLogo from "@/components/PsyLatticeLogo";
+
 
 type Screen =
   | "dashboard"
@@ -392,20 +393,38 @@ function AIGuide({
     text: string;
   };
 
-  const [message, setMessage] = useState("");
+  const initialMessage: GuideMessage = {
+  from: "ai",
+  text:
+    "Hi. I’m the PsyLattice AI Guide. I can help you explore what you may want to assess, reflect on patterns you’ve been noticing, or understand psychological concepts. What would you like to explore?",
+};
 
-  const [messages, setMessages] =
-    useState<GuideMessage[]>([
-      {
-        from: "ai",
-        text:
-          "Hi. I’m the PsyLattice AI Guide. I can help you explore what you may want to assess, reflect on patterns you’ve been noticing, or understand psychological concepts. What would you like to explore?",
-      },
-    ]);
+const [message, setMessage] = useState("");
 
-  const [sending, setSending] = useState(false);
-  const [chatError, setChatError] = useState("");
+const [messages, setMessages] =
+  useState<GuideMessage[]>([
+    initialMessage,
+  ]);
 
+const [sending, setSending] = useState(false);
+const [chatError, setChatError] = useState("");
+
+const messagesContainerRef =
+  useRef<HTMLDivElement | null>(null);
+
+  useEffect(() => {
+  const container = messagesContainerRef.current;
+
+  if (!container) {
+    return;
+  }
+
+  container.scrollTo({
+    top: container.scrollHeight,
+    behavior: "smooth",
+  });
+
+}, [messages, sending]);
   async function sendMessage() {
     const text = message.trim();
 
@@ -491,6 +510,28 @@ function AIGuide({
       setSending(false);
     }
   }
+
+function startNewChat() {
+  if (sending) {
+    return;
+  }
+
+  setMessages([initialMessage]);
+  setMessage("");
+  setChatError("");
+
+  setTimeout(() => {
+    const container =
+      messagesContainerRef.current;
+
+    if (container) {
+      container.scrollTo({
+        top: 0,
+        behavior: "smooth",
+      });
+    }
+  }, 0);
+}
 
   return (
     <div className="grid gap-5 xl:grid-cols-[1.15fr_.85fr]">

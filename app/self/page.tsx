@@ -165,6 +165,183 @@ function ProgressBar({
   );
 }
 
+
+function DashboardAssessmentSummary({
+  changeScreen,
+}: {
+  changeScreen: (screen: Screen) => void;
+}) {
+  type LatestAssessment = {
+    id: string;
+    questionnaire_id: string;
+    completed_at: string | null;
+    scores: Record<string, number> | null;
+  };
+
+  type AssessmentQuestionnaire = {
+    id: string;
+    name: string;
+    acronym: string | null;
+  };
+
+  const [loading, setLoading] = useState(true);
+  const [latest, setLatest] = useState<LatestAssessment | null>(null);
+  const [questionnaire, setQuestionnaire] =
+    useState<AssessmentQuestionnaire | null>(null);
+
+  useEffect(() => {
+    async function loadLatestAssessment() {
+      setLoading(true);
+
+      const supabase = createClient();
+      const {
+        data: { user },
+        error: userError,
+      } = await supabase.auth.getUser();
+
+      if (userError || !user) {
+        setLoading(false);
+        return;
+      }
+
+      const { data: sessionData, error: sessionError } = await supabase
+        .from("assessment_sessions")
+        .select("id, questionnaire_id, completed_at, scores")
+        .eq("user_id", user.id)
+        .eq("status", "completed")
+        .order("completed_at", { ascending: false })
+        .limit(1)
+        .maybeSingle();
+
+      if (sessionError) {
+        console.error("Could not load latest assessment:", sessionError);
+        setLoading(false);
+        return;
+      }
+
+      if (!sessionData) {
+        setLatest(null);
+        setQuestionnaire(null);
+        setLoading(false);
+        return;
+      }
+
+      const typedSession = sessionData as LatestAssessment;
+      setLatest(typedSession);
+
+      const { data: questionnaireData, error: questionnaireError } =
+        await supabase
+          .from("questionnaires")
+          .select("id, name, acronym")
+          .eq("id", typedSession.questionnaire_id)
+          .maybeSingle();
+
+      if (questionnaireError) {
+        console.error(
+          "Could not load latest assessment questionnaire:",
+          questionnaireError
+        );
+      } else {
+        setQuestionnaire(
+          questionnaireData
+            ? (questionnaireData as AssessmentQuestionnaire)
+            : null
+        );
+      }
+
+      setLoading(false);
+    }
+
+    void loadLatestAssessment();
+  }, []);
+
+  const scoreEntries = latest?.scores
+    ? Object.entries(latest.scores).filter(
+        ([, value]) => typeof value === "number"
+      )
+    : [];
+
+  return (
+    <Panel title="Self-assessments">
+      {loading ? (
+        <p className="text-sm text-slate-500">Loading assessment history...</p>
+      ) : latest && questionnaire ? (
+        <div className="rounded-2xl bg-slate-50 p-5">
+          <div className="flex flex-wrap items-start justify-between gap-3">
+            <div>
+              <p className="text-xs font-medium text-slate-400">
+                Latest completed assessment
+              </p>
+              <p className="mt-2 font-medium">
+                {questionnaire.acronym || questionnaire.name}
+              </p>
+            </div>
+
+            {latest.completed_at && (
+              <span className="text-xs text-slate-400">
+                {new Date(latest.completed_at).toLocaleDateString([], {
+                  day: "2-digit",
+                  month: "short",
+                  year: "numeric",
+                })}
+              </span>
+            )}
+          </div>
+
+          {scoreEntries.length > 0 && (
+            <div className="mt-4 flex flex-wrap gap-2">
+              {scoreEntries.slice(0, 3).map(([label, value]) => (
+                <span
+                  key={label}
+                  className="rounded-full border border-cyan-100 bg-white px-3 py-1 text-xs font-medium text-cyan-900"
+                >
+                  {label}: {value}
+                </span>
+              ))}
+
+              {scoreEntries.length > 3 && (
+                <span className="rounded-full border border-slate-200 bg-white px-3 py-1 text-xs text-slate-500">
+                  +{scoreEntries.length - 3} more
+                </span>
+              )}
+            </div>
+          )}
+
+          <p className="mt-4 text-xs leading-5 text-slate-500">
+            Scores are shown as questionnaire results for reflection. They are
+            not a diagnosis or clinical conclusion.
+          </p>
+
+          <button
+            type="button"
+            onClick={() => changeScreen("assessments")}
+            className="mt-5 flex items-center gap-2 text-sm font-semibold"
+          >
+            View assessment history
+            <ArrowIcon />
+          </button>
+        </div>
+      ) : (
+        <div className="rounded-2xl bg-slate-50 p-5">
+          <p className="font-medium">No completed self-assessments yet</p>
+          <p className="mt-2 text-sm leading-6 text-slate-500">
+            Browse PsyLattice's approved self-assessment catalogue and complete
+            a measure when you are ready.
+          </p>
+          <button
+            type="button"
+            onClick={() => changeScreen("assessments")}
+            className="mt-5 flex items-center gap-2 text-sm font-semibold"
+          >
+            Browse assessments
+            <ArrowIcon />
+          </button>
+        </div>
+      )}
+    </Panel>
+  );
+}
+
 /* =========================================================
    DASHBOARD
    ========================================================= */
@@ -660,23 +837,7 @@ function Dashboard({
           )}
         </Panel>
 
-        <Panel title="Self-assessments">
-          <div className="rounded-2xl bg-slate-50 p-5">
-            <p className="font-medium">Assessment history is not connected yet</p>
-            <p className="mt-2 text-sm leading-6 text-slate-500">
-              Your completed self-assessments will appear here once the
-              assessment system is connected to the database.
-            </p>
-            <button
-              type="button"
-              onClick={() => changeScreen("assessments")}
-              className="mt-5 flex items-center gap-2 text-sm font-semibold"
-            >
-              Browse assessments
-              <ArrowIcon />
-            </button>
-          </div>
-        </Panel>
+        <DashboardAssessmentSummary changeScreen={changeScreen} />
       </div>
 
       <div className="grid gap-5 xl:grid-cols-2">
@@ -1172,128 +1333,1356 @@ function startNewChat() {
    ========================================================= */
 
 function Assessments() {
-  const assessments = [
-    {
-      name: "Perceived Stress Scale",
-      category: "Stress",
-      time: "~3 min",
-      suggested: true,
-      description:
-        "A structured self-report measure focused on perceived stress.",
-    },
-    {
-      name: "Wellbeing Check",
-      category: "Wellbeing",
-      time: "~2 min",
-      suggested: false,
-      description:
-        "A brief reflection on general positive wellbeing and daily functioning.",
-    },
-    {
-      name: "Sleep Self-Check",
-      category: "Sleep",
-      time: "~4 min",
-      suggested: false,
-      description:
-        "Review recent sleep quality and habits alongside optional wearable context.",
-    },
-    {
-      name: "Emotion Regulation Check",
-      category: "Regulation",
-      time: "~5 min",
-      suggested: false,
-      description:
-        "Reflect on common strategies used when responding to emotional experiences.",
-    },
+  type Questionnaire = {
+    id: string;
+    slug: string;
+    name: string;
+    acronym: string | null;
+    category: string;
+    description: string;
+    constructs: string[];
+    population: string | null;
+    item_count: number;
+    estimated_minutes: number | null;
+    languages: string[];
+    administration_mode: string | null;
+    recall_period: string | null;
+    self_available: boolean;
+    researcher_available: boolean;
+    license_status: "public_domain" | "permitted" | "restricted" | "unknown";
+    license_summary: string | null;
+    license_source_url: string | null;
+    commercial_use_note: string | null;
+    modification_note: string | null;
+    redistribution_note: string | null;
+  };
+
+  type QuestionnaireVersion = {
+    id: string;
+    questionnaire_id: string;
+    version_label: string;
+    participant_instructions: string;
+    researcher_instructions: string | null;
+    response_scale_description: string | null;
+    scoring_summary: string | null;
+    score_multiplier: number;
+  };
+
+  type ResponseOption = {
+    value: number;
+    label: string;
+  };
+
+  type QuestionnaireItem = {
+    id: string;
+    position: number;
+    prompt: string;
+    subscale: string | null;
+    reverse_scored: boolean;
+    response_type: string;
+    response_options: ResponseOption[];
+    required: boolean;
+  };
+
+  type QuestionnaireResource = {
+    id: string;
+    resource_type: string;
+    title: string;
+    url: string;
+    source_name: string | null;
+    is_official: boolean;
+    download_allowed: boolean;
+    access_note: string | null;
+    sort_order: number;
+  };
+
+  type QuestionnaireReference = {
+    id: string;
+    citation: string;
+    url: string | null;
+    sort_order: number;
+  };
+
+  type AssessmentHistory = {
+    id: string;
+    questionnaire_id: string;
+    scores: Record<string, number> | null;
+    completed_at: string | null;
+  };
+
+  type AssessmentResult = {
+    questionnaireName: string;
+    acronym: string | null;
+    scores: Record<string, number>;
+  };
+
+  const [questionnaires, setQuestionnaires] = useState<Questionnaire[]>([]);
+  const [history, setHistory] = useState<AssessmentHistory[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [catalogueError, setCatalogueError] = useState("");
+
+  const [search, setSearch] = useState("");
+  const [category, setCategory] = useState("All");
+
+  const [selectedQuestionnaire, setSelectedQuestionnaire] =
+    useState<Questionnaire | null>(null);
+  const [selectedVersion, setSelectedVersion] =
+    useState<QuestionnaireVersion | null>(null);
+  const [resources, setResources] = useState<QuestionnaireResource[]>([]);
+  const [references, setReferences] = useState<QuestionnaireReference[]>([]);
+  const [detailLoading, setDetailLoading] = useState(false);
+
+  const [items, setItems] = useState<QuestionnaireItem[]>([]);
+  const [answers, setAnswers] = useState<Record<string, number>>({});
+  const [currentItemIndex, setCurrentItemIndex] = useState(0);
+  const [sessionId, setSessionId] = useState("");
+  const [runnerLoading, setRunnerLoading] = useState(false);
+  const [runnerError, setRunnerError] = useState("");
+  const [submitting, setSubmitting] = useState(false);
+  const [result, setResult] = useState<AssessmentResult | null>(null);
+
+  const [view, setView] = useState<
+    "library" | "details" | "runner" | "safety" | "result"
+  >("library");
+
+  const [phq9Item9Response, setPhq9Item9Response] =
+    useState<number | null>(null);
+
+  async function loadAssessmentHistory() {
+    const supabase = createClient();
+    const {
+      data: { user },
+      error: userError,
+    } = await supabase.auth.getUser();
+
+    if (userError || !user) {
+      return;
+    }
+
+    const { data, error } = await supabase
+      .from("assessment_sessions")
+      .select("id, questionnaire_id, scores, completed_at")
+      .eq("user_id", user.id)
+      .eq("status", "completed")
+      .order("completed_at", { ascending: false })
+      .limit(20);
+
+    if (error) {
+      console.error("Could not load assessment history:", error);
+      return;
+    }
+
+    setHistory((data || []) as AssessmentHistory[]);
+  }
+
+  useEffect(() => {
+    async function loadCatalogue() {
+      setLoading(true);
+      setCatalogueError("");
+
+      const supabase = createClient();
+      const {
+        data: { user },
+        error: userError,
+      } = await supabase.auth.getUser();
+
+      if (userError || !user) {
+        setCatalogueError("The assessment catalogue could not be loaded.");
+        setLoading(false);
+        return;
+      }
+
+      const { data, error } = await supabase
+        .from("questionnaires")
+        .select(
+          "id, slug, name, acronym, category, description, constructs, population, item_count, estimated_minutes, languages, administration_mode, recall_period, self_available, researcher_available, license_status, license_summary, license_source_url, commercial_use_note, modification_note, redistribution_note"
+        )
+        .eq("self_available", true)
+        .eq("status", "active")
+        .order("name", { ascending: true });
+
+      if (error) {
+        console.error("Could not load questionnaire catalogue:", error);
+        setCatalogueError(
+          "The questionnaire library could not be loaded. Make sure the questionnaire database setup has been run in Supabase."
+        );
+        setLoading(false);
+        return;
+      }
+
+      setQuestionnaires((data || []) as Questionnaire[]);
+      await loadAssessmentHistory();
+      setLoading(false);
+    }
+
+    void loadCatalogue();
+  }, []);
+
+  async function loadQuestionnaireDetails(questionnaire: Questionnaire) {
+    setDetailLoading(true);
+    setCatalogueError("");
+    setSelectedQuestionnaire(questionnaire);
+    setResult(null);
+
+    const supabase = createClient();
+
+    const [versionResult, resourceResult, referenceResult] = await Promise.all([
+      supabase
+        .from("questionnaire_versions")
+        .select(
+          "id, questionnaire_id, version_label, participant_instructions, researcher_instructions, response_scale_description, scoring_summary, score_multiplier"
+        )
+        .eq("questionnaire_id", questionnaire.id)
+        .eq("is_current", true)
+        .limit(1)
+        .maybeSingle(),
+      supabase
+        .from("questionnaire_resources")
+        .select(
+          "id, resource_type, title, url, source_name, is_official, download_allowed, access_note, sort_order"
+        )
+        .eq("questionnaire_id", questionnaire.id)
+        .order("sort_order", { ascending: true }),
+      supabase
+        .from("questionnaire_references")
+        .select("id, citation, url, sort_order")
+        .eq("questionnaire_id", questionnaire.id)
+        .order("sort_order", { ascending: true }),
+    ]);
+
+    if (versionResult.error) {
+      console.error("Could not load questionnaire version:", versionResult.error);
+      setCatalogueError("This questionnaire's instructions could not be loaded.");
+      setDetailLoading(false);
+      return;
+    }
+
+    if (resourceResult.error) {
+      console.error(
+        "Could not load questionnaire resources:",
+        resourceResult.error
+      );
+    }
+
+    if (referenceResult.error) {
+      console.error(
+        "Could not load questionnaire references:",
+        referenceResult.error
+      );
+    }
+
+    setSelectedVersion(
+      versionResult.data
+        ? (versionResult.data as QuestionnaireVersion)
+        : null
+    );
+    setResources((resourceResult.data || []) as QuestionnaireResource[]);
+    setReferences((referenceResult.data || []) as QuestionnaireReference[]);
+    setView("details");
+    setDetailLoading(false);
+  }
+
+  async function startAssessment(questionnaire: Questionnaire) {
+    setRunnerLoading(true);
+    setRunnerError("");
+    setResult(null);
+    setPhq9Item9Response(null);
+
+    const supabase = createClient();
+    const {
+      data: { user },
+      error: userError,
+    } = await supabase.auth.getUser();
+
+    if (userError || !user) {
+      setRunnerError("You must be signed in to start an assessment.");
+      setRunnerLoading(false);
+      return;
+    }
+
+    let version = selectedVersion;
+
+    if (!version || version.questionnaire_id !== questionnaire.id) {
+      const { data: versionData, error: versionError } = await supabase
+        .from("questionnaire_versions")
+        .select(
+          "id, questionnaire_id, version_label, participant_instructions, researcher_instructions, response_scale_description, scoring_summary, score_multiplier"
+        )
+        .eq("questionnaire_id", questionnaire.id)
+        .eq("is_current", true)
+        .limit(1)
+        .maybeSingle();
+
+      if (versionError || !versionData) {
+        setRunnerError("This questionnaire version could not be loaded.");
+        setRunnerLoading(false);
+        return;
+      }
+
+      version = versionData as QuestionnaireVersion;
+      setSelectedVersion(version);
+    }
+
+    const { data: itemData, error: itemError } = await supabase
+      .from("questionnaire_items")
+      .select(
+        "id, position, prompt, subscale, reverse_scored, response_type, response_options, required"
+      )
+      .eq("version_id", version.id)
+      .order("position", { ascending: true });
+
+    if (itemError || !itemData || itemData.length === 0) {
+      console.error("Could not load questionnaire items:", itemError);
+      setRunnerError("The questionnaire items could not be loaded.");
+      setRunnerLoading(false);
+      return;
+    }
+
+    const { data: sessionData, error: sessionError } = await supabase
+      .from("assessment_sessions")
+      .insert({
+        user_id: user.id,
+        questionnaire_id: questionnaire.id,
+        version_id: version.id,
+        status: "in_progress",
+      })
+      .select("id")
+      .single();
+
+    if (sessionError || !sessionData) {
+      console.error("Could not create assessment session:", sessionError);
+      setRunnerError("The assessment could not be started.");
+      setRunnerLoading(false);
+      return;
+    }
+
+    setSelectedQuestionnaire(questionnaire);
+    setItems((itemData || []) as QuestionnaireItem[]);
+    setAnswers({});
+    setCurrentItemIndex(0);
+    setSessionId(sessionData.id);
+    setView("runner");
+    setRunnerLoading(false);
+  }
+
+  function calculateScores() {
+    if (!selectedVersion) {
+      return {} as Record<string, number>;
+    }
+
+    const scores: Record<string, number> = {};
+
+    for (const item of items) {
+      const response = answers[item.id];
+
+      if (typeof response !== "number" || !item.subscale) {
+        continue;
+      }
+
+      const optionValues = item.response_options.map((option) => option.value);
+      const minimum = optionValues.length > 0 ? Math.min(...optionValues) : 0;
+      const maximum = optionValues.length > 0 ? Math.max(...optionValues) : 0;
+
+      const scoredValue = item.reverse_scored
+        ? minimum + maximum - response
+        : response;
+
+      scores[item.subscale] = (scores[item.subscale] || 0) + scoredValue;
+    }
+
+    for (const key of Object.keys(scores)) {
+      scores[key] = Number(
+        (scores[key] * Number(selectedVersion.score_multiplier || 1)).toFixed(2)
+      );
+    }
+
+    return scores;
+  }
+
+  async function completeAssessment() {
+    if (
+      submitting ||
+      !sessionId ||
+      !selectedQuestionnaire ||
+      !selectedVersion
+    ) {
+      return;
+    }
+
+    const missingRequired = items.some(
+      (item) => item.required && typeof answers[item.id] !== "number"
+    );
+
+    if (missingRequired) {
+      setRunnerError("Please answer every item before submitting.");
+      return;
+    }
+
+    setSubmitting(true);
+    setRunnerError("");
+
+    const supabase = createClient();
+    const {
+      data: { user },
+      error: userError,
+    } = await supabase.auth.getUser();
+
+    if (userError || !user) {
+      setRunnerError("You must be signed in to submit an assessment.");
+      setSubmitting(false);
+      return;
+    }
+
+    const scoreObject = calculateScores();
+
+    const answerRows = items
+      .filter((item) => typeof answers[item.id] === "number")
+      .map((item) => ({
+        session_id: sessionId,
+        user_id: user.id,
+        item_id: item.id,
+        response_value: answers[item.id],
+      }));
+
+    const { error: answerError } = await supabase
+      .from("assessment_answers")
+      .upsert(answerRows, {
+        onConflict: "session_id,item_id",
+      });
+
+    if (answerError) {
+      console.error("Could not save assessment answers:", answerError);
+      setRunnerError("Your answers could not be saved.");
+      setSubmitting(false);
+      return;
+    }
+
+    const { error: sessionError } = await supabase
+      .from("assessment_sessions")
+      .update({
+        status: "completed",
+        scores: scoreObject,
+        completed_at: new Date().toISOString(),
+      })
+      .eq("id", sessionId)
+      .eq("user_id", user.id);
+
+    if (sessionError) {
+      console.error("Could not complete assessment session:", sessionError);
+      setRunnerError("The assessment could not be completed.");
+      setSubmitting(false);
+      return;
+    }
+
+    const completedResult: AssessmentResult = {
+      questionnaireName: selectedQuestionnaire.name,
+      acronym: selectedQuestionnaire.acronym,
+      scores: scoreObject,
+    };
+
+    setResult(completedResult);
+
+    const phq9Item9 =
+      selectedQuestionnaire.slug === "patient-health-questionnaire-9"
+        ? items.find((item) => item.position === 9)
+        : undefined;
+
+    const item9Response =
+      phq9Item9 && typeof answers[phq9Item9.id] === "number"
+        ? answers[phq9Item9.id]
+        : null;
+
+    setPhq9Item9Response(item9Response);
+
+    if (
+      selectedQuestionnaire.slug === "patient-health-questionnaire-9" &&
+      item9Response !== null &&
+      item9Response > 0
+    ) {
+      setView("safety");
+    } else {
+      setView("result");
+    }
+
+    await loadAssessmentHistory();
+    setSubmitting(false);
+  }
+
+  function phq9SymptomRange(score: number) {
+    if (score <= 4) return "minimal";
+    if (score <= 9) return "mild";
+    if (score <= 14) return "moderate";
+    if (score <= 19) return "moderately severe";
+    return "severe";
+  }
+
+  function historyQuestionnaire(questionnaireId: string) {
+    return questionnaires.find((item) => item.id === questionnaireId) || null;
+  }
+
+  function resourceLabel(resource: QuestionnaireResource) {
+    switch (resource.resource_type) {
+      case "manual":
+        return "Manual";
+      case "questionnaire":
+        return "Questionnaire";
+      case "scoring_guide":
+        return "Scoring guide";
+      case "scoring_key":
+        return "Scoring key";
+      case "citation_guide":
+        return "Citation guide";
+      case "license":
+        return "Licence / permission";
+      case "translations":
+        return "Translations";
+      default:
+        return "Official resource";
+    }
+  }
+
+  const categories = [
+    "All",
+    ...Array.from(new Set(questionnaires.map((item) => item.category))),
   ];
 
-  return (
-    <div className="space-y-5">
-      <div className="flex flex-wrap gap-2">
-        {[
-          "Suggested for you",
-          "Stress",
-          "Wellbeing",
-          "Sleep",
-          "Emotion regulation",
-        ].map((item, index) => (
+  const filteredQuestionnaires = questionnaires.filter((item) => {
+    const matchesCategory = category === "All" || item.category === category;
+    const query = search.trim().toLowerCase();
+    const matchesSearch =
+      !query ||
+      item.name.toLowerCase().includes(query) ||
+      (item.acronym || "").toLowerCase().includes(query) ||
+      item.constructs.some((construct) => construct.toLowerCase().includes(query));
+
+    return matchesCategory && matchesSearch;
+  });
+
+  if (view === "runner" && selectedQuestionnaire && selectedVersion) {
+    const currentItem = items[currentItemIndex];
+    const answeredCount = Object.keys(answers).length;
+    const progress =
+      items.length > 0
+        ? Math.round(((currentItemIndex + 1) / items.length) * 100)
+        : 0;
+
+    return (
+      <div className="mx-auto max-w-4xl space-y-5">
+        <div className="flex flex-wrap items-center justify-between gap-4">
           <button
-            key={item}
             type="button"
-            className={`rounded-full border px-3 py-1.5 text-xs font-medium ${
-              index === 0
-                ? "border-cyan-200 bg-cyan-50 text-cyan-800"
-                : "border-slate-200 bg-white text-slate-500"
-            }`}
+            onClick={() => {
+              setView("library");
+              setRunnerError("");
+            }}
+            className="text-sm font-semibold text-slate-500 transition hover:text-slate-950"
           >
-            {item}
+            ← Exit assessment
           </button>
-        ))}
+
+          <span className="text-xs font-medium text-slate-400">
+            {answeredCount} of {items.length} answered
+          </span>
+        </div>
+
+        <Panel
+          title={selectedQuestionnaire.acronym || selectedQuestionnaire.name}
+          description={selectedVersion.participant_instructions}
+        >
+          {runnerLoading || !currentItem ? (
+            <p className="text-sm text-slate-500">Loading assessment...</p>
+          ) : (
+            <div>
+              <div className="mb-7">
+                <div className="flex items-center justify-between gap-4 text-xs text-slate-400">
+                  <span>
+                    Question {currentItemIndex + 1} of {items.length}
+                  </span>
+                  <span>{progress}%</span>
+                </div>
+                <div className="mt-2 h-2 overflow-hidden rounded-full bg-slate-100">
+                  <div
+                    className="h-full rounded-full bg-cyan-700 transition-all"
+                    style={{ width: `${progress}%` }}
+                  />
+                </div>
+              </div>
+
+              <h2 className="text-xl font-semibold leading-8 text-slate-950">
+                {currentItem.prompt}
+              </h2>
+
+              <div className="mt-6 space-y-3">
+                {currentItem.response_options.map((option) => {
+                  const selected = answers[currentItem.id] === option.value;
+
+                  return (
+                    <button
+                      key={option.value}
+                      type="button"
+                      onClick={() => {
+                        setAnswers((previous) => ({
+                          ...previous,
+                          [currentItem.id]: option.value,
+                        }));
+                        setRunnerError("");
+                      }}
+                      className={`w-full rounded-2xl border px-4 py-4 text-left text-sm transition ${
+                        selected
+                          ? "border-cyan-700 bg-cyan-50 text-cyan-950"
+                          : "border-slate-200 bg-white text-slate-700 hover:border-slate-300 hover:bg-slate-50"
+                      }`}
+                    >
+                      <span className="flex items-center justify-between gap-4">
+                        <span>{option.label}</span>
+                        <span
+                          className={`flex h-5 w-5 shrink-0 items-center justify-center rounded-full border text-[10px] ${
+                            selected
+                              ? "border-cyan-700 bg-cyan-700 text-white"
+                              : "border-slate-300 text-transparent"
+                          }`}
+                        >
+                          ✓
+                        </span>
+                      </span>
+                    </button>
+                  );
+                })}
+              </div>
+
+              {runnerError && (
+                <div className="mt-5 rounded-xl border border-red-200 bg-red-50 px-4 py-3">
+                  <p className="text-sm text-red-700">{runnerError}</p>
+                </div>
+              )}
+
+              <div className="mt-7 flex flex-wrap items-center justify-between gap-3">
+                <button
+                  type="button"
+                  onClick={() =>
+                    setCurrentItemIndex((previous) => Math.max(0, previous - 1))
+                  }
+                  disabled={currentItemIndex === 0 || submitting}
+                  className="rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm font-semibold text-slate-600 disabled:cursor-not-allowed disabled:opacity-40"
+                >
+                  Previous
+                </button>
+
+                {currentItemIndex < items.length - 1 ? (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (typeof answers[currentItem.id] !== "number") {
+                        setRunnerError("Choose a response before continuing.");
+                        return;
+                      }
+
+                      setCurrentItemIndex((previous) => previous + 1);
+                      setRunnerError("");
+                    }}
+                    disabled={submitting}
+                    className="rounded-xl bg-slate-950 px-5 py-2.5 text-sm font-semibold text-white disabled:cursor-not-allowed disabled:opacity-50"
+                  >
+                    Next
+                  </button>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={() => void completeAssessment()}
+                    disabled={submitting}
+                    className="rounded-xl bg-slate-950 px-5 py-2.5 text-sm font-semibold text-white disabled:cursor-not-allowed disabled:opacity-50"
+                  >
+                    {submitting ? "Submitting..." : "Submit assessment"}
+                  </button>
+                )}
+              </div>
+            </div>
+          )}
+        </Panel>
+
+        <p className="text-center text-xs leading-5 text-slate-400">
+          Your responses are stored in your PsyLattice account. This
+          self-assessment does not provide a diagnosis.
+        </p>
       </div>
+    );
+  }
 
-      <div className="grid gap-4 lg:grid-cols-2">
-        {assessments.map((item) => (
-          <article
-            key={item.name}
-            className="rounded-2xl border border-slate-200 bg-white p-6"
-          >
-            <div className="flex items-center justify-between gap-4">
-              <span
-                className={`rounded-full px-3 py-1 text-xs font-medium ${
-                  item.suggested
-                    ? "bg-cyan-50 text-cyan-800"
-                    : "bg-slate-50 text-slate-500"
-                }`}
-              >
-                {item.suggested ? "AI suggested" : item.category}
-              </span>
+  if (
+    view === "safety" &&
+    result &&
+    selectedQuestionnaire?.slug === "patient-health-questionnaire-9"
+  ) {
+    return (
+      <div className="mx-auto max-w-4xl space-y-5">
+        <Panel
+          title="Before you view your result"
+          description="Your response to PHQ-9 item 9 deserves additional attention."
+        >
+          <div className="rounded-2xl border border-amber-200 bg-amber-50 p-5">
+            <div className="flex items-start gap-4">
+              <Icon>!</Icon>
 
-              <span className="text-xs text-slate-400">{item.time}</span>
+              <div>
+                <p className="font-semibold text-amber-950">
+                  One of your responses indicated thoughts about being better
+                  off dead or hurting yourself in some way during the past two
+                  weeks.
+                </p>
+
+                <p className="mt-3 text-sm leading-6 text-amber-900">
+                  A response to this single PHQ-9 item cannot determine your
+                  level of suicide risk or whether you are in immediate danger.
+                  It does mean that further assessment and support are
+                  appropriate.
+                </p>
+              </div>
+            </div>
+          </div>
+
+          <div className="mt-5 grid gap-4 lg:grid-cols-2">
+            <div className="rounded-2xl border border-red-200 bg-red-50 p-5">
+              <p className="font-semibold text-red-950">
+                If you may act on these thoughts or are in immediate danger
+              </p>
+
+              <p className="mt-2 text-sm leading-6 text-red-800">
+                Contact your local emergency service or go to the nearest
+                emergency department now. If possible, stay with or contact
+                someone you trust rather than being alone.
+              </p>
             </div>
 
-            <h2 className="mt-5 text-xl font-semibold">{item.name}</h2>
+            <div className="rounded-2xl border border-slate-200 bg-slate-50 p-5">
+              <p className="font-semibold text-slate-950">
+                If you are not in immediate danger
+              </p>
 
-            <p className="mt-3 text-sm leading-6 text-slate-500">
-              {item.description}
+              <p className="mt-2 text-sm leading-6 text-slate-600">
+                Consider contacting a qualified mental health professional or
+                doctor soon and telling someone you trust what you have been
+                experiencing. A clinician can ask the follow-up questions that
+                this questionnaire cannot.
+              </p>
+            </div>
+          </div>
+
+          <div className="mt-5 rounded-2xl border border-slate-200 bg-white p-5">
+            <p className="text-sm leading-6 text-slate-600">
+              PsyLattice is a self-assessment and reflection platform. It does
+              not provide emergency or crisis services. This safety screen is
+              shown whenever PHQ-9 item 9 is answered with anything other than
+              “Not at all.”
             </p>
+          </div>
+
+          <div className="mt-6 flex flex-wrap gap-3">
+            <button
+              type="button"
+              onClick={() => setView("result")}
+              className="rounded-xl bg-slate-950 px-5 py-3 text-sm font-semibold text-white"
+            >
+              Continue to my questionnaire result
+            </button>
 
             <button
               type="button"
-              className={`mt-6 rounded-xl px-4 py-2.5 text-sm font-semibold ${
-                item.suggested
-                  ? "bg-slate-950 text-white"
-                  : "border border-slate-200 bg-white text-slate-700"
-              }`}
+              onClick={() => {
+                setView("library");
+                setResult(null);
+                setPhq9Item9Response(null);
+              }}
+              className="rounded-xl border border-slate-200 bg-white px-5 py-3 text-sm font-semibold text-slate-600"
             >
-              Start assessment
+              Return to assessments
             </button>
-          </article>
-        ))}
+          </div>
+        </Panel>
       </div>
+    );
+  }
 
-      <Panel title="Completed assessments">
-        <div className="divide-y divide-slate-100">
-          {[
-            ["Perceived Stress Scale", "05 Aug 2026", "Score 21"],
-            ["Wellbeing Check", "28 Jul 2026", "Completed"],
-            ["Sleep Self-Check", "19 Jul 2026", "Completed"],
-          ].map(([name, date, result]) => (
-            <div
-              key={name}
-              className="flex items-center justify-between gap-5 py-4 first:pt-0 last:pb-0"
-            >
-              <div>
-                <p className="text-sm font-medium">{name}</p>
-                <p className="mt-1 text-xs text-slate-400">{date}</p>
+  if (view === "result" && result) {
+    const scoreEntries = Object.entries(result.scores);
+
+    return (
+      <div className="mx-auto max-w-4xl space-y-5">
+        <Panel
+          title="Assessment complete"
+          description={result.acronym || result.questionnaireName}
+        >
+          <div className="rounded-2xl border border-cyan-100 bg-cyan-50/60 p-5">
+            <p className="text-sm font-medium text-cyan-950">
+              Your questionnaire scores
+            </p>
+
+            <div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+              {scoreEntries.map(([label, value]) => (
+                <div
+                  key={label}
+                  className="rounded-xl border border-cyan-100 bg-white p-4"
+                >
+                  <p className="text-xs text-slate-500">{label}</p>
+                  <p className="mt-2 text-2xl font-semibold text-slate-950">
+                    {value}
+                  </p>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          {selectedQuestionnaire?.slug ===
+          "patient-health-questionnaire-9" ? (
+            <div className="mt-5 space-y-4">
+              <div className="rounded-2xl bg-slate-50 p-5">
+                <p className="font-medium">How to read this PHQ-9 result</p>
+
+                {typeof result.scores["PHQ-9 Total"] === "number" ? (
+                  <p className="mt-2 text-sm leading-6 text-slate-600">
+                    Your PHQ-9 total is{" "}
+                    <span className="font-semibold text-slate-900">
+                      {result.scores["PHQ-9 Total"]} / 27
+                    </span>
+                    . This falls within the commonly used{" "}
+                    <span className="font-semibold text-slate-900">
+                      {phq9SymptomRange(result.scores["PHQ-9 Total"])}
+                    </span>{" "}
+                    symptom range. The PHQ-9 is a screening and symptom-severity
+                    measure; this result by itself does not establish a
+                    diagnosis.
+                  </p>
+                ) : (
+                  <p className="mt-2 text-sm leading-6 text-slate-600">
+                    The PHQ-9 is a screening and symptom-severity measure. Its
+                    score by itself does not establish a diagnosis.
+                  </p>
+                )}
               </div>
 
-              <span className="text-xs font-medium text-cyan-800">
-                {result}
-              </span>
+              {phq9Item9Response !== null && phq9Item9Response > 0 && (
+                <div className="rounded-2xl border border-amber-200 bg-amber-50 p-5">
+                  <p className="font-medium text-amber-950">
+                    Follow-up is still important
+                  </p>
+                  <p className="mt-2 text-sm leading-6 text-amber-900">
+                    Because you endorsed PHQ-9 item 9, consider discussing that
+                    response with a qualified mental health professional or
+                    doctor. Item 9 should not be used on its own to determine
+                    suicide risk.
+                  </p>
+                </div>
+              )}
             </div>
-          ))}
+          ) : (
+            <div className="mt-5 rounded-2xl bg-slate-50 p-5">
+              <p className="font-medium">How to read this result</p>
+              <p className="mt-2 text-sm leading-6 text-slate-600">
+                PsyLattice is showing the raw scale scores produced by this
+                questionnaire's official scoring method. Higher or lower values
+                should not be treated as diagnoses or clinical labels without
+                the appropriate normative and professional context.
+              </p>
+            </div>
+          )}
+
+          <div className="mt-5 flex flex-wrap gap-3">
+            <button
+              type="button"
+              onClick={() => {
+                setView("library");
+                setResult(null);
+                setPhq9Item9Response(null);
+              }}
+              className="rounded-xl bg-slate-950 px-5 py-3 text-sm font-semibold text-white"
+            >
+              Return to assessments
+            </button>
+
+            {selectedQuestionnaire && (
+              <button
+                type="button"
+                onClick={() => void loadQuestionnaireDetails(selectedQuestionnaire)}
+                className="rounded-xl border border-slate-200 bg-white px-5 py-3 text-sm font-semibold text-slate-600"
+              >
+                View measure details
+              </button>
+            )}
+          </div>
+        </Panel>
+      </div>
+    );
+  }
+
+  if (view === "details" && selectedQuestionnaire) {
+    return (
+      <div className="space-y-5">
+        <button
+          type="button"
+          onClick={() => {
+            setView("library");
+            setCatalogueError("");
+          }}
+          className="text-sm font-semibold text-slate-500 transition hover:text-slate-950"
+        >
+          ← Back to assessment library
+        </button>
+
+        <Panel
+          title={selectedQuestionnaire.name}
+          description={selectedQuestionnaire.description}
+        >
+          {detailLoading ? (
+            <p className="text-sm text-slate-500">Loading measure details...</p>
+          ) : (
+            <div className="space-y-7">
+              <div className="flex flex-wrap gap-2">
+                <span className="rounded-full bg-cyan-50 px-3 py-1 text-xs font-medium text-cyan-800">
+                  {selectedQuestionnaire.category}
+                </span>
+                <span className="rounded-full bg-emerald-50 px-3 py-1 text-xs font-medium text-emerald-700">
+                  {selectedQuestionnaire.license_status === "public_domain"
+                    ? "Public domain"
+                    : "Usage reviewed"}
+                </span>
+                <span className="rounded-full bg-slate-50 px-3 py-1 text-xs font-medium text-slate-500">
+                  {selectedQuestionnaire.item_count} items
+                </span>
+                {selectedQuestionnaire.estimated_minutes && (
+                  <span className="rounded-full bg-slate-50 px-3 py-1 text-xs font-medium text-slate-500">
+                    ~{selectedQuestionnaire.estimated_minutes} min
+                  </span>
+                )}
+              </div>
+
+              <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+                <div className="rounded-xl border border-slate-200 p-4">
+                  <p className="text-xs text-slate-400">Mode</p>
+                  <p className="mt-2 text-sm font-medium">
+                    {selectedQuestionnaire.administration_mode || "Self-report"}
+                  </p>
+                </div>
+                <div className="rounded-xl border border-slate-200 p-4">
+                  <p className="text-xs text-slate-400">Recall period</p>
+                  <p className="mt-2 text-sm font-medium">
+                    {selectedQuestionnaire.recall_period || "Not specified"}
+                  </p>
+                </div>
+                <div className="rounded-xl border border-slate-200 p-4">
+                  <p className="text-xs text-slate-400">Language</p>
+                  <p className="mt-2 text-sm font-medium">
+                    {selectedQuestionnaire.languages.join(", ")}
+                  </p>
+                </div>
+                <div className="rounded-xl border border-slate-200 p-4">
+                  <p className="text-xs text-slate-400">Version</p>
+                  <p className="mt-2 text-sm font-medium">
+                    {selectedVersion?.version_label || "Current version"}
+                  </p>
+                </div>
+              </div>
+
+              {selectedVersion && (
+                <div className="grid gap-5 lg:grid-cols-2">
+                  <div className="rounded-2xl bg-slate-50 p-5">
+                    <p className="font-medium">Before you begin</p>
+                    <p className="mt-2 text-sm leading-6 text-slate-600">
+                      {selectedVersion.participant_instructions}
+                    </p>
+                    {selectedVersion.response_scale_description && (
+                      <p className="mt-3 text-xs leading-5 text-slate-500">
+                        {selectedVersion.response_scale_description}
+                      </p>
+                    )}
+                  </div>
+
+                  <div className="rounded-2xl bg-slate-50 p-5">
+                    <p className="font-medium">Scoring</p>
+                    <p className="mt-2 text-sm leading-6 text-slate-600">
+                      {selectedVersion.scoring_summary ||
+                        "Scoring guidance is provided by the official source."}
+                    </p>
+                  </div>
+                </div>
+              )}
+
+              <div>
+                <p className="font-medium">Constructs</p>
+                <div className="mt-3 flex flex-wrap gap-2">
+                  {selectedQuestionnaire.constructs.map((construct) => (
+                    <span
+                      key={construct}
+                      className="rounded-full border border-slate-200 bg-white px-3 py-1.5 text-xs text-slate-600"
+                    >
+                      {construct}
+                    </span>
+                  ))}
+                </div>
+              </div>
+
+              <div className="rounded-2xl border border-slate-200 p-5">
+                <p className="font-medium">Use & licensing</p>
+                <p className="mt-2 text-sm leading-6 text-slate-600">
+                  {selectedQuestionnaire.license_summary ||
+                    "Usage information is being reviewed."}
+                </p>
+
+                <div className="mt-4 grid gap-3 sm:grid-cols-3">
+                  <div className="rounded-xl bg-slate-50 p-3">
+                    <p className="text-xs text-slate-400">Commercial use</p>
+                    <p className="mt-1 text-xs leading-5 text-slate-600">
+                      {selectedQuestionnaire.commercial_use_note || "Check source"}
+                    </p>
+                  </div>
+                  <div className="rounded-xl bg-slate-50 p-3">
+                    <p className="text-xs text-slate-400">Modification</p>
+                    <p className="mt-1 text-xs leading-5 text-slate-600">
+                      {selectedQuestionnaire.modification_note || "Check source"}
+                    </p>
+                  </div>
+                  <div className="rounded-xl bg-slate-50 p-3">
+                    <p className="text-xs text-slate-400">Redistribution</p>
+                    <p className="mt-1 text-xs leading-5 text-slate-600">
+                      {selectedQuestionnaire.redistribution_note || "Check source"}
+                    </p>
+                  </div>
+                </div>
+
+                {selectedQuestionnaire.license_source_url && (
+                  <a
+                    href={selectedQuestionnaire.license_source_url}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="mt-4 inline-flex items-center gap-2 text-sm font-semibold text-cyan-900"
+                  >
+                    Open official licence source
+                    <ArrowIcon />
+                  </a>
+                )}
+              </div>
+
+              <div>
+                <div className="flex flex-wrap items-end justify-between gap-3">
+                  <div>
+                    <p className="font-medium">Official resources</p>
+                    <p className="mt-1 text-sm text-slate-500">
+                      Manuals, questionnaire files, scoring instructions and
+                      official source pages are linked where available.
+                    </p>
+                  </div>
+                </div>
+
+                {resources.length > 0 ? (
+                  <div className="mt-4 divide-y divide-slate-100 rounded-2xl border border-slate-200 px-4">
+                    {resources.map((resource) => (
+                      <div
+                        key={resource.id}
+                        className="flex flex-wrap items-center justify-between gap-4 py-4"
+                      >
+                        <div className="min-w-0">
+                          <div className="flex flex-wrap items-center gap-2">
+                            <span className="rounded-full bg-slate-50 px-2 py-1 text-[10px] font-semibold uppercase tracking-[0.08em] text-slate-500">
+                              {resourceLabel(resource)}
+                            </span>
+                            {resource.is_official && (
+                              <span className="rounded-full bg-emerald-50 px-2 py-1 text-[10px] font-semibold text-emerald-700">
+                                Official
+                              </span>
+                            )}
+                          </div>
+                          <p className="mt-2 text-sm font-medium">
+                            {resource.title}
+                          </p>
+                          {resource.access_note && (
+                            <p className="mt-1 max-w-2xl text-xs leading-5 text-slate-500">
+                              {resource.access_note}
+                            </p>
+                          )}
+                        </div>
+
+                        <a
+                          href={resource.url}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="rounded-xl border border-slate-200 bg-white px-4 py-2 text-xs font-semibold text-slate-700 transition hover:bg-slate-50"
+                        >
+                          {resource.download_allowed ? "Open / download" : "Open resource"}
+                        </a>
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <p className="mt-3 text-sm text-slate-500">
+                    No official resources are linked yet.
+                  </p>
+                )}
+              </div>
+
+              {references.length > 0 && (
+                <div>
+                  <p className="font-medium">References & citation</p>
+                  <div className="mt-3 space-y-3">
+                    {references.map((reference) => (
+                      <div
+                        key={reference.id}
+                        className="rounded-xl border border-slate-200 bg-white p-4"
+                      >
+                        <p className="text-sm leading-6 text-slate-600">
+                          {reference.citation}
+                        </p>
+                        {reference.url && (
+                          <a
+                            href={reference.url}
+                            target="_blank"
+                            rel="noreferrer"
+                            className="mt-2 inline-flex items-center gap-2 text-xs font-semibold text-cyan-900"
+                          >
+                            View source
+                            <ArrowIcon />
+                          </a>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              <div className="flex flex-wrap gap-3 border-t border-slate-100 pt-6">
+                <button
+                  type="button"
+                  onClick={() => void startAssessment(selectedQuestionnaire)}
+                  disabled={runnerLoading}
+                  className="rounded-xl bg-slate-950 px-5 py-3 text-sm font-semibold text-white disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                  {runnerLoading ? "Loading..." : "Start assessment"}
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => setView("library")}
+                  className="rounded-xl border border-slate-200 bg-white px-5 py-3 text-sm font-semibold text-slate-600"
+                >
+                  Back to library
+                </button>
+              </div>
+            </div>
+          )}
+        </Panel>
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-5">
+      <div className="flex flex-wrap items-end justify-between gap-4">
+        <div>
+          <p className="text-xs font-semibold uppercase tracking-[0.14em] text-cyan-700">
+            Approved self-assessments
+          </p>
+          <h2 className="mt-1 text-xl font-semibold text-slate-950">
+            Questionnaire library
+          </h2>
+          <p className="mt-2 max-w-2xl text-sm leading-6 text-slate-500">
+            PsyLattice only shows measures here that are approved for the Self
+            workspace. Questionnaire rights, instructions and official sources
+            are stored alongside each measure.
+          </p>
+        </div>
+      </div>
+
+      {catalogueError && (
+        <div className="rounded-2xl border border-red-200 bg-red-50 px-5 py-4">
+          <p className="text-sm text-red-700">{catalogueError}</p>
+        </div>
+      )}
+
+      <Panel title="Browse assessments">
+        <div className="grid gap-4 lg:grid-cols-[1fr_auto] lg:items-end">
+          <label className="block">
+            <span className="text-xs font-medium text-slate-500">
+              Search questionnaires or constructs
+            </span>
+            <input
+              type="search"
+              value={search}
+              onChange={(event) => setSearch(event.target.value)}
+              placeholder="Search personality, stress, wellbeing..."
+              className="mt-2 w-full rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm outline-none transition focus:border-cyan-700 focus:ring-2 focus:ring-cyan-100"
+            />
+          </label>
+
+          <div className="flex flex-wrap gap-2">
+            {categories.map((item) => (
+              <button
+                key={item}
+                type="button"
+                onClick={() => setCategory(item)}
+                className={`rounded-full border px-3 py-2 text-xs font-medium transition ${
+                  category === item
+                    ? "border-cyan-200 bg-cyan-50 text-cyan-800"
+                    : "border-slate-200 bg-white text-slate-500 hover:text-slate-900"
+                }`}
+              >
+                {item}
+              </button>
+            ))}
+          </div>
         </div>
       </Panel>
+
+      {loading ? (
+        <Panel title="Questionnaire library">
+          <p className="text-sm text-slate-500">Loading questionnaires...</p>
+        </Panel>
+      ) : filteredQuestionnaires.length > 0 ? (
+        <div className="grid gap-4 lg:grid-cols-2">
+          {filteredQuestionnaires.map((item) => (
+            <article
+              key={item.id}
+              className="rounded-2xl border border-slate-200 bg-white p-6"
+            >
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                <div className="flex flex-wrap gap-2">
+                  <span className="rounded-full bg-cyan-50 px-3 py-1 text-xs font-medium text-cyan-800">
+                    {item.category}
+                  </span>
+                  {item.license_status === "public_domain" && (
+                    <span className="rounded-full bg-emerald-50 px-3 py-1 text-xs font-medium text-emerald-700">
+                      Public domain
+                    </span>
+                  )}
+                </div>
+
+                <span className="text-xs text-slate-400">
+                  {item.item_count} items
+                  {item.estimated_minutes ? ` · ~${item.estimated_minutes} min` : ""}
+                </span>
+              </div>
+
+              <h3 className="mt-5 text-xl font-semibold text-slate-950">
+                {item.acronym || item.name}
+              </h3>
+              {item.acronym && (
+                <p className="mt-1 text-xs text-slate-400">{item.name}</p>
+              )}
+
+              <p className="mt-3 text-sm leading-6 text-slate-500">
+                {item.description}
+              </p>
+
+              <div className="mt-4 flex flex-wrap gap-2">
+                {item.constructs.slice(0, 5).map((construct) => (
+                  <span
+                    key={construct}
+                    className="rounded-full border border-slate-200 px-2.5 py-1 text-[11px] text-slate-500"
+                  >
+                    {construct}
+                  </span>
+                ))}
+              </div>
+
+              <div className="mt-6 flex flex-wrap gap-3">
+                <button
+                  type="button"
+                  onClick={() => void startAssessment(item)}
+                  disabled={runnerLoading}
+                  className="rounded-xl bg-slate-950 px-4 py-2.5 text-sm font-semibold text-white disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                  Start assessment
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => void loadQuestionnaireDetails(item)}
+                  className="rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm font-semibold text-slate-600 transition hover:bg-slate-50"
+                >
+                  Instructions & resources
+                </button>
+              </div>
+            </article>
+          ))}
+        </div>
+      ) : (
+        <Panel title="Questionnaire library">
+          <p className="text-sm text-slate-500">
+            No questionnaires match this search yet.
+          </p>
+        </Panel>
+      )}
+
+      <Panel title="Completed assessments">
+        {history.length > 0 ? (
+          <div className="divide-y divide-slate-100">
+            {history.map((session) => {
+              const questionnaire = historyQuestionnaire(session.questionnaire_id);
+              const scoreEntries = session.scores
+                ? Object.entries(session.scores).filter(
+                    ([, value]) => typeof value === "number"
+                  )
+                : [];
+
+              return (
+                <div
+                  key={session.id}
+                  className="flex flex-wrap items-center justify-between gap-5 py-4 first:pt-0 last:pb-0"
+                >
+                  <div>
+                    <p className="text-sm font-medium">
+                      {questionnaire?.acronym ||
+                        questionnaire?.name ||
+                        "Questionnaire"}
+                    </p>
+                    <p className="mt-1 text-xs text-slate-400">
+                      {session.completed_at
+                        ? new Date(session.completed_at).toLocaleDateString([], {
+                            day: "2-digit",
+                            month: "short",
+                            year: "numeric",
+                          })
+                        : "Completed"}
+                    </p>
+                  </div>
+
+                  <div className="flex flex-wrap justify-end gap-2">
+                    {scoreEntries.slice(0, 3).map(([label, value]) => (
+                      <span
+                        key={label}
+                        className="rounded-full bg-cyan-50 px-3 py-1 text-xs font-medium text-cyan-800"
+                      >
+                        {label}: {value}
+                      </span>
+                    ))}
+                    {scoreEntries.length > 3 && (
+                      <span className="rounded-full bg-slate-50 px-3 py-1 text-xs text-slate-500">
+                        +{scoreEntries.length - 3} more
+                      </span>
+                    )}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        ) : (
+          <div className="rounded-2xl bg-slate-50 p-5">
+            <p className="font-medium">No completed assessments yet</p>
+            <p className="mt-2 text-sm leading-6 text-slate-500">
+              Your completed questionnaires and saved scale scores will appear here.
+            </p>
+          </div>
+        )}
+      </Panel>
+
+      <div className="rounded-2xl border border-amber-200 bg-amber-50 p-5">
+        <p className="text-sm font-medium text-amber-950">
+          Questionnaire availability is intentionally curated.
+        </p>
+        <p className="mt-2 text-xs leading-5 text-amber-900/80">
+          A measure being available elsewhere on the internet does not
+          automatically mean PsyLattice can reproduce it in a public-facing
+          self-assessment. Research-only measures can still be retained in the
+          underlying library for the Researcher workspace when their official
+          usage conditions permit that context.
+        </p>
+      </div>
     </div>
   );
 }

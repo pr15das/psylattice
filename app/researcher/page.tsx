@@ -182,108 +182,356 @@ function Dashboard({
 }: {
   changeScreen: (screen: Screen) => void;
 }) {
+  type DashboardStudy = {
+    id: string;
+    title: string;
+    design: string | null;
+    target_sample_size: number | null;
+    status: string;
+    components: Record<string, boolean>;
+    updated_at: string;
+  };
+
+  type DashboardParticipant = {
+    study_id: string;
+    is_test: boolean;
+    status: string;
+  };
+
+  type DashboardLink = {
+    study_id: string;
+    is_test_link: boolean;
+    status: string;
+  };
+
+  const [studies, setStudies] = useState<DashboardStudy[]>([]);
+  const [participants, setParticipants] = useState<DashboardParticipant[]>([]);
+  const [links, setLinks] = useState<DashboardLink[]>([]);
+  const [loadingDashboard, setLoadingDashboard] = useState(true);
+  const [dashboardError, setDashboardError] = useState("");
+
+  useEffect(() => {
+    async function loadDashboard() {
+      setLoadingDashboard(true);
+      setDashboardError("");
+
+      const supabase = createClient();
+
+      const {
+        data: { user },
+        error: userError,
+      } = await supabase.auth.getUser();
+
+      if (userError || !user) {
+        setDashboardError("Your research dashboard could not be loaded.");
+        setLoadingDashboard(false);
+        return;
+      }
+
+      const [studyResult, participantResult, linkResult] = await Promise.all([
+        supabase
+          .from("research_studies")
+          .select(
+            "id, title, design, target_sample_size, status, components, updated_at"
+          )
+          .eq("owner_user_id", user.id)
+          .order("updated_at", { ascending: false }),
+
+        supabase
+          .from("study_participants")
+          .select("study_id, is_test, status")
+          .eq("owner_user_id", user.id),
+
+        supabase
+          .from("study_links")
+          .select("study_id, is_test_link, status")
+          .eq("owner_user_id", user.id),
+      ]);
+
+      if (studyResult.error) {
+        console.error("Could not load research studies:", studyResult.error);
+        setDashboardError("Your saved studies could not be loaded.");
+        setLoadingDashboard(false);
+        return;
+      }
+
+      if (participantResult.error) {
+        console.error(
+          "Could not load research participants:",
+          participantResult.error
+        );
+      }
+
+      if (linkResult.error) {
+        console.error("Could not load recruitment links:", linkResult.error);
+      }
+
+      setStudies((studyResult.data || []) as DashboardStudy[]);
+      setParticipants(
+        (participantResult.data || []) as DashboardParticipant[]
+      );
+      setLinks((linkResult.data || []) as DashboardLink[]);
+      setLoadingDashboard(false);
+    }
+
+    void loadDashboard();
+  }, []);
+
+  function statusType(status: string) {
+    if (status === "active" || status === "completed") {
+      return "success" as const;
+    }
+
+    if (status === "ready_for_review") {
+      return "accent" as const;
+    }
+
+    if (status === "draft") {
+      return "warning" as const;
+    }
+
+    return "neutral" as const;
+  }
+
+  function statusLabel(status: string) {
+    const labels: Record<string, string> = {
+      draft: "Draft",
+      ready_for_review: "Ready for review",
+      active: "Active",
+      paused: "Paused",
+      completed: "Completed",
+      archived: "Archived",
+    };
+
+    return labels[status] || status.replaceAll("_", " ");
+  }
+
+  function componentSummary(components: Record<string, boolean>) {
+    const labels: Array<[string, string]> = [
+      ["demographics", "Demographics"],
+      ["baseline", "Baseline"],
+      ["ambulatory", "EMA / ESM"],
+      ["followup", "Follow-up"],
+      ["wearables", "Wearables"],
+    ];
+
+    const enabled = labels
+      .filter(([key]) => Boolean(components?.[key]))
+      .map(([, label]) => label);
+
+    return enabled.length > 0 ? enabled.join(" · ") : "No study components selected";
+  }
+
+  function liveParticipantsForStudy(studyId: string) {
+    return participants.filter(
+      (participant) =>
+        participant.study_id === studyId &&
+        !participant.is_test &&
+        participant.status !== "withdrawn"
+    ).length;
+  }
+
+  function activeLiveLinksForStudy(studyId: string) {
+    return links.filter(
+      (link) =>
+        link.study_id === studyId &&
+        !link.is_test_link &&
+        link.status === "active"
+    ).length;
+  }
+
+  const activeStudies = studies.filter((study) => study.status === "active");
+  const draftStudies = studies.filter((study) => study.status === "draft");
+
+  const liveParticipants = participants.filter(
+    (participant) =>
+      !participant.is_test && participant.status !== "withdrawn"
+  );
+
+  const completedParticipants = liveParticipants.filter(
+    (participant) => participant.status === "completed"
+  ).length;
+
+  const testParticipants = participants.filter(
+    (participant) => participant.is_test
+  ).length;
+
+  const liveRecruitmentLinks = links.filter(
+    (link) => !link.is_test_link && link.status === "active"
+  ).length;
+
+  const studiesWithoutLiveLink = studies.filter(
+    (study) =>
+      ["active", "ready_for_review"].includes(study.status) &&
+      activeLiveLinksForStudy(study.id) === 0
+  ).length;
+
+  const latestStudy = studies[0] || null;
+
+  const latestStudyParticipants = latestStudy
+    ? liveParticipantsForStudy(latestStudy.id)
+    : 0;
+
+  const latestTarget = latestStudy?.target_sample_size || null;
+
+  const latestRecruitmentPercent =
+    latestTarget && latestTarget > 0
+      ? Math.min(
+          100,
+          Math.round((latestStudyParticipants / latestTarget) * 100)
+        )
+      : 0;
+
+  const completionPercent =
+    liveParticipants.length > 0
+      ? Math.round(
+          (completedParticipants / liveParticipants.length) * 100
+        )
+      : 0;
+
   return (
     <div className="space-y-5">
+      {dashboardError && (
+        <div className="rounded-2xl border border-red-200 bg-red-50 px-5 py-4">
+          <p className="text-sm text-red-700">{dashboardError}</p>
+        </div>
+      )}
+
       <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
         <StatCard
           label="Active studies"
-          value="3"
-          detail="1 currently recruiting"
+          value={loadingDashboard ? "..." : String(activeStudies.length)}
+          detail={`${liveRecruitmentLinks} active live recruitment link${
+            liveRecruitmentLinks === 1 ? "" : "s"
+          }`}
         />
 
         <StatCard
-          label="Participants"
-          value="427"
-          detail="Across active studies"
+          label="Live participants"
+          value={loadingDashboard ? "..." : String(liveParticipants.length)}
+          detail="Excludes test participants and withdrawals"
         />
 
         <StatCard
           label="Completed"
-          value="366"
-          detail="85.7% completion"
+          value={loadingDashboard ? "..." : String(completedParticipants)}
+          detail={
+            liveParticipants.length > 0
+              ? `${completionPercent}% of live participants`
+              : "No live completions yet"
+          }
         />
 
-        <StatCard label="Data flags" value="7" detail="Require review" />
+        <StatCard
+          label="Test participants"
+          value={loadingDashboard ? "..." : String(testParticipants)}
+          detail="Kept separate from live research"
+        />
       </div>
 
       <div className="grid gap-5 xl:grid-cols-[1.15fr_.85fr]">
-        <Panel title="Active studies">
-          <div className="divide-y divide-slate-100">
-            {[
-              {
-                name: "Daily Stress in University Students",
-                detail: "93 active · 14-day ambulatory protocol",
-                status: "Live",
-                type: "success" as const,
-              },
-              {
-                name: "AI & Loneliness Study",
-                detail: "221 complete · cross-sectional survey",
-                status: "Recruiting",
-                type: "accent" as const,
-              },
-              {
-                name: "Sleep and Academic Wellbeing",
-                detail: "52 participants · baseline + follow-up",
-                status: "Active",
-                type: "neutral" as const,
-              },
-            ].map((study) => (
-              <div
-                key={study.name}
-                className="flex items-center justify-between gap-4 py-4 first:pt-0 last:pb-0"
+        <Panel
+          title="Your studies"
+          description="Your most recently updated studies from Supabase."
+        >
+          {loadingDashboard ? (
+            <p className="text-sm text-slate-500">Loading your studies...</p>
+          ) : studies.length === 0 ? (
+            <div className="rounded-2xl bg-slate-50 p-5">
+              <p className="font-medium">No saved studies yet</p>
+              <p className="mt-2 text-sm leading-6 text-slate-500">
+                Create a study in Study Builder and save the draft. It will
+                appear here automatically.
+              </p>
+              <button
+                type="button"
+                onClick={() => changeScreen("builder")}
+                className="mt-4 rounded-xl bg-slate-950 px-4 py-2.5 text-sm font-semibold text-white"
               >
-                <div>
-                  <p className="text-sm font-medium">{study.name}</p>
-                  <p className="mt-1 text-xs text-slate-400">
-                    {study.detail}
-                  </p>
-                </div>
+                Create study
+              </button>
+            </div>
+          ) : (
+            <>
+              <div className="divide-y divide-slate-100">
+                {studies.slice(0, 5).map((study) => {
+                  const participantCount =
+                    liveParticipantsForStudy(study.id);
 
-                <Status type={study.type}>{study.status}</Status>
+                  return (
+                    <div
+                      key={study.id}
+                      className="flex flex-col justify-between gap-3 py-4 first:pt-0 last:pb-0 sm:flex-row sm:items-center"
+                    >
+                      <div>
+                        <p className="text-sm font-medium">{study.title}</p>
+                        <p className="mt-1 text-xs leading-5 text-slate-400">
+                          {study.design || "Study design not specified"} ·{" "}
+                          {participantCount} live participant
+                          {participantCount === 1 ? "" : "s"}
+                        </p>
+                        <p className="mt-1 text-xs leading-5 text-slate-400">
+                          {componentSummary(study.components || {})}
+                        </p>
+                      </div>
+
+                      <Status type={statusType(study.status)}>
+                        {statusLabel(study.status)}
+                      </Status>
+                    </div>
+                  );
+                })}
               </div>
-            ))}
-          </div>
 
-          <button
-            type="button"
-            onClick={() => changeScreen("studies")}
-            className="mt-5 flex items-center gap-2 text-sm font-semibold"
-          >
-            View all studies
-            <ArrowIcon />
-          </button>
+              <button
+                type="button"
+                onClick={() => changeScreen("studies")}
+                className="mt-5 flex items-center gap-2 text-sm font-semibold"
+              >
+                View all studies
+                <ArrowIcon />
+              </button>
+            </>
+          )}
         </Panel>
 
-        <Panel title="Research tasks">
+        <Panel title="Research workspace status">
           <div className="space-y-5">
             <div>
-              <div className="flex items-center justify-between">
-                <p className="text-sm font-medium">Data-quality review</p>
-                <Status type="warning">7 flags</Status>
+              <div className="flex items-center justify-between gap-4">
+                <p className="text-sm font-medium">Draft studies</p>
+                <Status type={draftStudies.length > 0 ? "warning" : "success"}>
+                  {draftStudies.length}
+                </Status>
               </div>
-              <p className="mt-1 text-xs text-slate-400">
-                Daily Stress study
+              <p className="mt-1 text-xs leading-5 text-slate-400">
+                Saved studies that have not been activated.
               </p>
             </div>
 
             <div>
-              <div className="flex items-center justify-between">
-                <p className="text-sm font-medium">Low EMA compliance</p>
-                <Status>11 participants</Status>
+              <div className="flex items-center justify-between gap-4">
+                <p className="text-sm font-medium">
+                  Studies without live recruitment
+                </p>
+                <Status
+                  type={studiesWithoutLiveLink > 0 ? "warning" : "success"}
+                >
+                  {studiesWithoutLiveLink}
+                </Status>
               </div>
-              <p className="mt-1 text-xs text-slate-400">
-                Below 70% completion
+              <p className="mt-1 text-xs leading-5 text-slate-400">
+                Active or review-ready studies without an active live link.
               </p>
             </div>
 
             <div>
-              <div className="flex items-center justify-between">
-                <p className="text-sm font-medium">Questionnaire licence</p>
-                <Status type="warning">31 days</Status>
+              <div className="flex items-center justify-between gap-4">
+                <p className="text-sm font-medium">Test participants</p>
+                <Status type="accent">{testParticipants}</Status>
               </div>
-              <p className="mt-1 text-xs text-slate-400">
-                One licensed measure approaching renewal
+              <p className="mt-1 text-xs leading-5 text-slate-400">
+                Test records remain identifiable and separate from live data.
               </p>
             </div>
           </div>
@@ -307,14 +555,14 @@ function Dashboard({
               screen: "library" as Screen,
             },
             {
-              title: "Build EMA protocol",
-              text: "Create repeated real-world assessments.",
-              screen: "ambulatory" as Screen,
+              title: "Create participant link",
+              text: "Create a TEST or live recruitment link.",
+              screen: "links" as Screen,
             },
             {
-              title: "Open data",
-              text: "Inspect live participant responses.",
-              screen: "data" as Screen,
+              title: "View participants",
+              text: "Inspect real participant and test records.",
+              screen: "participants" as Screen,
             },
           ].map((item) => (
             <button
@@ -332,36 +580,88 @@ function Dashboard({
         </div>
       </Panel>
 
-      <Panel title="Daily Stress study">
-        <div className="grid gap-5 lg:grid-cols-[.8fr_1.2fr]">
-          <div>
-            <p className="text-xs uppercase tracking-[0.14em] text-slate-400">
-              Recruitment
-            </p>
+      {latestStudy && (
+        <Panel
+          title="Latest study"
+          description="A live summary of your most recently updated study."
+        >
+          <div className="grid gap-6 lg:grid-cols-[.9fr_1.1fr]">
+            <div>
+              <div className="flex flex-wrap items-center gap-2">
+                <Status type={statusType(latestStudy.status)}>
+                  {statusLabel(latestStudy.status)}
+                </Status>
+                <span className="text-xs text-slate-400">
+                  Updated{" "}
+                  {new Date(latestStudy.updated_at).toLocaleDateString()}
+                </span>
+              </div>
 
-            <p className="mt-2 text-3xl font-semibold">93 / 120</p>
+              <h3 className="mt-4 text-xl font-semibold">
+                {latestStudy.title}
+              </h3>
 
-            <p className="mt-1 text-sm text-slate-500">
-              77.5% of recruitment target
-            </p>
+              <p className="mt-2 text-sm leading-6 text-slate-500">
+                {latestStudy.design || "Study design not specified"}
+              </p>
 
-            <div className="mt-5">
-              <ProgressBar
-                label="Participant target"
-                value={78}
-                text="93 / 120"
-              />
+              <p className="mt-2 text-xs leading-5 text-slate-400">
+                {componentSummary(latestStudy.components || {})}
+              </p>
+
+              <button
+                type="button"
+                onClick={() => changeScreen("studies")}
+                className="mt-5 flex items-center gap-2 text-sm font-semibold text-cyan-800"
+              >
+                Open studies
+                <ArrowIcon />
+              </button>
+            </div>
+
+            <div>
+              <p className="text-xs uppercase tracking-[0.14em] text-slate-400">
+                Recruitment
+              </p>
+
+              <p className="mt-2 text-3xl font-semibold">
+                {latestTarget
+                  ? `${latestStudyParticipants} / ${latestTarget}`
+                  : latestStudyParticipants}
+              </p>
+
+              <p className="mt-1 text-sm text-slate-500">
+                {latestTarget
+                  ? `${latestRecruitmentPercent}% of recruitment target`
+                  : "Live participants enrolled"}
+              </p>
+
+              {latestTarget && (
+                <div className="mt-5">
+                  <ProgressBar
+                    label="Participant target"
+                    value={latestRecruitmentPercent}
+                    text={`${latestStudyParticipants} / ${latestTarget}`}
+                  />
+                </div>
+              )}
+
+              <div className="mt-5 grid grid-cols-2 gap-3">
+                <StatCard
+                  label="Live links"
+                  value={String(activeLiveLinksForStudy(latestStudy.id))}
+                  detail="Active recruitment"
+                />
+                <StatCard
+                  label="Participants"
+                  value={String(latestStudyParticipants)}
+                  detail="Live, non-withdrawn"
+                />
+              </div>
             </div>
           </div>
-
-          <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
-            <StatCard label="EMA prompts" value="2,846" detail="Responses" />
-            <StatCard label="Compliance" value="81%" detail="Average" />
-            <StatCard label="Baseline" value="96%" detail="Complete" />
-            <StatCard label="Wearables" value="73%" detail="Opt-in coverage" />
-          </div>
-        </div>
-      </Panel>
+        </Panel>
+      )}
     </div>
   );
 }
@@ -375,85 +675,475 @@ function Studies({
 }: {
   changeScreen: (screen: Screen) => void;
 }) {
-  const studies = [
-    {
-      name: "Daily Stress in University Students",
-      design: "Ambulatory / longitudinal",
-      n: "93 / 120",
-      status: "Live",
-      type: "success" as const,
-    },
-    {
-      name: "AI & Loneliness Study",
-      design: "Cross-sectional survey",
-      n: "221 / 300",
-      status: "Recruiting",
-      type: "accent" as const,
-    },
-    {
-      name: "Sleep and Academic Wellbeing",
-      design: "Baseline + 30-day follow-up",
-      n: "52 / 80",
-      status: "Active",
-      type: "neutral" as const,
-    },
-    {
-      name: "Emotion Regulation Pilot",
-      design: "Repeated measures",
-      n: "0 / 25",
-      status: "Draft",
-      type: "warning" as const,
-    },
-  ];
+  type ResearchStudy = {
+    id: string;
+    title: string;
+    participant_description: string | null;
+    design: string | null;
+    target_sample_size: number | null;
+    status: string;
+    components: Record<string, boolean>;
+    created_at: string;
+    updated_at: string;
+  };
+
+  type StudyParticipantSummary = {
+    study_id: string;
+    is_test: boolean;
+    status: string;
+  };
+
+  type StudyLinkSummary = {
+    study_id: string;
+    is_test_link: boolean;
+    status: string;
+  };
+
+  type StudyMeasureSummary = {
+    study_id: string;
+  };
+
+  const [studies, setStudies] = useState<ResearchStudy[]>([]);
+  const [participants, setParticipants] = useState<StudyParticipantSummary[]>(
+    []
+  );
+  const [links, setLinks] = useState<StudyLinkSummary[]>([]);
+  const [measures, setMeasures] = useState<StudyMeasureSummary[]>([]);
+
+  const [loadingStudies, setLoadingStudies] = useState(true);
+  const [studiesError, setStudiesError] = useState("");
+  const [filter, setFilter] = useState("All");
+  const [search, setSearch] = useState("");
+  const [selectedStudyId, setSelectedStudyId] = useState("");
+
+  useEffect(() => {
+    async function loadStudies() {
+      setLoadingStudies(true);
+      setStudiesError("");
+
+      const supabase = createClient();
+
+      const {
+        data: { user },
+        error: userError,
+      } = await supabase.auth.getUser();
+
+      if (userError || !user) {
+        setStudiesError("Your studies could not be loaded.");
+        setLoadingStudies(false);
+        return;
+      }
+
+      const [studyResult, participantResult, linkResult, measureResult] =
+        await Promise.all([
+          supabase
+            .from("research_studies")
+            .select(
+              "id, title, participant_description, design, target_sample_size, status, components, created_at, updated_at"
+            )
+            .eq("owner_user_id", user.id)
+            .order("updated_at", { ascending: false }),
+
+          supabase
+            .from("study_participants")
+            .select("study_id, is_test, status")
+            .eq("owner_user_id", user.id),
+
+          supabase
+            .from("study_links")
+            .select("study_id, is_test_link, status")
+            .eq("owner_user_id", user.id),
+
+          supabase
+            .from("study_measures")
+            .select("study_id")
+            .eq("owner_user_id", user.id),
+        ]);
+
+      if (studyResult.error) {
+        console.error("Could not load studies:", studyResult.error);
+        setStudiesError("Your saved studies could not be loaded.");
+        setLoadingStudies(false);
+        return;
+      }
+
+      if (participantResult.error) {
+        console.error(
+          "Could not load study participants:",
+          participantResult.error
+        );
+      }
+
+      if (linkResult.error) {
+        console.error("Could not load study links:", linkResult.error);
+      }
+
+      if (measureResult.error) {
+        console.error("Could not load study measures:", measureResult.error);
+      }
+
+      const studyRows = (studyResult.data || []) as ResearchStudy[];
+
+      setStudies(studyRows);
+      setParticipants(
+        (participantResult.data || []) as StudyParticipantSummary[]
+      );
+      setLinks((linkResult.data || []) as StudyLinkSummary[]);
+      setMeasures((measureResult.data || []) as StudyMeasureSummary[]);
+
+      if (studyRows.length > 0) {
+        setSelectedStudyId((current) =>
+          studyRows.some((study) => study.id === current)
+            ? current
+            : studyRows[0].id
+        );
+      }
+
+      setLoadingStudies(false);
+    }
+
+    void loadStudies();
+  }, []);
+
+  function statusType(status: string) {
+    if (status === "active" || status === "completed") {
+      return "success" as const;
+    }
+
+    if (status === "ready_for_review") {
+      return "accent" as const;
+    }
+
+    if (status === "draft") {
+      return "warning" as const;
+    }
+
+    return "neutral" as const;
+  }
+
+  function statusLabel(status: string) {
+    const labels: Record<string, string> = {
+      draft: "Draft",
+      ready_for_review: "Ready for review",
+      active: "Active",
+      paused: "Paused",
+      completed: "Completed",
+      archived: "Archived",
+    };
+
+    return labels[status] || status.replaceAll("_", " ");
+  }
+
+  function componentLabels(study: ResearchStudy) {
+    const available: Array<[string, string]> = [
+      ["consent", "Consent"],
+      ["demographics", "Demographics"],
+      ["baseline", "Baseline questionnaires"],
+      ["ambulatory", "Ambulatory / EMA"],
+      ["followup", "Follow-up"],
+      ["wearables", "Wearables"],
+      ["passive", "Passive context"],
+      ["uploads", "Participant uploads"],
+    ];
+
+    return available
+      .filter(([key]) => Boolean(study.components?.[key]))
+      .map(([, label]) => label);
+  }
+
+  function liveParticipantCount(studyId: string) {
+    return participants.filter(
+      (participant) =>
+        participant.study_id === studyId &&
+        !participant.is_test &&
+        participant.status !== "withdrawn"
+    ).length;
+  }
+
+  function testParticipantCount(studyId: string) {
+    return participants.filter(
+      (participant) =>
+        participant.study_id === studyId && participant.is_test
+    ).length;
+  }
+
+  function activeLiveLinkCount(studyId: string) {
+    return links.filter(
+      (link) =>
+        link.study_id === studyId &&
+        !link.is_test_link &&
+        link.status === "active"
+    ).length;
+  }
+
+  function testLinkCount(studyId: string) {
+    return links.filter(
+      (link) => link.study_id === studyId && link.is_test_link
+    ).length;
+  }
+
+  function measureCount(studyId: string) {
+    return measures.filter((measure) => measure.study_id === studyId).length;
+  }
+
+  const statusForFilter: Record<string, string[]> = {
+    All: [],
+    Draft: ["draft"],
+    Review: ["ready_for_review"],
+    Active: ["active", "paused"],
+    Completed: ["completed"],
+    Archived: ["archived"],
+  };
+
+  const filteredStudies = studies.filter((study) => {
+    const allowedStatuses = statusForFilter[filter] || [];
+    const statusMatches =
+      allowedStatuses.length === 0 ||
+      allowedStatuses.includes(study.status);
+
+    const query = search.trim().toLowerCase();
+    const searchMatches =
+      !query ||
+      study.title.toLowerCase().includes(query) ||
+      (study.design || "").toLowerCase().includes(query);
+
+    return statusMatches && searchMatches;
+  });
+
+  const selectedStudy =
+    studies.find((study) => study.id === selectedStudyId) || null;
 
   return (
     <div className="space-y-5">
-      <div className="flex flex-wrap items-center justify-between gap-4">
+      {studiesError && (
+        <div className="rounded-2xl border border-red-200 bg-red-50 px-5 py-4">
+          <p className="text-sm text-red-700">{studiesError}</p>
+        </div>
+      )}
+
+      <div className="flex flex-col gap-4 xl:flex-row xl:items-end xl:justify-between">
         <div className="flex flex-wrap gap-2">
-          <Status type="accent">All</Status>
-          <Status>Draft</Status>
-          <Status>Recruiting</Status>
-          <Status>Completed</Status>
+          {["All", "Draft", "Review", "Active", "Completed", "Archived"].map(
+            (item) => (
+              <button
+                key={item}
+                type="button"
+                onClick={() => setFilter(item)}
+                className={`rounded-full border px-3 py-2 text-xs font-medium ${
+                  filter === item
+                    ? "border-cyan-700 bg-cyan-50 text-cyan-900"
+                    : "border-slate-200 bg-white text-slate-500"
+                }`}
+              >
+                {item}
+              </button>
+            )
+          )}
         </div>
 
-        <button
-          type="button"
-          onClick={() => changeScreen("builder")}
-          className="rounded-xl bg-slate-950 px-5 py-3 text-sm font-semibold text-white"
-        >
-          + New study
-        </button>
+        <div className="flex flex-col gap-3 sm:flex-row">
+          <input
+            value={search}
+            onChange={(event) => setSearch(event.target.value)}
+            placeholder="Search your studies..."
+            className="min-w-[260px] rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm outline-none focus:border-cyan-700"
+          />
+
+          <button
+            type="button"
+            onClick={() => changeScreen("builder")}
+            className="rounded-xl bg-slate-950 px-5 py-3 text-sm font-semibold text-white"
+          >
+            + New study
+          </button>
+        </div>
       </div>
 
-      <Panel title="Your studies">
-        <div className="divide-y divide-slate-100">
-          {studies.map((study) => (
-            <div
-              key={study.name}
-              className="grid gap-4 py-5 first:pt-0 last:pb-0 md:grid-cols-[1fr_180px_100px_100px] md:items-center"
+      <Panel
+        title="Your studies"
+        description="Saved directly from your PsyLattice Study Builder."
+      >
+        {loadingStudies ? (
+          <p className="text-sm text-slate-500">Loading your studies...</p>
+        ) : studies.length === 0 ? (
+          <div className="rounded-2xl bg-slate-50 p-5">
+            <p className="font-medium">No saved studies yet</p>
+            <p className="mt-2 text-sm leading-6 text-slate-500">
+              Create a study and use Save draft in the Study Builder. It will
+              appear here automatically.
+            </p>
+            <button
+              type="button"
+              onClick={() => changeScreen("builder")}
+              className="mt-4 rounded-xl bg-slate-950 px-4 py-2.5 text-sm font-semibold text-white"
             >
-              <div>
-                <p className="font-medium">{study.name}</p>
-                <p className="mt-1 text-sm text-slate-500">{study.design}</p>
-              </div>
+              Create your first study
+            </button>
+          </div>
+        ) : filteredStudies.length === 0 ? (
+          <div className="rounded-2xl bg-slate-50 p-5">
+            <p className="font-medium">No studies match this view</p>
+            <p className="mt-2 text-sm text-slate-500">
+              Change the status filter or search term.
+            </p>
+          </div>
+        ) : (
+          <div className="divide-y divide-slate-100">
+            {filteredStudies.map((study) => {
+              const participantCount = liveParticipantCount(study.id);
+              const target = study.target_sample_size;
+              const selected = selectedStudyId === study.id;
 
-              <div>
-                <p className="text-xs text-slate-400">Participants</p>
-                <p className="mt-1 text-sm font-medium">{study.n}</p>
-              </div>
+              return (
+                <div
+                  key={study.id}
+                  className={`grid gap-4 py-5 first:pt-0 last:pb-0 md:grid-cols-[minmax(0,1fr)_170px_150px_100px] md:items-center ${
+                    selected ? "rounded-xl bg-cyan-50/40 px-3" : ""
+                  }`}
+                >
+                  <div className="min-w-0">
+                    <p className="truncate font-medium">{study.title}</p>
+                    <p className="mt-1 text-sm text-slate-500">
+                      {study.design || "Study design not specified"}
+                    </p>
+                    <p className="mt-1 text-xs leading-5 text-slate-400">
+                      {componentLabels(study).join(" · ") ||
+                        "No study components selected"}
+                    </p>
+                  </div>
 
-              <Status type={study.type}>{study.status}</Status>
+                  <div>
+                    <p className="text-xs text-slate-400">Participants</p>
+                    <p className="mt-1 text-sm font-medium">
+                      {target
+                        ? `${participantCount} / ${target}`
+                        : participantCount}
+                    </p>
+                    <p className="mt-1 text-[11px] text-slate-400">
+                      {testParticipantCount(study.id)} test
+                    </p>
+                  </div>
 
-              <button
-                type="button"
-                className="text-left text-sm font-semibold text-cyan-800"
-              >
-                Open
-              </button>
-            </div>
-          ))}
-        </div>
+                  <div>
+                    <Status type={statusType(study.status)}>
+                      {statusLabel(study.status)}
+                    </Status>
+                    <p className="mt-2 text-[11px] text-slate-400">
+                      Updated{" "}
+                      {new Date(study.updated_at).toLocaleDateString()}
+                    </p>
+                  </div>
+
+                  <button
+                    type="button"
+                    onClick={() => setSelectedStudyId(study.id)}
+                    className="text-left text-sm font-semibold text-cyan-800"
+                  >
+                    {selected ? "Opened" : "Open"}
+                  </button>
+                </div>
+              );
+            })}
+          </div>
+        )}
       </Panel>
+
+      {selectedStudy && (
+        <Panel
+          title={selectedStudy.title}
+          description="Study overview from your saved configuration."
+        >
+          <div className="grid gap-6 xl:grid-cols-[1.15fr_.85fr]">
+            <div>
+              <div className="flex flex-wrap items-center gap-2">
+                <Status type={statusType(selectedStudy.status)}>
+                  {statusLabel(selectedStudy.status)}
+                </Status>
+                <span className="text-xs text-slate-400">
+                  Created{" "}
+                  {new Date(selectedStudy.created_at).toLocaleDateString()}
+                </span>
+              </div>
+
+              <p className="mt-5 text-sm font-medium">
+                {selectedStudy.design || "Study design not specified"}
+              </p>
+
+              <p className="mt-3 whitespace-pre-wrap text-sm leading-7 text-slate-500">
+                {selectedStudy.participant_description ||
+                  "No participant-facing description has been saved yet."}
+              </p>
+
+              <div className="mt-5">
+                <p className="text-xs font-medium uppercase tracking-[0.13em] text-slate-400">
+                  Components
+                </p>
+
+                <div className="mt-3 flex flex-wrap gap-2">
+                  {componentLabels(selectedStudy).length > 0 ? (
+                    componentLabels(selectedStudy).map((label) => (
+                      <span
+                        key={label}
+                        className="rounded-full border border-slate-200 bg-slate-50 px-3 py-1.5 text-xs text-slate-600"
+                      >
+                        {label}
+                      </span>
+                    ))
+                  ) : (
+                    <span className="text-sm text-slate-400">
+                      No components selected
+                    </span>
+                  )}
+                </div>
+              </div>
+            </div>
+
+            <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-1">
+              <StatCard
+                label="Live participants"
+                value={String(liveParticipantCount(selectedStudy.id))}
+                detail={
+                  selectedStudy.target_sample_size
+                    ? `Target ${selectedStudy.target_sample_size}`
+                    : "No target set"
+                }
+              />
+
+              <StatCard
+                label="Questionnaires"
+                value={String(measureCount(selectedStudy.id))}
+                detail="Baseline + follow-up selections"
+              />
+
+              <StatCard
+                label="Live links"
+                value={String(activeLiveLinkCount(selectedStudy.id))}
+                detail={`${testLinkCount(selectedStudy.id)} test link${
+                  testLinkCount(selectedStudy.id) === 1 ? "" : "s"
+                }`}
+              />
+            </div>
+          </div>
+
+          <div className="mt-6 flex flex-wrap gap-2 border-t border-slate-100 pt-5">
+            <button
+              type="button"
+              onClick={() => changeScreen("participants")}
+              className="rounded-xl border border-slate-200 px-4 py-2.5 text-sm font-semibold"
+            >
+              View participants
+            </button>
+
+            <button
+              type="button"
+              onClick={() => changeScreen("links")}
+              className="rounded-xl bg-slate-950 px-4 py-2.5 text-sm font-semibold text-white"
+            >
+              Participant links
+            </button>
+          </div>
+        </Panel>
+      )}
     </div>
   );
 }
@@ -1568,7 +2258,7 @@ function StudyBuilder({
         }
       }
 
-      setSaveMessage("Study draft saved.");
+      setSaveMessage("Study draft saved to Supabase.");
     } catch (error) {
       console.error("Saving study draft failed:", error);
       setStudyError(
@@ -6181,6 +6871,1181 @@ function ParticipantLinks() {
 }
 
 /* =========================================================
+   RESEARCH DATA WORKSPACE — SHARED TYPES / HELPERS
+   ========================================================= */
+
+type ResearchDatasetType =
+  | "participant_summary"
+  | "demographics"
+  | "questionnaire_responses"
+  | "questionnaire_scores"
+  | "consent"
+  | "analysis_wide";
+
+type ResearchIdentityMode = "pseudonymous" | "anonymous";
+
+type ResearchDataStudy = {
+  id: string;
+  title: string;
+  status: string;
+  target_sample_size: number | null;
+  components: Record<string, boolean>;
+};
+
+type ResearchDataParticipant = {
+  id: string;
+  study_link_id: string;
+  public_id: string;
+  participant_code: string | null;
+  is_test: boolean;
+  status: string;
+  enrolled_at: string;
+  completed_at: string | null;
+};
+
+type ResearchDataSession = {
+  id: string;
+  participant_id: string;
+  phase: string;
+  status: string;
+  is_test: boolean;
+  started_at: string;
+  last_seen_at: string;
+  completed_at: string | null;
+};
+
+type ResearchDataConsent = {
+  id: string;
+  participant_id: string;
+  participant_session_id: string;
+  consent_version_id: string | null;
+  consented: boolean;
+  responses: Record<string, unknown>;
+  consent_snapshot: Record<string, unknown>;
+  consented_at: string;
+};
+
+type ResearchDataDemographicQuestion = {
+  id: string;
+  position: number;
+  field_key: string;
+  label: string;
+  description: string | null;
+  question_type: string;
+  required: boolean;
+  direct_identifier: boolean;
+  response_config: Record<string, unknown>;
+  validation_config: Record<string, unknown>;
+};
+
+type ResearchDataDemographicResponse = {
+  id: string;
+  participant_id: string;
+  question_id: string;
+  response: unknown;
+  text_value: string | null;
+  numeric_value: number | null;
+  question_snapshot: Record<string, unknown>;
+  answered_at: string;
+};
+
+type ResearchDataMeasure = {
+  id: string;
+  questionnaire_id: string;
+  questionnaire_version_id: string;
+  measurement_point: string;
+  position: number;
+  required: boolean;
+};
+
+type ResearchDataMeasureSession = {
+  id: string;
+  participant_id: string;
+  participant_session_id: string;
+  study_measure_id: string;
+  questionnaire_version_id: string;
+  status: string;
+  scores: Record<string, unknown>;
+  started_at: string;
+  completed_at: string | null;
+};
+
+type ResearchDataResponse = {
+  id: string;
+  measure_session_id: string;
+  participant_id: string;
+  study_measure_id: string;
+  questionnaire_version_id: string;
+  item_id: string;
+  response: unknown;
+  numeric_value: number | null;
+  text_value: string | null;
+  score_value: number | null;
+  answered_at: string;
+};
+
+type ResearchDataQuestionnaire = {
+  id: string;
+  name: string;
+  acronym: string | null;
+  category: string;
+};
+
+type ResearchDataQuestionnaireVersion = {
+  id: string;
+  questionnaire_id: string;
+  version_label: string;
+};
+
+type ResearchDataQuestionnaireItem = {
+  id: string;
+  version_id: string;
+  item_key: string | null;
+  position: number;
+  prompt: string;
+  subscale: string | null;
+  response_type: string;
+  required: boolean;
+  response_options: unknown;
+};
+
+type ResearchDataExportLog = {
+  id: string;
+  dataset_type: string;
+  export_format: "csv" | "json";
+  identity_mode: ResearchIdentityMode;
+  include_test_data: boolean;
+  include_direct_identifiers: boolean;
+  row_count: number;
+  metadata: Record<string, unknown>;
+  created_at: string;
+};
+
+type ResearchDataBundle = {
+  participants: ResearchDataParticipant[];
+  sessions: ResearchDataSession[];
+  consents: ResearchDataConsent[];
+  demographicQuestions: ResearchDataDemographicQuestion[];
+  demographicResponses: ResearchDataDemographicResponse[];
+  measures: ResearchDataMeasure[];
+  measureSessions: ResearchDataMeasureSession[];
+  responses: ResearchDataResponse[];
+  questionnaires: ResearchDataQuestionnaire[];
+  questionnaireVersions: ResearchDataQuestionnaireVersion[];
+  questionnaireItems: ResearchDataQuestionnaireItem[];
+  exportLogs: ResearchDataExportLog[];
+};
+
+type ResearchTableRow = Record<string, unknown>;
+
+type ResearchCodebookRow = {
+  variable: string;
+  label: string;
+  type: string;
+  source: string;
+  notes: string;
+};
+
+const emptyResearchDataBundle: ResearchDataBundle = {
+  participants: [],
+  sessions: [],
+  consents: [],
+  demographicQuestions: [],
+  demographicResponses: [],
+  measures: [],
+  measureSessions: [],
+  responses: [],
+  questionnaires: [],
+  questionnaireVersions: [],
+  questionnaireItems: [],
+  exportLogs: [],
+};
+
+const researchDatasetLabels: Record<ResearchDatasetType, string> = {
+  participant_summary: "Participant summary",
+  demographics: "Demographics — long format",
+  questionnaire_responses: "Questionnaire responses — long format",
+  questionnaire_scores: "Questionnaire scores — long format",
+  consent: "Consent records",
+  analysis_wide: "Analysis dataset — one row per participant",
+};
+
+function researchValueText(value: unknown) {
+  if (value === null || value === undefined) return "";
+
+  if (typeof value === "string") return value;
+  if (typeof value === "number" || typeof value === "boolean") {
+    return String(value);
+  }
+
+  try {
+    return JSON.stringify(value);
+  } catch {
+    return String(value);
+  }
+}
+
+function researchShortValue(value: unknown, maxLength = 90) {
+  const text = researchValueText(value);
+
+  if (text.length <= maxLength) return text;
+  return `${text.slice(0, maxLength - 1)}…`;
+}
+
+function researchSafeVariable(value: string) {
+  return value
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "_")
+    .replace(/^_+|_+$/g, "")
+    .slice(0, 80);
+}
+
+function researchCsvCell(value: unknown) {
+  const text = researchValueText(value);
+
+  if (
+    text.includes(",") ||
+    text.includes('"') ||
+    text.includes("\n") ||
+    text.includes("\r")
+  ) {
+    return `"${text.replaceAll('"', '""')}"`;
+  }
+
+  return text;
+}
+
+function researchRowsToCsv(rows: ResearchTableRow[]) {
+  if (rows.length === 0) return "";
+
+  const columns = Array.from(
+    new Set(rows.flatMap((row) => Object.keys(row)))
+  );
+
+  const header = columns.map(researchCsvCell).join(",");
+  const body = rows.map((row) =>
+    columns.map((column) => researchCsvCell(row[column])).join(",")
+  );
+
+  return [header, ...body].join("\n");
+}
+
+function researchDownloadText(
+  filename: string,
+  content: string,
+  mimeType: string
+) {
+  const blob = new Blob([content], { type: mimeType });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+
+  link.href = url;
+  link.download = filename;
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+
+  window.setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
+
+function researchFilename(value: string) {
+  const safe = value
+    .trim()
+    .replace(/[^a-zA-Z0-9-_]+/g, "-")
+    .replace(/^-+|-+$/g, "")
+    .toLowerCase();
+
+  return safe || "psylattice-study";
+}
+
+function useResearchDataWorkspace() {
+  const [studies, setStudies] = useState<ResearchDataStudy[]>([]);
+  const [selectedStudyId, setSelectedStudyId] = useState("");
+  const [bundle, setBundle] = useState<ResearchDataBundle>(
+    emptyResearchDataBundle
+  );
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
+
+  useEffect(() => {
+    async function loadStudies() {
+      setLoading(true);
+      setError("");
+
+      const supabase = createClient();
+
+      const {
+        data: { user },
+        error: userError,
+      } = await supabase.auth.getUser();
+
+      if (userError || !user) {
+        setError("Your research data could not be loaded.");
+        setLoading(false);
+        return;
+      }
+
+      const { data, error: studyError } = await supabase
+        .from("research_studies")
+        .select("id, title, status, target_sample_size, components")
+        .eq("owner_user_id", user.id)
+        .order("updated_at", { ascending: false });
+
+      if (studyError) {
+        console.error("Could not load studies for data workspace:", studyError);
+        setError("Your saved studies could not be loaded.");
+        setLoading(false);
+        return;
+      }
+
+      const rows = (data || []) as ResearchDataStudy[];
+      setStudies(rows);
+
+      if (rows.length > 0) {
+        setSelectedStudyId((current) =>
+          rows.some((study) => study.id === current)
+            ? current
+            : rows[0].id
+        );
+      } else {
+        setBundle(emptyResearchDataBundle);
+        setLoading(false);
+      }
+    }
+
+    void loadStudies();
+  }, []);
+
+  useEffect(() => {
+    async function loadStudyData() {
+      if (!selectedStudyId) return;
+
+      setLoading(true);
+      setError("");
+
+      const supabase = createClient();
+
+      const [
+        participantResult,
+        sessionResult,
+        consentResult,
+        demographicQuestionResult,
+        demographicResponseResult,
+        measureResult,
+        measureSessionResult,
+        responseResult,
+        exportLogResult,
+      ] = await Promise.all([
+        supabase
+          .from("study_participants")
+          .select(
+            "id, study_link_id, public_id, participant_code, is_test, status, enrolled_at, completed_at"
+          )
+          .eq("study_id", selectedStudyId)
+          .order("enrolled_at", { ascending: false }),
+
+        supabase
+          .from("participant_sessions")
+          .select(
+            "id, participant_id, phase, status, is_test, started_at, last_seen_at, completed_at"
+          )
+          .eq("study_id", selectedStudyId)
+          .order("started_at", { ascending: false }),
+
+        supabase
+          .from("participant_consents")
+          .select(
+            "id, participant_id, participant_session_id, consent_version_id, consented, responses, consent_snapshot, consented_at"
+          )
+          .eq("study_id", selectedStudyId)
+          .order("consented_at", { ascending: false }),
+
+        supabase
+          .from("study_demographic_questions")
+          .select(
+            "id, position, field_key, label, description, question_type, required, direct_identifier, response_config, validation_config"
+          )
+          .eq("study_id", selectedStudyId)
+          .order("position", { ascending: true }),
+
+        supabase
+          .from("participant_demographic_responses")
+          .select(
+            "id, participant_id, question_id, response, text_value, numeric_value, question_snapshot, answered_at"
+          )
+          .eq("study_id", selectedStudyId)
+          .order("answered_at", { ascending: false }),
+
+        supabase
+          .from("study_measures")
+          .select(
+            "id, questionnaire_id, questionnaire_version_id, measurement_point, position, required"
+          )
+          .eq("study_id", selectedStudyId)
+          .order("position", { ascending: true }),
+
+        supabase
+          .from("study_measure_sessions")
+          .select(
+            "id, participant_id, participant_session_id, study_measure_id, questionnaire_version_id, status, scores, started_at, completed_at"
+          )
+          .eq("study_id", selectedStudyId)
+          .order("started_at", { ascending: false }),
+
+        supabase
+          .from("research_responses")
+          .select(
+            "id, measure_session_id, participant_id, study_measure_id, questionnaire_version_id, item_id, response, numeric_value, text_value, score_value, answered_at"
+          )
+          .eq("study_id", selectedStudyId)
+          .order("answered_at", { ascending: false }),
+
+        supabase
+          .from("research_export_logs")
+          .select(
+            "id, dataset_type, export_format, identity_mode, include_test_data, include_direct_identifiers, row_count, metadata, created_at"
+          )
+          .eq("study_id", selectedStudyId)
+          .order("created_at", { ascending: false })
+          .limit(25),
+      ]);
+
+      const requiredResults = [
+        participantResult,
+        sessionResult,
+        consentResult,
+        demographicQuestionResult,
+        demographicResponseResult,
+        measureResult,
+        measureSessionResult,
+        responseResult,
+      ];
+
+      const requiredError = requiredResults.find((result) => result.error);
+
+      if (requiredError?.error) {
+        console.error(
+          "Could not load research data workspace:",
+          requiredError.error
+        );
+        setError(
+          "Some study data could not be loaded. Confirm that the participant and demographics migrations have been run."
+        );
+        setLoading(false);
+        return;
+      }
+
+      if (exportLogResult.error) {
+        console.error(
+          "Could not load research export history:",
+          exportLogResult.error
+        );
+      }
+
+      const measureRows = (measureResult.data || []) as ResearchDataMeasure[];
+      const questionnaireIds = Array.from(
+        new Set(measureRows.map((measure) => measure.questionnaire_id))
+      );
+      const versionIds = Array.from(
+        new Set(measureRows.map((measure) => measure.questionnaire_version_id))
+      );
+
+      let questionnaires: ResearchDataQuestionnaire[] = [];
+      let questionnaireVersions: ResearchDataQuestionnaireVersion[] = [];
+      let questionnaireItems: ResearchDataQuestionnaireItem[] = [];
+
+      if (questionnaireIds.length > 0) {
+        const { data, error: questionnaireError } = await supabase
+          .from("questionnaires")
+          .select("id, name, acronym, category")
+          .in("id", questionnaireIds);
+
+        if (questionnaireError) {
+          console.error(
+            "Could not load questionnaire metadata:",
+            questionnaireError
+          );
+        } else {
+          questionnaires = (data || []) as ResearchDataQuestionnaire[];
+        }
+      }
+
+      if (versionIds.length > 0) {
+        const [versionResult, itemResult] = await Promise.all([
+          supabase
+            .from("questionnaire_versions")
+            .select("id, questionnaire_id, version_label")
+            .in("id", versionIds),
+
+          supabase
+            .from("questionnaire_items")
+            .select(
+              "id, version_id, item_key, position, prompt, subscale, response_type, required, response_options"
+            )
+            .in("version_id", versionIds)
+            .order("position", { ascending: true }),
+        ]);
+
+        if (versionResult.error) {
+          console.error(
+            "Could not load questionnaire versions:",
+            versionResult.error
+          );
+        } else {
+          questionnaireVersions =
+            (versionResult.data || []) as ResearchDataQuestionnaireVersion[];
+        }
+
+        if (itemResult.error) {
+          console.error("Could not load questionnaire items:", itemResult.error);
+        } else {
+          questionnaireItems =
+            (itemResult.data || []) as ResearchDataQuestionnaireItem[];
+        }
+      }
+
+      setBundle({
+        participants:
+          (participantResult.data || []) as ResearchDataParticipant[],
+        sessions: (sessionResult.data || []) as ResearchDataSession[],
+        consents: (consentResult.data || []) as ResearchDataConsent[],
+        demographicQuestions:
+          (demographicQuestionResult.data ||
+            []) as ResearchDataDemographicQuestion[],
+        demographicResponses:
+          (demographicResponseResult.data ||
+            []) as ResearchDataDemographicResponse[],
+        measures: measureRows,
+        measureSessions:
+          (measureSessionResult.data || []) as ResearchDataMeasureSession[],
+        responses: (responseResult.data || []) as ResearchDataResponse[],
+        questionnaires,
+        questionnaireVersions,
+        questionnaireItems,
+        exportLogs: exportLogResult.error
+          ? []
+          : ((exportLogResult.data || []) as ResearchDataExportLog[]),
+      });
+
+      setLoading(false);
+    }
+
+    void loadStudyData();
+  }, [selectedStudyId]);
+
+  const selectedStudy =
+    studies.find((study) => study.id === selectedStudyId) || null;
+
+  return {
+    studies,
+    selectedStudyId,
+    setSelectedStudyId,
+    selectedStudy,
+    bundle,
+    setBundle,
+    loading,
+    error,
+  };
+}
+
+function researchQuestionnaireForMeasure(
+  bundle: ResearchDataBundle,
+  measure: ResearchDataMeasure | undefined
+) {
+  if (!measure) return null;
+
+  return (
+    bundle.questionnaires.find(
+      (questionnaire) => questionnaire.id === measure.questionnaire_id
+    ) || null
+  );
+}
+
+function researchItemForResponse(
+  bundle: ResearchDataBundle,
+  response: ResearchDataResponse
+) {
+  return (
+    bundle.questionnaireItems.find((item) => item.id === response.item_id) ||
+    null
+  );
+}
+
+function researchMeasureForId(
+  bundle: ResearchDataBundle,
+  studyMeasureId: string
+) {
+  return (
+    bundle.measures.find((measure) => measure.id === studyMeasureId) || null
+  );
+}
+
+function researchParticipantForId(
+  bundle: ResearchDataBundle,
+  participantId: string
+) {
+  return (
+    bundle.participants.find(
+      (participant) => participant.id === participantId
+    ) || null
+  );
+}
+
+function researchParticipantLabelMap(
+  participants: ResearchDataParticipant[],
+  identityMode: ResearchIdentityMode
+) {
+  const map = new Map<string, string>();
+
+  participants.forEach((participant, index) => {
+    map.set(
+      participant.id,
+      identityMode === "pseudonymous"
+        ? participant.public_id
+        : `ANON-${String(index + 1).padStart(4, "0")}`
+    );
+  });
+
+  return map;
+}
+
+function researchFilteredParticipants(
+  bundle: ResearchDataBundle,
+  includeTestData: boolean
+) {
+  return bundle.participants.filter(
+    (participant) =>
+      participant.status !== "withdrawn" &&
+      (includeTestData || !participant.is_test)
+  );
+}
+
+function researchBuildRows(
+  bundle: ResearchDataBundle,
+  datasetType: ResearchDatasetType,
+  identityMode: ResearchIdentityMode,
+  includeTestData: boolean,
+  includeDirectIdentifiers: boolean
+): ResearchTableRow[] {
+  const participants = researchFilteredParticipants(
+    bundle,
+    includeTestData
+  );
+  const participantIds = new Set(
+    participants.map((participant) => participant.id)
+  );
+  const identityMap = researchParticipantLabelMap(
+    participants,
+    identityMode
+  );
+
+  const participantBase = (participant: ResearchDataParticipant) => ({
+    participant:
+      identityMap.get(participant.id) || "",
+    is_test: participant.is_test,
+    status: participant.status,
+    enrolled_at: participant.enrolled_at,
+    completed_at: participant.completed_at || "",
+  });
+
+  if (datasetType === "participant_summary") {
+    return participants.map((participant) => {
+      const sessions = bundle.sessions.filter(
+        (session) => session.participant_id === participant.id
+      );
+      const consent = bundle.consents.find(
+        (record) => record.participant_id === participant.id
+      );
+      const completedMeasures = bundle.measureSessions.filter(
+        (session) =>
+          session.participant_id === participant.id &&
+          session.status === "completed"
+      );
+      const responses = bundle.responses.filter(
+        (response) => response.participant_id === participant.id
+      );
+      const demographics = bundle.demographicResponses.filter(
+        (response) => response.participant_id === participant.id
+      );
+
+      return {
+        ...participantBase(participant),
+        participant_code:
+          identityMode === "pseudonymous" && includeDirectIdentifiers
+            ? participant.participant_code || ""
+            : "",
+        consented: consent?.consented ?? false,
+        session_count: sessions.length,
+        completed_questionnaires: completedMeasures.length,
+        questionnaire_item_responses: responses.length,
+        demographic_responses: demographics.length,
+      };
+    });
+  }
+
+  if (datasetType === "demographics") {
+    return bundle.demographicResponses
+      .filter((response) => participantIds.has(response.participant_id))
+      .flatMap((response) => {
+        const participant = researchParticipantForId(
+          bundle,
+          response.participant_id
+        );
+        const question = bundle.demographicQuestions.find(
+          (candidate) => candidate.id === response.question_id
+        );
+
+        if (!participant || !question) return [];
+
+        if (question.direct_identifier && !includeDirectIdentifiers) {
+          return [];
+        }
+
+        return [
+          {
+            participant: identityMap.get(participant.id) || "",
+            is_test: participant.is_test,
+            variable: question.field_key,
+            question: question.label,
+            question_type: question.question_type,
+            required: question.required,
+            direct_identifier: question.direct_identifier,
+            response:
+              response.text_value ??
+              response.numeric_value ??
+              response.response,
+            answered_at: response.answered_at,
+          },
+        ];
+      });
+  }
+
+  if (datasetType === "questionnaire_responses") {
+    return bundle.responses
+      .filter((response) => participantIds.has(response.participant_id))
+      .flatMap((response) => {
+        const participant = researchParticipantForId(
+          bundle,
+          response.participant_id
+        );
+        const measure = researchMeasureForId(
+          bundle,
+          response.study_measure_id
+        );
+        const questionnaire = researchQuestionnaireForMeasure(
+          bundle,
+          measure || undefined
+        );
+        const item = researchItemForResponse(bundle, response);
+
+        if (!participant || !measure || !questionnaire || !item) return [];
+
+        return [
+          {
+            participant: identityMap.get(participant.id) || "",
+            is_test: participant.is_test,
+            phase: measure.measurement_point,
+            questionnaire: questionnaire.name,
+            acronym: questionnaire.acronym || "",
+            item_key: item.item_key || `item_${item.position}`,
+            item_position: item.position,
+            item_prompt: item.prompt,
+            subscale: item.subscale || "",
+            response_type: item.response_type,
+            response: response.response,
+            numeric_value: response.numeric_value,
+            text_value: response.text_value,
+            score_value: response.score_value,
+            answered_at: response.answered_at,
+          },
+        ];
+      });
+  }
+
+  if (datasetType === "questionnaire_scores") {
+    const rows: ResearchTableRow[] = [];
+
+    for (const session of bundle.measureSessions) {
+      if (
+        session.status !== "completed" ||
+        !participantIds.has(session.participant_id)
+      ) {
+        continue;
+      }
+
+      const participant = researchParticipantForId(
+        bundle,
+        session.participant_id
+      );
+      const measure = researchMeasureForId(
+        bundle,
+        session.study_measure_id
+      );
+      const questionnaire = researchQuestionnaireForMeasure(
+        bundle,
+        measure || undefined
+      );
+
+      if (!participant || !measure || !questionnaire) continue;
+
+      const scores =
+        session.scores && typeof session.scores === "object"
+          ? Object.entries(session.scores)
+          : [];
+
+      if (scores.length === 0) {
+        rows.push({
+          participant: identityMap.get(participant.id) || "",
+          is_test: participant.is_test,
+          phase: measure.measurement_point,
+          questionnaire: questionnaire.name,
+          acronym: questionnaire.acronym || "",
+          score_name: "",
+          score_value: "",
+          completed_at: session.completed_at || "",
+        });
+      } else {
+        scores.forEach(([scoreName, scoreValue]) => {
+          rows.push({
+            participant: identityMap.get(participant.id) || "",
+            is_test: participant.is_test,
+            phase: measure.measurement_point,
+            questionnaire: questionnaire.name,
+            acronym: questionnaire.acronym || "",
+            score_name: scoreName,
+            score_value: scoreValue,
+            completed_at: session.completed_at || "",
+          });
+        });
+      }
+    }
+
+    return rows;
+  }
+
+  if (datasetType === "consent") {
+    return bundle.consents
+      .filter((consent) => participantIds.has(consent.participant_id))
+      .flatMap((consent) => {
+        const participant = researchParticipantForId(
+          bundle,
+          consent.participant_id
+        );
+
+        if (!participant) return [];
+
+        const versionLabel =
+          typeof consent.consent_snapshot?.version_label === "string"
+            ? consent.consent_snapshot.version_label
+            : "";
+
+        return [
+          {
+            participant: identityMap.get(participant.id) || "",
+            is_test: participant.is_test,
+            consented: consent.consented,
+            consent_version: versionLabel,
+            consented_at: consent.consented_at,
+            consent_responses: includeDirectIdentifiers
+              ? consent.responses
+              : "[excluded by export settings]",
+          },
+        ];
+      });
+  }
+
+  // analysis_wide — one row per participant with non-identifying
+  // demographics + questionnaire scores.
+  return participants.map((participant) => {
+    const row: ResearchTableRow = {
+      ...participantBase(participant),
+    };
+
+    if (identityMode === "pseudonymous" && includeDirectIdentifiers) {
+      row.participant_code = participant.participant_code || "";
+    }
+
+    for (const question of bundle.demographicQuestions) {
+      if (question.direct_identifier && !includeDirectIdentifiers) {
+        continue;
+      }
+
+      const response = bundle.demographicResponses.find(
+        (candidate) =>
+          candidate.participant_id === participant.id &&
+          candidate.question_id === question.id
+      );
+
+      row[`demo_${researchSafeVariable(question.field_key)}`] = response
+        ? response.text_value ??
+          response.numeric_value ??
+          response.response
+        : "";
+    }
+
+    const participantMeasureSessions = bundle.measureSessions.filter(
+      (session) =>
+        session.participant_id === participant.id &&
+        session.status === "completed"
+    );
+
+    for (const session of participantMeasureSessions) {
+      const measure = researchMeasureForId(bundle, session.study_measure_id);
+      const questionnaire = researchQuestionnaireForMeasure(
+        bundle,
+        measure || undefined
+      );
+
+      if (!measure || !questionnaire) continue;
+
+      const questionnaireKey = researchSafeVariable(
+        questionnaire.acronym || questionnaire.name
+      );
+
+      const scores =
+        session.scores && typeof session.scores === "object"
+          ? Object.entries(session.scores)
+          : [];
+
+      for (const [scoreName, scoreValue] of scores) {
+        const scoreKey = researchSafeVariable(scoreName || "total");
+        row[
+          `${researchSafeVariable(
+            measure.measurement_point
+          )}_${questionnaireKey}_${scoreKey}`
+        ] = scoreValue;
+      }
+    }
+
+    return row;
+  });
+}
+
+function researchBuildCodebook(
+  bundle: ResearchDataBundle,
+  datasetType: ResearchDatasetType,
+  includeDirectIdentifiers: boolean
+): ResearchCodebookRow[] {
+  const common: ResearchCodebookRow[] = [
+    {
+      variable: "participant",
+      label: "Export participant identifier",
+      type: "String",
+      source: "PsyLattice participant record",
+      notes:
+        "Pseudonymous PsyLattice ID or export-scoped ANON ID, depending on export settings.",
+    },
+    {
+      variable: "is_test",
+      label: "Test participation flag",
+      type: "Boolean",
+      source: "study_participants",
+      notes: "TRUE identifies test participation.",
+    },
+  ];
+
+  if (datasetType === "participant_summary") {
+    return [
+      ...common,
+      {
+        variable: "status",
+        label: "Participant study status",
+        type: "Categorical",
+        source: "study_participants",
+        notes: "active, baseline_complete, completed, or withdrawn.",
+      },
+      {
+        variable: "consented",
+        label: "Recorded consent",
+        type: "Boolean",
+        source: "participant_consents",
+        notes: "Indicates whether a consent record was stored.",
+      },
+      {
+        variable: "completed_questionnaires",
+        label: "Completed questionnaire sessions",
+        type: "Integer",
+        source: "study_measure_sessions",
+        notes: "Number of completed questionnaire sessions.",
+      },
+      {
+        variable: "questionnaire_item_responses",
+        label: "Stored questionnaire item responses",
+        type: "Integer",
+        source: "research_responses",
+        notes: "Count of item-level responses.",
+      },
+    ];
+  }
+
+  if (datasetType === "demographics") {
+    return bundle.demographicQuestions
+      .filter(
+        (question) =>
+          includeDirectIdentifiers || !question.direct_identifier
+      )
+      .map((question) => ({
+        variable: question.field_key,
+        label: question.label,
+        type: question.question_type,
+        source: "Study demographics",
+        notes: `${question.required ? "Required" : "Optional"}${
+          question.direct_identifier ? " · Direct identifier" : ""
+        }`,
+      }));
+  }
+
+  if (datasetType === "questionnaire_responses") {
+    const rows: ResearchCodebookRow[] = [];
+
+    for (const measure of bundle.measures) {
+      const questionnaire = researchQuestionnaireForMeasure(
+        bundle,
+        measure
+      );
+
+      if (!questionnaire) continue;
+
+      const items = bundle.questionnaireItems.filter(
+        (item) => item.version_id === measure.questionnaire_version_id
+      );
+
+      for (const item of items) {
+        rows.push({
+          variable: `${researchSafeVariable(
+            measure.measurement_point
+          )}_${researchSafeVariable(
+            questionnaire.acronym || questionnaire.name
+          )}_${researchSafeVariable(
+            item.item_key || `item_${item.position}`
+          )}`,
+          label: item.prompt,
+          type: item.response_type,
+          source: questionnaire.name,
+          notes: `${measure.measurement_point}${
+            item.subscale ? ` · Subscale: ${item.subscale}` : ""
+          }${item.required ? " · Required" : ""}`,
+        });
+      }
+    }
+
+    return rows;
+  }
+
+  if (datasetType === "questionnaire_scores") {
+    const seen = new Set<string>();
+    const rows: ResearchCodebookRow[] = [];
+
+    for (const session of bundle.measureSessions) {
+      const measure = researchMeasureForId(bundle, session.study_measure_id);
+      const questionnaire = researchQuestionnaireForMeasure(
+        bundle,
+        measure || undefined
+      );
+
+      if (!measure || !questionnaire) continue;
+
+      const scores =
+        session.scores && typeof session.scores === "object"
+          ? Object.keys(session.scores)
+          : [];
+
+      for (const score of scores) {
+        const variable = `${researchSafeVariable(
+          measure.measurement_point
+        )}_${researchSafeVariable(
+          questionnaire.acronym || questionnaire.name
+        )}_${researchSafeVariable(score)}`;
+
+        if (seen.has(variable)) continue;
+        seen.add(variable);
+
+        rows.push({
+          variable,
+          label: `${questionnaire.name} — ${score}`,
+          type: "Numeric / computed",
+          source: questionnaire.name,
+          notes: `${measure.measurement_point} score stored by the participant runner.`,
+        });
+      }
+    }
+
+    return rows;
+  }
+
+  if (datasetType === "consent") {
+    return [
+      ...common,
+      {
+        variable: "consented",
+        label: "Consent recorded",
+        type: "Boolean",
+        source: "participant_consents",
+        notes: "TRUE means a consent record was stored.",
+      },
+      {
+        variable: "consent_version",
+        label: "Consent version label",
+        type: "String",
+        source: "Consent snapshot",
+        notes: "Version of consent presented to the participant.",
+      },
+      {
+        variable: "consented_at",
+        label: "Consent timestamp",
+        type: "ISO timestamp",
+        source: "participant_consents",
+        notes: "",
+      },
+    ];
+  }
+
+  const rows: ResearchCodebookRow[] = [
+    ...common,
+    {
+      variable: "status",
+      label: "Participant study status",
+      type: "Categorical",
+      source: "study_participants",
+      notes: "",
+    },
+    {
+      variable: "enrolled_at",
+      label: "Enrollment timestamp",
+      type: "ISO timestamp",
+      source: "study_participants",
+      notes: "",
+    },
+  ];
+
+  bundle.demographicQuestions
+    .filter(
+      (question) =>
+        includeDirectIdentifiers || !question.direct_identifier
+    )
+    .forEach((question) => {
+      rows.push({
+        variable: `demo_${researchSafeVariable(question.field_key)}`,
+        label: question.label,
+        type: question.question_type,
+        source: "Study demographics",
+        notes: question.direct_identifier
+          ? "Direct identifier — included only when explicitly enabled."
+          : "",
+      });
+    });
+
+  researchBuildCodebook(
+    bundle,
+    "questionnaire_scores",
+    includeDirectIdentifiers
+  ).forEach((score) => rows.push(score));
+
+  return rows;
+}
+
+/* =========================================================
    DATA DASHBOARD
    ========================================================= */
 
@@ -6189,104 +8054,477 @@ function DataDashboard({
 }: {
   changeScreen: (screen: Screen) => void;
 }) {
+  const {
+    studies,
+    selectedStudyId,
+    setSelectedStudyId,
+    selectedStudy,
+    bundle,
+    loading,
+    error,
+  } = useResearchDataWorkspace();
+
+  const liveParticipants = bundle.participants.filter(
+    (participant) =>
+      !participant.is_test && participant.status !== "withdrawn"
+  );
+  const testParticipants = bundle.participants.filter(
+    (participant) => participant.is_test
+  );
+
+  const liveParticipantIds = new Set(
+    liveParticipants.map((participant) => participant.id)
+  );
+
+  const liveResponses = bundle.responses.filter((response) =>
+    liveParticipantIds.has(response.participant_id)
+  );
+
+  const completedLiveMeasureSessions = bundle.measureSessions.filter(
+    (session) =>
+      liveParticipantIds.has(session.participant_id) &&
+      session.status === "completed"
+  );
+
+  const requiredBaselineMeasures = bundle.measures.filter(
+    (measure) =>
+      measure.measurement_point === "baseline" && measure.required
+  );
+
+  const requiredFollowupMeasures = bundle.measures.filter(
+    (measure) =>
+      measure.measurement_point === "followup" && measure.required
+  );
+
+  function requiredMeasureCompletion(
+    participantId: string,
+    measures: ResearchDataMeasure[]
+  ) {
+    return measures.filter((measure) =>
+      bundle.measureSessions.some(
+        (session) =>
+          session.participant_id === participantId &&
+          session.study_measure_id === measure.id &&
+          session.status === "completed"
+      )
+    ).length;
+  }
+
+  const expectedBaseline =
+    liveParticipants.length * requiredBaselineMeasures.length;
+  const completedBaseline = liveParticipants.reduce(
+    (sum, participant) =>
+      sum +
+      requiredMeasureCompletion(
+        participant.id,
+        requiredBaselineMeasures
+      ),
+    0
+  );
+
+  const baselinePercent =
+    expectedBaseline > 0
+      ? Math.round((completedBaseline / expectedBaseline) * 100)
+      : 0;
+
+  const expectedFollowup =
+    liveParticipants.length * requiredFollowupMeasures.length;
+  const completedFollowup = liveParticipants.reduce(
+    (sum, participant) =>
+      sum +
+      requiredMeasureCompletion(
+        participant.id,
+        requiredFollowupMeasures
+      ),
+    0
+  );
+
+  const followupPercent =
+    expectedFollowup > 0
+      ? Math.round((completedFollowup / expectedFollowup) * 100)
+      : 0;
+
+  const consentRequired = Boolean(selectedStudy?.components?.consent);
+  const consentedLiveParticipants = liveParticipants.filter(
+    (participant) =>
+      bundle.consents.some(
+        (consent) =>
+          consent.participant_id === participant.id &&
+          consent.consented
+      )
+  ).length;
+
+  const consentPercent =
+    consentRequired && liveParticipants.length > 0
+      ? Math.round(
+          (consentedLiveParticipants / liveParticipants.length) * 100
+        )
+      : 0;
+
+  const demographicsRequired = Boolean(
+    selectedStudy?.components?.demographics
+  );
+  const requiredDemographicQuestions =
+    bundle.demographicQuestions.filter((question) => question.required);
+
+  const participantsWithCompleteRequiredDemographics =
+    liveParticipants.filter((participant) =>
+      requiredDemographicQuestions.every((question) =>
+        bundle.demographicResponses.some(
+          (response) =>
+            response.participant_id === participant.id &&
+            response.question_id === question.id
+        )
+      )
+    ).length;
+
+  const demographicsPercent =
+    demographicsRequired && liveParticipants.length > 0
+      ? Math.round(
+          (participantsWithCompleteRequiredDemographics /
+            liveParticipants.length) *
+            100
+        )
+      : 0;
+
+  const missingBaselineParticipants =
+    requiredBaselineMeasures.length === 0
+      ? 0
+      : liveParticipants.filter(
+          (participant) =>
+            requiredMeasureCompletion(
+              participant.id,
+              requiredBaselineMeasures
+            ) < requiredBaselineMeasures.length
+        ).length;
+
+  const missingConsentParticipants = consentRequired
+    ? Math.max(
+        liveParticipants.length - consentedLiveParticipants,
+        0
+      )
+    : 0;
+
+  const missingDemographicsParticipants =
+    demographicsRequired && requiredDemographicQuestions.length > 0
+      ? Math.max(
+          liveParticipants.length -
+            participantsWithCompleteRequiredDemographics,
+          0
+        )
+      : 0;
+
+  const directIdentifierFields =
+    bundle.demographicQuestions.filter(
+      (question) => question.direct_identifier
+    ).length;
+
+  const participantMap = new Map(
+    bundle.participants.map((participant) => [
+      participant.id,
+      participant,
+    ])
+  );
+
+  const recentResponses = [...bundle.responses]
+    .sort(
+      (a, b) =>
+        new Date(b.answered_at).getTime() -
+        new Date(a.answered_at).getTime()
+    )
+    .slice(0, 10);
+
   return (
     <div className="space-y-5">
-      <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
-        <StatCard label="Responses" value="2,846" detail="EMA observations" />
-        <StatCard label="Participants" value="93" detail="Enrolled" />
-        <StatCard label="Compliance" value="81%" detail="Average completion" />
-        <StatCard label="Flags" value="7" detail="Need review" />
+      <div className="flex flex-wrap items-end justify-between gap-4">
+        <label className="min-w-[300px]">
+          <span className="text-sm font-medium">Study</span>
+          <select
+            value={selectedStudyId}
+            onChange={(event) => setSelectedStudyId(event.target.value)}
+            className="mt-2 w-full rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm"
+          >
+            {studies.map((study) => (
+              <option key={study.id} value={study.id}>
+                {study.title}
+              </option>
+            ))}
+          </select>
+        </label>
+
+        {selectedStudy && (
+          <Status
+            type={
+              selectedStudy.status === "active"
+                ? "success"
+                : selectedStudy.status === "draft"
+                  ? "warning"
+                  : "neutral"
+            }
+          >
+            {selectedStudy.status.replaceAll("_", " ")}
+          </Status>
+        )}
       </div>
 
-      <div className="grid gap-5 xl:grid-cols-2">
-        <Panel title="Data completeness">
-          <div className="space-y-6">
-            <ProgressBar
-              label="Baseline questionnaires"
-              value={96}
-              text="96%"
-            />
-            <ProgressBar
-              label="Ambulatory prompts"
-              value={81}
-              text="81%"
-            />
-            <ProgressBar
-              label="Wearable summaries"
-              value={73}
-              text="73%"
-            />
-            <ProgressBar
-              label="Final assessment"
-              value={48}
-              text="Study ongoing"
-            />
-          </div>
+      {error && (
+        <div className="rounded-2xl border border-red-200 bg-red-50 px-5 py-4">
+          <p className="text-sm leading-6 text-red-700">{error}</p>
+        </div>
+      )}
+
+      <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+        <StatCard
+          label="Live participants"
+          value={loading ? "..." : String(liveParticipants.length)}
+          detail={`${testParticipants.length} test record${
+            testParticipants.length === 1 ? "" : "s"
+          } excluded`}
+        />
+
+        <StatCard
+          label="Item responses"
+          value={loading ? "..." : String(liveResponses.length)}
+          detail="Stored live questionnaire responses"
+        />
+
+        <StatCard
+          label="Questionnaires completed"
+          value={
+            loading
+              ? "..."
+              : String(completedLiveMeasureSessions.length)
+          }
+          detail="Completed live measure sessions"
+        />
+
+        <StatCard
+          label="Direct identifier fields"
+          value={loading ? "..." : String(directIdentifierFields)}
+          detail="Excluded from exports by default"
+        />
+      </div>
+
+      <div className="grid gap-5 xl:grid-cols-[1.05fr_.95fr]">
+        <Panel
+          title="Data completeness"
+          description="Calculated from required study components and live participants."
+        >
+          {loading ? (
+            <p className="text-sm text-slate-500">
+              Calculating completeness...
+            </p>
+          ) : liveParticipants.length === 0 ? (
+            <div className="rounded-2xl bg-slate-50 p-5">
+              <p className="font-medium">No live participant data yet</p>
+              <p className="mt-2 text-sm leading-6 text-slate-500">
+                TEST participants are deliberately excluded from the main
+                completeness metrics.
+              </p>
+            </div>
+          ) : (
+            <div className="space-y-6">
+              {consentRequired ? (
+                <ProgressBar
+                  label="Consent"
+                  value={consentPercent}
+                  text={`${consentedLiveParticipants} / ${liveParticipants.length}`}
+                />
+              ) : (
+                <p className="text-sm text-slate-500">
+                  Consent is not enabled as a study component.
+                </p>
+              )}
+
+              {demographicsRequired ? (
+                <ProgressBar
+                  label="Required demographics"
+                  value={demographicsPercent}
+                  text={`${participantsWithCompleteRequiredDemographics} / ${liveParticipants.length}`}
+                />
+              ) : (
+                <p className="text-sm text-slate-500">
+                  Demographics are not enabled as a study component.
+                </p>
+              )}
+
+              {requiredBaselineMeasures.length > 0 ? (
+                <ProgressBar
+                  label="Required baseline measures"
+                  value={baselinePercent}
+                  text={`${completedBaseline} / ${expectedBaseline}`}
+                />
+              ) : (
+                <p className="text-sm text-slate-500">
+                  No required baseline questionnaires are configured.
+                </p>
+              )}
+
+              {requiredFollowupMeasures.length > 0 ? (
+                <ProgressBar
+                  label="Required follow-up measures"
+                  value={followupPercent}
+                  text={`${completedFollowup} / ${expectedFollowup}`}
+                />
+              ) : (
+                <p className="text-sm text-slate-500">
+                  No required follow-up questionnaires are configured.
+                </p>
+              )}
+
+              {selectedStudy?.components?.ambulatory && (
+                <div className="rounded-xl border border-amber-200 bg-amber-50 p-4">
+                  <p className="text-sm font-medium text-amber-950">
+                    Ambulatory component configured
+                  </p>
+                  <p className="mt-1 text-xs leading-5 text-amber-800">
+                    The participant EMA delivery/response pipeline is not
+                    connected yet, so PsyLattice does not invent an ambulatory
+                    compliance percentage here.
+                  </p>
+                </div>
+              )}
+            </div>
+          )}
         </Panel>
 
-        <Panel title="Quality checks">
+        <Panel
+          title="Data-quality checks"
+          description="Rule-based checks from the data currently stored in this study."
+        >
           <div className="space-y-5">
             {[
-              ["Missing >20% of responses", "4 participants"],
-              ["Very short response latency", "2 participants"],
-              ["Duplicate identifier signal", "1 participant"],
-              ["Consent mismatch", "0 participants"],
-            ].map(([label, result], index) => (
-              <div
-                key={label}
-                className="flex items-center justify-between gap-4"
-              >
-                <span className="text-sm">{label}</span>
+              [
+                "Missing required baseline measures",
+                missingBaselineParticipants,
+              ],
+              [
+                "Missing required demographic fields",
+                missingDemographicsParticipants,
+              ],
+              ["Missing recorded consent", missingConsentParticipants],
+              ["TEST participants", testParticipants.length],
+              ["Direct identifier fields configured", directIdentifierFields],
+            ].map(([label, count], index) => {
+              const numericCount = Number(count);
 
-                <Status
-                  type={
-                    index < 3
-                      ? "warning"
-                      : "success"
-                  }
+              return (
+                <div
+                  key={String(label)}
+                  className="flex items-center justify-between gap-4"
                 >
-                  {result}
-                </Status>
-              </div>
-            ))}
+                  <span className="text-sm">{String(label)}</span>
+                  <Status
+                    type={
+                      index < 3 && numericCount > 0
+                        ? "warning"
+                        : numericCount === 0
+                          ? "success"
+                          : "accent"
+                    }
+                  >
+                    {numericCount}
+                  </Status>
+                </div>
+              );
+            })}
           </div>
+
+          <p className="mt-5 text-xs leading-5 text-slate-400">
+            These are transparent data-completeness checks, not statistical
+            outlier detection or clinical judgments.
+          </p>
         </Panel>
       </div>
 
-      <Panel title="Latest incoming observations">
-        <div className="overflow-x-auto">
-          <table className="w-full min-w-[650px] text-left text-sm">
-            <thead className="border-b border-slate-100 text-xs text-slate-400">
-              <tr>
-                <th className="pb-3 font-medium">Time</th>
-                <th className="pb-3 font-medium">Participant</th>
-                <th className="pb-3 font-medium">Prompt</th>
-                <th className="pb-3 font-medium">Stress</th>
-                <th className="pb-3 font-medium">Activity</th>
-              </tr>
-            </thead>
-
-            <tbody className="divide-y divide-slate-100">
-              {[
-                ["13:31", "PL-041", "Midday", "7", "Studying"],
-                ["13:28", "PL-018", "Midday", "4", "Lunch"],
-                ["13:21", "PL-072", "Midday", "6", "Class"],
-                ["13:16", "PL-006", "Midday", "3", "Socialising"],
-              ].map((row) => (
-                <tr key={`${row[0]}-${row[1]}`}>
-                  {row.map((cell) => (
-                    <td key={cell} className="py-4 text-slate-600 first:font-medium first:text-slate-900">
-                      {cell}
-                    </td>
-                  ))}
+      <Panel
+        title="Latest questionnaire responses"
+        description="Most recent stored item-level responses, including TEST records when present."
+      >
+        {loading ? (
+          <p className="text-sm text-slate-500">Loading responses...</p>
+        ) : recentResponses.length === 0 ? (
+          <div className="rounded-2xl bg-slate-50 p-5">
+            <p className="font-medium">No questionnaire responses yet</p>
+            <p className="mt-2 text-sm leading-6 text-slate-500">
+              Complete a TEST participant flow or recruit participants to see
+              responses here.
+            </p>
+          </div>
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="w-full min-w-[980px] text-left text-sm">
+              <thead className="border-b border-slate-100 text-xs text-slate-400">
+                <tr>
+                  <th className="pb-3 font-medium">Time</th>
+                  <th className="pb-3 font-medium">Participant</th>
+                  <th className="pb-3 font-medium">Phase</th>
+                  <th className="pb-3 font-medium">Questionnaire</th>
+                  <th className="pb-3 font-medium">Item</th>
+                  <th className="pb-3 font-medium">Response</th>
                 </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
+              </thead>
+
+              <tbody className="divide-y divide-slate-100">
+                {recentResponses.map((response) => {
+                  const participant = participantMap.get(
+                    response.participant_id
+                  );
+                  const measure = researchMeasureForId(
+                    bundle,
+                    response.study_measure_id
+                  );
+                  const questionnaire = researchQuestionnaireForMeasure(
+                    bundle,
+                    measure || undefined
+                  );
+                  const item = researchItemForResponse(bundle, response);
+
+                  return (
+                    <tr key={response.id}>
+                      <td className="py-4 pr-4 text-xs text-slate-500">
+                        {new Date(response.answered_at).toLocaleString()}
+                      </td>
+                      <td className="py-4 pr-4">
+                        <div className="flex items-center gap-2">
+                          <span className="font-medium">
+                            {participant?.public_id || "Unknown"}
+                          </span>
+                          {participant?.is_test && (
+                            <Status type="warning">TEST</Status>
+                          )}
+                        </div>
+                      </td>
+                      <td className="py-4 pr-4 text-slate-500">
+                        {measure?.measurement_point || "—"}
+                      </td>
+                      <td className="py-4 pr-4 text-slate-500">
+                        {questionnaire?.acronym ||
+                          questionnaire?.name ||
+                          "Unknown"}
+                      </td>
+                      <td className="max-w-[280px] py-4 pr-4 text-slate-500">
+                        {item?.item_key ||
+                          (item ? `Item ${item.position}` : "Unknown item")}
+                      </td>
+                      <td className="max-w-[300px] py-4 text-slate-700">
+                        {researchShortValue(
+                          response.text_value ??
+                            response.numeric_value ??
+                            response.response
+                        )}
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        )}
 
         <div className="mt-5 flex flex-wrap gap-2">
           <button
+            type="button"
             onClick={() => changeScreen("explorer")}
             className="rounded-xl border border-slate-200 px-4 py-2.5 text-sm font-semibold"
           >
@@ -6294,10 +8532,11 @@ function DataDashboard({
           </button>
 
           <button
+            type="button"
             onClick={() => changeScreen("exports")}
             className="rounded-xl bg-slate-950 px-4 py-2.5 text-sm font-semibold text-white"
           >
-            Export dataset
+            Export study data
           </button>
         </div>
       </Panel>
@@ -6310,180 +8549,727 @@ function DataDashboard({
    ========================================================= */
 
 function DataExplorer() {
-  const [view, setView] = useState("Ambulatory observations");
+  const {
+    studies,
+    selectedStudyId,
+    setSelectedStudyId,
+    selectedStudy,
+    bundle,
+    loading,
+    error,
+  } = useResearchDataWorkspace();
+
+  const [datasetType, setDatasetType] =
+    useState<ResearchDatasetType>("participant_summary");
+  const [search, setSearch] = useState("");
+  const [includeTestData, setIncludeTestData] = useState(false);
+  const [showDirectIdentifiers, setShowDirectIdentifiers] =
+    useState(false);
+
+  const rows = researchBuildRows(
+    bundle,
+    datasetType,
+    "pseudonymous",
+    includeTestData,
+    showDirectIdentifiers
+  );
+
+  const searchQuery = search.trim().toLowerCase();
+
+  const filteredRows = searchQuery
+    ? rows.filter((row) =>
+        Object.values(row).some((value) =>
+          researchValueText(value).toLowerCase().includes(searchQuery)
+        )
+      )
+    : rows;
+
+  const displayedRows = filteredRows.slice(0, 250);
+  const columns = Array.from(
+    new Set(displayedRows.flatMap((row) => Object.keys(row)))
+  );
+
+  const codebook = researchBuildCodebook(
+    bundle,
+    datasetType,
+    showDirectIdentifiers
+  );
 
   return (
     <div className="space-y-5">
-      <Panel title="Dataset explorer">
-        <div className="grid gap-3 md:grid-cols-[1fr_240px]">
+      <Panel
+        title="Data Explorer"
+        description="Inspect real participant, demographic, questionnaire, score and consent records for one study."
+      >
+        <div className="grid gap-4 xl:grid-cols-[1fr_1fr]">
+          <label>
+            <span className="text-sm font-medium">Study</span>
+            <select
+              value={selectedStudyId}
+              onChange={(event) => setSelectedStudyId(event.target.value)}
+              className="mt-2 w-full rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm"
+            >
+              {studies.map((study) => (
+                <option key={study.id} value={study.id}>
+                  {study.title}
+                </option>
+              ))}
+            </select>
+          </label>
+
+          <label>
+            <span className="text-sm font-medium">Dataset</span>
+            <select
+              value={datasetType}
+              onChange={(event) =>
+                setDatasetType(
+                  event.target.value as ResearchDatasetType
+                )
+              }
+              className="mt-2 w-full rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm"
+            >
+              {Object.entries(researchDatasetLabels).map(
+                ([value, label]) => (
+                  <option key={value} value={value}>
+                    {label}
+                  </option>
+                )
+              )}
+            </select>
+          </label>
+        </div>
+
+        <div className="mt-4 grid gap-3 lg:grid-cols-[1fr_auto_auto] lg:items-center">
           <input
-            placeholder="Search participant ID or variable..."
-            className="rounded-xl border border-slate-200 px-4 py-3 text-sm"
+            value={search}
+            onChange={(event) => setSearch(event.target.value)}
+            placeholder="Search participant ID, variable, item or response..."
+            className="rounded-xl border border-slate-200 px-4 py-3 text-sm outline-none focus:border-cyan-700"
           />
 
-          <select
-            value={view}
-            onChange={(event) => setView(event.target.value)}
-            className="rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm"
-          >
-            <option>Ambulatory observations</option>
-            <option>Baseline questionnaires</option>
-            <option>Participant summaries</option>
-          </select>
+          <label className="flex items-center gap-2 rounded-xl border border-slate-200 px-4 py-3 text-xs">
+            <input
+              type="checkbox"
+              checked={includeTestData}
+              onChange={(event) =>
+                setIncludeTestData(event.target.checked)
+              }
+            />
+            Include TEST data
+          </label>
+
+          <label className="flex items-center gap-2 rounded-xl border border-slate-200 px-4 py-3 text-xs">
+            <input
+              type="checkbox"
+              checked={showDirectIdentifiers}
+              onChange={(event) =>
+                setShowDirectIdentifiers(event.target.checked)
+              }
+            />
+            Show direct identifiers
+          </label>
         </div>
 
-        <div className="mt-6 overflow-x-auto">
-          <table className="w-full min-w-[800px] text-left text-sm">
-            <thead className="border-b border-slate-100 text-xs text-slate-400">
-              <tr>
-                <th className="pb-3">Participant</th>
-                <th className="pb-3">Day</th>
-                <th className="pb-3">Prompt</th>
-                <th className="pb-3">Stress</th>
-                <th className="pb-3">Mood</th>
-                <th className="pb-3">Activity</th>
-                <th className="pb-3">Sleep h</th>
-              </tr>
-            </thead>
+        {selectedStudy && (
+          <div className="mt-4 flex flex-wrap gap-2">
+            <Status type="accent">
+              {researchDatasetLabels[datasetType]}
+            </Status>
+            <span className="rounded-full bg-slate-100 px-3 py-1 text-xs text-slate-600">
+              {filteredRows.length} row
+              {filteredRows.length === 1 ? "" : "s"}
+            </span>
+          </div>
+        )}
+      </Panel>
 
-            <tbody className="divide-y divide-slate-100">
-              {[
-                ["PL001", "10", "Morning", "4", "7", "Commuting", "7.1"],
-                ["PL001", "10", "Midday", "7", "5", "Studying", "7.1"],
-                ["PL002", "9", "Morning", "6", "5", "Class", "5.8"],
-                ["PL003", "12", "Afternoon", "3", "8", "Socialising", "7.7"],
-              ].map((record, index) => (
-                <tr key={index}>
-                  {record.map((value) => (
-                    <td key={value} className="py-4 text-slate-600">
-                      {value}
-                    </td>
+      {error && (
+        <div className="rounded-2xl border border-red-200 bg-red-50 px-5 py-4">
+          <p className="text-sm leading-6 text-red-700">{error}</p>
+        </div>
+      )}
+
+      <Panel
+        title="Dataset"
+        description={
+          filteredRows.length > 250
+            ? `Showing the first 250 of ${filteredRows.length} matching rows. Use Export Data for the complete dataset.`
+            : "The table below is generated from the selected study's stored data."
+        }
+      >
+        {loading ? (
+          <p className="text-sm text-slate-500">Loading study data...</p>
+        ) : displayedRows.length === 0 ? (
+          <div className="rounded-2xl bg-slate-50 p-5">
+            <p className="font-medium">No rows in this dataset</p>
+            <p className="mt-2 text-sm leading-6 text-slate-500">
+              Try another dataset, include TEST data, or collect participant
+              responses first.
+            </p>
+          </div>
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="w-full min-w-max text-left text-sm">
+              <thead className="border-b border-slate-100 text-xs text-slate-400">
+                <tr>
+                  {columns.map((column) => (
+                    <th
+                      key={column}
+                      className="whitespace-nowrap pb-3 pr-5 font-medium"
+                    >
+                      {column}
+                    </th>
                   ))}
                 </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
+              </thead>
+
+              <tbody className="divide-y divide-slate-100">
+                {displayedRows.map((row, rowIndex) => (
+                  <tr key={rowIndex}>
+                    {columns.map((column) => (
+                      <td
+                        key={column}
+                        className="max-w-[360px] whitespace-nowrap py-4 pr-5 text-slate-600"
+                        title={researchValueText(row[column])}
+                      >
+                        {researchShortValue(row[column], 70)}
+                      </td>
+                    ))}
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
       </Panel>
 
-      <Panel title="Variable dictionary">
-        <div className="grid gap-3 lg:grid-cols-2">
-          {[
-            [
-              "stress_now",
-              "Current stress rating",
-              "Integer · 0–10",
-            ],
-            [
-              "mood_now",
-              "Current positive mood",
-              "Integer · 0–10",
-            ],
-            [
-              "activity_now",
-              "Current activity category",
-              "Categorical",
-            ],
-            [
-              "sleep_duration",
-              "Previous-night sleep duration",
-              "Numeric · hours",
-            ],
-            [
-              "pss_total",
-              "Baseline perceived stress total",
-              "Computed score",
-            ],
-          ].map(([variable, label, type]) => (
-            <div
-              key={variable}
-              className="rounded-xl border border-slate-200 p-4"
-            >
-              <code className="text-sm font-semibold text-cyan-800">
-                {variable}
-              </code>
+      <Panel
+        title="Variable dictionary"
+        description="Variables are generated from the study configuration and the exact questionnaire versions attached to the study."
+      >
+        {codebook.length === 0 ? (
+          <p className="text-sm text-slate-500">
+            No variables are available for this dataset yet.
+          </p>
+        ) : (
+          <div className="grid gap-3 lg:grid-cols-2">
+            {codebook.slice(0, 80).map((variable) => (
+              <div
+                key={`${variable.source}-${variable.variable}`}
+                className="rounded-xl border border-slate-200 p-4"
+              >
+                <code className="break-all text-sm font-semibold text-cyan-800">
+                  {variable.variable}
+                </code>
 
-              <p className="mt-2 text-sm">{label}</p>
-              <p className="mt-1 text-xs text-slate-400">{type}</p>
-            </div>
-          ))}
-        </div>
+                <p className="mt-2 text-sm">{variable.label}</p>
+
+                <p className="mt-1 text-xs text-slate-400">
+                  {variable.type} · {variable.source}
+                </p>
+
+                {variable.notes && (
+                  <p className="mt-2 text-xs leading-5 text-slate-500">
+                    {variable.notes}
+                  </p>
+                )}
+              </div>
+            ))}
+          </div>
+        )}
+
+        {codebook.length > 80 && (
+          <p className="mt-4 text-xs text-slate-400">
+            Showing the first 80 variables. Download the codebook from Export
+            Data for the complete dictionary.
+          </p>
+        )}
       </Panel>
+
+      {selectedStudy?.components?.ambulatory && (
+        <div className="rounded-2xl border border-amber-200 bg-amber-50 p-5">
+          <p className="font-medium text-amber-950">
+            Ambulatory data is not shown yet
+          </p>
+          <p className="mt-2 text-sm leading-6 text-amber-800">
+            Your study may contain an ambulatory component, but participant EMA
+            delivery and response storage are a later stage. PsyLattice does
+            not display fabricated ambulatory observations.
+          </p>
+        </div>
+      )}
     </div>
   );
 }
 
 /* =========================================================
-   EXPORTS
+   EXPORT DATA
    ========================================================= */
 
 function ExportData() {
-  const [format, setFormat] = useState("CSV");
+  const {
+    studies,
+    selectedStudyId,
+    setSelectedStudyId,
+    selectedStudy,
+    bundle,
+    setBundle,
+    loading,
+    error,
+  } = useResearchDataWorkspace();
 
-  const formats = ["CSV", "XLSX", "JSON", "SPSS-ready", "R-ready"];
+  const [datasetType, setDatasetType] =
+    useState<ResearchDatasetType>("analysis_wide");
+  const [format, setFormat] = useState<"csv" | "json">("csv");
+  const [identityMode, setIdentityMode] =
+    useState<ResearchIdentityMode>("pseudonymous");
+  const [includeTestData, setIncludeTestData] = useState(false);
+  const [includeDirectIdentifiers, setIncludeDirectIdentifiers] =
+    useState(false);
+  const [identifierConfirmed, setIdentifierConfirmed] = useState(false);
+  const [exporting, setExporting] = useState(false);
+  const [exportError, setExportError] = useState("");
+  const [exportMessage, setExportMessage] = useState("");
+
+  useEffect(() => {
+    if (!includeDirectIdentifiers) {
+      setIdentifierConfirmed(false);
+    }
+  }, [includeDirectIdentifiers]);
+
+  const previewRows = researchBuildRows(
+    bundle,
+    datasetType,
+    identityMode,
+    includeTestData,
+    includeDirectIdentifiers
+  );
+
+  const codebook = researchBuildCodebook(
+    bundle,
+    datasetType,
+    includeDirectIdentifiers
+  );
+
+  async function logExport(rowCount: number) {
+    if (!selectedStudyId) return null;
+
+    const supabase = createClient();
+
+    const {
+      data: { user },
+      error: userError,
+    } = await supabase.auth.getUser();
+
+    if (userError || !user) return null;
+
+    const { data, error: logError } = await supabase
+      .from("research_export_logs")
+      .insert({
+        study_id: selectedStudyId,
+        owner_user_id: user.id,
+        dataset_type: datasetType,
+        export_format: format,
+        identity_mode: identityMode,
+        include_test_data: includeTestData,
+        include_direct_identifiers: includeDirectIdentifiers,
+        row_count: rowCount,
+        metadata: {
+          study_title: selectedStudy?.title || "",
+          codebook_variables: codebook.length,
+          generated_client_side: true,
+        },
+      })
+      .select(
+        "id, dataset_type, export_format, identity_mode, include_test_data, include_direct_identifiers, row_count, metadata, created_at"
+      )
+      .single();
+
+    if (logError) {
+      console.error("Could not save export log:", logError);
+      return null;
+    }
+
+    return data as ResearchDataExportLog;
+  }
+
+  async function generateExport() {
+    if (!selectedStudy || exporting) return;
+
+    setExporting(true);
+    setExportError("");
+    setExportMessage("");
+
+    if (includeDirectIdentifiers && !identifierConfirmed) {
+      setExportError(
+        "Confirm that you are authorised to export directly identifying participant fields."
+      );
+      setExporting(false);
+      return;
+    }
+
+    const rows = researchBuildRows(
+      bundle,
+      datasetType,
+      identityMode,
+      includeTestData,
+      includeDirectIdentifiers
+    );
+
+    if (rows.length === 0) {
+      setExportError(
+        "There are no rows to export with the current dataset and filters."
+      );
+      setExporting(false);
+      return;
+    }
+
+    const timestamp = new Date()
+      .toISOString()
+      .replaceAll(":", "-")
+      .replaceAll(".", "-");
+
+    const baseName = `${researchFilename(
+      selectedStudy.title
+    )}-${researchSafeVariable(datasetType)}-${timestamp}`;
+
+    if (format === "csv") {
+      researchDownloadText(
+        `${baseName}.csv`,
+        researchRowsToCsv(rows),
+        "text/csv;charset=utf-8"
+      );
+    } else {
+      researchDownloadText(
+        `${baseName}.json`,
+        JSON.stringify(
+          {
+            metadata: {
+              platform: "PsyLattice",
+              study_id: selectedStudy.id,
+              study_title: selectedStudy.title,
+              dataset: datasetType,
+              dataset_label: researchDatasetLabels[datasetType],
+              identity_mode: identityMode,
+              include_test_data: includeTestData,
+              include_direct_identifiers: includeDirectIdentifiers,
+              generated_at: new Date().toISOString(),
+            },
+            codebook,
+            data: rows,
+          },
+          null,
+          2
+        ),
+        "application/json;charset=utf-8"
+      );
+    }
+
+    const savedLog = await logExport(rows.length);
+
+    if (savedLog) {
+      setBundle((previous) => ({
+        ...previous,
+        exportLogs: [
+          savedLog,
+          ...previous.exportLogs.filter(
+            (entry) => entry.id !== savedLog.id
+          ),
+        ].slice(0, 25),
+      }));
+    }
+
+    setExportMessage(
+      `${rows.length} row${rows.length === 1 ? "" : "s"} exported successfully.`
+    );
+    setExporting(false);
+  }
+
+  function downloadCodebook() {
+    if (!selectedStudy) return;
+
+    const rows = codebook.map((variable) => ({
+      variable: variable.variable,
+      label: variable.label,
+      type: variable.type,
+      source: variable.source,
+      notes: variable.notes,
+    }));
+
+    if (rows.length === 0) {
+      setExportError("There is no codebook to download for this dataset yet.");
+      return;
+    }
+
+    researchDownloadText(
+      `${researchFilename(
+        selectedStudy.title
+      )}-${researchSafeVariable(datasetType)}-codebook.csv`,
+      researchRowsToCsv(rows),
+      "text/csv;charset=utf-8"
+    );
+  }
+
+  function repeatExportSettings(log: ResearchDataExportLog) {
+    if (
+      Object.prototype.hasOwnProperty.call(
+        researchDatasetLabels,
+        log.dataset_type
+      )
+    ) {
+      setDatasetType(log.dataset_type as ResearchDatasetType);
+    }
+
+    setFormat(log.export_format);
+    setIdentityMode(log.identity_mode);
+    setIncludeTestData(log.include_test_data);
+    setIncludeDirectIdentifiers(log.include_direct_identifiers);
+    setIdentifierConfirmed(false);
+    setExportMessage("");
+    setExportError("");
+  }
 
   return (
     <div className="space-y-5">
+      {error && (
+        <div className="rounded-2xl border border-red-200 bg-red-50 px-5 py-4">
+          <p className="text-sm leading-6 text-red-700">{error}</p>
+        </div>
+      )}
+
+      {exportError && (
+        <div className="rounded-2xl border border-red-200 bg-red-50 px-5 py-4">
+          <p className="text-sm leading-6 text-red-700">{exportError}</p>
+        </div>
+      )}
+
+      {exportMessage && (
+        <div className="rounded-2xl border border-emerald-200 bg-emerald-50 px-5 py-4">
+          <p className="text-sm leading-6 text-emerald-800">
+            {exportMessage}
+          </p>
+        </div>
+      )}
+
       <div className="grid gap-5 xl:grid-cols-[1.1fr_.9fr]">
         <Panel
           title="Create research export"
-          description="Prepare a structured dataset for analysis."
+          description="Generate a real CSV or JSON file from the selected study data."
         >
           <div className="space-y-5">
             <label className="block">
-              <span className="text-sm font-medium">Dataset</span>
-
-              <select className="mt-2 w-full rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm">
-                <option>Full research dataset</option>
-                <option>Ambulatory observations only</option>
-                <option>Questionnaire responses only</option>
-                <option>Participant-level summaries</option>
+              <span className="text-sm font-medium">Study</span>
+              <select
+                value={selectedStudyId}
+                onChange={(event) =>
+                  setSelectedStudyId(event.target.value)
+                }
+                className="mt-2 w-full rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm"
+              >
+                {studies.map((study) => (
+                  <option key={study.id} value={study.id}>
+                    {study.title}
+                  </option>
+                ))}
               </select>
             </label>
 
             <label className="block">
-              <span className="text-sm font-medium">Participant IDs</span>
-
-              <select className="mt-2 w-full rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm">
-                <option>Pseudonymous study IDs</option>
-                <option>Fully anonymous export</option>
+              <span className="text-sm font-medium">Dataset</span>
+              <select
+                value={datasetType}
+                onChange={(event) =>
+                  setDatasetType(
+                    event.target.value as ResearchDatasetType
+                  )
+                }
+                className="mt-2 w-full rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm"
+              >
+                {Object.entries(researchDatasetLabels).map(
+                  ([value, label]) => (
+                    <option key={value} value={value}>
+                      {label}
+                    </option>
+                  )
+                )}
               </select>
             </label>
+
+            <label className="block">
+              <span className="text-sm font-medium">
+                Participant identity
+              </span>
+              <select
+                value={identityMode}
+                onChange={(event) =>
+                  setIdentityMode(
+                    event.target.value as ResearchIdentityMode
+                  )
+                }
+                className="mt-2 w-full rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm"
+              >
+                <option value="pseudonymous">
+                  PsyLattice pseudonymous participant IDs
+                </option>
+                <option value="anonymous">
+                  Export-scoped anonymous IDs
+                </option>
+              </select>
+
+              <p className="mt-2 text-xs leading-5 text-slate-400">
+                Anonymous mode replaces PsyLattice participant IDs with
+                temporary ANON-0001 style identifiers while preserving
+                within-file participant grouping.
+              </p>
+            </label>
+
+            <div className="grid gap-3">
+              <label className="flex items-start gap-3 rounded-xl border border-slate-200 p-4">
+                <input
+                  type="checkbox"
+                  checked={includeTestData}
+                  onChange={(event) =>
+                    setIncludeTestData(event.target.checked)
+                  }
+                  className="mt-1"
+                />
+                <div>
+                  <p className="text-sm font-medium">Include TEST data</p>
+                  <p className="mt-1 text-xs leading-5 text-slate-500">
+                    Off by default so test participation is excluded from
+                    analysis exports.
+                  </p>
+                </div>
+              </label>
+
+              <label className="flex items-start gap-3 rounded-xl border border-amber-200 bg-amber-50 p-4">
+                <input
+                  type="checkbox"
+                  checked={includeDirectIdentifiers}
+                  onChange={(event) =>
+                    setIncludeDirectIdentifiers(event.target.checked)
+                  }
+                  className="mt-1"
+                />
+                <div>
+                  <p className="text-sm font-medium text-amber-950">
+                    Include demographic fields marked as direct identifiers
+                  </p>
+                  <p className="mt-1 text-xs leading-5 text-amber-800">
+                    Off by default. Free-text questionnaire answers may still
+                    contain participant-entered identifying information and
+                    cannot be automatically de-identified reliably.
+                  </p>
+                </div>
+              </label>
+
+              {includeDirectIdentifiers && (
+                <label className="flex items-start gap-3 rounded-xl border border-red-200 bg-red-50 p-4">
+                  <input
+                    type="checkbox"
+                    checked={identifierConfirmed}
+                    onChange={(event) =>
+                      setIdentifierConfirmed(event.target.checked)
+                    }
+                    className="mt-1"
+                  />
+                  <span className="text-sm leading-6 text-red-800">
+                    I confirm that I am authorised under the study protocol and
+                    data-management plan to export directly identifying fields.
+                  </span>
+                </label>
+              )}
+            </div>
 
             <div>
               <p className="text-sm font-medium">File format</p>
 
               <div className="mt-3 flex flex-wrap gap-2">
-                {formats.map((item) => (
+                {[
+                  ["csv", "CSV"],
+                  ["json", "JSON + codebook"],
+                ].map(([value, label]) => (
                   <button
-                    key={item}
+                    key={value}
                     type="button"
-                    onClick={() => setFormat(item)}
+                    onClick={() =>
+                      setFormat(value as "csv" | "json")
+                    }
                     className={`rounded-full border px-3 py-2 text-xs font-medium ${
-                      format === item
+                      format === value
                         ? "border-cyan-700 bg-cyan-50 text-cyan-800"
                         : "border-slate-200 text-slate-500"
                     }`}
                   >
-                    {item}
+                    {label}
                   </button>
                 ))}
               </div>
             </div>
 
-            <button className="w-full rounded-xl bg-slate-950 px-5 py-3 text-sm font-semibold text-white">
-              Generate {format} export
-            </button>
+            <div className="rounded-2xl bg-slate-50 p-4">
+              <p className="text-xs text-slate-400">Current export</p>
+              <p className="mt-1 font-medium">
+                {researchDatasetLabels[datasetType]}
+              </p>
+              <p className="mt-1 text-xs text-slate-500">
+                {loading
+                  ? "Calculating rows..."
+                  : `${previewRows.length} row${
+                      previewRows.length === 1 ? "" : "s"
+                    } · ${codebook.length} codebook variable${
+                      codebook.length === 1 ? "" : "s"
+                    }`}
+              </p>
+            </div>
+
+            <div className="flex flex-col gap-2 sm:flex-row">
+              <button
+                type="button"
+                onClick={() => void generateExport()}
+                disabled={exporting || loading || !selectedStudy}
+                className="flex-1 rounded-xl bg-slate-950 px-5 py-3 text-sm font-semibold text-white disabled:opacity-40"
+              >
+                {exporting
+                  ? "Generating..."
+                  : `Download ${format.toUpperCase()}`}
+              </button>
+
+              <button
+                type="button"
+                onClick={downloadCodebook}
+                disabled={loading || !selectedStudy}
+                className="rounded-xl border border-slate-200 px-5 py-3 text-sm font-semibold disabled:opacity-40"
+              >
+                Download codebook CSV
+              </button>
+            </div>
           </div>
         </Panel>
 
-        <Panel title="Included automatically">
+        <Panel title="What the exports contain">
           <div className="space-y-5">
             {[
-              ["Data file", "Selected participant observations"],
-              ["Codebook", "Variable names, labels and value coding"],
-              ["Study metadata", "Protocol version and export date"],
-              ["Missing-value guide", "Configured missing-data codes"],
+              [
+                "Analysis-wide dataset",
+                "One row per participant with configured demographics and stored questionnaire scores.",
+              ],
+              [
+                "Long-format questionnaire data",
+                "One row per item response, with questionnaire, phase, item metadata and stored score value.",
+              ],
+              [
+                "Demographic data",
+                "Direct identifier fields are excluded by default.",
+              ],
+              [
+                "Codebook",
+                "Generated from the exact study demographic questions and questionnaire versions selected for the study.",
+              ],
+              [
+                "TEST separation",
+                "TEST participants are excluded unless you explicitly include them.",
+              ],
             ].map(([name, description]) => (
               <div key={name} className="flex gap-3">
                 <span className="mt-1 text-emerald-700">
@@ -6492,40 +9278,83 @@ function ExportData() {
 
                 <div>
                   <p className="text-sm font-medium">{name}</p>
-                  <p className="mt-1 text-xs text-slate-400">{description}</p>
+                  <p className="mt-1 text-xs leading-5 text-slate-400">
+                    {description}
+                  </p>
                 </div>
               </div>
             ))}
           </div>
+
+          <div className="mt-6 rounded-2xl border border-cyan-100 bg-cyan-50/60 p-4">
+            <p className="text-sm font-medium text-cyan-950">
+              Current export architecture
+            </p>
+            <p className="mt-2 text-xs leading-5 text-cyan-900/70">
+              Files are generated in the researcher's browser from data their
+              authenticated account is authorised to read. Large studies will
+              later benefit from server-side queued exports.
+            </p>
+          </div>
         </Panel>
       </div>
 
-      <Panel title="Export history">
-        <div className="divide-y divide-slate-100">
-          {[
-            ["09 Aug · 13:02", "CSV", "2,846 rows · pseudonymous"],
-            ["08 Aug · 18:41", "XLSX", "Participant-level summary"],
-            ["05 Aug · 09:20", "R-ready", "Baseline dataset"],
-          ].map(([date, formatName, description]) => (
-            <div
-              key={date}
-              className="flex items-center justify-between gap-5 py-4 first:pt-0 last:pb-0"
-            >
-              <div>
-                <p className="text-sm font-medium">
-                  {formatName} export
-                </p>
-                <p className="mt-1 text-xs text-slate-400">
-                  {date} · {description}
-                </p>
-              </div>
+      <Panel
+        title="Export history"
+        description="A metadata log of exports generated from this study. PsyLattice does not retain a copy of the downloaded file in this stage."
+      >
+        {loading ? (
+          <p className="text-sm text-slate-500">Loading export history...</p>
+        ) : bundle.exportLogs.length === 0 ? (
+          <div className="rounded-2xl bg-slate-50 p-5">
+            <p className="font-medium">No exports yet</p>
+            <p className="mt-2 text-sm leading-6 text-slate-500">
+              Generate your first CSV or JSON export and its settings will be
+              recorded here.
+            </p>
+          </div>
+        ) : (
+          <div className="divide-y divide-slate-100">
+            {bundle.exportLogs.map((log) => (
+              <div
+                key={log.id}
+                className="flex flex-col justify-between gap-4 py-4 first:pt-0 last:pb-0 sm:flex-row sm:items-center"
+              >
+                <div>
+                  <div className="flex flex-wrap items-center gap-2">
+                    <p className="text-sm font-medium">
+                      {researchDatasetLabels[
+                        log.dataset_type as ResearchDatasetType
+                      ] || log.dataset_type}
+                    </p>
+                    <Status type="accent">
+                      {log.export_format.toUpperCase()}
+                    </Status>
+                  </div>
 
-              <button className="text-xs font-semibold text-cyan-800">
-                Download
-              </button>
-            </div>
-          ))}
-        </div>
+                  <p className="mt-1 text-xs leading-5 text-slate-400">
+                    {new Date(log.created_at).toLocaleString()} ·{" "}
+                    {log.row_count} row
+                    {log.row_count === 1 ? "" : "s"} ·{" "}
+                    {log.identity_mode}
+                    {log.include_test_data ? " · TEST included" : ""}
+                    {log.include_direct_identifiers
+                      ? " · identifiers included"
+                      : ""}
+                  </p>
+                </div>
+
+                <button
+                  type="button"
+                  onClick={() => repeatExportSettings(log)}
+                  className="rounded-xl border border-slate-200 px-4 py-2.5 text-xs font-semibold"
+                >
+                  Repeat settings
+                </button>
+              </div>
+            ))}
+          </div>
+        )}
       </Panel>
     </div>
   );
@@ -6811,10 +9640,10 @@ export default function ResearcherWorkspace() {
         </div>
       </header>
 
-      <div className="grid min-h-[calc(100vh-80px)] lg:grid-cols-[245px_minmax(0,1fr)]">
+      <div className="min-h-[calc(100vh-80px)]">
         {/* Sidebar */}
 
-        <aside className="hidden border-r border-slate-200 bg-white p-4 lg:block">
+        <aside className="fixed bottom-0 left-0 top-20 z-40 hidden w-[245px] overflow-y-auto border-r border-slate-200 bg-white p-4 lg:block">
           {groups.map((group) => (
             <div key={group} className="mb-6">
               <p className="px-3 pb-2 text-[10px] font-semibold uppercase tracking-[0.17em] text-slate-400">
@@ -6854,32 +9683,32 @@ export default function ResearcherWorkspace() {
 
           <div className="mt-8 rounded-2xl bg-slate-950 p-4 text-white">
             <p className="text-xs font-medium text-cyan-200">
-              Research prototype
+              Research workspace
             </p>
 
             <p className="mt-2 text-xs leading-5 text-slate-400">
-              All participant records and study data displayed here are
-              fictional.
+              Saved studies, participant records and recruitment links shown
+              here are loaded from your PsyLattice research database.
             </p>
           </div>
         </aside>
 
         {/* Main content */}
 
-        <section className="min-w-0 p-5 sm:p-6 lg:p-8">
+        <section className="min-w-0 p-5 sm:p-6 lg:ml-[245px] lg:p-8">
           <div className="mx-auto max-w-[1450px]">
             <div className="mb-7">
               <div className="mb-2 flex flex-wrap items-center gap-2">
                 <Status type="accent">Researcher workspace</Status>
 
                 <span className="text-xs text-slate-400">
-                  Frontend prototype
+                  Live workspace data
                 </span>
               </div>
 
               <h1 className="text-2xl font-semibold tracking-[-0.025em] sm:text-3xl">
                 {screen === "dashboard"
-                  ? "Good afternoon, Priyangshu."
+                  ? "Research overview"
                   : currentNavigation.label}
               </h1>
 

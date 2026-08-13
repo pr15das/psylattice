@@ -6,7 +6,10 @@ import { useEffect, useState } from "react";
 import PsyLatticeLogo from "@/components/PsyLatticeLogo";
 import { createClient } from "@/lib/supabase/client";
 
-type WorkspaceId = "self" | "researcher" | "clinician";
+type WorkspaceId =
+  | "self"
+  | "researcher"
+  | "clinician";
 
 const workspaces: Array<{
   id: WorkspaceId;
@@ -32,16 +35,16 @@ const workspaces: Array<{
     description:
       "Build studies, questionnaires, participant workflows, datasets and exports.",
     href: "/researcher",
-    note: "Research tools are linked to your same PsyLattice login.",
+    note: "Research tools use this same PsyLattice account.",
   },
   {
     id: "clinician",
     eyebrow: "Professional",
     title: "Clinician workspace",
     description:
-      "Use professional assessment and client-management workflows as they become available.",
+      "Use PsyLattice's professional assessment and client-management workflows.",
     href: "/clinician",
-    note: "Access does not constitute verification of professional credentials or licensure.",
+    note: "Workspace access does not represent verification of professional credentials or licensure.",
   },
 ];
 
@@ -50,7 +53,12 @@ export default function WorkspacePage() {
 
   const [fullName, setFullName] = useState("");
   const [loading, setLoading] = useState(true);
-  const [signingOut, setSigningOut] = useState(false);
+  const [openingWorkspace, setOpeningWorkspace] =
+    useState<WorkspaceId | null>(null);
+  const [signingOut, setSigningOut] =
+    useState(false);
+  const [pageError, setPageError] =
+    useState("");
 
   useEffect(() => {
     async function loadAccount() {
@@ -66,19 +74,26 @@ export default function WorkspacePage() {
         return;
       }
 
-      const { data: profile, error: profileError } = await supabase
-        .from("profiles")
-        .select("full_name, workspace_access")
-        .eq("id", user.id)
-        .maybeSingle();
+      const { data: profile, error: profileError } =
+        await supabase
+          .from("profiles")
+          .select(
+            "full_name, workspace_access"
+          )
+          .eq("id", user.id)
+          .maybeSingle();
 
       if (profileError) {
-        console.error("Could not load workspace profile:", profileError);
+        console.error(
+          "Could not load workspace profile:",
+          profileError
+        );
       }
 
       const name =
         profile?.full_name?.trim() ||
-        (typeof user.user_metadata?.full_name === "string"
+        (typeof user.user_metadata?.full_name ===
+        "string"
           ? user.user_metadata.full_name.trim()
           : "") ||
         user.email?.split("@")[0] ||
@@ -86,24 +101,43 @@ export default function WorkspacePage() {
 
       setFullName(name);
 
-      if (
-        !Array.isArray(profile?.workspace_access) ||
-        !["self", "researcher", "clinician"].every((workspace) =>
-          profile?.workspace_access?.includes(workspace)
-        )
-      ) {
-        const { error: repairError } = await supabase
-          .from("profiles")
-          .update({
-            workspace_access: ["self", "researcher", "clinician"],
-            updated_at: new Date().toISOString(),
-          })
-          .eq("id", user.id);
+      const access = Array.isArray(
+        profile?.workspace_access
+      )
+        ? profile.workspace_access
+        : [];
+
+      const hasAllWorkspaces = [
+        "self",
+        "researcher",
+        "clinician",
+      ].every((workspace) =>
+        access.includes(workspace)
+      );
+
+      if (!hasAllWorkspaces) {
+        const { error: repairError } =
+          await supabase
+            .from("profiles")
+            .update({
+              workspace_access: [
+                "self",
+                "researcher",
+                "clinician",
+              ],
+              updated_at:
+                new Date().toISOString(),
+            })
+            .eq("id", user.id);
 
         if (repairError) {
           console.error(
             "Could not repair workspace access:",
             repairError
+          );
+
+          setPageError(
+            "PsyLattice could not refresh your workspace profile. You can still try opening a workspace."
           );
         }
       }
@@ -114,19 +148,20 @@ export default function WorkspacePage() {
     void loadAccount();
   }, [router]);
 
-  async function rememberWorkspace(workspace: WorkspaceId) {
-    const supabase = createClient();
+  function openWorkspace(
+    workspace: WorkspaceId,
+    href: string
+  ) {
+    if (openingWorkspace) return;
 
-    const { error } = await supabase.rpc(
-      "psylattice_set_last_workspace",
-      {
-        p_workspace: workspace,
-      }
-    );
+    setOpeningWorkspace(workspace);
 
-    if (error) {
-      console.error("Could not remember workspace:", error);
-    }
+    // IMPORTANT:
+    // We intentionally do NOT read or write profiles.role here.
+    // We also avoid Next <Link> prefetching for the workspace
+    // destinations so an old/cached redirect cannot decide
+    // which workspace opens.
+    router.push(href);
   }
 
   async function handleSignOut() {
@@ -136,10 +171,14 @@ export default function WorkspacePage() {
 
     const supabase = createClient();
 
-    const { error } = await supabase.auth.signOut();
+    const { error } =
+      await supabase.auth.signOut();
 
     if (error) {
-      console.error("Sign out failed:", error);
+      console.error(
+        "Sign out failed:",
+        error
+      );
       setSigningOut(false);
       return;
     }
@@ -149,7 +188,8 @@ export default function WorkspacePage() {
   }
 
   const firstName =
-    fullName.trim().split(/\s+/)[0] || "there";
+    fullName.trim().split(/\s+/)[0] ||
+    "there";
 
   return (
     <main className="min-h-screen bg-slate-50 text-slate-950">
@@ -167,11 +207,15 @@ export default function WorkspacePage() {
 
             <button
               type="button"
-              onClick={() => void handleSignOut()}
+              onClick={() =>
+                void handleSignOut()
+              }
               disabled={signingOut}
               className="rounded-xl border border-slate-200 px-4 py-2.5 text-sm font-semibold disabled:opacity-50"
             >
-              {signingOut ? "Signing out..." : "Sign out"}
+              {signingOut
+                ? "Signing out..."
+                : "Sign out"}
             </button>
           </div>
         </div>
@@ -190,62 +234,90 @@ export default function WorkspacePage() {
           </h1>
 
           <p className="mt-3 max-w-2xl text-base leading-7 text-slate-500">
-            Choose how you want to use PsyLattice right now. Your Self,
-            Researcher and Clinician workspaces all belong to this same
-            account and login.
+            Choose how you want to use
+            PsyLattice right now. Self,
+            Researcher and Clinician all use
+            this same account.
           </p>
         </div>
 
+        {pageError && (
+          <div className="mt-6 rounded-2xl border border-amber-200 bg-amber-50 px-5 py-4">
+            <p className="text-sm leading-6 text-amber-800">
+              {pageError}
+            </p>
+          </div>
+        )}
+
         <div className="mt-9 grid gap-5 lg:grid-cols-3">
-          {workspaces.map((workspace) => (
-            <Link
-              key={workspace.id}
-              href={workspace.href}
-              onClick={() => void rememberWorkspace(workspace.id)}
-              className="group flex min-h-[315px] flex-col rounded-3xl border border-slate-200 bg-white p-6 transition hover:-translate-y-0.5 hover:border-cyan-200 hover:shadow-[0_20px_55px_rgba(15,23,42,0.07)]"
-            >
-              <span className="text-xs font-semibold uppercase tracking-[0.14em] text-cyan-800">
-                {workspace.eyebrow}
-              </span>
+          {workspaces.map((workspace) => {
+            const isOpening =
+              openingWorkspace === workspace.id;
 
-              <h2 className="mt-4 text-xl font-semibold tracking-tight">
-                {workspace.title}
-              </h2>
+            return (
+              <article
+                key={workspace.id}
+                className="flex min-h-[315px] flex-col rounded-3xl border border-slate-200 bg-white p-6"
+              >
+                <span className="text-xs font-semibold uppercase tracking-[0.14em] text-cyan-800">
+                  {workspace.eyebrow}
+                </span>
 
-              <p className="mt-3 text-sm leading-6 text-slate-500">
-                {workspace.description}
-              </p>
+                <h2 className="mt-4 text-xl font-semibold tracking-tight">
+                  {workspace.title}
+                </h2>
 
-              <div className="mt-auto pt-8">
-                <p className="text-xs leading-5 text-slate-400">
-                  {workspace.note}
+                <p className="mt-3 text-sm leading-6 text-slate-500">
+                  {workspace.description}
                 </p>
 
-                <div className="mt-4 flex items-center justify-between rounded-xl bg-slate-950 px-4 py-3 text-sm font-semibold text-white">
-                  <span>Open workspace</span>
-                  <span
-                    aria-hidden="true"
-                    className="transition group-hover:translate-x-1"
+                <div className="mt-auto pt-8">
+                  <p className="text-xs leading-5 text-slate-400">
+                    {workspace.note}
+                  </p>
+
+                  <button
+                    type="button"
+                    onClick={() =>
+                      openWorkspace(
+                        workspace.id,
+                        workspace.href
+                      )
+                    }
+                    disabled={
+                      loading ||
+                      openingWorkspace !== null
+                    }
+                    className="mt-4 flex w-full items-center justify-between rounded-xl bg-slate-950 px-4 py-3 text-sm font-semibold text-white transition hover:bg-slate-800 disabled:opacity-50"
                   >
-                    →
-                  </span>
+                    <span>
+                      {isOpening
+                        ? "Opening..."
+                        : "Open workspace"}
+                    </span>
+                    <span aria-hidden="true">
+                      →
+                    </span>
+                  </button>
                 </div>
-              </div>
-            </Link>
-          ))}
+              </article>
+            );
+          })}
         </div>
 
         <div className="mt-6 rounded-2xl border border-slate-200 bg-white p-5">
           <p className="text-sm font-medium">
-            Your workspaces use the same account, but their data stays
-            organised by purpose.
+            Workspace choice is navigation,
+            not an account role.
           </p>
 
           <p className="mt-2 text-sm leading-6 text-slate-500">
-            Personal Self data, researcher-owned studies and professional
-            Clinician workflows should remain separated in their respective
-            database structures and permissions even though you access them
-            through one login.
+            Selecting Self, Researcher or
+            Clinician only decides which
+            interface opens. It does not
+            change your account and it does
+            not remove access to the other
+            two workspaces.
           </p>
         </div>
       </section>

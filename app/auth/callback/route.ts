@@ -1,25 +1,78 @@
-import { NextResponse } from "next/server";
-import { createClient } from "@/lib/supabase/server";
+import { createServerClient } from "@supabase/ssr";
+import { NextRequest, NextResponse } from "next/server";
 
-export async function GET(request: Request) {
-  const { searchParams, origin } = new URL(request.url);
+export const dynamic = "force-dynamic";
 
-  const code = searchParams.get("code");
+/**
+ * Supabase PKCE callback.
+ *
+ * After a successful auth-code exchange every user goes to /workspace.
+ * There is deliberately NO profile.role lookup here.
+ */
+export async function GET(request: NextRequest) {
+  const requestUrl = new URL(request.url);
+  const code = requestUrl.searchParams.get("code");
 
-  if (code) {
-    const supabase = await createClient();
+  if (!code) {
+    const missingCodeUrl = new URL("/signin", request.url);
+    missingCodeUrl.searchParams.set(
+      "error",
+      "missing_auth_code"
+    );
 
-    const { error } =
-      await supabase.auth.exchangeCodeForSession(code);
-
-    if (!error) {
-      return NextResponse.redirect(
-        `${origin}/signin?confirmed=true`
-      );
-    }
+    return NextResponse.redirect(missingCodeUrl);
   }
 
-  return NextResponse.redirect(
-    `${origin}/signin?confirmation_error=true`
+  const successResponse = NextResponse.redirect(
+    new URL("/workspace", request.url)
   );
+
+  successResponse.headers.set(
+    "Cache-Control",
+    "private, no-store, max-age=0"
+  );
+
+  const supabase = createServerClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY!,
+    {
+      cookies: {
+        getAll() {
+          return request.cookies.getAll();
+        },
+
+        setAll(cookiesToSet) {
+          cookiesToSet.forEach(
+            ({ name, value, options }) => {
+              successResponse.cookies.set(
+                name,
+                value,
+                options
+              );
+            }
+          );
+        },
+      },
+    }
+  );
+
+  const { error } =
+    await supabase.auth.exchangeCodeForSession(code);
+
+  if (error) {
+    console.error(
+      "PsyLattice auth callback failed:",
+      error.message
+    );
+
+    const failureUrl = new URL("/signin", request.url);
+    failureUrl.searchParams.set(
+      "error",
+      "auth_callback_failed"
+    );
+
+    return NextResponse.redirect(failureUrl);
+  }
+
+  return successResponse;
 }

@@ -6,63 +6,33 @@ import { useEffect, useState } from "react";
 import PsyLatticeLogo from "@/components/PsyLatticeLogo";
 import { createClient } from "@/lib/supabase/client";
 
-type WorkspaceRole = "self" | "researcher" | "clinician";
 type AuthMode = "signin" | "signup";
 
-const workspaces: Array<{
-  role: WorkspaceRole;
-  title: string;
-  shortTitle: string;
-  description: string;
-  badge: string;
-}> = [
+const workspaces = [
   {
-    role: "self",
-    title: "For Myself",
-    shortTitle: "Self",
+    title: "Self",
+    label: "For Myself",
     description:
       "Personal assessment, monitoring, reflection and self-regulation tools.",
-    badge: "Self",
   },
   {
-    role: "researcher",
-    title: "Researcher",
-    shortTitle: "Researcher",
+    title: "Research",
+    label: "Researcher",
     description:
       "Build studies, questionnaires, participant workflows and research datasets.",
-    badge: "Research",
   },
   {
-    role: "clinician",
-    title: "Clinician",
-    shortTitle: "Clinician",
+    title: "Professional",
+    label: "Clinician",
     description:
       "Use PsyLattice's professional workspace. Professional credentials are not verified by PsyLattice.",
-    badge: "Professional",
   },
 ];
-
-function workspacePath(role: WorkspaceRole) {
-  if (role === "researcher") return "/researcher";
-  if (role === "clinician") return "/clinician";
-  return "/self";
-}
-
-function normalizeRole(value: unknown): WorkspaceRole {
-  const role = String(value || "").toLowerCase();
-
-  if (role === "researcher") return "researcher";
-  if (role === "clinician") return "clinician";
-  return "self";
-}
 
 export default function SignInPage() {
   const router = useRouter();
 
   const [mode, setMode] = useState<AuthMode>("signin");
-  const [selectedRole, setSelectedRole] =
-    useState<WorkspaceRole>("self");
-
   const [fullName, setFullName] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -79,19 +49,9 @@ export default function SignInPage() {
         data: { user },
       } = await supabase.auth.getUser();
 
-      if (!user) return;
-
-      const { data: profile } = await supabase
-        .from("profiles")
-        .select("role")
-        .eq("id", user.id)
-        .maybeSingle();
-
-      const role = normalizeRole(
-        profile?.role || user.user_metadata?.role
-      );
-
-      router.replace(workspacePath(role));
+      if (user) {
+        router.replace("/workspace");
+      }
     }
 
     void redirectExistingSession();
@@ -105,54 +65,57 @@ export default function SignInPage() {
 
   async function ensureProfile(
     userId: string,
-    userMetadata: Record<string, unknown> | undefined,
-    fallbackRole?: WorkspaceRole
+    name: string | null
   ) {
     const supabase = createClient();
 
-    const { data: profile, error: profileError } = await supabase
+    const { data: existingProfile, error: profileError } = await supabase
       .from("profiles")
-      .select("full_name, role")
+      .select("id")
       .eq("id", userId)
       .maybeSingle();
 
     if (profileError) {
-      console.error("Could not load profile:", profileError);
+      console.error("Could not check profile:", profileError);
     }
 
-    if (profile?.role) {
-      return normalizeRole(profile.role);
+    const profileData = {
+      id: userId,
+      full_name: name || null,
+      role: "self",
+      workspace_access: ["self", "researcher", "clinician"],
+      updated_at: new Date().toISOString(),
+    };
+
+    if (!existingProfile) {
+      const { error } = await supabase
+        .from("profiles")
+        .upsert(profileData, { onConflict: "id" });
+
+      if (error) {
+        console.error("Could not create profile:", error);
+      }
+
+      return;
     }
 
-    const metadataRole = normalizeRole(
-      userMetadata?.role || fallbackRole || "self"
-    );
-
-    const metadataName =
-      typeof userMetadata?.full_name === "string"
-        ? userMetadata.full_name.trim()
-        : "";
-
-    const { error: upsertError } = await supabase
+    const { error } = await supabase
       .from("profiles")
-      .upsert(
-        {
-          id: userId,
-          full_name: metadataName || null,
-          role: metadataRole,
-          updated_at: new Date().toISOString(),
-        },
-        { onConflict: "id" }
-      );
+      .update({
+        workspace_access: ["self", "researcher", "clinician"],
+        ...(name ? { full_name: name } : {}),
+        updated_at: new Date().toISOString(),
+      })
+      .eq("id", userId);
 
-    if (upsertError) {
-      console.error("Could not repair profile:", upsertError);
+    if (error) {
+      console.error("Could not update workspace access:", error);
     }
-
-    return metadataRole;
   }
 
-  async function handleSignIn(event: React.FormEvent<HTMLFormElement>) {
+  async function handleSignIn(
+    event: React.FormEvent<HTMLFormElement>
+  ) {
     event.preventDefault();
 
     if (submitting) return;
@@ -182,16 +145,20 @@ export default function SignInPage() {
       return;
     }
 
-    const role = await ensureProfile(
-      data.user.id,
-      data.user.user_metadata
-    );
+    const metadataName =
+      typeof data.user.user_metadata?.full_name === "string"
+        ? data.user.user_metadata.full_name.trim()
+        : null;
 
-    router.replace(workspacePath(role));
+    await ensureProfile(data.user.id, metadataName);
+
+    router.replace("/workspace");
     router.refresh();
   }
 
-  async function handleSignUp(event: React.FormEvent<HTMLFormElement>) {
+  async function handleSignUp(
+    event: React.FormEvent<HTMLFormElement>
+  ) {
     event.preventDefault();
 
     if (submitting) return;
@@ -227,7 +194,7 @@ export default function SignInPage() {
       options: {
         data: {
           full_name: normalizedName,
-          role: selectedRole,
+          workspace_access: ["self", "researcher", "clinician"],
         },
       },
     });
@@ -238,40 +205,22 @@ export default function SignInPage() {
       return;
     }
 
-    // If normal email confirmation is OFF, Supabase returns a session and the
-    // user can enter the selected workspace immediately.
     if (data.session) {
-      await ensureProfile(
-        data.user.id,
-        {
-          ...data.user.user_metadata,
-          full_name: normalizedName,
-          role: selectedRole,
-        },
-        selectedRole
-      );
+      await ensureProfile(data.user.id, normalizedName);
 
-      router.replace(workspacePath(selectedRole));
+      router.replace("/workspace");
       router.refresh();
       return;
     }
 
-    // If normal email confirmation is ON, there is no session yet. This is
-    // ordinary account email verification — NOT researcher/clinician approval.
     setAuthMessage(
-      `Your ${workspaces
-        .find((workspace) => workspace.role === selectedRole)
-        ?.shortTitle.toLowerCase()} account was created. Confirm your email address, then sign in. There is no professional credential or admin approval step.`
+      "Your PsyLattice account was created with access to Self, Researcher and Clinician workspaces. Confirm your email address, then sign in."
     );
 
     setMode("signin");
     setPassword("");
     setSubmitting(false);
   }
-
-  const selectedWorkspace =
-    workspaces.find((workspace) => workspace.role === selectedRole) ||
-    workspaces[0];
 
   return (
     <main className="min-h-screen bg-slate-50 text-slate-950">
@@ -292,7 +241,7 @@ export default function SignInPage() {
         <section className="flex items-center px-5 py-12 sm:px-8 lg:h-full lg:overflow-hidden lg:px-10 lg:py-16">
           <div className="max-w-2xl">
             <span className="inline-flex rounded-full border border-cyan-100 bg-cyan-50 px-3 py-1.5 text-xs font-semibold text-cyan-900">
-              Secure workspace entry
+              One account · Three workspaces
             </span>
 
             <h1 className="mt-6 max-w-xl text-4xl font-semibold tracking-[-0.035em] sm:text-5xl">
@@ -300,22 +249,24 @@ export default function SignInPage() {
             </h1>
 
             <p className="mt-5 max-w-xl text-base leading-8 text-slate-500 sm:text-lg">
-              Access a personal, research, or professional psychological
-              workspace with one straightforward account flow.
+              Create one PsyLattice account and use the Self, Researcher and
+              Clinician workspaces whenever you need them.
             </p>
 
             <div className="mt-10 grid gap-3 sm:grid-cols-3 lg:max-w-2xl">
               {workspaces.map((workspace) => (
                 <div
-                  key={workspace.role}
+                  key={workspace.title}
                   className="rounded-2xl border border-slate-200 bg-white p-4"
                 >
                   <span className="text-xs font-semibold uppercase tracking-[0.12em] text-cyan-800">
-                    {workspace.badge}
-                  </span>
-                  <p className="mt-2 text-sm font-semibold">
                     {workspace.title}
+                  </span>
+
+                  <p className="mt-2 text-sm font-semibold">
+                    {workspace.label}
                   </p>
+
                   <p className="mt-2 text-xs leading-5 text-slate-500">
                     {workspace.description}
                   </p>
@@ -325,21 +276,21 @@ export default function SignInPage() {
 
             <div className="mt-8 rounded-2xl border border-slate-200 bg-white p-5">
               <p className="text-sm font-medium">
-                Open account creation
+                All three are included automatically
               </p>
               <p className="mt-2 text-sm leading-6 text-slate-500">
-                Researcher and Clinician workspaces do not require
-                professional credential verification or administrator
-                approval. Choosing the Clinician workspace does not represent
-                verification of professional qualification or licensure by
-                PsyLattice.
+                You do not create separate Self, Researcher or Clinician
+                accounts. The same login opens a workspace selector where you
+                can enter any of the three. PsyLattice does not verify
+                professional qualifications merely because someone uses the
+                Clinician workspace.
               </p>
             </div>
           </div>
         </section>
 
         <section className="flex items-center border-t border-slate-200 bg-white px-5 py-10 sm:px-8 lg:h-full lg:items-start lg:overflow-y-auto lg:border-l lg:border-t-0 lg:px-10">
-          <div className="mx-auto w-full max-w-md">
+          <div className="mx-auto w-full max-w-md lg:py-8">
             <div className="rounded-3xl border border-slate-200 bg-white p-6 shadow-[0_18px_70px_rgba(15,23,42,0.06)] sm:p-7">
               <div className="grid grid-cols-2 rounded-xl bg-slate-100 p-1">
                 <button
@@ -376,63 +327,26 @@ export default function SignInPage() {
 
                 <p className="mt-2 text-sm leading-6 text-slate-500">
                   {mode === "signin"
-                    ? "PsyLattice will open the workspace attached to your account."
-                    : "Choose whichever workspace you want to create. There is no researcher or clinician approval queue."}
+                    ? "One login gives you access to all three PsyLattice workspaces."
+                    : "Your account automatically includes Self, Researcher and Clinician access."}
                 </p>
               </div>
 
               {mode === "signup" && (
-                <div className="mt-6">
-                  <p className="text-sm font-medium">Choose workspace</p>
-
-                  <div className="mt-3 grid gap-2">
-                    {workspaces.map((workspace) => {
-                      const selected = selectedRole === workspace.role;
-
-                      return (
-                        <button
-                          key={workspace.role}
-                          type="button"
-                          onClick={() => setSelectedRole(workspace.role)}
-                          className={`rounded-2xl border p-4 text-left transition ${
-                            selected
-                              ? "border-cyan-700 bg-cyan-50"
-                              : "border-slate-200 bg-white hover:border-slate-300"
-                          }`}
-                        >
-                          <div className="flex items-center justify-between gap-4">
-                            <div>
-                              <p className="text-sm font-semibold">
-                                {workspace.title}
-                              </p>
-                              <p className="mt-1 text-xs leading-5 text-slate-500">
-                                {workspace.description}
-                              </p>
-                            </div>
-
-                            <span
-                              className={`flex h-5 w-5 shrink-0 items-center justify-center rounded-full border ${
-                                selected
-                                  ? "border-cyan-700 bg-cyan-700 text-white"
-                                  : "border-slate-300"
-                              }`}
-                            >
-                              {selected ? "✓" : ""}
-                            </span>
-                          </div>
-                        </button>
-                      );
-                    })}
-                  </div>
-
-                  <div className="mt-3 rounded-xl bg-slate-50 px-4 py-3">
-                    <p className="text-xs text-slate-500">
-                      Creating:{" "}
-                      <span className="font-semibold text-slate-800">
-                        {selectedWorkspace.shortTitle} account
+                <div className="mt-6 grid gap-2 sm:grid-cols-3">
+                  {["Self", "Researcher", "Clinician"].map((workspace) => (
+                    <div
+                      key={workspace}
+                      className="flex items-center gap-2 rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-2.5"
+                    >
+                      <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-emerald-700 text-[11px] text-white">
+                        ✓
                       </span>
-                    </p>
-                  </div>
+                      <span className="text-xs font-semibold text-emerald-900">
+                        {workspace}
+                      </span>
+                    </div>
+                  ))}
                 </div>
               )}
 
@@ -449,7 +363,9 @@ export default function SignInPage() {
                       type="text"
                       autoComplete="name"
                       value={fullName}
-                      onChange={(event) => setFullName(event.target.value)}
+                      onChange={(event) =>
+                        setFullName(event.target.value)
+                      }
                       placeholder="Your name"
                       className="mt-2 w-full rounded-xl border border-slate-200 px-4 py-3 text-sm outline-none transition focus:border-cyan-700 focus:ring-2 focus:ring-cyan-100"
                     />
@@ -478,7 +394,9 @@ export default function SignInPage() {
                         : "new-password"
                     }
                     value={password}
-                    onChange={(event) => setPassword(event.target.value)}
+                    onChange={(event) =>
+                      setPassword(event.target.value)
+                    }
                     placeholder={
                       mode === "signup"
                         ? "At least 8 characters"
@@ -515,7 +433,7 @@ export default function SignInPage() {
                       : "Creating account..."
                     : mode === "signin"
                       ? "Sign in"
-                      : `Create ${selectedWorkspace.shortTitle} account`}
+                      : "Create PsyLattice account"}
                 </button>
               </form>
 

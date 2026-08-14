@@ -87,8 +87,8 @@ const process = [
   },
 ];
 const pricingContent = {
-  asia: {
-    label: "Asia",
+  India: {
+    label: "India",
     sublabel: "Launch pricing for India and Asia",
     cards: [
       {
@@ -105,7 +105,7 @@ const pricingContent = {
           "Assessments and structured self-checks",
           "Monitoring and longitudinal progress",
           "Self-regulation tools",
-          "Luna AI guidance",
+          " AI guidance",
           "Can also be used by clients connected to clinicians",
         ],
         ctaLabel: "Start with Self",
@@ -156,7 +156,7 @@ const pricingContent = {
         id: "study-standard",
         eyebrow: "Research launch",
         title: "Standard Study",
-        price: "₹49",
+        price: "₹29",
         cadence: "/study",
         featured: false,
         description:
@@ -376,7 +376,7 @@ function ArrowIcon() {
 }
 
 export default function Home() {
-    const [pricingRegion, setPricingRegion] = useState<"asia" | "europe">("asia");
+    const [pricingRegion, setPricingRegion] = useState<"India" | "europe">("India");
 const [showResearchPricing, setShowResearchPricing] = useState(false);
 
 const activePricing = pricingContent[pricingRegion];
@@ -1018,6 +1018,7 @@ const activePricing = pricingContent[pricingRegion];
           </div>
         </div>
       </section>
+     
       {/* Pricing */}
       <section
         id="pricing"
@@ -1045,14 +1046,14 @@ const activePricing = pricingContent[pricingRegion];
               <div className="grid grid-cols-2 gap-2">
                 <button
                   type="button"
-                  onClick={() => setPricingRegion("asia")}
+                  onClick={() => setPricingRegion("India")}
                   className={`rounded-xl px-4 py-3 text-sm font-medium transition ${
-                    pricingRegion === "asia"
+                    pricingRegion === "India"
                       ? "bg-slate-950 text-white shadow-sm"
                       : "bg-transparent text-slate-600 hover:bg-white"
                   }`}
                 >
-                  Asia
+                  India
                 </button>
 
                 <button
@@ -1145,7 +1146,7 @@ const activePricing = pricingContent[pricingRegion];
           <button
             type="button"
             onClick={() => setShowResearchPricing(true)}
-            className="mt-6 flex w-full items-center justify-between rounded-xl bg-cyan-950 px-4 py-3.5 text-left text-sm font-semibold text-white transition hover:bg-cyan-900"
+            className="mt-6 flex w-full items-center justify-between rounded-xl bg-cyan-900 px-4 py-3.5 text-left text-sm font-semibold text-white transition hover:bg-cyan-900"
           >
             <span>
               You only pay when you launch a live study

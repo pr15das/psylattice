@@ -1,4 +1,7 @@
+"use client";
+
 import Link from "next/link";
+import { useState } from "react";
 import PsyLatticeLogo from "@/components/PsyLatticeLogo";
 import {
   ClipboardCheck,
@@ -83,6 +86,256 @@ const process = [
       "Support self-regulation, research decisions or qualified professional review.",
   },
 ];
+const pricingContent = {
+  asia: {
+    label: "Asia",
+    sublabel: "Launch pricing for India and Asia",
+    cards: [
+      {
+        id: "self",
+        eyebrow: "For individuals and clients",
+        title: "PsyLattice Self",
+        price: "₹59",
+        cadence: "/month",
+        featured: true,
+        description:
+          "A personal PsyLattice account for self-assessment, daily monitoring, self-regulation, progress tracking and Luna AI.",
+        bullets: [
+          "Full Self workspace",
+          "Assessments and structured self-checks",
+          "Monitoring and longitudinal progress",
+          "Self-regulation tools",
+          "Luna AI guidance",
+          "Can also be used by clients connected to clinicians",
+        ],
+        ctaLabel: "Start with Self",
+        ctaHref: "/signin",
+        note: "Also available annually at ₹590/year.",
+      },
+      {
+        id: "clinician",
+        eyebrow: "For professionals",
+        title: "Clinician account",
+        price: "Free",
+        cadence: "",
+        featured: false,
+        description:
+          "Clinicians can onboard clients, assign assessments, review authorised progress and use the clinical workspace without a subscription fee.",
+        bullets: [
+          "Clinical workspace access",
+          "Invite and onboard clients",
+          "Assign assessments and monitoring",
+          "Review shared progress and summaries",
+          "Clients subscribe to PsyLattice Self if needed",
+        ],
+        ctaLabel: "Create clinician account",
+        ctaHref: "/signin",
+        note: "Clients control what information is shared.",
+      },
+      {
+        id: "researcher",
+        eyebrow: "For researchers",
+        title: "Researcher account",
+        price: "Free",
+        cadence: "",
+        featured: false,
+        description:
+          "Researchers can explore the platform, build studies, test flows and prepare protocols without paying for an account.",
+        bullets: [
+          "Questionnaire Library",
+          "Study Builder",
+          "Custom questionnaires",
+          "Preview and test study flows",
+          "No charge until you publish a live study",
+        ],
+        ctaLabel: "Create researcher account",
+        ctaHref: "/signin",
+        note: "You only pay when you launch a live study.",
+      },
+      {
+        id: "study-standard",
+        eyebrow: "Research launch",
+        title: "Standard Study",
+        price: "₹49",
+        cadence: "/study",
+        featured: false,
+        description:
+          "For smaller live studies. Publish one real study and collect data from up to 500 participants.",
+        bullets: [
+          "Up to 500 participants",
+          "Participants do not pay",
+          "Build and test the study beforehand for free",
+          "Suitable for most student and standard research projects",
+        ],
+        ctaLabel: "Launch a standard study",
+        ctaHref: "/signin",
+        note: "Best for pilots, thesis studies and medium-sized projects.",
+      },
+      {
+        id: "study-large",
+        eyebrow: "Research launch",
+        title: "Large Study",
+        price: "₹99",
+        cadence: "/study",
+        featured: false,
+        description:
+          "For larger live studies. Publish one real study and collect data from up to 1,000 participants.",
+        bullets: [
+          "Up to 1,000 participants",
+          "Participants do not pay",
+          "Build and test the study beforehand for free",
+          "Designed for larger projects and broader recruitment",
+        ],
+        ctaLabel: "Launch a large study",
+        ctaHref: "/signin",
+        note: "Need more than 1,000 participants? Contact PsyLattice later for larger research plans.",
+      },
+      {
+        id: "participants",
+        eyebrow: "For study participants",
+        title: "Participant access",
+        price: "Free",
+        cadence: "",
+        featured: false,
+        description:
+          "People invited into a PsyLattice study can participate without paying for an account.",
+        bullets: [
+          "No subscription required",
+          "Access through study link",
+          "Complete assigned study measures",
+          "Designed for simple participation",
+        ],
+        ctaLabel: "Learn how studies work",
+        ctaHref: "/signin",
+        note: "Research participants never need to pay to participate.",
+      },
+    ],
+  },
+  europe: {
+    label: "Europe",
+    sublabel: "Launch pricing for Europe",
+    cards: [
+      {
+        id: "self",
+        eyebrow: "For individuals and clients",
+        title: "PsyLattice Self",
+        price: "€4.99",
+        cadence: "/month",
+        featured: true,
+        description:
+          "A personal PsyLattice account for self-assessment, daily monitoring, self-regulation, progress tracking and Luna AI.",
+        bullets: [
+          "Full Self workspace",
+          "Assessments and structured self-checks",
+          "Monitoring and longitudinal progress",
+          "Self-regulation tools",
+          "AI guidance",
+          "Can also be used by clients connected to clinicians",
+        ],
+        ctaLabel: "Start with Self",
+        ctaHref: "/signin",
+        note: "Also available annually at €49.90/year.",
+      },
+      {
+        id: "clinician",
+        eyebrow: "For professionals",
+        title: "Clinician account",
+        price: "Free",
+        cadence: "",
+        featured: false,
+        description:
+          "Clinicians can onboard clients, assign assessments, review authorised progress and use the clinical workspace without a subscription fee.",
+        bullets: [
+          "Clinical workspace access",
+          "Invite and onboard clients",
+          "Assign assessments and monitoring",
+          "Review shared progress and summaries",
+          "Clients subscribe to PsyLattice Self if needed",
+        ],
+        ctaLabel: "Create clinician account",
+        ctaHref: "/signin",
+        note: "Clients control what information is shared.",
+      },
+      {
+        id: "researcher",
+        eyebrow: "For researchers",
+        title: "Researcher account",
+        price: "Free",
+        cadence: "",
+        featured: false,
+        description:
+          "Researchers can explore the platform, build studies, test flows and prepare protocols without paying for an account.",
+        bullets: [
+          "Questionnaire Library",
+          "Study Builder",
+          "Custom questionnaires",
+          "Preview and test study flows",
+          "No charge until you publish a live study",
+        ],
+        ctaLabel: "Create researcher account",
+        ctaHref: "/signin",
+        note: "You only pay when you launch a live study.",
+      },
+      {
+        id: "study-standard",
+        eyebrow: "Research launch",
+        title: "Standard Study",
+        price: "€3.99",
+        cadence: "/study",
+        featured: false,
+        description:
+          "For smaller live studies. Publish one real study and collect data from up to 500 participants.",
+        bullets: [
+          "Up to 500 participants",
+          "Participants do not pay",
+          "Build and test the study beforehand for free",
+          "Suitable for most student and standard research projects",
+        ],
+        ctaLabel: "Launch a standard study",
+        ctaHref: "/signin",
+        note: "Best for pilots, thesis studies and medium-sized projects.",
+      },
+      {
+        id: "study-large",
+        eyebrow: "Research launch",
+        title: "Large Study",
+        price: "€7.99",
+        cadence: "/study",
+        featured: false,
+        description:
+          "For larger live studies. Publish one real study and collect data from up to 1,000 participants.",
+        bullets: [
+          "Up to 1,000 participants",
+          "Participants do not pay",
+          "Build and test the study beforehand for free",
+          "Designed for larger projects and broader recruitment",
+        ],
+        ctaLabel: "Launch a large study",
+        ctaHref: "/signin",
+        note: "Need more than 1,000 participants? Contact PsyLattice later for larger research plans.",
+      },
+      {
+        id: "participants",
+        eyebrow: "For study participants",
+        title: "Participant access",
+        price: "Free",
+        cadence: "",
+        featured: false,
+        description:
+          "People invited into a PsyLattice study can participate without paying for an account.",
+        bullets: [
+          "No subscription required",
+          "Access through study link",
+          "Complete assigned study measures",
+          "Designed for simple participation",
+        ],
+        ctaLabel: "Learn how studies work",
+        ctaHref: "/signin",
+        note: "Research participants never need to pay to participate.",
+      },
+    ],
+  },
+} as const;
 
 function CheckIcon() {
   return (
@@ -123,6 +376,11 @@ function ArrowIcon() {
 }
 
 export default function Home() {
+    const [pricingRegion, setPricingRegion] = useState<"asia" | "europe">("asia");
+const [showResearchPricing, setShowResearchPricing] = useState(false);
+
+const activePricing = pricingContent[pricingRegion];
+
   return (
     <main className="min-h-screen bg-[#f7faf9] text-slate-950">
       {/* Navigation */}
@@ -131,41 +389,48 @@ export default function Home() {
           <PsyLatticeLogo />
 
           <nav className="hidden items-center gap-8 text-sm text-slate-600 lg:flex">
-            <a
-              href="#platform"
-              className="transition-colors hover:text-slate-950"
-            >
-              Platform
-            </a>
+  <a
+    href="#platform"
+    className="transition-colors hover:text-slate-950"
+  >
+    Platform
+  </a>
 
-            <a
-              href="#solutions"
-              className="transition-colors hover:text-slate-950"
-            >
-              Solutions
-            </a>
+  <a
+    href="#solutions"
+    className="transition-colors hover:text-slate-950"
+  >
+    Solutions
+  </a>
 
-            <a
-              href="#research"
-              className="transition-colors hover:text-slate-950"
-            >
-              Research
-            </a>
+  <a
+    href="#research"
+    className="transition-colors hover:text-slate-950"
+  >
+    Research
+  </a>
 
-            <a
-              href="#security"
-              className="transition-colors hover:text-slate-950"
-            >
-              Security
-            </a>
+  <a
+    href="#pricing"
+    className="transition-colors hover:text-slate-950"
+  >
+    Pricing
+  </a>
 
-            <a
-              href="#about"
-              className="transition-colors hover:text-slate-950"
-            >
-              About
-            </a>
-          </nav>
+  <a
+    href="#security"
+    className="transition-colors hover:text-slate-950"
+  >
+    Security
+  </a>
+
+  <a
+    href="#about"
+    className="transition-colors hover:text-slate-950"
+  >
+    About
+  </a>
+</nav>
 
           <div className="flex items-center gap-3">
             <Link
@@ -753,6 +1018,420 @@ export default function Home() {
           </div>
         </div>
       </section>
+      {/* Pricing */}
+      <section
+        id="pricing"
+        className="border-y border-slate-200 bg-white py-24 lg:py-32"
+      >
+        <div className="mx-auto max-w-7xl px-6 lg:px-8">
+          <div className="flex flex-col gap-8 lg:flex-row lg:items-end lg:justify-between">
+            <div className="max-w-3xl">
+              <p className="text-xs font-semibold uppercase tracking-[0.18em] text-cyan-800">
+                Pricing
+              </p>
+
+              <h2 className="mt-4 text-4xl font-semibold tracking-[-0.035em] sm:text-5xl">
+               Our unbeatable pricing 
+              </h2>
+
+              <p className="mt-5 text-lg leading-8 text-slate-600">
+                PsyLattice is designed to be easy to understand. Individuals
+                subscribe to Self, clinicians can join for free, and researchers
+                only pay when they publish a live study.
+              </p>
+            </div>
+
+            <div className="w-full max-w-md rounded-2xl border border-slate-200 bg-slate-50 p-2">
+              <div className="grid grid-cols-2 gap-2">
+                <button
+                  type="button"
+                  onClick={() => setPricingRegion("asia")}
+                  className={`rounded-xl px-4 py-3 text-sm font-medium transition ${
+                    pricingRegion === "asia"
+                      ? "bg-slate-950 text-white shadow-sm"
+                      : "bg-transparent text-slate-600 hover:bg-white"
+                  }`}
+                >
+                  Asia
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => setPricingRegion("europe")}
+                  className={`rounded-xl px-4 py-3 text-sm font-medium transition ${
+                    pricingRegion === "europe"
+                      ? "bg-slate-950 text-white shadow-sm"
+                      : "bg-transparent text-slate-600 hover:bg-white"
+                  }`}
+                >
+                  Europe
+                </button>
+              </div>
+
+              <p className="px-2 pt-3 text-xs text-slate-500">
+                {activePricing.sublabel}
+              </p>
+            </div>
+          </div>
+
+         <div className="mt-10 grid gap-5 lg:grid-cols-3">
+  {activePricing.cards
+    .filter((card) =>
+      ["self", "clinician", "researcher"].includes(card.id)
+    )
+    .map((card) => (
+      <article
+        key={card.id}
+        className={`flex h-full flex-col rounded-[24px] border p-6 transition duration-300 hover:-translate-y-1 hover:shadow-xl ${
+          card.featured
+            ? "border-cyan-200 bg-gradient-to-br from-cyan-50 via-white to-white shadow-md shadow-cyan-100/40"
+            : "border-slate-200 bg-white hover:border-slate-300 hover:shadow-slate-200/40"
+        }`}
+      >
+        <div className="flex items-start justify-between gap-3">
+          <div>
+            <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-cyan-800">
+              {card.eyebrow}
+            </p>
+
+            <h3 className="mt-2 text-xl font-semibold tracking-tight text-slate-950">
+              {card.title}
+            </h3>
+          </div>
+
+          {card.featured && (
+            <span className="rounded-full bg-cyan-900 px-3 py-1 text-[11px] font-medium text-white">
+              Most popular
+            </span>
+          )}
+        </div>
+
+        <div className="mt-5">
+          <div className="flex items-end gap-2">
+            <span className="text-3xl font-semibold tracking-tight text-slate-950">
+              {card.price}
+            </span>
+
+            {card.cadence ? (
+              <span className="pb-0.5 text-sm text-slate-500">
+                {card.cadence}
+              </span>
+            ) : null}
+          </div>
+
+          <p className="mt-3 text-sm leading-6 text-slate-600">
+            {card.description}
+          </p>
+        </div>
+
+        <div className="my-5 h-px bg-slate-100" />
+
+        <ul className="space-y-2.5">
+          {card.bullets.map((bullet) => (
+            <li
+              key={bullet}
+              className="flex items-start gap-2.5 text-sm leading-5 text-slate-600"
+            >
+              <span className="mt-0.5 text-cyan-700">
+                <CheckIcon />
+              </span>
+
+              <span>{bullet}</span>
+            </li>
+          ))}
+        </ul>
+
+        {card.id === "researcher" ? (
+          <button
+            type="button"
+            onClick={() => setShowResearchPricing(true)}
+            className="mt-6 flex w-full items-center justify-between rounded-xl bg-cyan-950 px-4 py-3.5 text-left text-sm font-semibold text-white transition hover:bg-cyan-900"
+          >
+            <span>
+              You only pay when you launch a live study
+            </span>
+
+            <span className="ml-3 text-cyan-200">
+              →
+            </span>
+          </button>
+        ) : (
+          <div className="mt-6 rounded-xl bg-slate-50 px-4 py-3 text-xs leading-5 text-slate-500">
+            {card.note}
+          </div>
+        )}
+
+        <div className="mt-5 pt-1">
+          <Link
+            href={card.ctaHref}
+            className={`inline-flex w-full items-center justify-center gap-2 rounded-xl px-5 py-3 text-sm font-medium transition ${
+              card.featured
+                ? "bg-slate-950 text-white hover:bg-slate-800"
+                : "border border-slate-300 bg-white text-slate-900 hover:border-slate-400"
+            }`}
+          >
+            {card.ctaLabel}
+            <ArrowIcon />
+          </Link>
+
+          <p className="mt-3 text-[11px] leading-5 text-slate-400">
+            By continuing, you agree to the{" "}
+            <Link
+              href="/terms"
+              className="font-medium text-slate-600 underline underline-offset-2 transition hover:text-slate-950"
+            >
+              Terms of Use
+            </Link>
+            .
+          </p>
+        </div>
+      </article>
+    ))}
+</div>
+          <div className="mt-12 grid gap-5 lg:grid-cols-[1.1fr_.9fr]">
+            <div className="rounded-[24px] border border-slate-200 bg-slate-950 p-7 text-white">
+              <p className="text-xs font-semibold uppercase tracking-[0.16em] text-cyan-300">
+                Important notes
+              </p>
+
+              <h3 className="mt-4 text-2xl font-semibold tracking-tight">
+                Easy rules to understand.
+              </h3>
+
+              <div className="mt-6 space-y-4 text-sm leading-7 text-slate-300">
+                <p>
+                  <span className="font-medium text-white">Self:</span> for
+                  individuals and clients who want access to the personal
+                  PsyLattice experience.
+                </p>
+
+                <p>
+                  <span className="font-medium text-white">Clinicians:</span>{" "}
+                  can join for free and invite clients into PsyLattice.
+                </p>
+
+                <p>
+                  <span className="font-medium text-white">Research:</span>{" "}
+                  researcher accounts are free; payment is only required when a
+                  study becomes live for real participant data collection.
+                </p>
+
+                <p>
+                  <span className="font-medium text-white">Participants:</span>{" "}
+                  never need to pay in order to participate in a study.
+                </p>
+              </div>
+            </div>
+
+            <div className="rounded-[24px] border border-slate-200 bg-white p-7">
+              <p className="text-xs font-semibold uppercase tracking-[0.16em] text-cyan-800">
+                Pricing guidance
+              </p>
+
+              <h3 className="mt-4 text-2xl font-semibold tracking-tight text-slate-950">
+                Before choosing a plan
+              </h3>
+
+              <div className="mt-6 space-y-4 text-sm leading-7 text-slate-600">
+                <p>
+                  If you are using PsyLattice for yourself, choose{" "}
+                  <span className="font-medium text-slate-900">PsyLattice Self</span>.
+                </p>
+
+                <p>
+                  If you are a professional bringing clients onto the platform,
+                  choose a <span className="font-medium text-slate-900">Clinician account</span>.
+                </p>
+
+                <p>
+                  If you are conducting research, create a{" "}
+                  <span className="font-medium text-slate-900">Researcher account</span>{" "}
+                  for free, then pay only when launching a real study.
+                </p>
+
+                <p>
+                  For pricing conditions, platform rules and usage terms, please
+                  review the{" "}
+                  <Link
+                    href="/terms"
+                    className="font-medium text-slate-900 underline underline-offset-2 transition hover:text-cyan-800"
+                  >
+                    Terms of Use
+                  </Link>
+                  .
+                </p>
+              </div>
+            </div>
+          </div>
+        </div>
+        {showResearchPricing && (
+  <div
+    className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-950/55 px-4 py-8 backdrop-blur-sm"
+    onMouseDown={() => setShowResearchPricing(false)}
+  >
+    <div
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="research-pricing-title"
+      onMouseDown={(event) => event.stopPropagation()}
+      className="relative max-h-[90vh] w-full max-w-6xl overflow-y-auto rounded-[28px] border border-slate-200 bg-[#f8fafb] shadow-[0_32px_100px_-24px_rgba(15,23,42,0.45)]"
+    >
+      {/* Popup header */}
+      <div className="sticky top-0 z-10 flex items-start justify-between border-b border-slate-200 bg-[#f8fafb]/95 px-6 py-5 backdrop-blur-xl sm:px-8">
+        <div>
+          <p className="text-xs font-semibold uppercase tracking-[0.18em] text-cyan-800">
+            Research study pricing
+          </p>
+
+          <h3
+            id="research-pricing-title"
+            className="mt-2 text-2xl font-semibold tracking-tight text-slate-950"
+          >
+            Choose the size of your live study.
+          </h3>
+
+          <p className="mt-1 max-w-2xl text-sm leading-6 text-slate-500">
+            Your researcher account, Study Builder and testing tools remain
+            free. You only pay when you are ready to collect real participant
+            data.
+          </p>
+        </div>
+
+        <button
+          type="button"
+          onClick={() => setShowResearchPricing(false)}
+          aria-label="Close research pricing"
+          className="ml-5 flex h-10 w-10 shrink-0 items-center justify-center rounded-full border border-slate-200 bg-white text-xl text-slate-500 transition hover:border-slate-300 hover:text-slate-950"
+        >
+          ×
+        </button>
+      </div>
+
+      {/* Pricing cards */}
+      <div className="grid gap-4 p-6 md:grid-cols-3 sm:p-8">
+        {activePricing.cards
+          .filter((card) =>
+            [
+              "study-standard",
+              "study-large",
+              "participants",
+            ].includes(card.id)
+          )
+          .map((card) => (
+            <article
+              key={card.id}
+              className={`flex flex-col rounded-[22px] border bg-white p-6 ${
+                card.id === "study-large"
+                  ? "border-cyan-300 shadow-lg shadow-cyan-100/50"
+                  : "border-slate-200"
+              }`}
+            >
+              <div className="flex items-start justify-between gap-3">
+                <div>
+                  <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-cyan-800">
+                    {card.eyebrow}
+                  </p>
+
+                  <h4 className="mt-2 text-xl font-semibold tracking-tight text-slate-950">
+                    {card.title}
+                  </h4>
+                </div>
+
+                {card.id === "study-large" && (
+                  <span className="rounded-full bg-cyan-950 px-3 py-1 text-[10px] font-semibold text-white">
+                    1,000 participants
+                  </span>
+                )}
+              </div>
+
+              <div className="mt-5 flex items-end gap-2">
+                <span className="text-3xl font-semibold tracking-tight text-slate-950">
+                  {card.price}
+                </span>
+
+                {card.cadence && (
+                  <span className="pb-0.5 text-sm text-slate-500">
+                    {card.cadence}
+                  </span>
+                )}
+              </div>
+
+              <p className="mt-3 text-sm leading-6 text-slate-600">
+                {card.description}
+              </p>
+
+              <div className="my-5 h-px bg-slate-100" />
+
+              <ul className="space-y-2.5">
+                {card.bullets.map((bullet) => (
+                  <li
+                    key={bullet}
+                    className="flex items-start gap-2.5 text-sm leading-5 text-slate-600"
+                  >
+                    <span className="mt-0.5 text-cyan-700">
+                      <CheckIcon />
+                    </span>
+
+                    <span>{bullet}</span>
+                  </li>
+                ))}
+              </ul>
+
+              <div className="mt-auto pt-6">
+                <div className="rounded-xl bg-slate-50 px-4 py-3 text-xs leading-5 text-slate-500">
+                  {card.note}
+                </div>
+
+                {card.id !== "participants" && (
+                  <Link
+                    href={card.ctaHref}
+                    className={`mt-4 inline-flex w-full items-center justify-center gap-2 rounded-xl px-5 py-3 text-sm font-semibold transition ${
+                      card.id === "study-large"
+                        ? "bg-cyan-950 text-white hover:bg-cyan-900"
+                        : "bg-slate-950 text-white hover:bg-slate-800"
+                    }`}
+                  >
+                    {card.ctaLabel}
+                    <ArrowIcon />
+                  </Link>
+                )}
+
+                <p className="mt-3 text-[11px] leading-5 text-slate-400">
+                  By continuing, you agree to the{" "}
+                  <Link
+                    href="/terms"
+                    className="font-medium text-slate-600 underline underline-offset-2 hover:text-slate-950"
+                  >
+                    Terms of Use
+                  </Link>
+                  .
+                </p>
+              </div>
+            </article>
+          ))}
+      </div>
+
+      {/* Bottom explanation */}
+      <div className="border-t border-slate-200 px-6 py-5 sm:px-8">
+        <div className="flex flex-col justify-between gap-3 sm:flex-row sm:items-center">
+          <p className="text-sm text-slate-500">
+            Need a study with more than 1,000 participants?
+          </p>
+
+          <Link
+            href="/contact"
+            className="inline-flex items-center gap-2 text-sm font-semibold text-cyan-900 transition hover:text-cyan-700"
+          >
+            Contact PsyLattice for larger studies
+            <ArrowIcon />
+          </Link>
+        </div>
+      </div>
+    </div>
+  </div>
+)}
+      </section>
+
 
       {/* CTA */}
       <section

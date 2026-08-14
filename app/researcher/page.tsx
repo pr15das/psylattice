@@ -3412,6 +3412,7 @@ function QuestionnaireLibrary({
     response_scale_description: string | null;
     scoring_summary: string | null;
     score_multiplier: number;
+    scoring_method: string;
   };
 
   type ResponseOption = {
@@ -3527,7 +3528,6 @@ function QuestionnaireLibrary({
   const [references, setReferences] = useState<QuestionnaireReference[]>([]);
   const [detailLoading, setDetailLoading] = useState(false);
   const [copiedReferenceId, setCopiedReferenceId] = useState("");
-  const [currentUserId, setCurrentUserId] = useState("");
 
   const [builderOpen, setBuilderOpen] = useState(false);
   const [savingCustomQuestionnaire, setSavingCustomQuestionnaire] =
@@ -3622,8 +3622,6 @@ function QuestionnaireLibrary({
         return;
       }
 
-      setCurrentUserId(user.id);
-
       const { data, error } = await supabase
         .from("questionnaires")
         .select(
@@ -3665,7 +3663,7 @@ function QuestionnaireLibrary({
       supabase
         .from("questionnaire_versions")
         .select(
-          "id, questionnaire_id, version_label, participant_instructions, researcher_instructions, response_scale_description, scoring_summary, score_multiplier"
+          "id, questionnaire_id, version_label, participant_instructions, researcher_instructions, response_scale_description, scoring_summary, score_multiplier, scoring_method"
         )
         .eq("questionnaire_id", questionnaire.id)
         .eq("is_current", true)
@@ -3700,7 +3698,7 @@ function QuestionnaireLibrary({
     setResources((resourceResult.data || []) as QuestionnaireResource[]);
     setReferences((referenceResult.data || []) as QuestionnaireReference[]);
 
-    if (version) {
+    if (version && questionnaire.license_status !== "restricted") {
       const { data: itemData, error: itemError } = await supabase
         .from("questionnaire_items")
         .select(
@@ -4381,11 +4379,15 @@ function QuestionnaireLibrary({
 
   function resourceTypeLabel(type: string) {
     const labels: Record<string, string> = {
-      questionnaire: "Questionnaire",
+      questionnaire: "Questionnaire source",
       manual: "Manual / documentation",
       scoring_guide: "Scoring guide",
-      official_page: "Official page",
-      license: "Permission / licence",
+      scoring_key: "Scoring key",
+      official_page: "Official source",
+      official_source: "Official source",
+      license: "Permission source",
+      permission_source: "Permission source",
+      translation: "Translation",
       translations: "Translations",
       validation_paper: "Validation paper",
       citation_guide: "Citation guide",
@@ -4618,12 +4620,35 @@ function QuestionnaireLibrary({
   }
 
   if (selectedQuestionnaire) {
+    const unavailableText =
+      "Not currently available in the PsyLattice catalogue.";
     const manualResources = resources.filter(
       (resource) => resource.resource_type === "manual"
     );
     const questionnaireResources = resources.filter(
       (resource) => resource.resource_type === "questionnaire"
     );
+    const officialResources = resources.filter(
+      (resource) =>
+        resource.is_official ||
+        ["official_page", "official_source"].includes(resource.resource_type)
+    );
+    const resourceGroups = Array.from(
+      resources
+        .reduce<Map<string, QuestionnaireResource[]>>((groups, resource) => {
+          const existing = groups.get(resource.resource_type) || [];
+          groups.set(resource.resource_type, [...existing, resource]);
+          return groups;
+        }, new Map())
+        .entries()
+    );
+    const storedScoringMethod = selectedVersion?.scoring_method?.trim() || "";
+    const storedScoringMethodLabel =
+      storedScoringMethod === "legacy_guidance"
+        ? "Guidance only (legacy catalogue)"
+        : storedScoringMethod
+          ? storedScoringMethod.replaceAll("_", " ")
+          : unavailableText;
 
     return (
       <div className="space-y-5">
@@ -4683,10 +4708,6 @@ function QuestionnaireLibrary({
                   ? ` (${selectedQuestionnaire.acronym})`
                   : ""}
               </h2>
-
-              <p className="mt-4 text-sm leading-7 text-slate-600">
-                {selectedQuestionnaire.description}
-              </p>
             </div>
 
             <div className="flex flex-wrap gap-2">
@@ -4720,77 +4741,104 @@ function QuestionnaireLibrary({
           </Panel>
         ) : (
           <>
-            <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
-              <StatCard
-                label="Items"
-                value={String(selectedQuestionnaire.item_count)}
-                detail={
-                  selectedQuestionnaire.estimated_minutes
-                    ? `~${selectedQuestionnaire.estimated_minutes} min`
-                    : "Completion time not specified"
-                }
-              />
+            <Panel
+              title="Overview"
+              description="Core catalogue metadata for identifying and planning use of this instrument."
+            >
+              <p className="max-w-5xl text-sm leading-7 text-slate-600">
+                {selectedQuestionnaire.description || unavailableText}
+              </p>
 
-              <StatCard
-                label="Administration"
-                value={selectedQuestionnaire.administration_mode || "Not specified"}
-                detail={selectedQuestionnaire.recall_period || "No recall period"}
-              />
+              <div className="mt-6">
+                <p className="text-xs font-semibold uppercase tracking-[0.12em] text-slate-400">
+                  Constructs
+                </p>
+                {selectedQuestionnaire.constructs.length > 0 ? (
+                  <div className="mt-3 flex flex-wrap gap-2">
+                    {selectedQuestionnaire.constructs.map((construct) => (
+                      <Status key={construct} type="accent">
+                        {construct}
+                      </Status>
+                    ))}
+                  </div>
+                ) : (
+                  <p className="mt-2 text-sm text-slate-500">{unavailableText}</p>
+                )}
+              </div>
 
-              <StatCard
-                label="Languages"
-                value={String(selectedQuestionnaire.languages.length)}
-                detail={selectedQuestionnaire.languages.slice(0, 3).join(", ")}
-              />
-
-              <StatCard
-                label="Current version"
-                value={selectedVersion?.version_label || "—"}
-                detail="Version stored in PsyLattice"
-              />
-            </div>
+              <dl className="mt-6 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+                {[
+                  ["Category", selectedQuestionnaire.category],
+                  ["Intended population", selectedQuestionnaire.population],
+                  ["Items", String(selectedQuestionnaire.item_count)],
+                  [
+                    "Estimated completion time",
+                    selectedQuestionnaire.estimated_minutes
+                      ? `Approximately ${selectedQuestionnaire.estimated_minutes} minutes`
+                      : null,
+                  ],
+                  [
+                    "Available languages",
+                    selectedQuestionnaire.languages.length > 0
+                      ? selectedQuestionnaire.languages.join(", ")
+                      : null,
+                  ],
+                  ["Recall period", selectedQuestionnaire.recall_period],
+                  ["Administration mode", selectedQuestionnaire.administration_mode],
+                  ["Version", selectedVersion?.version_label],
+                ].map(([label, value]) => (
+                  <div
+                    key={label}
+                    className="rounded-2xl border border-slate-200 bg-slate-50/60 p-4"
+                  >
+                    <dt className="text-xs font-medium text-slate-400">{label}</dt>
+                    <dd className="mt-2 text-sm font-medium leading-6 text-slate-700">
+                      {value || unavailableText}
+                    </dd>
+                  </div>
+                ))}
+              </dl>
+            </Panel>
 
             <div className="grid gap-5 xl:grid-cols-[1.05fr_.95fr]">
               <Panel
                 title="Administration"
-                description="Clear instructions for researchers and participants."
+                description="Participant-facing directions and researcher protocol notes for this version."
               >
                 <div className="space-y-5">
-                  <div className="rounded-2xl bg-slate-50 p-5">
-                    <p className="text-xs font-semibold uppercase tracking-[0.12em] text-slate-400">
-                      Participant instructions
-                    </p>
-                    <p className="mt-3 text-sm leading-7 text-slate-700">
-                      {selectedVersion?.participant_instructions ||
-                        "Participant instructions have not been entered for this version."}
-                    </p>
+                  <div className="grid gap-4 md:grid-cols-2">
+                    <div className="rounded-2xl border border-cyan-100 bg-cyan-50/70 p-5">
+                      <div className="flex items-center gap-2">
+                        <Status type="accent">Participant-facing</Status>
+                        <p className="text-xs font-semibold uppercase tracking-[0.12em] text-cyan-800">
+                          Instructions
+                        </p>
+                      </div>
+                      <p className="mt-4 whitespace-pre-wrap text-sm leading-7 text-cyan-950">
+                        {selectedVersion?.participant_instructions || unavailableText}
+                      </p>
+                    </div>
+
+                    <div className="rounded-2xl border border-indigo-100 bg-indigo-50/60 p-5">
+                      <div className="flex items-center gap-2">
+                        <Status>Researcher-facing</Status>
+                        <p className="text-xs font-semibold uppercase tracking-[0.12em] text-indigo-700">
+                          Protocol notes
+                        </p>
+                      </div>
+                      <p className="mt-4 whitespace-pre-wrap text-sm leading-7 text-indigo-950">
+                        {selectedVersion?.researcher_instructions || unavailableText}
+                      </p>
+                    </div>
                   </div>
 
                   <div className="rounded-2xl border border-slate-200 p-5">
                     <p className="text-xs font-semibold uppercase tracking-[0.12em] text-slate-400">
-                      Researcher instructions
+                      Response-scale description
                     </p>
                     <p className="mt-3 whitespace-pre-wrap text-sm leading-7 text-slate-700">
-                      {selectedVersion?.researcher_instructions ||
-                        "No additional researcher instructions have been stored."}
+                      {selectedVersion?.response_scale_description || unavailableText}
                     </p>
-                  </div>
-
-                  <div className="grid gap-4 md:grid-cols-2">
-                    <div className="rounded-xl border border-slate-200 p-4">
-                      <p className="text-xs text-slate-400">Response format</p>
-                      <p className="mt-2 text-sm leading-6 text-slate-700">
-                        {selectedVersion?.response_scale_description ||
-                          "Not specified"}
-                      </p>
-                    </div>
-
-                    <div className="rounded-xl border border-slate-200 p-4">
-                      <p className="text-xs text-slate-400">Population</p>
-                      <p className="mt-2 text-sm leading-6 text-slate-700">
-                        {selectedQuestionnaire.population || "Not specified"}
-                      </p>
-                    </div>
                   </div>
                 </div>
               </Panel>
@@ -4799,14 +4847,52 @@ function QuestionnaireLibrary({
                 title="Scoring"
                 description="Stored scoring guidance for the current questionnaire version."
               >
-                <div className="rounded-2xl border border-cyan-100 bg-cyan-50/60 p-5">
-                  <p className="text-sm leading-7 text-cyan-950">
-                    {selectedVersion?.scoring_summary ||
-                      "A scoring summary has not yet been stored for this questionnaire."}
+                <div className="flex flex-col gap-3 rounded-2xl border border-slate-200 p-5 sm:flex-row sm:items-center sm:justify-between">
+                  <div>
+                    <p className="text-xs font-semibold uppercase tracking-[0.12em] text-slate-400">
+                      Stored scoring-method status
+                    </p>
+                    <p className="mt-2 text-sm font-semibold capitalize text-slate-800">
+                      {storedScoringMethodLabel}
+                    </p>
+                  </div>
+                  {storedScoringMethod && (
+                    <code className="w-fit rounded-lg bg-slate-100 px-2.5 py-1.5 text-xs font-semibold text-slate-500">
+                      {storedScoringMethod}
+                    </code>
+                  )}
+                </div>
+
+                <div className="mt-4 rounded-2xl border border-cyan-100 bg-cyan-50/60 p-5">
+                  <p className="text-xs font-semibold uppercase tracking-[0.12em] text-cyan-800">
+                    Scoring summary
+                  </p>
+                  <p className="mt-3 whitespace-pre-wrap text-sm leading-7 text-cyan-950">
+                    {selectedVersion?.scoring_summary || unavailableText}
                   </p>
                 </div>
 
-                <div className="mt-5 rounded-2xl bg-slate-50 p-5">
+                {selectedVersion && Number(selectedVersion.score_multiplier) !== 1 && (
+                  <div className="mt-4 flex items-center justify-between gap-4 rounded-xl border border-slate-200 px-4 py-3">
+                    <span className="text-sm font-medium text-slate-600">
+                      Stored score multiplier
+                    </span>
+                    <Status type="warning">
+                      ×{Number(selectedVersion.score_multiplier)}
+                    </Status>
+                  </div>
+                )}
+
+                {storedScoringMethod === "legacy_guidance" && (
+                  <div className="mt-4 rounded-2xl border border-blue-100 bg-blue-50/70 p-4">
+                    <p className="text-sm leading-6 text-blue-900">
+                      Scoring guidance is available for this instrument. Structured
+                      PsyLattice scoring validation is being prepared.
+                    </p>
+                  </div>
+                )}
+
+                <div className="mt-4 rounded-2xl bg-slate-50 p-5">
                   <p className="font-medium">Interpretation boundary</p>
                   <p className="mt-2 text-sm leading-6 text-slate-500">
                     PsyLattice stores scoring guidance as research metadata. Researchers
@@ -4819,7 +4905,7 @@ function QuestionnaireLibrary({
             </div>
 
             <Panel
-              title="Questionnaire items"
+              title="Items"
               description="Item wording and response coding stored for the current version."
             >
               {selectedQuestionnaire.license_status === "restricted" ? (
@@ -4884,161 +4970,189 @@ function QuestionnaireLibrary({
                 </div>
               ) : (
                 <p className="text-sm text-slate-500">
-                  No item-level content is stored for this questionnaire version yet.
+                  {unavailableText}
                 </p>
               )}
             </Panel>
 
             <div className="grid gap-5 xl:grid-cols-[.9fr_1.1fr]">
               <Panel
-                title="Usage & licensing"
-                description="Check the documented usage status before deploying a measure."
+                title="Licensing & use"
+                description="Stored rights information only; verify the linked source and applicable terms before use."
               >
                 <div className="space-y-4">
-                  <div className="flex items-center justify-between gap-4 rounded-xl border border-slate-200 p-4">
-                    <span className="text-sm font-medium">Research use</span>
-                    <Status type="success">
-                      {selectedQuestionnaire.owner_user_id === currentUserId
-                        ? "Your workspace"
-                        : "Available"}
-                    </Status>
+                  <div className="rounded-2xl border border-amber-200 bg-amber-50/70 p-5">
+                    <div className="flex flex-wrap items-center justify-between gap-3">
+                      <p className="text-xs font-semibold uppercase tracking-[0.12em] text-amber-800">
+                        Licence status
+                      </p>
+                      <Status
+                        type={licenceStatusType(selectedQuestionnaire.license_status)}
+                      >
+                        {licenceLabel(selectedQuestionnaire.license_status)}
+                      </Status>
+                    </div>
+                    <p className="mt-4 text-sm leading-7 text-amber-950">
+                      {selectedQuestionnaire.license_summary || unavailableText}
+                    </p>
                   </div>
 
-                  <div className="flex items-center justify-between gap-4 rounded-xl border border-slate-200 p-4">
-                    <span className="text-sm font-medium">Self workspace</span>
-                    <Status
-                      type={selectedQuestionnaire.self_available ? "success" : "neutral"}
-                    >
-                      {selectedQuestionnaire.self_available
-                        ? "Available"
-                        : "Not exposed"}
-                    </Status>
+                  <div className="grid gap-3">
+                    <div className="rounded-xl border border-slate-200 p-4">
+                      <p className="text-xs font-medium text-slate-400">
+                        Commercial use
+                      </p>
+                      <p className="mt-2 text-sm leading-6 text-slate-600">
+                        {selectedQuestionnaire.commercial_use_note || unavailableText}
+                      </p>
+                    </div>
+
+                    <div className="rounded-xl border border-slate-200 p-4">
+                      <p className="text-xs font-medium text-slate-400">
+                        Modification
+                      </p>
+                      <p className="mt-2 text-sm leading-6 text-slate-600">
+                        {selectedQuestionnaire.modification_note || unavailableText}
+                      </p>
+                    </div>
+
+                    <div className="rounded-xl border border-slate-200 p-4">
+                      <p className="text-xs font-medium text-slate-400">
+                        Redistribution
+                      </p>
+                      <p className="mt-2 text-sm leading-6 text-slate-600">
+                        {selectedQuestionnaire.redistribution_note || unavailableText}
+                      </p>
+                    </div>
                   </div>
 
                   <div className="rounded-xl border border-slate-200 p-4">
                     <p className="text-xs font-medium text-slate-400">
-                      Licence status
+                      Licence source
                     </p>
-                    <p className="mt-2 text-sm font-semibold">
-                      {licenceLabel(selectedQuestionnaire.license_status)}
-                    </p>
-                    <p className="mt-2 text-sm leading-6 text-slate-500">
-                      {selectedQuestionnaire.license_summary ||
-                        "No licensing summary has been stored."}
-                    </p>
+                    {selectedQuestionnaire.license_source_url ? (
+                      <a
+                        href={selectedQuestionnaire.license_source_url}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="mt-3 inline-flex rounded-xl bg-slate-950 px-4 py-2.5 text-sm font-semibold text-white"
+                      >
+                        Open licence source ↗
+                      </a>
+                    ) : (
+                      <p className="mt-2 text-sm leading-6 text-slate-500">
+                        {unavailableText}
+                      </p>
+                    )}
                   </div>
-
-                  <div className="rounded-xl border border-slate-200 p-4">
-                    <p className="text-xs font-medium text-slate-400">Commercial use</p>
-                    <p className="mt-2 text-sm leading-6 text-slate-600">
-                      {selectedQuestionnaire.commercial_use_note || "Not documented"}
-                    </p>
-                  </div>
-
-                  <div className="rounded-xl border border-slate-200 p-4">
-                    <p className="text-xs font-medium text-slate-400">Modification</p>
-                    <p className="mt-2 text-sm leading-6 text-slate-600">
-                      {selectedQuestionnaire.modification_note || "Not documented"}
-                    </p>
-                  </div>
-
-                  <div className="rounded-xl border border-slate-200 p-4">
-                    <p className="text-xs font-medium text-slate-400">Redistribution</p>
-                    <p className="mt-2 text-sm leading-6 text-slate-600">
-                      {selectedQuestionnaire.redistribution_note || "Not documented"}
-                    </p>
-                  </div>
-
-                  {selectedQuestionnaire.license_source_url && (
-                    <a
-                      href={selectedQuestionnaire.license_source_url}
-                      target="_blank"
-                      rel="noreferrer"
-                      className="inline-flex rounded-xl bg-slate-950 px-4 py-2.5 text-sm font-semibold text-white"
-                    >
-                      Open licence source ↗
-                    </a>
-                  )}
                 </div>
               </Panel>
 
               <Panel
-                title="Research resources"
-                description="Manuals, official questionnaires, scoring guides, translations and permission sources."
+                title="Resources"
+                description="Official sources, manuals, scoring guides, permissions, translations and supporting publications stored with this instrument."
               >
                 {resources.length > 0 ? (
-                  <div className="space-y-3">
-                    {resources.map((resource) => (
-                      <div
-                        key={resource.id}
-                        className="rounded-2xl border border-slate-200 p-4"
-                      >
-                        <div className="flex flex-col justify-between gap-4 sm:flex-row sm:items-start">
-                          <div>
-                            <div className="flex flex-wrap gap-2">
-                              <Status type="accent">
-                                {resourceTypeLabel(resource.resource_type)}
-                              </Status>
-                              {resource.is_official && (
-                                <Status type="success">Official</Status>
-                              )}
-                            </div>
-
-                            <p className="mt-3 text-sm font-semibold">
-                              {resource.title}
-                            </p>
-
-                            {resource.source_name && (
-                              <p className="mt-1 text-xs text-slate-400">
-                                {resource.source_name}
-                              </p>
-                            )}
-
-                            {resource.access_note && (
-                              <p className="mt-2 text-sm leading-6 text-slate-500">
-                                {resource.access_note}
-                              </p>
-                            )}
-                          </div>
-
-                          <a
-                            href={resource.url}
-                            target="_blank"
-                            rel="noreferrer"
-                            className="shrink-0 rounded-xl border border-slate-200 px-4 py-2.5 text-xs font-semibold text-slate-700 hover:bg-slate-50"
-                          >
-                            {resource.download_allowed
-                              ? "Open / download ↗"
-                              : resource.resource_type === "manual"
-                                ? "View manual source ↗"
-                                : "Open source ↗"}
-                          </a>
+                  <div className="space-y-6">
+                    {resourceGroups.map(([resourceType, groupedResources]) => (
+                      <section key={resourceType}>
+                        <div className="mb-3 flex items-center gap-3">
+                          <p className="text-xs font-semibold uppercase tracking-[0.12em] text-slate-500">
+                            {resourceTypeLabel(resourceType)}
+                          </p>
+                          <span className="h-px flex-1 bg-slate-100" />
                         </div>
-                      </div>
+
+                        <div className="space-y-3">
+                          {groupedResources.map((resource) => (
+                            <div
+                              key={resource.id}
+                              className="rounded-2xl border border-slate-200 p-4"
+                            >
+                              <div className="flex flex-col justify-between gap-4 sm:flex-row sm:items-start">
+                                <div className="min-w-0">
+                                  <div className="flex flex-wrap items-center gap-2">
+                                    <p className="text-sm font-semibold text-slate-900">
+                                      {resource.title}
+                                    </p>
+                                    {resource.is_official && (
+                                      <Status type="success">Official</Status>
+                                    )}
+                                  </div>
+
+                                  <dl className="mt-3 space-y-2 text-sm">
+                                    <div>
+                                      <dt className="text-xs font-medium text-slate-400">
+                                        Source
+                                      </dt>
+                                      <dd className="mt-1 text-slate-600">
+                                        {resource.source_name || unavailableText}
+                                      </dd>
+                                    </div>
+                                    <div>
+                                      <dt className="text-xs font-medium text-slate-400">
+                                        Access note
+                                      </dt>
+                                      <dd className="mt-1 leading-6 text-slate-600">
+                                        {resource.access_note || unavailableText}
+                                      </dd>
+                                    </div>
+                                  </dl>
+                                </div>
+
+                                <a
+                                  href={resource.url}
+                                  target="_blank"
+                                  rel="noreferrer"
+                                  className="shrink-0 rounded-xl border border-slate-200 px-4 py-2.5 text-xs font-semibold text-slate-700 hover:bg-slate-50"
+                                >
+                                  {resource.download_allowed
+                                    ? "Open resource / download ↗"
+                                    : "Open resource ↗"}
+                                </a>
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      </section>
                     ))}
                   </div>
                 ) : (
                   <div className="rounded-2xl bg-slate-50 p-5">
-                    <p className="font-medium">No resources stored yet</p>
-                    <p className="mt-2 text-sm leading-6 text-slate-500">
-                      Add an official questionnaire page, manual, scoring guide,
-                      permission source or validation paper before deploying this measure.
+                    <p className="text-sm leading-6 text-slate-500">
+                      {unavailableText}
                     </p>
                   </div>
                 )}
 
-                {manualResources.length === 0 && (
-                  <p className="mt-4 text-xs leading-5 text-slate-400">
-                    No separate manual resource is currently stored. Some measures use an
-                    official FAQ, documentation page, original publication or publisher
-                    source instead of a standalone manual PDF.
-                  </p>
+                {(manualResources.length === 0 ||
+                  officialResources.length === 0 ||
+                  questionnaireResources.length === 0) && (
+                  <div className="mt-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
+                    {[
+                      ["Manual", manualResources.length],
+                      ["Official source", officialResources.length],
+                      ["Questionnaire source", questionnaireResources.length],
+                    ]
+                      .filter(([, resourceCount]) => resourceCount === 0)
+                      .map(([label]) => (
+                        <div
+                          key={label}
+                          className="rounded-xl border border-dashed border-slate-200 px-4 py-3"
+                        >
+                          <p className="text-xs font-medium text-slate-400">{label}</p>
+                          <p className="mt-1 text-sm leading-6 text-slate-500">
+                            {unavailableText}
+                          </p>
+                        </div>
+                      ))}
+                  </div>
                 )}
               </Panel>
             </div>
 
             <Panel
-              title="References & citation"
+              title="References"
               description="Original sources, validation references and recommended citations stored with the measure."
             >
               {references.length > 0 ? (
@@ -5084,23 +5198,11 @@ function QuestionnaireLibrary({
                 </div>
               ) : (
                 <p className="text-sm text-slate-500">
-                  No citation records are stored for this questionnaire yet.
+                  {unavailableText}
                 </p>
               )}
             </Panel>
 
-            <Panel title="Psychometric evidence">
-              <div className="rounded-2xl bg-slate-50 p-5">
-                <p className="font-medium">Structured psychometrics are the next library layer</p>
-                <p className="mt-2 text-sm leading-6 text-slate-500">
-                  PsyLattice currently stores the questionnaire, instructions, scoring,
-                  resources, rights and references. Reliability, validity coefficients,
-                  norms and validation populations should be added as structured,
-                  source-linked records rather than invented or copied without context.
-                  Until then, use the linked original and validation sources above.
-                </p>
-              </div>
-            </Panel>
           </>
         )}
       </div>

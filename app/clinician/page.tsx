@@ -374,6 +374,8 @@ type ConnectedClient = {
 type ClientSharingPermissions = {
   connection_id: string;
   client_id: string;
+  client_name: string;
+  connection_status: string;
   share_assessments: boolean;
   share_monitoring: boolean;
   share_progress: boolean;
@@ -432,61 +434,87 @@ function useClientSharingPermissions(
   const [loadingPermissions, setLoadingPermissions] =
     useState(false);
   const [permissionsError, setPermissionsError] = useState("");
+  const [permissionsSyncedAt, setPermissionsSyncedAt] =
+    useState<string | null>(null);
 
-  useEffect(() => {
-    let active = true;
-
-    async function loadPermissions() {
-      if (!client) {
-        setPermissions(null);
-        setPermissionsError("");
-        setLoadingPermissions(false);
-        return;
-      }
-
-      setLoadingPermissions(true);
+  async function loadPermissions(
+    showLoading = true
+  ) {
+    if (!client) {
+      setPermissions(null);
       setPermissionsError("");
-
-      const supabase = createClient();
-
-      const { data, error } = await supabase.rpc(
-        "psylattice_connected_client_permissions",
-        {
-          p_connection_id: client.connection_id,
-        }
-      );
-
-      if (!active) {
-        return;
-      }
-
-      if (error) {
-        console.error(
-          "Could not load client sharing permissions:",
-          error
-        );
-
-        setPermissions(null);
-        setPermissionsError(
-          "This client's sharing permissions could not be loaded."
-        );
-        setLoadingPermissions(false);
-        return;
-      }
-
-      const row =
-        Array.isArray(data) && data.length > 0
-          ? (data[0] as ClientSharingPermissions)
-          : null;
-
-      setPermissions(row);
       setLoadingPermissions(false);
+      setPermissionsSyncedAt(null);
+      return;
     }
 
-    void loadPermissions();
+    if (showLoading) {
+      setLoadingPermissions(true);
+    }
+
+    setPermissionsError("");
+
+    const supabase = createClient();
+
+    const { data, error } = await supabase.rpc(
+      "psylattice_connected_client_permissions_v2",
+      {
+        p_connection_id: client.connection_id,
+      }
+    );
+
+    if (error) {
+      console.error(
+        "Could not load client sharing permissions:",
+        error
+      );
+
+      setPermissions(null);
+      setPermissionsError(
+        "This client's sharing permissions could not be loaded."
+      );
+      setLoadingPermissions(false);
+      return;
+    }
+
+    const row =
+      Array.isArray(data) && data.length > 0
+        ? (data[0] as ClientSharingPermissions)
+        : null;
+
+    setPermissions(row);
+    setPermissionsSyncedAt(new Date().toISOString());
+    setLoadingPermissions(false);
+  }
+
+  useEffect(() => {
+    void loadPermissions(true);
+
+    function refreshOnFocus() {
+      void loadPermissions(false);
+    }
+
+    function refreshWhenVisible() {
+      if (document.visibilityState === "visible") {
+        void loadPermissions(false);
+      }
+    }
+
+    window.addEventListener("focus", refreshOnFocus);
+    document.addEventListener(
+      "visibilitychange",
+      refreshWhenVisible
+    );
 
     return () => {
-      active = false;
+      window.removeEventListener(
+        "focus",
+        refreshOnFocus
+      );
+      document.removeEventListener(
+        "visibilitychange",
+        refreshWhenVisible
+      );
     };
   }, [client?.connection_id]);
 
@@ -494,6 +522,8 @@ function useClientSharingPermissions(
     permissions,
     loadingPermissions,
     permissionsError,
+    permissionsSyncedAt,
+    refreshPermissions: () => loadPermissions(true),
   };
 }
 
@@ -512,36 +542,68 @@ function ConnectedClients({
     string | null
   >(null);
 
-  useEffect(() => {
-    async function loadConnectedClients() {
+  async function loadConnectedClients(
+    showLoading = true
+  ) {
+    if (showLoading) {
       setLoadingClients(true);
-      setClientsError("");
-
-      const supabase = createClient();
-
-      const { data, error } = await supabase.rpc(
-        "psylattice_my_connected_clients"
-      );
-
-      if (error) {
-        console.error(
-          "Could not load connected clients:",
-          error
-        );
-
-        setClientsError(
-          "Your connected clients could not be loaded."
-        );
-
-        setLoadingClients(false);
-        return;
-      }
-
-      setClients((data ?? []) as ConnectedClient[]);
-      setLoadingClients(false);
     }
 
-    void loadConnectedClients();
+    setClientsError("");
+
+    const supabase = createClient();
+
+    const { data, error } = await supabase.rpc(
+      "psylattice_my_connected_clients"
+    );
+
+    if (error) {
+      console.error(
+        "Could not load connected clients:",
+        error
+      );
+
+      setClientsError(
+        "Your connected clients could not be loaded."
+      );
+
+      setLoadingClients(false);
+      return;
+    }
+
+    setClients((data ?? []) as ConnectedClient[]);
+    setLoadingClients(false);
+  }
+
+  useEffect(() => {
+    void loadConnectedClients(true);
+
+    function refreshOnFocus() {
+      void loadConnectedClients(false);
+    }
+
+    function refreshWhenVisible() {
+      if (document.visibilityState === "visible") {
+        void loadConnectedClients(false);
+      }
+    }
+
+    window.addEventListener("focus", refreshOnFocus);
+    document.addEventListener(
+      "visibilitychange",
+      refreshWhenVisible
+    );
+
+    return () => {
+      window.removeEventListener(
+        "focus",
+        refreshOnFocus
+      );
+      document.removeEventListener(
+        "visibilitychange",
+        refreshWhenVisible
+      );
+    };
   }, []);
 
   const normalizedSearch = search.trim().toLowerCase();
@@ -595,6 +657,17 @@ function ConnectedClients({
         title="Connected clients"
         description="People who have accepted your clinician connection request."
       >
+        <div className="mb-4 flex justify-end">
+          <button
+            type="button"
+            disabled={loadingClients}
+            onClick={() => void loadConnectedClients(true)}
+            className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-slate-600 transition hover:bg-slate-50 disabled:opacity-50"
+          >
+            Refresh clients
+          </button>
+        </div>
+
         <div className="mb-5">
           <input
             value={search}
@@ -1191,6 +1264,8 @@ function ClientOverview({
     permissions,
     loadingPermissions,
     permissionsError,
+    permissionsSyncedAt,
+    refreshPermissions,
   } = useClientSharingPermissions(client);
 
   if (!client) {
@@ -1262,12 +1337,35 @@ function ClientOverview({
             <p className="mt-1 text-sm text-slate-500">
               Connected{" "}
               {new Date(client.connected_at).toLocaleDateString()}
+              {" · "}
+              Connection{" "}
+              {client.connection_id.slice(-6).toUpperCase()}
             </p>
+
+            {permissionsSyncedAt && (
+              <p className="mt-1 text-xs text-slate-400">
+                Access synced{" "}
+                {new Date(
+                  permissionsSyncedAt
+                ).toLocaleTimeString()}
+              </p>
+            )}
           </div>
         </div>
 
         <div className="flex flex-wrap items-center gap-2">
           <Status type="success">Connected</Status>
+
+          <button
+            type="button"
+            disabled={loadingPermissions}
+            onClick={() => void refreshPermissions()}
+            className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-slate-600 transition hover:bg-slate-50 disabled:opacity-50"
+          >
+            {loadingPermissions
+              ? "Refreshing..."
+              : "Refresh access"}
+          </button>
 
           <button
             type="button"
@@ -1451,15 +1549,16 @@ function ClientOverview({
 
           <button
             type="button"
-            disabled
-            className="rounded-xl border border-slate-200 bg-slate-50 p-4 text-left opacity-60"
+            onClick={() => changeScreen("ambulatory")}
+            className="rounded-xl border border-cyan-200 bg-cyan-50/50 p-4 text-left transition hover:bg-cyan-50"
           >
             <p className="text-sm font-semibold text-slate-700">
-              Assign monitoring
+              Daily monitoring
             </p>
 
             <p className="mt-1 text-xs leading-5 text-slate-400">
-              Available after sharing permissions are configured.
+              Suggest a monitoring protocol. Shared entries
+              remain permission-controlled by the client.
             </p>
           </button>
 
@@ -1495,6 +1594,28 @@ type ClinicianAssessmentRecord = {
   completed_at: string;
 };
 
+type AssignmentQuestionnaire = {
+  questionnaire_id: string;
+  questionnaire_name: string;
+  questionnaire_acronym: string | null;
+  questionnaire_category: string;
+  item_count: number;
+  estimated_minutes: number | null;
+};
+
+type ClinicianAssessmentAssignment = {
+  assignment_id: string;
+  questionnaire_id: string;
+  questionnaire_name: string;
+  questionnaire_acronym: string | null;
+  due_date: string | null;
+  note: string | null;
+  status: "assigned" | "in_progress" | "completed" | "cancelled";
+  created_at: string;
+  started_at: string | null;
+  completed_at: string | null;
+};
+
 function Assessments({
   client,
   changeScreen,
@@ -1514,6 +1635,99 @@ function Assessments({
   const [loadingAssessments, setLoadingAssessments] =
     useState(false);
   const [assessmentError, setAssessmentError] = useState("");
+
+  const [assignmentCatalogue, setAssignmentCatalogue] =
+    useState<AssignmentQuestionnaire[]>([]);
+  const [assignments, setAssignments] = useState<
+    ClinicianAssessmentAssignment[]
+  >([]);
+  const [loadingAssignmentTools, setLoadingAssignmentTools] =
+    useState(false);
+  const [assignmentError, setAssignmentError] = useState("");
+  const [assignmentSuccess, setAssignmentSuccess] =
+    useState("");
+  const [selectedQuestionnaireId, setSelectedQuestionnaireId] =
+    useState("");
+  const [assignmentDueDate, setAssignmentDueDate] =
+    useState("");
+  const [assignmentNote, setAssignmentNote] = useState("");
+  const [assigning, setAssigning] = useState(false);
+  const [cancellingAssignmentId, setCancellingAssignmentId] =
+    useState<string | null>(null);
+
+  async function loadAssignmentTools() {
+    if (!client) {
+      setAssignmentCatalogue([]);
+      setAssignments([]);
+      setLoadingAssignmentTools(false);
+      return;
+    }
+
+    setLoadingAssignmentTools(true);
+    setAssignmentError("");
+
+    const supabase = createClient();
+
+    const [catalogueResult, assignmentsResult] =
+      await Promise.all([
+        supabase.rpc(
+          "psylattice_clinician_assignment_catalogue"
+        ),
+        supabase.rpc(
+          "psylattice_clinician_assessment_assignments",
+          {
+            p_connection_id: client.connection_id,
+          }
+        ),
+      ]);
+
+    if (catalogueResult.error) {
+      console.error(
+        "Could not load assignment catalogue:",
+        catalogueResult.error
+      );
+
+      setAssignmentError(
+        "The assessment assignment catalogue could not be loaded."
+      );
+      setAssignmentCatalogue([]);
+    } else {
+      const catalogue =
+        (catalogueResult.data ??
+          []) as AssignmentQuestionnaire[];
+
+      setAssignmentCatalogue(catalogue);
+
+      setSelectedQuestionnaireId((current) =>
+        current ||
+        catalogue[0]?.questionnaire_id ||
+        ""
+      );
+    }
+
+    if (assignmentsResult.error) {
+      console.error(
+        "Could not load assessment assignments:",
+        assignmentsResult.error
+      );
+
+      setAssignmentError(
+        "Assessment assignments could not be loaded."
+      );
+      setAssignments([]);
+    } else {
+      setAssignments(
+        (assignmentsResult.data ??
+          []) as ClinicianAssessmentAssignment[]
+      );
+    }
+
+    setLoadingAssignmentTools(false);
+  }
+
+  useEffect(() => {
+    void loadAssignmentTools();
+  }, [client?.connection_id]);
 
   useEffect(() => {
     let active = true;
@@ -1578,6 +1792,117 @@ function Assessments({
     permissions?.share_assessments,
   ]);
 
+  async function assignAssessment() {
+    if (
+      !client ||
+      !selectedQuestionnaireId ||
+      assigning
+    ) {
+      return;
+    }
+
+    setAssigning(true);
+    setAssignmentError("");
+    setAssignmentSuccess("");
+
+    const supabase = createClient();
+
+    const { error } = await supabase.rpc(
+      "psylattice_assign_assessment",
+      {
+        p_connection_id: client.connection_id,
+        p_questionnaire_id: selectedQuestionnaireId,
+        p_due_date: assignmentDueDate || null,
+        p_note: assignmentNote.trim() || null,
+      }
+    );
+
+    if (error) {
+      console.error(
+        "Could not assign assessment:",
+        error
+      );
+
+      setAssignmentError(
+        "The assessment could not be assigned. Please try again."
+      );
+      setAssigning(false);
+      return;
+    }
+
+    const questionnaire =
+      assignmentCatalogue.find(
+        (item) =>
+          item.questionnaire_id ===
+          selectedQuestionnaireId
+      );
+
+    setAssignmentSuccess(
+      `${questionnaire?.questionnaire_acronym ||
+        questionnaire?.questionnaire_name ||
+        "Assessment"} assigned to ${client.client_name}.`
+    );
+
+    setAssignmentNote("");
+    setAssignmentDueDate("");
+    setAssigning(false);
+    await loadAssignmentTools();
+  }
+
+  async function cancelAssignment(
+    assignment: ClinicianAssessmentAssignment
+  ) {
+    if (
+      cancellingAssignmentId ||
+      assignment.status !== "assigned"
+    ) {
+      return;
+    }
+
+    const confirmed = window.confirm(
+      `Cancel the ${assignment.questionnaire_acronym ||
+        assignment.questionnaire_name} assignment for ${client?.client_name || "this client"}?`
+    );
+
+    if (!confirmed) {
+      return;
+    }
+
+    setCancellingAssignmentId(
+      assignment.assignment_id
+    );
+    setAssignmentError("");
+    setAssignmentSuccess("");
+
+    const supabase = createClient();
+
+    const { error } = await supabase.rpc(
+      "psylattice_cancel_assessment_assignment",
+      {
+        p_assignment_id: assignment.assignment_id,
+      }
+    );
+
+    if (error) {
+      console.error(
+        "Could not cancel assessment assignment:",
+        error
+      );
+
+      setAssignmentError(
+        "The assignment could not be cancelled."
+      );
+      setCancellingAssignmentId(null);
+      return;
+    }
+
+    setAssignmentSuccess(
+      "Assessment assignment cancelled."
+    );
+    setCancellingAssignmentId(null);
+    await loadAssignmentTools();
+  }
+
   if (!client) {
     return (
       <div className="rounded-2xl border border-slate-200 bg-white p-8 text-center">
@@ -1587,7 +1912,7 @@ function Assessments({
 
         <p className="mx-auto mt-2 max-w-lg text-sm leading-6 text-slate-500">
           Open a connected client from the Clients page before
-          reviewing assessment information.
+          reviewing or assigning assessments.
         </p>
 
         <button
@@ -1620,6 +1945,24 @@ function Assessments({
     )
   ).size;
 
+  function assignmentStatusType(
+    status: ClinicianAssessmentAssignment["status"]
+  ): "neutral" | "success" | "warning" | "accent" {
+    if (status === "completed") return "success";
+    if (status === "in_progress") return "accent";
+    if (status === "assigned") return "warning";
+    return "neutral";
+  }
+
+  function assignmentStatusLabel(
+    status: ClinicianAssessmentAssignment["status"]
+  ) {
+    if (status === "in_progress") return "In progress";
+    if (status === "completed") return "Completed";
+    if (status === "cancelled") return "Cancelled";
+    return "Assigned";
+  }
+
   return (
     <div className="space-y-5">
       <div className="flex flex-wrap items-center justify-between gap-4 rounded-2xl border border-slate-200 bg-white p-5">
@@ -1628,7 +1971,7 @@ function Assessments({
 
           <div>
             <p className="text-xs font-medium uppercase tracking-[0.12em] text-slate-400">
-              Shared assessments
+              Assessments
             </p>
 
             <h2 className="mt-1 text-xl font-semibold text-slate-950">
@@ -1636,8 +1979,8 @@ function Assessments({
             </h2>
 
             <p className="mt-1 text-sm text-slate-500">
-              Assessment access follows this client's
-              current sharing permission.
+              Assign assessments and review results only when
+              the client has authorised result sharing.
             </p>
           </div>
         </div>
@@ -1645,14 +1988,260 @@ function Assessments({
         {loadingPermissions ? (
           <Status>Checking access</Status>
         ) : permissions?.share_assessments ? (
-          <Status type="success">Shared</Status>
+          <Status type="success">Results shared</Status>
         ) : (
-          <Status>Not shared</Status>
+          <Status>Results private</Status>
         )}
       </div>
 
+      <Panel
+        title="Assign an assessment"
+        description="Send a curated Self questionnaire to this client. Assignment does not automatically grant access to the result."
+      >
+        {assignmentSuccess && (
+          <div className="mb-4 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-800">
+            {assignmentSuccess}
+          </div>
+        )}
+
+        {assignmentError && (
+          <div className="mb-4 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+            {assignmentError}
+          </div>
+        )}
+
+        {loadingAssignmentTools ? (
+          <div className="rounded-2xl bg-slate-50 px-5 py-8 text-center">
+            <p className="text-sm font-medium text-slate-600">
+              Loading assignment tools...
+            </p>
+          </div>
+        ) : assignmentCatalogue.length === 0 ? (
+          <div className="rounded-2xl bg-slate-50 p-5">
+            <p className="font-medium text-slate-800">
+              No Self questionnaires available
+            </p>
+
+            <p className="mt-2 text-sm text-slate-500">
+              PsyLattice did not return an active
+              Self-available questionnaire for assignment.
+            </p>
+          </div>
+        ) : (
+          <div className="space-y-4">
+            <div className="grid gap-4 lg:grid-cols-[1fr_220px]">
+              <label className="block">
+                <span className="text-sm font-medium text-slate-800">
+                  Assessment
+                </span>
+
+                <select
+                  value={selectedQuestionnaireId}
+                  onChange={(event) =>
+                    setSelectedQuestionnaireId(
+                      event.target.value
+                    )
+                  }
+                  className="mt-2 w-full rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm outline-none focus:border-cyan-700"
+                >
+                  {assignmentCatalogue.map(
+                    (questionnaire) => (
+                      <option
+                        key={
+                          questionnaire.questionnaire_id
+                        }
+                        value={
+                          questionnaire.questionnaire_id
+                        }
+                      >
+                        {questionnaire.questionnaire_acronym
+                          ? `${questionnaire.questionnaire_acronym} — ${questionnaire.questionnaire_name}`
+                          : questionnaire.questionnaire_name}
+                      </option>
+                    )
+                  )}
+                </select>
+              </label>
+
+              <label className="block">
+                <span className="text-sm font-medium text-slate-800">
+                  Due date
+                </span>
+
+                <input
+                  type="date"
+                  value={assignmentDueDate}
+                  onChange={(event) =>
+                    setAssignmentDueDate(
+                      event.target.value
+                    )
+                  }
+                  className="mt-2 w-full rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm outline-none focus:border-cyan-700"
+                />
+              </label>
+            </div>
+
+            <label className="block">
+              <span className="text-sm font-medium text-slate-800">
+                Optional message
+              </span>
+
+              <textarea
+                value={assignmentNote}
+                onChange={(event) =>
+                  setAssignmentNote(event.target.value)
+                }
+                placeholder="For example: Please complete this before our next session."
+                className="mt-2 min-h-24 w-full resize-none rounded-xl border border-slate-200 p-4 text-sm leading-6 outline-none focus:border-cyan-700"
+              />
+            </label>
+
+            <div className="flex flex-col justify-between gap-4 rounded-xl border border-cyan-100 bg-cyan-50/60 p-4 sm:flex-row sm:items-center">
+              <p className="max-w-3xl text-xs leading-5 text-slate-600">
+                The client will see this assignment in
+                Self → Self-Assessments. Completion status can
+                be shown here, but scores remain unavailable
+                unless the client has enabled
+                Self-assessment results in Privacy & Sharing.
+              </p>
+
+              <button
+                type="button"
+                disabled={
+                  assigning ||
+                  !selectedQuestionnaireId
+                }
+                onClick={() =>
+                  void assignAssessment()
+                }
+                className="shrink-0 rounded-xl bg-slate-950 px-5 py-3 text-sm font-semibold text-white transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                {assigning
+                  ? "Assigning..."
+                  : "Assign assessment"}
+              </button>
+            </div>
+          </div>
+        )}
+      </Panel>
+
+      <Panel
+        title="Assignment activity"
+        description="Operational status for assessments you assigned through this clinician-client connection."
+      >
+        {loadingAssignmentTools ? (
+          <p className="text-sm text-slate-500">
+            Loading assignments...
+          </p>
+        ) : assignments.length === 0 ? (
+          <div className="rounded-2xl bg-slate-50 p-5">
+            <p className="font-medium text-slate-800">
+              No assignments yet
+            </p>
+
+            <p className="mt-2 text-sm text-slate-500">
+              New assessment assignments will appear here.
+            </p>
+          </div>
+        ) : (
+          <div className="divide-y divide-slate-100">
+            {assignments.map((assignment) => (
+              <div
+                key={assignment.assignment_id}
+                className="py-4 first:pt-0 last:pb-0"
+              >
+                <div className="flex flex-col justify-between gap-4 sm:flex-row sm:items-start">
+                  <div>
+                    <div className="flex flex-wrap items-center gap-2">
+                      <p className="text-sm font-semibold text-slate-900">
+                        {assignment.questionnaire_acronym ||
+                          assignment.questionnaire_name}
+                      </p>
+
+                      <Status
+                        type={assignmentStatusType(
+                          assignment.status
+                        )}
+                      >
+                        {assignmentStatusLabel(
+                          assignment.status
+                        )}
+                      </Status>
+                    </div>
+
+                    {assignment.questionnaire_acronym && (
+                      <p className="mt-1 text-xs text-slate-400">
+                        {assignment.questionnaire_name}
+                      </p>
+                    )}
+
+                    <p className="mt-2 text-xs text-slate-400">
+                      Assigned{" "}
+                      {new Date(
+                        assignment.created_at
+                      ).toLocaleString()}
+                      {assignment.due_date
+                        ? ` · Due ${new Date(
+                            `${assignment.due_date}T00:00:00`
+                          ).toLocaleDateString()}`
+                        : ""}
+                    </p>
+
+                    {assignment.note && (
+                      <p className="mt-2 max-w-2xl text-xs leading-5 text-slate-500">
+                        “{assignment.note}”
+                      </p>
+                    )}
+
+                    {assignment.status ===
+                      "completed" && (
+                      <p className="mt-2 text-xs font-medium text-slate-500">
+                        {permissions?.share_assessments
+                          ? "The client currently shares assessment results."
+                          : "Completed — result remains private because assessment sharing is off."}
+                      </p>
+                    )}
+                  </div>
+
+                  {assignment.status ===
+                    "assigned" && (
+                    <button
+                      type="button"
+                      disabled={
+                        cancellingAssignmentId ===
+                        assignment.assignment_id
+                      }
+                      onClick={() =>
+                        void cancelAssignment(
+                          assignment
+                        )
+                      }
+                      className="shrink-0 rounded-lg border border-slate-200 px-3 py-2 text-xs font-semibold text-slate-500 transition hover:border-red-200 hover:bg-red-50 hover:text-red-700 disabled:opacity-50"
+                    >
+                      {cancellingAssignmentId ===
+                      assignment.assignment_id
+                        ? "Cancelling..."
+                        : "Cancel assignment"}
+                    </button>
+                  )}
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+
+        <button
+          type="button"
+          disabled={loadingAssignmentTools}
+          onClick={() => void loadAssignmentTools()}
+          className="mt-5 text-xs font-semibold text-cyan-900 disabled:opacity-50"
+        >
+          Refresh assignment status
+        </button>
+      </Panel>
+
       {loadingPermissions ? (
-        <Panel title="Assessment access">
+        <Panel title="Shared assessment results">
           <div className="rounded-2xl bg-slate-50 px-5 py-8 text-center">
             <p className="text-sm font-medium text-slate-600">
               Checking assessment permission...
@@ -1667,8 +2256,8 @@ function Assessments({
         </div>
       ) : !permissions?.share_assessments ? (
         <Panel
-          title="Assessment access"
-          description="The client controls this permission from their Self workspace."
+          title="Shared assessment results"
+          description="The client controls result sharing from their Self workspace."
         >
           <div className="rounded-2xl border border-dashed border-slate-300 bg-slate-50/60 px-6 py-10 text-center">
             <div className="mx-auto flex h-11 w-11 items-center justify-center rounded-full bg-slate-100 text-sm font-semibold text-slate-500">
@@ -1680,15 +2269,16 @@ function Assessments({
             </p>
 
             <p className="mx-auto mt-2 max-w-xl text-sm leading-6 text-slate-500">
-              {client.client_name} has not authorised access
-              to Self-assessment results. PsyLattice will not
-              return their assessment records to this
-              Clinical workspace while this permission is off.
+              You may assign an assessment, but PsyLattice
+              will not return the client's scores while
+              Self-assessment result sharing is off.
             </p>
 
             <button
               type="button"
-              onClick={() => changeScreen("permissions")}
+              onClick={() =>
+                changeScreen("permissions")
+              }
               className="mt-5 rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm font-semibold text-slate-700 transition hover:bg-slate-50"
             >
               View consent & data access
@@ -1746,7 +2336,7 @@ function Assessments({
           </div>
 
           <Panel
-            title="Assessment history"
+            title="Shared assessment history"
             description="Completed Self assessments returned through the client's active assessment-sharing permission."
           >
             {loadingAssessments ? (
@@ -1762,23 +2352,24 @@ function Assessments({
                 </p>
 
                 <p className="mx-auto mt-2 max-w-xl text-sm leading-6 text-slate-500">
-                  Assessment sharing is enabled, but this
-                  client does not currently have a completed
-                  assessment record available through the
-                  shared-assessment endpoint.
+                  Assessment sharing is enabled, but no
+                  completed assessment result is currently
+                  available.
                 </p>
               </div>
             ) : (
               <div className="divide-y divide-slate-100">
                 {assessments.map((assessment) => {
-                  const scoreEntries = assessment.scores
-                    ? Object.entries(
-                        assessment.scores
-                      ).filter(
-                        ([, value]) =>
-                          typeof value === "number"
-                      )
-                    : [];
+                  const scoreEntries =
+                    assessment.scores
+                      ? Object.entries(
+                          assessment.scores
+                        ).filter(
+                          ([, value]) =>
+                            typeof value ===
+                            "number"
+                        )
+                      : [];
 
                   return (
                     <div
@@ -1848,47 +2439,6 @@ function Assessments({
               </div>
             )}
           </Panel>
-
-          <Panel title="Assessment access boundary">
-            <div className="rounded-2xl border border-cyan-100 bg-cyan-50/60 p-5">
-              <p className="font-medium text-cyan-950">
-                Access is checked in Supabase, not only hidden
-                in the interface.
-              </p>
-
-              <p className="mt-2 max-w-4xl text-sm leading-6 text-slate-600">
-                The Clinical workspace requests assessment
-                history through a restricted database
-                function. The function returns completed
-                assessment summaries only when this clinician
-                has an active connection to the client and the
-                client currently allows assessment sharing.
-              </p>
-            </div>
-          </Panel>
-
-          <Panel title="Assign an assessment">
-            <div className="rounded-2xl bg-slate-50 p-5">
-              <p className="font-medium text-slate-800">
-                Assessment assignment is the next workflow.
-              </p>
-
-              <p className="mt-2 max-w-3xl text-sm leading-6 text-slate-500">
-                Reading authorised existing results is now
-                separate from assigning a new assessment. We
-                will connect assignment to the Self workspace
-                in the next assessment step.
-              </p>
-
-              <button
-                type="button"
-                disabled
-                className="mt-4 rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm font-semibold text-slate-400"
-              >
-                Assign assessment · Coming next
-              </button>
-            </div>
-          </Panel>
         </>
       )}
     </div>
@@ -1900,117 +2450,899 @@ function Assessments({
    AMBULATORY MONITORING
    ========================================================= */
 
-function Ambulatory() {
+
+type MonitoringBlockType =
+  | "slider"
+  | "single_choice"
+  | "multiple_choice"
+  | "yes_no"
+  | "number"
+  | "short_text"
+  | "long_text"
+  | "instruction"
+  | "activity"
+  | "questionnaire"
+  | "time_duration"
+  | "mood";
+
+type MonitoringCondition = {
+  sourceKey: string;
+  operator: string;
+  value: string;
+};
+
+type MonitoringVisibility = {
+  mode: "always" | "conditional";
+  logic: "AND" | "OR";
+  conditions: MonitoringCondition[];
+};
+
+type MonitoringProtocolItemDraft = {
+  item_id?: string;
+  key: string;
+  type: MonitoringBlockType;
+  prompt: string;
+  required: boolean;
+  config: Record<string, any>;
+  visibility: MonitoringVisibility;
+};
+
+type MonitoringProtocolScheduleDraft = {
+  schedule_id?: string;
+  key: string;
+  label: string;
+  start_time: string;
+  end_time: string;
+  items: MonitoringProtocolItemDraft[];
+};
+
+type MonitoringQuestionnaireOption = {
+  questionnaire_id: string;
+  questionnaire_name: string;
+  questionnaire_acronym: string | null;
+  questionnaire_slug: string;
+  questionnaire_category: string;
+  item_count: number;
+  estimated_minutes: number | null;
+};
+
+function monitoringDraftKey(prefix: string) {
+  return `${prefix}-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
+}
+
+function newMonitoringItem(
+  type: MonitoringBlockType,
+  index: number
+): MonitoringProtocolItemDraft {
+  const defaults: Record<MonitoringBlockType, { prompt: string; config: Record<string, any> }> = {
+    slider: {
+      prompt: "How would you rate this right now?",
+      config: { min: 0, max: 10, step: 1, minLabel: "Not at all", maxLabel: "Extremely" },
+    },
+    single_choice: {
+      prompt: "Choose the option that fits best.",
+      config: { options: ["Option 1", "Option 2", "Option 3"] },
+    },
+    multiple_choice: {
+      prompt: "Select all that apply.",
+      config: { options: ["Option 1", "Option 2", "Option 3"] },
+    },
+    yes_no: { prompt: "Is this true right now?", config: {} },
+    number: { prompt: "Enter a number.", config: { min: 0, max: 100, step: 1 } },
+    short_text: { prompt: "Write a short response.", config: {} },
+    long_text: { prompt: "Tell us more.", config: {} },
+    instruction: { prompt: "Read this before continuing.", config: {} },
+    activity: {
+      prompt: "Complete this activity.",
+      config: { instructions: "Follow the activity instructions, then mark it complete.", durationMinutes: 2 },
+    },
+    questionnaire: {
+      prompt: "Complete this questionnaire.",
+      config: { questionnaire_id: "", questionnaire_name: "", questionnaire_acronym: "" },
+    },
+    time_duration: { prompt: "How long?", config: { unit: "minutes", min: 0, max: 1440 } },
+    mood: {
+      prompt: "Which mood best describes how you feel?",
+      config: { options: ["Calm", "Happy", "Sad", "Anxious", "Irritated", "Tired"] },
+    },
+  };
+
+  return {
+    key: monitoringDraftKey(`item-${index + 1}`),
+    type,
+    prompt: defaults[type].prompt,
+    required: type !== "instruction",
+    config: defaults[type].config,
+    visibility: { mode: "always", logic: "AND", conditions: [] },
+  };
+}
+
+function defaultMonitoringProtocol(): MonitoringProtocolScheduleDraft[] {
+  const protocol: MonitoringProtocolScheduleDraft[] = [
+    {
+      key: monitoringDraftKey("morning"),
+      label: "Morning",
+      start_time: "08:00",
+      end_time: "10:00",
+      items: [
+        {
+          ...newMonitoringItem("slider", 0),
+          prompt: "How stressed do you feel right now?",
+          config: { min: 0, max: 10, step: 1, minLabel: "Not at all", maxLabel: "Extremely" },
+        },
+        {
+          ...newMonitoringItem("single_choice", 1),
+          prompt: "What are you doing right now?",
+          config: { options: ["Studying", "Working", "Resting", "Eating", "Exercising", "Socialising", "Travelling", "Other"] },
+        },
+        {
+          ...newMonitoringItem("long_text", 2),
+          prompt: "Anything important you want to note?",
+          required: false,
+        },
+      ],
+    },
+    {
+      key: monitoringDraftKey("afternoon"),
+      label: "Afternoon",
+      start_time: "15:00",
+      end_time: "17:00",
+      items: [
+        {
+          ...newMonitoringItem("slider", 0),
+          prompt: "How stressed do you feel right now?",
+          config: { min: 0, max: 10, step: 1, minLabel: "Not at all", maxLabel: "Extremely" },
+        },
+        {
+          ...newMonitoringItem("yes_no", 1),
+          prompt: "Has anything stressful happened since your last check-in?",
+        },
+        {
+          ...newMonitoringItem("short_text", 2),
+          prompt: "What happened?",
+          required: false,
+          visibility: {
+            mode: "conditional",
+            logic: "AND",
+            conditions: [{ sourceKey: "", operator: "equals", value: "Yes" }],
+          },
+        },
+      ],
+    },
+    {
+      key: monitoringDraftKey("evening"),
+      label: "Evening",
+      start_time: "20:00",
+      end_time: "22:00",
+      items: [
+        {
+          ...newMonitoringItem("mood", 0),
+          prompt: "Which mood best describes your evening?",
+        },
+        {
+          ...newMonitoringItem("long_text", 1),
+          prompt: "What stood out most about today?",
+          required: false,
+        },
+      ],
+    },
+  ];
+
+  for (const schedule of protocol) {
+    // Repair the default conditional source after stable keys are generated.
+    if (schedule.label === "Afternoon" && schedule.items[2]) {
+      schedule.items[2].visibility.conditions[0].sourceKey = schedule.items[1].key;
+    }
+  }
+
+  return protocol;
+}
+
+function monitoringOperators(type: MonitoringBlockType) {
+  if (type === "slider" || type === "number" || type === "time_duration") {
+    return [
+      ["equals", "Equals"],
+      ["not_equals", "Does not equal"],
+      ["gt", "Greater than"],
+      ["gte", "Greater than or equal"],
+      ["lt", "Less than"],
+      ["lte", "Less than or equal"],
+      ["answered", "Is answered"],
+      ["not_answered", "Is not answered"],
+    ];
+  }
+  if (type === "multiple_choice") {
+    return [
+      ["contains", "Contains"],
+      ["not_contains", "Does not contain"],
+      ["answered", "Is answered"],
+      ["not_answered", "Is not answered"],
+    ];
+  }
+  if (type === "short_text" || type === "long_text") {
+    return [
+      ["contains_text", "Contains text"],
+      ["answered", "Is answered"],
+      ["not_answered", "Is not answered"],
+    ];
+  }
+  return [
+    ["equals", "Is"],
+    ["not_equals", "Is not"],
+    ["answered", "Is answered"],
+    ["not_answered", "Is not answered"],
+  ];
+}
+
+function monitoringResponseAnswered(value: any) {
+  if (value === null || value === undefined || value === "") return false;
+  if (Array.isArray(value)) return value.length > 0;
+  if (typeof value === "object" && "completed" in value) return Boolean(value.completed);
+  return true;
+}
+
+function monitoringConditionMatches(condition: MonitoringCondition, sourceType: MonitoringBlockType, response: any) {
+  const answered = monitoringResponseAnswered(response);
+  if (condition.operator === "answered") return answered;
+  if (condition.operator === "not_answered") return !answered;
+  if (!answered) return false;
+
+  const target = condition.value;
+  if (["slider", "number", "time_duration"].includes(sourceType)) {
+    const left = Number(response);
+    const right = Number(target);
+    if (Number.isNaN(left) || Number.isNaN(right)) return false;
+    if (condition.operator === "gt") return left > right;
+    if (condition.operator === "gte") return left >= right;
+    if (condition.operator === "lt") return left < right;
+    if (condition.operator === "lte") return left <= right;
+    if (condition.operator === "not_equals") return left !== right;
+    return left === right;
+  }
+  if (sourceType === "multiple_choice") {
+    const values = Array.isArray(response) ? response.map(String) : [];
+    if (condition.operator === "not_contains") return !values.includes(target);
+    return values.includes(target);
+  }
+  if (condition.operator === "contains_text") {
+    return String(response).toLowerCase().includes(target.toLowerCase());
+  }
+  if (condition.operator === "not_equals") return String(response) !== target;
+  return String(response) === target;
+}
+
+function monitoringVisibleItems(items: MonitoringProtocolItemDraft[], responses: Record<string, any>) {
+  const byKey = new Map(items.map((item) => [item.key, item]));
+  return items.filter((item) => {
+    if (item.visibility?.mode !== "conditional") return true;
+    const conditions = item.visibility.conditions || [];
+    if (conditions.length === 0) return true;
+    const results = conditions.map((condition) => {
+      const source = byKey.get(condition.sourceKey);
+      if (!source) return false;
+      return monitoringConditionMatches(condition, source.type, responses[condition.sourceKey]);
+    });
+    return item.visibility.logic === "OR" ? results.some(Boolean) : results.every(Boolean);
+  });
+}
+
+function cleanHiddenMonitoringResponses(items: MonitoringProtocolItemDraft[], incoming: Record<string, any>) {
+  let next = { ...incoming };
+  for (let pass = 0; pass < items.length + 1; pass += 1) {
+    const visible = new Set(monitoringVisibleItems(items, next).map((item) => item.key));
+    let changed = false;
+    for (const key of Object.keys(next)) {
+      if (!visible.has(key)) {
+        delete next[key];
+        changed = true;
+      }
+    }
+    if (!changed) break;
+  }
+  return next;
+}
+
+function monitoringResponseText(value: any) {
+  if (value === null || value === undefined || value === "") return "—";
+  if (Array.isArray(value)) return value.join(", ") || "—";
+  if (typeof value === "object") {
+    if (value.completed && value.questionnaire_name) return `Completed ${value.questionnaire_name}`;
+    if (value.completed) return "Completed";
+    return JSON.stringify(value);
+  }
+  if (typeof value === "boolean") return value ? "Completed" : "Not completed";
+  return String(value);
+}
+
+function MonitoringProtocolBuilderV2({
+  protocol,
+  onChange,
+  questionnaires,
+}: {
+  protocol: MonitoringProtocolScheduleDraft[];
+  onChange: (protocol: MonitoringProtocolScheduleDraft[]) => void;
+  questionnaires: MonitoringQuestionnaireOption[];
+}) {
+  const blockTypes: Array<[MonitoringBlockType, string]> = [
+    ["slider", "Slider / rating"],
+    ["single_choice", "Single choice"],
+    ["multiple_choice", "Multiple choice"],
+    ["yes_no", "Yes / No"],
+    ["number", "Number"],
+    ["short_text", "Short text"],
+    ["long_text", "Long text"],
+    ["mood", "Mood / emotion"],
+    ["time_duration", "Time / duration"],
+    ["activity", "Activity"],
+    ["questionnaire", "Questionnaire library"],
+    ["instruction", "Instruction / information"],
+  ];
+
+  function updateSchedule(index: number, patch: Partial<MonitoringProtocolScheduleDraft>) {
+    onChange(protocol.map((schedule, i) => (i === index ? { ...schedule, ...patch } : schedule)));
+  }
+
+  function addSchedule() {
+    if (protocol.length >= 12) return;
+    onChange([
+      ...protocol,
+      {
+        key: monitoringDraftKey(`checkin-${protocol.length + 1}`),
+        label: `Check-in ${protocol.length + 1}`,
+        start_time: "12:00",
+        end_time: "13:00",
+        items: [newMonitoringItem("slider", 0)],
+      },
+    ]);
+  }
+
+  function removeSchedule(index: number) {
+    if (protocol.length <= 1) return;
+    onChange(protocol.filter((_, i) => i !== index));
+  }
+
+  function updateItem(scheduleIndex: number, itemIndex: number, patch: Partial<MonitoringProtocolItemDraft>) {
+    const schedule = protocol[scheduleIndex];
+    const items = schedule.items.map((item, i) => (i === itemIndex ? { ...item, ...patch } : item));
+    updateSchedule(scheduleIndex, { items });
+  }
+
+  function addItem(scheduleIndex: number, type: MonitoringBlockType) {
+    const schedule = protocol[scheduleIndex];
+    if (schedule.items.length >= 50) return;
+    updateSchedule(scheduleIndex, { items: [...schedule.items, newMonitoringItem(type, schedule.items.length)] });
+  }
+
+  function removeItem(scheduleIndex: number, itemIndex: number) {
+    const schedule = protocol[scheduleIndex];
+    if (schedule.items.length <= 1) return;
+    const removedKey = schedule.items[itemIndex].key;
+    const items = schedule.items
+      .filter((_, i) => i !== itemIndex)
+      .map((item) => ({
+        ...item,
+        visibility: {
+          ...item.visibility,
+          conditions: item.visibility.conditions.filter((condition) => condition.sourceKey !== removedKey),
+        },
+      }));
+    updateSchedule(scheduleIndex, { items });
+  }
+
+  function moveItem(scheduleIndex: number, itemIndex: number, direction: -1 | 1) {
+    const schedule = protocol[scheduleIndex];
+    const target = itemIndex + direction;
+    if (target < 0 || target >= schedule.items.length) return;
+    const items = [...schedule.items];
+    [items[itemIndex], items[target]] = [items[target], items[itemIndex]];
+    // Remove conditions that would become forward references after reordering.
+    const positions = new Map(items.map((item, i) => [item.key, i]));
+    const safeItems = items.map((item, i) => ({
+      ...item,
+      visibility: {
+        ...item.visibility,
+        conditions: item.visibility.conditions.filter((condition) => (positions.get(condition.sourceKey) ?? 999) < i),
+      },
+    }));
+    updateSchedule(scheduleIndex, { items: safeItems });
+  }
+
   return (
     <div className="space-y-5">
-      <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
-        <StatCard label="Prompts sent" value="56" detail="Past 14 days" />
-        <StatCard label="Completed" value="46" detail="82% completion" />
-        <StatCard label="Mean stress" value="5.4 / 10" detail="Momentary reports" />
-        <StatCard label="High ratings" value="9" detail="Ratings ≥ 8" />
-      </div>
+      {protocol.map((schedule, scheduleIndex) => (
+        <section key={schedule.key} className="rounded-2xl border border-slate-200 bg-white p-5">
+          <div className="flex flex-col justify-between gap-4 lg:flex-row lg:items-end">
+            <div className="grid flex-1 gap-3 md:grid-cols-[1fr_160px_160px]">
+              <label>
+                <span className="text-xs font-medium text-slate-500">Check-in name</span>
+                <input
+                  value={schedule.label}
+                  onChange={(event) => updateSchedule(scheduleIndex, { label: event.target.value })}
+                  className="mt-2 w-full rounded-xl border border-slate-200 px-3 py-2.5 text-sm outline-none focus:border-cyan-700"
+                />
+              </label>
+              <label>
+                <span className="text-xs font-medium text-slate-500">From</span>
+                <input
+                  type="time"
+                  value={schedule.start_time}
+                  onChange={(event) => updateSchedule(scheduleIndex, { start_time: event.target.value })}
+                  className="mt-2 w-full rounded-xl border border-slate-200 px-3 py-2.5 text-sm outline-none focus:border-cyan-700"
+                />
+              </label>
+              <label>
+                <span className="text-xs font-medium text-slate-500">Until</span>
+                <input
+                  type="time"
+                  value={schedule.end_time}
+                  onChange={(event) => updateSchedule(scheduleIndex, { end_time: event.target.value })}
+                  className="mt-2 w-full rounded-xl border border-slate-200 px-3 py-2.5 text-sm outline-none focus:border-cyan-700"
+                />
+              </label>
+            </div>
+            <button
+              type="button"
+              disabled={protocol.length <= 1}
+              onClick={() => removeSchedule(scheduleIndex)}
+              className="rounded-xl border border-red-200 bg-white px-3 py-2.5 text-xs font-semibold text-red-700 disabled:opacity-30"
+            >
+              Remove check-in
+            </button>
+          </div>
 
-      <div className="grid gap-5 xl:grid-cols-[1.15fr_.85fr]">
-        <Panel title="Recent moments">
-          <div className="divide-y divide-slate-100">
-            {[
-              [
-                "Today · 12:42",
-                "8 / 10",
-                "Studying",
-                "Deadline approaching",
-                "High",
-              ],
-              ["Today · 09:11", "4 / 10", "Commuting", "Alone", "Moderate"],
-              [
-                "Yesterday · 20:31",
-                "3 / 10",
-                "Home",
-                "Socialising",
-                "Lower",
-              ],
-              [
-                "Yesterday · 16:08",
-                "7 / 10",
-                "Library",
-                "Studying",
-                "Elevated",
-              ],
-            ].map(([time, stress, location, context, level]) => (
-              <div
-                key={time}
-                className="grid gap-2 py-4 first:pt-0 last:pb-0 sm:grid-cols-[130px_80px_1fr_auto]"
-              >
-                <p className="text-xs text-slate-400">{time}</p>
-                <p className="text-sm font-semibold">{stress}</p>
-                <div>
-                  <p className="text-sm">{location}</p>
-                  <p className="mt-1 text-xs text-slate-400">{context}</p>
+          <div className="mt-6 space-y-4">
+            {schedule.items.map((item, itemIndex) => {
+              const previousItems = schedule.items.slice(0, itemIndex);
+              const visibility = item.visibility || { mode: "always", logic: "AND", conditions: [] };
+              return (
+                <div key={item.key} className="rounded-2xl border border-slate-200 bg-slate-50/40 p-4">
+                  <div className="flex flex-wrap items-center justify-between gap-3">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <select
+                        value={item.type}
+                        onChange={(event) => {
+                          const type = event.target.value as MonitoringBlockType;
+                          const fresh = newMonitoringItem(type, itemIndex);
+                          updateItem(scheduleIndex, itemIndex, {
+                            type,
+                            prompt: fresh.prompt,
+                            config: fresh.config,
+                            required: fresh.required,
+                          });
+                        }}
+                        className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs font-semibold"
+                      >
+                        {blockTypes.map(([value, label]) => <option key={value} value={value}>{label}</option>)}
+                      </select>
+                      <span className="text-xs text-slate-400">Block {itemIndex + 1}</span>
+                    </div>
+                    <div className="flex gap-2">
+                      <button type="button" disabled={itemIndex === 0} onClick={() => moveItem(scheduleIndex, itemIndex, -1)} className="rounded-lg border border-slate-200 bg-white px-2.5 py-1.5 text-xs disabled:opacity-30">↑</button>
+                      <button type="button" disabled={itemIndex === schedule.items.length - 1} onClick={() => moveItem(scheduleIndex, itemIndex, 1)} className="rounded-lg border border-slate-200 bg-white px-2.5 py-1.5 text-xs disabled:opacity-30">↓</button>
+                      <button type="button" disabled={schedule.items.length <= 1} onClick={() => removeItem(scheduleIndex, itemIndex)} className="rounded-lg border border-red-200 bg-white px-2.5 py-1.5 text-xs font-semibold text-red-700 disabled:opacity-30">Remove</button>
+                    </div>
+                  </div>
+
+                  <label className="mt-4 block">
+                    <span className="text-xs font-medium text-slate-500">Prompt / title</span>
+                    <input
+                      value={item.prompt}
+                      onChange={(event) => updateItem(scheduleIndex, itemIndex, { prompt: event.target.value })}
+                      className="mt-2 w-full rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm outline-none focus:border-cyan-700"
+                    />
+                  </label>
+
+                  {(item.type === "single_choice" || item.type === "multiple_choice" || item.type === "mood") && (
+                    <label className="mt-4 block">
+                      <span className="text-xs font-medium text-slate-500">Options (one per line)</span>
+                      <textarea
+                        value={(item.config.options || []).join("\n")}
+                        onChange={(event) => updateItem(scheduleIndex, itemIndex, { config: { ...item.config, options: event.target.value.split("\n").map((value) => value.trim()).filter(Boolean) } })}
+                        className="mt-2 min-h-24 w-full rounded-xl border border-slate-200 bg-white p-3 text-sm outline-none focus:border-cyan-700"
+                      />
+                    </label>
+                  )}
+
+                  {item.type === "slider" && (
+                    <div className="mt-4 grid gap-3 sm:grid-cols-3 lg:grid-cols-5">
+                      {[["min", "Minimum"], ["max", "Maximum"], ["step", "Step"]].map(([key, label]) => (
+                        <label key={key}>
+                          <span className="text-xs font-medium text-slate-500">{label}</span>
+                          <input type="number" value={item.config[key] ?? ""} onChange={(event) => updateItem(scheduleIndex, itemIndex, { config: { ...item.config, [key]: Number(event.target.value) } })} className="mt-2 w-full rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm" />
+                        </label>
+                      ))}
+                      <label>
+                        <span className="text-xs font-medium text-slate-500">Low label</span>
+                        <input value={item.config.minLabel || ""} onChange={(event) => updateItem(scheduleIndex, itemIndex, { config: { ...item.config, minLabel: event.target.value } })} className="mt-2 w-full rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm" />
+                      </label>
+                      <label>
+                        <span className="text-xs font-medium text-slate-500">High label</span>
+                        <input value={item.config.maxLabel || ""} onChange={(event) => updateItem(scheduleIndex, itemIndex, { config: { ...item.config, maxLabel: event.target.value } })} className="mt-2 w-full rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm" />
+                      </label>
+                    </div>
+                  )}
+
+                  {(item.type === "number" || item.type === "time_duration") && (
+                    <div className="mt-4 grid gap-3 sm:grid-cols-3">
+                      <label><span className="text-xs font-medium text-slate-500">Minimum</span><input type="number" value={item.config.min ?? ""} onChange={(event) => updateItem(scheduleIndex, itemIndex, { config: { ...item.config, min: Number(event.target.value) } })} className="mt-2 w-full rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm" /></label>
+                      <label><span className="text-xs font-medium text-slate-500">Maximum</span><input type="number" value={item.config.max ?? ""} onChange={(event) => updateItem(scheduleIndex, itemIndex, { config: { ...item.config, max: Number(event.target.value) } })} className="mt-2 w-full rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm" /></label>
+                      {item.type === "time_duration" ? (
+                        <label><span className="text-xs font-medium text-slate-500">Unit</span><select value={item.config.unit || "minutes"} onChange={(event) => updateItem(scheduleIndex, itemIndex, { config: { ...item.config, unit: event.target.value } })} className="mt-2 w-full rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm"><option value="minutes">Minutes</option><option value="hours">Hours</option><option value="seconds">Seconds</option></select></label>
+                      ) : (
+                        <label><span className="text-xs font-medium text-slate-500">Step</span><input type="number" value={item.config.step ?? 1} onChange={(event) => updateItem(scheduleIndex, itemIndex, { config: { ...item.config, step: Number(event.target.value) } })} className="mt-2 w-full rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm" /></label>
+                      )}
+                    </div>
+                  )}
+
+                  {item.type === "activity" && (
+                    <div className="mt-4 grid gap-3 sm:grid-cols-[1fr_180px]">
+                      <label><span className="text-xs font-medium text-slate-500">Activity instructions</span><textarea value={item.config.instructions || ""} onChange={(event) => updateItem(scheduleIndex, itemIndex, { config: { ...item.config, instructions: event.target.value } })} className="mt-2 min-h-20 w-full rounded-xl border border-slate-200 bg-white p-3 text-sm" /></label>
+                      <label><span className="text-xs font-medium text-slate-500">Minutes</span><input type="number" min="1" value={item.config.durationMinutes ?? 2} onChange={(event) => updateItem(scheduleIndex, itemIndex, { config: { ...item.config, durationMinutes: Number(event.target.value) } })} className="mt-2 w-full rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm" /></label>
+                    </div>
+                  )}
+
+                  {item.type === "questionnaire" && (
+                    <label className="mt-4 block">
+                      <span className="text-xs font-medium text-slate-500">Questionnaire from library</span>
+                      <select
+                        value={item.config.questionnaire_id || ""}
+                        onChange={(event) => {
+                          const selected = questionnaires.find((questionnaire) => questionnaire.questionnaire_id === event.target.value);
+                          updateItem(scheduleIndex, itemIndex, {
+                            config: {
+                              ...item.config,
+                              questionnaire_id: event.target.value,
+                              questionnaire_name: selected?.questionnaire_name || "",
+                              questionnaire_acronym: selected?.questionnaire_acronym || "",
+                            },
+                          });
+                        }}
+                        className="mt-2 w-full rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm"
+                      >
+                        <option value="">Choose questionnaire…</option>
+                        {questionnaires.map((questionnaire) => (
+                          <option key={questionnaire.questionnaire_id} value={questionnaire.questionnaire_id}>
+                            {questionnaire.questionnaire_acronym ? `${questionnaire.questionnaire_acronym} — ${questionnaire.questionnaire_name}` : questionnaire.questionnaire_name}
+                          </option>
+                        ))}
+                      </select>
+                    </label>
+                  )}
+
+                  <div className="mt-5 flex flex-wrap items-center gap-5 border-t border-slate-200 pt-4">
+                    {item.type !== "instruction" && (
+                      <label className="flex items-center gap-2 text-xs font-medium text-slate-600">
+                        <input type="checkbox" checked={item.required} onChange={(event) => updateItem(scheduleIndex, itemIndex, { required: event.target.checked })} />
+                        Required
+                      </label>
+                    )}
+                    <label className="flex items-center gap-2 text-xs font-medium text-slate-600">
+                      <input
+                        type="checkbox"
+                        checked={visibility.mode === "conditional"}
+                        disabled={previousItems.length === 0}
+                        onChange={(event) => updateItem(scheduleIndex, itemIndex, {
+                          visibility: event.target.checked
+                            ? { mode: "conditional", logic: "AND", conditions: previousItems[0] ? [{ sourceKey: previousItems[0].key, operator: "equals", value: previousItems[0].type === "yes_no" ? "Yes" : "" }] : [] }
+                            : { mode: "always", logic: "AND", conditions: [] },
+                        })}
+                      />
+                      Show only when condition is met
+                    </label>
+                  </div>
+
+                  {visibility.mode === "conditional" && (
+                    <div className="mt-4 rounded-xl border border-cyan-100 bg-cyan-50/50 p-4">
+                      <div className="flex flex-wrap items-center justify-between gap-3">
+                        <p className="text-xs font-semibold uppercase tracking-[0.1em] text-cyan-900">Conditional branching</p>
+                        <select
+                          value={visibility.logic}
+                          onChange={(event) => updateItem(scheduleIndex, itemIndex, { visibility: { ...visibility, logic: event.target.value as "AND" | "OR" } })}
+                          className="rounded-lg border border-cyan-200 bg-white px-3 py-2 text-xs font-semibold text-cyan-900"
+                        >
+                          <option value="AND">All conditions (AND)</option>
+                          <option value="OR">Any condition (OR)</option>
+                        </select>
+                      </div>
+
+                      <div className="mt-3 space-y-3">
+                        {visibility.conditions.map((condition, conditionIndex) => {
+                          const source = previousItems.find((previous) => previous.key === condition.sourceKey) || previousItems[0];
+                          const operators = monitoringOperators(source?.type || "single_choice");
+                          return (
+                            <div key={conditionIndex} className="grid gap-2 lg:grid-cols-[1.2fr_.8fr_1fr_auto]">
+                              <select
+                                value={condition.sourceKey}
+                                onChange={(event) => {
+                                  const nextSource = previousItems.find((previous) => previous.key === event.target.value);
+                                  const next = visibility.conditions.map((current, i) => i === conditionIndex ? { sourceKey: event.target.value, operator: monitoringOperators(nextSource?.type || "single_choice")[0][0], value: nextSource?.type === "yes_no" ? "Yes" : "" } : current);
+                                  updateItem(scheduleIndex, itemIndex, { visibility: { ...visibility, conditions: next } });
+                                }}
+                                className="rounded-lg border border-cyan-200 bg-white px-3 py-2 text-xs"
+                              >
+                                {previousItems.map((previous) => <option key={previous.key} value={previous.key}>{previous.prompt}</option>)}
+                              </select>
+                              <select
+                                value={condition.operator}
+                                onChange={(event) => {
+                                  const next = visibility.conditions.map((current, i) => i === conditionIndex ? { ...current, operator: event.target.value } : current);
+                                  updateItem(scheduleIndex, itemIndex, { visibility: { ...visibility, conditions: next } });
+                                }}
+                                className="rounded-lg border border-cyan-200 bg-white px-3 py-2 text-xs"
+                              >
+                                {operators.map(([value, label]) => <option key={value} value={value}>{label}</option>)}
+                              </select>
+                              {condition.operator === "answered" || condition.operator === "not_answered" ? (
+                                <div className="rounded-lg border border-cyan-100 bg-white px-3 py-2 text-xs text-slate-400">No comparison value</div>
+                              ) : source?.type === "yes_no" ? (
+                                <select value={condition.value} onChange={(event) => {
+                                  const next = visibility.conditions.map((current, i) => i === conditionIndex ? { ...current, value: event.target.value } : current);
+                                  updateItem(scheduleIndex, itemIndex, { visibility: { ...visibility, conditions: next } });
+                                }} className="rounded-lg border border-cyan-200 bg-white px-3 py-2 text-xs"><option value="Yes">Yes</option><option value="No">No</option></select>
+                              ) : (source?.type === "single_choice" || source?.type === "mood" || source?.type === "multiple_choice") ? (
+                                <select value={condition.value} onChange={(event) => {
+                                  const next = visibility.conditions.map((current, i) => i === conditionIndex ? { ...current, value: event.target.value } : current);
+                                  updateItem(scheduleIndex, itemIndex, { visibility: { ...visibility, conditions: next } });
+                                }} className="rounded-lg border border-cyan-200 bg-white px-3 py-2 text-xs"><option value="">Choose value…</option>{(source.config.options || []).map((option: string) => <option key={option} value={option}>{option}</option>)}</select>
+                              ) : (
+                                <input value={condition.value} onChange={(event) => {
+                                  const next = visibility.conditions.map((current, i) => i === conditionIndex ? { ...current, value: event.target.value } : current);
+                                  updateItem(scheduleIndex, itemIndex, { visibility: { ...visibility, conditions: next } });
+                                }} placeholder="Value" className="rounded-lg border border-cyan-200 bg-white px-3 py-2 text-xs" />
+                              )}
+                              <button type="button" onClick={() => {
+                                const next = visibility.conditions.filter((_, i) => i !== conditionIndex);
+                                updateItem(scheduleIndex, itemIndex, { visibility: next.length ? { ...visibility, conditions: next } : { mode: "always", logic: "AND", conditions: [] } });
+                              }} className="rounded-lg border border-red-200 bg-white px-3 py-2 text-xs font-semibold text-red-700">Remove</button>
+                            </div>
+                          );
+                        })}
+                      </div>
+
+                      <button
+                        type="button"
+                        disabled={previousItems.length === 0}
+                        onClick={() => {
+                          const source = previousItems[0];
+                          if (!source) return;
+                          updateItem(scheduleIndex, itemIndex, { visibility: { ...visibility, conditions: [...visibility.conditions, { sourceKey: source.key, operator: monitoringOperators(source.type)[0][0], value: source.type === "yes_no" ? "Yes" : "" }] } });
+                        }}
+                        className="mt-3 rounded-lg border border-cyan-200 bg-white px-3 py-2 text-xs font-semibold text-cyan-900 disabled:opacity-40"
+                      >
+                        + Add condition
+                      </button>
+                    </div>
+                  )}
                 </div>
-                <Status
-                  type={
-                    level === "High"
-                      ? "warning"
-                      : level === "Lower"
-                        ? "success"
-                        : "neutral"
-                  }
-                >
-                  {level}
-                </Status>
-              </div>
+              );
+            })}
+          </div>
+
+          <div className="mt-5 flex flex-wrap items-center gap-2 border-t border-slate-100 pt-4">
+            <span className="text-xs font-medium text-slate-500">Add block:</span>
+            {blockTypes.map(([value, label]) => (
+              <button key={value} type="button" onClick={() => addItem(scheduleIndex, value)} className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-slate-600 hover:border-cyan-200 hover:bg-cyan-50">+ {label}</button>
             ))}
           </div>
-        </Panel>
+        </section>
+      ))}
 
-        <Panel title="Context summary">
-          <div className="space-y-6">
-            <ProgressBar
-              label="Academic / studying"
-              value={72}
-              text="Most frequent context"
-            />
-
-            <ProgressBar label="Alone" value={58} text="58% of reports" />
-
-            <ProgressBar
-              label="Elevated stress during study"
-              value={61}
-              text="Descriptive subset"
-            />
-          </div>
-
-          <p className="mt-5 text-xs leading-5 text-slate-400">
-            These are descriptive associations only and should not be
-            presented as causal conclusions.
-          </p>
-        </Panel>
-      </div>
-
-      <Panel title="Current ambulatory protocol">
-        <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-          {[
-            ["Morning", "08:00–10:00", "Random"],
-            ["Midday", "12:00–14:30", "Random"],
-            ["Afternoon", "16:00–18:30", "Random"],
-            ["Evening", "20:30", "Fixed"],
-          ].map(([name, time, type]) => (
-            <div
-              key={name}
-              className="rounded-xl border border-slate-200 p-4"
-            >
-              <p className="text-sm font-medium">{name}</p>
-              <p className="mt-2 text-xs text-slate-400">{time}</p>
-              <div className="mt-3">
-                <Status type="accent">{type}</Status>
-              </div>
-            </div>
-          ))}
-        </div>
-      </Panel>
+      <button type="button" disabled={protocol.length >= 12} onClick={addSchedule} className="rounded-xl border border-cyan-200 bg-cyan-50 px-4 py-2.5 text-sm font-semibold text-cyan-900 disabled:opacity-40">+ Add another daily check-in</button>
     </div>
   );
 }
+
+type MonitoringV2RequestClinical = {
+  request_id: string;
+  monitoring_plan_id: string | null;
+  name: string;
+  duration_days: number;
+  note: string | null;
+  protocol: MonitoringProtocolScheduleDraft[];
+  status: "pending" | "accepted" | "declined" | "cancelled";
+  created_at: string;
+  responded_at: string | null;
+  stopped_at: string | null;
+  stopped_by: string | null;
+};
+
+type MonitoringV2SharedFeed = {
+  plan_id: string;
+  plan_name: string;
+  duration_days: number;
+  start_date: string;
+  protocol: MonitoringProtocolScheduleDraft[];
+  checkins: Array<{
+    checkin_id: string;
+    schedule_id: string;
+    schedule_label: string;
+    entry_date: string;
+    completed_at: string;
+    responses: Array<{ item_id: string; item_key: string; type: MonitoringBlockType; prompt: string; response: any }>;
+  }>;
+};
+
+function Ambulatory({ client, changeScreen }: { client: ConnectedClient | null; changeScreen: (screen: Screen) => void }) {
+  const { permissions, loadingPermissions, permissionsError } = useClientSharingPermissions(client);
+  const [questionnaires, setQuestionnaires] = useState<MonitoringQuestionnaireOption[]>([]);
+  const [protocolName, setProtocolName] = useState("Clinical monitoring protocol");
+  const [durationDays, setDurationDays] = useState(7);
+  const [note, setNote] = useState("");
+  const [protocol, setProtocol] = useState<MonitoringProtocolScheduleDraft[]>(defaultMonitoringProtocol());
+  const [requests, setRequests] = useState<MonitoringV2RequestClinical[]>([]);
+  const [loadingRequests, setLoadingRequests] = useState(false);
+  const [requestMessage, setRequestMessage] = useState("");
+  const [requestError, setRequestError] = useState("");
+  const [sending, setSending] = useState(false);
+  const [cancellingId, setCancellingId] = useState<string | null>(null);
+  const [receivingMonitoring, setReceivingMonitoring] = useState(true);
+  const [updatingReceiving, setUpdatingReceiving] = useState(false);
+  const [sharedFeed, setSharedFeed] = useState<MonitoringV2SharedFeed | null>(null);
+  const [loadingFeed, setLoadingFeed] = useState(false);
+  const [feedError, setFeedError] = useState("");
+  const [stoppingProtocol, setStoppingProtocol] = useState(false);
+
+  async function loadCatalogue() {
+    const supabase = createClient();
+    const { data, error } = await supabase.rpc("psylattice_monitoring_questionnaire_catalogue");
+    if (!error) setQuestionnaires((data ?? []) as MonitoringQuestionnaireOption[]);
+  }
+
+  async function loadRequests() {
+    if (!client) return;
+    setLoadingRequests(true);
+    const supabase = createClient();
+    const { data, error } = await supabase.rpc("psylattice_clinician_monitoring_requests_v2", { p_connection_id: client.connection_id });
+    if (error) setRequestError("Monitoring request history could not be loaded.");
+    else setRequests((data ?? []) as MonitoringV2RequestClinical[]);
+    setLoadingRequests(false);
+  }
+
+  async function loadReceivingState() {
+    if (!client) return;
+    const supabase = createClient();
+    const { data, error } = await supabase.rpc("psylattice_monitoring_receiving_state", { p_connection_id: client.connection_id });
+    if (!error && typeof data === "boolean") setReceivingMonitoring(data);
+  }
+
+  async function loadFeed() {
+    if (!client || !permissions?.share_monitoring || !receivingMonitoring) {
+      setSharedFeed(null);
+      return;
+    }
+    setLoadingFeed(true); setFeedError("");
+    const supabase = createClient();
+    const { data, error } = await supabase.rpc("psylattice_connected_client_monitoring_v2", { p_connection_id: client.connection_id, p_days: 14 });
+    if (error) { setFeedError("Shared monitoring data could not be loaded."); setSharedFeed(null); }
+    else setSharedFeed(Array.isArray(data) && data.length ? (data[0] as MonitoringV2SharedFeed) : null);
+    setLoadingFeed(false);
+  }
+
+  useEffect(() => { void loadCatalogue(); }, []);
+  useEffect(() => { if (client) void Promise.all([loadRequests(), loadReceivingState()]); }, [client?.connection_id]);
+  useEffect(() => { void loadFeed(); }, [client?.connection_id, permissions?.share_monitoring, receivingMonitoring]);
+
+  function validateProtocolDraft() {
+    if (!protocolName.trim()) return "Enter a protocol name.";
+    if (durationDays < 1 || durationDays > 365) return "Duration must be between 1 and 365 days.";
+    for (const schedule of protocol) {
+      if (!schedule.label.trim() || !schedule.start_time || !schedule.end_time || schedule.start_time >= schedule.end_time) return "Check every schedule name and time window.";
+      if (!schedule.items.length) return "Every check-in needs at least one block.";
+      for (const item of schedule.items) {
+        if (!item.prompt.trim()) return "Every block needs a prompt or title.";
+        if (item.type === "questionnaire" && !item.config.questionnaire_id) return "Choose a questionnaire for each questionnaire block.";
+      }
+    }
+    return "";
+  }
+
+  async function sendRequest() {
+    if (!client || sending) return;
+    const validation = validateProtocolDraft();
+    if (validation) { setRequestError(validation); return; }
+    setSending(true); setRequestError(""); setRequestMessage("");
+    const supabase = createClient();
+    const { error } = await supabase.rpc("psylattice_assign_monitoring_protocol_v2", {
+      p_connection_id: client.connection_id,
+      p_name: protocolName.trim(),
+      p_duration_days: durationDays,
+      p_note: note.trim() || null,
+      p_protocol: protocol,
+    });
+    if (error) setRequestError(error.message.includes("already pending") ? "A protocol request is already pending for this client." : "The monitoring protocol could not be sent.");
+    else { setRequestMessage(`Monitoring protocol sent to ${client.client_name}.`); setNote(""); await loadRequests(); }
+    setSending(false);
+  }
+
+  async function cancelRequest(request: MonitoringV2RequestClinical) {
+    if (cancellingId || !window.confirm(`Cancel the pending “${request.name}” request?`)) return;
+    setCancellingId(request.request_id);
+    const supabase = createClient();
+    const { error } = await supabase.rpc("psylattice_cancel_monitoring_request_v2", { p_request_id: request.request_id });
+    if (error) setRequestError("The request could not be cancelled.");
+    else setRequestMessage("Monitoring request cancelled.");
+    setCancellingId(null);
+    await loadRequests();
+  }
+
+  async function toggleReceiving() {
+    if (!client || updatingReceiving) return;
+    setUpdatingReceiving(true);
+    const next = !receivingMonitoring;
+    const supabase = createClient();
+    const { error } = await supabase.rpc("psylattice_set_monitoring_receiving", { p_connection_id: client.connection_id, p_receive: next });
+    if (error) setFeedError("Receiving preference could not be updated.");
+    else { setReceivingMonitoring(next); setRequestMessage(next ? "Monitoring feed receiving resumed." : "You stopped receiving this client's monitoring feed. Client consent was not changed."); }
+    setUpdatingReceiving(false);
+  }
+
+  async function stopClientProtocol() {
+    if (!client || !sharedFeed || stoppingProtocol) return;
+    const assigned = requests.some((request) => request.monitoring_plan_id === sharedFeed.plan_id && request.status === "accepted");
+    if (!assigned) { setFeedError("This active protocol was not assigned through this clinician connection, so it cannot be stopped from your Clinical workspace."); return; }
+    if (!window.confirm(`Stop ${client.client_name}'s active clinician-assigned monitoring protocol? Historical check-ins will remain.`)) return;
+    setStoppingProtocol(true);
+    const supabase = createClient();
+    const { error } = await supabase.rpc("psylattice_stop_client_monitoring_protocol", { p_connection_id: client.connection_id, p_plan_id: sharedFeed.plan_id });
+    if (error) setFeedError("The monitoring protocol could not be stopped.");
+    else { setRequestMessage("Client monitoring protocol stopped."); await Promise.all([loadRequests(), loadFeed()]); }
+    setStoppingProtocol(false);
+  }
+
+  if (!client) return <div className="rounded-2xl border border-slate-200 bg-white p-8 text-center"><p className="text-lg font-semibold">Select a client first</p><p className="mt-2 text-sm text-slate-500">Open a connected client before building or reviewing monitoring.</p><button type="button" onClick={() => changeScreen("clients")} className="mt-5 rounded-xl bg-slate-950 px-5 py-3 text-sm font-semibold text-white">View clients</button></div>;
+
+  const initials = client.client_name.trim().split(/\s+/).filter(Boolean).slice(0,2).map((part) => part[0]).join("").toUpperCase() || "PL";
+  const activeAssignedToThisClinician = sharedFeed ? requests.some((request) => request.monitoring_plan_id === sharedFeed.plan_id && request.status === "accepted") : false;
+
+  return (
+    <div className="space-y-5">
+      {requestMessage && <div className="rounded-2xl border border-emerald-200 bg-emerald-50 px-5 py-4 text-sm text-emerald-800">{requestMessage}</div>}
+      {requestError && <div className="rounded-2xl border border-red-200 bg-red-50 px-5 py-4 text-sm text-red-700">{requestError}</div>}
+
+      <div className="flex flex-wrap items-center justify-between gap-4 rounded-2xl border border-slate-200 bg-white p-5">
+        <div className="flex items-center gap-4"><PersonAvatar initials={initials} large /><div><p className="text-xs font-medium uppercase tracking-[0.12em] text-slate-400">Monitoring Builder V2</p><h2 className="mt-1 text-xl font-semibold">{client.client_name}</h2><p className="mt-1 text-sm text-slate-500">Build flexible EMA/ESM protocols with branching, activities and library questionnaires.</p></div></div>
+        <div className="flex flex-wrap gap-2">{permissions?.share_monitoring ? <Status type="success">Client sharing ON</Status> : <Status>Client sharing OFF</Status>}<Status type={receivingMonitoring ? "accent" : "neutral"}>{receivingMonitoring ? "Receiving feed" : "Feed paused"}</Status></div>
+      </div>
+
+      <Panel title="Build a monitoring protocol" description="Each daily check-in can contain different blocks. Conditional logic can depend on any earlier response and can be nested across multiple levels.">
+        <div className="grid gap-4 md:grid-cols-[1fr_180px]">
+          <label><span className="text-xs font-medium text-slate-500">Protocol name</span><input value={protocolName} onChange={(event) => setProtocolName(event.target.value)} className="mt-2 w-full rounded-xl border border-slate-200 px-3 py-2.5 text-sm" /></label>
+          <label><span className="text-xs font-medium text-slate-500">Duration (days)</span><input type="number" min="1" max="365" value={durationDays} onChange={(event) => setDurationDays(Number(event.target.value))} className="mt-2 w-full rounded-xl border border-slate-200 px-3 py-2.5 text-sm" /></label>
+        </div>
+        <div className="mt-6"><MonitoringProtocolBuilderV2 protocol={protocol} onChange={setProtocol} questionnaires={questionnaires} /></div>
+        <label className="mt-6 block"><span className="text-xs font-medium text-slate-500">Optional message to client</span><textarea value={note} onChange={(event) => setNote(event.target.value)} className="mt-2 min-h-24 w-full rounded-xl border border-slate-200 p-4 text-sm" placeholder="Explain why you are suggesting this protocol or what you would like the client to observe." /></label>
+        <div className="mt-5 rounded-xl border border-cyan-100 bg-cyan-50/60 p-4"><p className="text-sm font-medium text-cyan-950">The client remains in control.</p><p className="mt-1 text-xs leading-5 text-slate-600">They can edit your schedule, questions, options, activities and branching before accepting. Questionnaire blocks continue to reference the standardized library questionnaire rather than editable copied items.</p></div>
+        <button type="button" disabled={sending} onClick={() => void sendRequest()} className="mt-5 rounded-xl bg-slate-950 px-5 py-3 text-sm font-semibold text-white disabled:opacity-50">{sending ? "Sending..." : "Send protocol to client"}</button>
+      </Panel>
+
+      <Panel title="Protocol request activity">
+        {loadingRequests ? <p className="text-sm text-slate-500">Loading requests...</p> : requests.length === 0 ? <p className="text-sm text-slate-500">No V2 monitoring requests yet.</p> : <div className="divide-y divide-slate-100">{requests.map((request) => <div key={request.request_id} className="flex flex-col justify-between gap-3 py-4 first:pt-0 last:pb-0 sm:flex-row sm:items-start"><div><div className="flex flex-wrap items-center gap-2"><p className="text-sm font-semibold">{request.name}</p><Status type={request.status === "accepted" ? "success" : request.status === "pending" ? "warning" : "neutral"}>{request.stopped_at ? `Stopped by ${request.stopped_by}` : request.status}</Status></div><p className="mt-1 text-xs text-slate-400">{request.duration_days} days · {request.protocol.length} check-ins/day · {new Date(request.created_at).toLocaleString()}</p></div>{request.status === "pending" && <button type="button" disabled={cancellingId === request.request_id} onClick={() => void cancelRequest(request)} className="rounded-lg border border-red-200 px-3 py-2 text-xs font-semibold text-red-700">{cancellingId === request.request_id ? "Cancelling..." : "Cancel request"}</button>}</div>)}</div>}
+      </Panel>
+
+      <Panel title="Monitoring feed controls" description="Client consent and your receiving preference are independent.">
+        <div className="flex flex-col justify-between gap-4 rounded-xl bg-slate-50 p-5 sm:flex-row sm:items-center"><div><p className="font-medium">{receivingMonitoring ? "Receiving monitoring data when authorised" : "You paused this monitoring feed"}</p><p className="mt-1 text-xs leading-5 text-slate-500">Pausing receiving does not turn off the client's consent setting. You can resume later.</p></div><button type="button" disabled={updatingReceiving} onClick={() => void toggleReceiving()} className={`rounded-xl px-4 py-2.5 text-xs font-semibold ${receivingMonitoring ? "border border-red-200 bg-white text-red-700" : "bg-slate-950 text-white"}`}>{updatingReceiving ? "Updating..." : receivingMonitoring ? "Stop receiving monitoring" : "Resume receiving"}</button></div>
+      </Panel>
+
+      {permissionsError ? <div className="rounded-2xl border border-red-200 bg-red-50 px-5 py-4 text-sm text-red-700">{permissionsError}</div> : loadingPermissions ? <Panel title="Shared monitoring"><p className="text-sm text-slate-500">Checking client permission...</p></Panel> : !permissions?.share_monitoring ? (
+        <Panel title="Shared monitoring data"><div className="rounded-2xl border border-dashed border-slate-300 bg-slate-50 p-8 text-center"><p className="font-semibold">Monitoring data is not shared by the client</p><p className="mx-auto mt-2 max-w-xl text-sm text-slate-500">You can still build and send protocols, but the database will not return their monitoring responses until Daily monitoring sharing is enabled.</p><button type="button" onClick={() => changeScreen("permissions")} className="mt-5 rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm font-semibold">View consent & data access</button></div></Panel>
+      ) : !receivingMonitoring ? (
+        <Panel title="Shared monitoring data"><div className="rounded-2xl bg-slate-50 p-6"><p className="font-semibold">You chose to stop receiving this feed.</p><p className="mt-2 text-sm text-slate-500">The client may still be sharing, but PsyLattice is not returning monitoring data to your Clinical workspace while your receiving preference is paused.</p></div></Panel>
+      ) : (
+        <>
+          {feedError && <div className="rounded-2xl border border-red-200 bg-red-50 px-5 py-4 text-sm text-red-700">{feedError}</div>}
+          <Panel title="Actual client protocol" description="This reflects the client's accepted/customised version, not necessarily the exact protocol you originally suggested.">
+            {loadingFeed ? <p className="text-sm text-slate-500">Loading shared protocol...</p> : !sharedFeed ? <p className="text-sm text-slate-500">No active shared V2 monitoring protocol.</p> : <div><div className="flex flex-col justify-between gap-4 sm:flex-row sm:items-center"><div><p className="font-semibold">{sharedFeed.plan_name}</p><p className="mt-1 text-sm text-slate-500">{sharedFeed.duration_days} days · {sharedFeed.protocol.length} daily check-ins</p></div>{activeAssignedToThisClinician && <button type="button" disabled={stoppingProtocol} onClick={() => void stopClientProtocol()} className="rounded-xl border border-red-200 bg-white px-4 py-2.5 text-xs font-semibold text-red-700">{stoppingProtocol ? "Stopping..." : "Stop this protocol"}</button>}</div><div className="mt-5 grid gap-3 md:grid-cols-2">{sharedFeed.protocol.map((schedule) => <div key={schedule.schedule_id || schedule.key} className="rounded-xl border border-slate-200 p-4"><p className="font-medium">{schedule.label}</p><p className="mt-1 text-xs text-slate-400">{schedule.start_time}–{schedule.end_time}</p><div className="mt-3 space-y-2">{schedule.items.map((item) => <div key={item.item_id || item.key} className="rounded-lg bg-slate-50 p-3"><div className="flex justify-between gap-2"><p className="text-xs font-medium text-slate-700">{item.prompt}</p><span className="text-[10px] uppercase text-slate-400">{item.type.replaceAll("_", " ")}</span></div>{item.visibility.mode === "conditional" && <p className="mt-1 text-[10px] font-medium text-cyan-800">Conditional · {item.visibility.conditions.length} rule(s)</p>}</div>)}</div></div>)}</div></div>}
+          </Panel>
+
+          <Panel title="Recent shared check-ins" description="Responses are shown according to the actual blocks that were visible and submitted during each check-in.">
+            {!sharedFeed || sharedFeed.checkins.length === 0 ? <p className="text-sm text-slate-500">No shared V2 check-ins in the past 14 days.</p> : <div className="divide-y divide-slate-100">{sharedFeed.checkins.slice(0, 20).map((checkin) => <div key={checkin.checkin_id} className="py-5 first:pt-0 last:pb-0"><div className="flex flex-wrap items-center justify-between gap-3"><p className="font-semibold">{checkin.schedule_label}</p><span className="text-xs text-slate-400">{new Date(checkin.completed_at).toLocaleString()}</span></div><div className="mt-4 grid gap-3 sm:grid-cols-2">{checkin.responses.map((response) => <div key={response.item_id} className="rounded-xl bg-slate-50 p-4"><p className="text-xs text-slate-400">{response.prompt}</p><p className="mt-2 text-sm font-medium text-slate-700">{monitoringResponseText(response.response)}</p></div>)}</div></div>)}</div>}
+          </Panel>
+        </>
+      )}
+    </div>
+  );
+}
+
 
 /* =========================================================
    WEARABLES
@@ -2660,6 +3992,8 @@ function Permissions({
     permissions,
     loadingPermissions,
     permissionsError,
+    permissionsSyncedAt,
+    refreshPermissions,
   } = useClientSharingPermissions(client);
 
   if (!client) {
@@ -2715,7 +4049,20 @@ function Permissions({
           </div>
         </div>
 
-        <Status type="success">Connected</Status>
+        <div className="flex flex-wrap items-center gap-2">
+          <Status type="success">Connected</Status>
+
+          <button
+            type="button"
+            disabled={loadingPermissions}
+            onClick={() => void refreshPermissions()}
+            className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-slate-600 transition hover:bg-slate-50 disabled:opacity-50"
+          >
+            {loadingPermissions
+              ? "Refreshing..."
+              : "Refresh permissions"}
+          </button>
+        </div>
       </div>
 
       <Panel
@@ -2815,14 +4162,25 @@ function Permissions({
               </div>
             </div>
 
-            {permissions.permissions_updated_at && (
-              <p className="text-xs text-slate-400">
-                Client permissions last updated{" "}
-                {new Date(
-                  permissions.permissions_updated_at
-                ).toLocaleString()}
-              </p>
-            )}
+            <div className="flex flex-wrap gap-x-5 gap-y-1 text-xs text-slate-400">
+              {permissions.permissions_updated_at && (
+                <p>
+                  Client permissions last updated{" "}
+                  {new Date(
+                    permissions.permissions_updated_at
+                  ).toLocaleString()}
+                </p>
+              )}
+
+              {permissionsSyncedAt && (
+                <p>
+                  Clinical view synced{" "}
+                  {new Date(
+                    permissionsSyncedAt
+                  ).toLocaleTimeString()}
+                </p>
+              )}
+            </div>
           </div>
         ) : (
           <div className="rounded-2xl border border-dashed border-slate-300 bg-slate-50/60 px-5 py-9 text-center">
@@ -3084,6 +4442,7 @@ export default function ClinicianWorkspace() {
       case "overview":
         return (
           <ClientOverview
+            key={selectedClient?.connection_id ?? "no-client"}
             changeScreen={setScreen}
             client={selectedClient}
             onRemoveClient={removeClientConnection}
@@ -3093,13 +4452,20 @@ export default function ClinicianWorkspace() {
       case "assessments":
         return (
           <Assessments
+            key={selectedClient?.connection_id ?? "no-client"}
             client={selectedClient}
             changeScreen={setScreen}
           />
         );
 
       case "ambulatory":
-        return <Ambulatory />;
+        return (
+          <Ambulatory
+            key={selectedClient?.connection_id ?? "no-client"}
+            client={selectedClient}
+            changeScreen={setScreen}
+          />
+        );
 
       case "wearables":
         return <Wearables />;
@@ -3123,7 +4489,12 @@ export default function ClinicianWorkspace() {
         return <Reports />;
 
       case "permissions":
-        return <Permissions client={selectedClient} />;
+        return (
+          <Permissions
+            key={selectedClient?.connection_id ?? "no-client"}
+            client={selectedClient}
+          />
+        );
 
       case "settings":
         return <Settings />;

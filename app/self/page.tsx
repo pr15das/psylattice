@@ -349,6 +349,7 @@ type ClinicianInvitation = {
   invitation_id: string;
   clinician_id: string;
   clinician_name: string;
+  clinician_email: string;
   message: string | null;
   created_at: string;
 };
@@ -371,7 +372,7 @@ function ClinicianInvitations({
       const supabase = createClient();
 
       const { data, error } = await supabase.rpc(
-        "psylattice_my_clinician_invitations"
+        "psylattice_my_clinician_invitations_v2"
       );
 
       if (error) {
@@ -445,10 +446,21 @@ setLoading(false);
 setInvitations(remainingInvitations);
 onCountChange?.(remainingInvitations.length);
 
+    const respondedInvitation = invitations.find(
+      (invitation) =>
+        invitation.invitation_id === invitationId
+    );
+
     setSuccessMessage(
       response === "accept"
-        ? "Clinician connection accepted. You remain in control of what information you share."
-        : "Clinician invitation declined."
+        ? `Connection with ${
+            respondedInvitation?.clinician_name ||
+            "the clinician"
+          } accepted. You remain in control of what information you share.`
+        : `Invitation from ${
+            respondedInvitation?.clinician_name ||
+            "the clinician"
+          } declined.`
     );
 
     setRespondingId(null);
@@ -513,6 +525,12 @@ onCountChange?.(remainingInvitations.length);
                   <h2 className="mt-1 text-lg font-semibold tracking-tight text-slate-950">
                     {invitation.clinician_name} would like to connect
                   </h2>
+
+                  {invitation.clinician_email && (
+                    <p className="mt-1 break-all text-xs font-medium text-slate-500">
+                      Clinician account: {invitation.clinician_email}
+                    </p>
+                  )}
                 </div>
 
                 <span className="rounded-full bg-cyan-100 px-3 py-1 text-xs font-medium text-cyan-800">
@@ -522,6 +540,27 @@ onCountChange?.(remainingInvitations.length);
             </div>
 
             <div className="p-5">
+              <div className="mb-4 rounded-xl border border-cyan-100 bg-cyan-50/60 p-4">
+                <p className="text-xs font-semibold uppercase tracking-[0.12em] text-cyan-800">
+                  Invitation from
+                </p>
+
+                <p className="mt-1 font-semibold text-slate-950">
+                  {invitation.clinician_name}
+                </p>
+
+                {invitation.clinician_email && (
+                  <p className="mt-1 break-all text-sm text-slate-600">
+                    {invitation.clinician_email}
+                  </p>
+                )}
+
+                <p className="mt-2 text-xs leading-5 text-slate-500">
+                  This identity comes from the clinician account that
+                  created this invitation.
+                </p>
+              </div>
+
               <p className="max-w-3xl text-sm leading-6 text-slate-600">
                 This clinician has invited you to connect your
                 PsyLattice Self account with their Clinical workspace.
@@ -709,6 +748,7 @@ function Dashboard({
         )
         .eq("user_id", user.id)
         .eq("status", "active")
+        .is("ended_at", null)
         .order("created_at", { ascending: false })
         .limit(1)
         .maybeSingle();
@@ -1671,6 +1711,28 @@ function Assessments() {
     scores: Record<string, number>;
   };
 
+  type AssignedAssessment = {
+    assignment_id: string;
+    connection_id: string;
+    clinician_id: string;
+    clinician_name: string;
+    questionnaire_id: string;
+    questionnaire_name: string;
+    questionnaire_acronym: string | null;
+    questionnaire_category: string;
+    due_date: string | null;
+    note: string | null;
+    status: "assigned" | "in_progress";
+    created_at: string;
+    started_at: string | null;
+  };
+
+  type BegunAssignedAssessment = {
+    session_id: string;
+    questionnaire_id: string;
+    version_id: string;
+  };
+
   const [questionnaires, setQuestionnaires] = useState<Questionnaire[]>([]);
   const [history, setHistory] = useState<AssessmentHistory[]>([]);
   const [loading, setLoading] = useState(true);
@@ -1696,12 +1758,51 @@ function Assessments() {
   const [submitting, setSubmitting] = useState(false);
   const [result, setResult] = useState<AssessmentResult | null>(null);
 
+  const [assignedAssessments, setAssignedAssessments] = useState<
+    AssignedAssessment[]
+  >([]);
+  const [loadingAssignments, setLoadingAssignments] = useState(true);
+  const [assignmentError, setAssignmentError] = useState("");
+  const [activeAssignmentId, setActiveAssignmentId] = useState<
+    string | null
+  >(null);
+
   const [view, setView] = useState<
     "library" | "details" | "runner" | "safety" | "result"
   >("library");
 
   const [phq9Item9Response, setPhq9Item9Response] =
     useState<number | null>(null);
+
+  async function loadAssignedAssessments() {
+    setLoadingAssignments(true);
+    setAssignmentError("");
+
+    const supabase = createClient();
+
+    const { data, error } = await supabase.rpc(
+      "psylattice_my_assigned_assessments"
+    );
+
+    if (error) {
+      console.error(
+        "Could not load assigned assessments:",
+        error
+      );
+
+      setAssignmentError(
+        "Your clinician-assigned assessments could not be loaded."
+      );
+      setAssignedAssessments([]);
+      setLoadingAssignments(false);
+      return;
+    }
+
+    setAssignedAssessments(
+      (data ?? []) as AssignedAssessment[]
+    );
+    setLoadingAssignments(false);
+  }
 
   async function loadAssessmentHistory() {
     const supabase = createClient();
@@ -1729,6 +1830,10 @@ function Assessments() {
 
     setHistory((data || []) as AssessmentHistory[]);
   }
+
+  useEffect(() => {
+    void loadAssignedAssessments();
+  }, []);
 
   useEffect(() => {
     async function loadCatalogue() {
@@ -1837,7 +1942,10 @@ function Assessments() {
     setDetailLoading(false);
   }
 
-  async function startAssessment(questionnaire: Questionnaire) {
+  async function startAssessment(
+    questionnaire: Questionnaire,
+    assignmentId: string | null = null
+  ) {
     setRunnerLoading(true);
     setRunnerError("");
     setResult(null);
@@ -1855,69 +1963,181 @@ function Assessments() {
       return;
     }
 
-    let version = selectedVersion;
+    let version: QuestionnaireVersion | null = null;
+    let createdSessionId = "";
 
-    if (!version || version.questionnaire_id !== questionnaire.id) {
-      const { data: versionData, error: versionError } = await supabase
-        .from("questionnaire_versions")
-        .select(
-          "id, questionnaire_id, version_label, participant_instructions, researcher_instructions, response_scale_description, scoring_summary, score_multiplier"
-        )
-        .eq("questionnaire_id", questionnaire.id)
-        .eq("is_current", true)
-        .limit(1)
-        .maybeSingle();
+    if (assignmentId) {
+      const { data: beginData, error: beginError } =
+        await supabase.rpc(
+          "psylattice_begin_assigned_assessment",
+          {
+            p_assignment_id: assignmentId,
+          }
+        );
+
+      if (beginError) {
+        console.error(
+          "Could not begin assigned assessment:",
+          beginError
+        );
+
+        setRunnerError(
+          "This assigned assessment could not be started."
+        );
+        setRunnerLoading(false);
+        return;
+      }
+
+      const begun =
+        Array.isArray(beginData) && beginData.length > 0
+          ? (beginData[0] as BegunAssignedAssessment)
+          : null;
+
+      if (
+        !begun ||
+        begun.questionnaire_id !== questionnaire.id
+      ) {
+        setRunnerError(
+          "The assigned assessment could not be verified."
+        );
+        setRunnerLoading(false);
+        return;
+      }
+
+      createdSessionId = begun.session_id;
+
+      const { data: versionData, error: versionError } =
+        await supabase
+          .from("questionnaire_versions")
+          .select(
+            "id, questionnaire_id, version_label, participant_instructions, researcher_instructions, response_scale_description, scoring_summary, score_multiplier"
+          )
+          .eq("id", begun.version_id)
+          .maybeSingle();
 
       if (versionError || !versionData) {
-        setRunnerError("This questionnaire version could not be loaded.");
+        console.error(
+          "Could not load assigned questionnaire version:",
+          versionError
+        );
+
+        setRunnerError(
+          "This questionnaire version could not be loaded."
+        );
         setRunnerLoading(false);
         return;
       }
 
       version = versionData as QuestionnaireVersion;
       setSelectedVersion(version);
+    } else {
+      version = selectedVersion;
+
+      if (
+        !version ||
+        version.questionnaire_id !== questionnaire.id
+      ) {
+        const { data: versionData, error: versionError } =
+          await supabase
+            .from("questionnaire_versions")
+            .select(
+              "id, questionnaire_id, version_label, participant_instructions, researcher_instructions, response_scale_description, scoring_summary, score_multiplier"
+            )
+            .eq("questionnaire_id", questionnaire.id)
+            .eq("is_current", true)
+            .limit(1)
+            .maybeSingle();
+
+        if (versionError || !versionData) {
+          setRunnerError(
+            "This questionnaire version could not be loaded."
+          );
+          setRunnerLoading(false);
+          return;
+        }
+
+        version = versionData as QuestionnaireVersion;
+        setSelectedVersion(version);
+      }
     }
 
-    const { data: itemData, error: itemError } = await supabase
-      .from("questionnaire_items")
-      .select(
-        "id, position, prompt, subscale, reverse_scored, response_type, response_options, required"
-      )
-      .eq("version_id", version.id)
-      .order("position", { ascending: true });
-
-    if (itemError || !itemData || itemData.length === 0) {
-      console.error("Could not load questionnaire items:", itemError);
-      setRunnerError("The questionnaire items could not be loaded.");
+    if (!version) {
+      setRunnerError(
+        "This questionnaire version could not be loaded."
+      );
       setRunnerLoading(false);
       return;
     }
 
-    const { data: sessionData, error: sessionError } = await supabase
-      .from("assessment_sessions")
-      .insert({
-        user_id: user.id,
-        questionnaire_id: questionnaire.id,
-        version_id: version.id,
-        status: "in_progress",
-      })
-      .select("id")
-      .single();
+    const { data: itemData, error: itemError } =
+      await supabase
+        .from("questionnaire_items")
+        .select(
+          "id, position, prompt, subscale, reverse_scored, response_type, response_options, required"
+        )
+        .eq("version_id", version.id)
+        .order("position", { ascending: true });
 
-    if (sessionError || !sessionData) {
-      console.error("Could not create assessment session:", sessionError);
-      setRunnerError("The assessment could not be started.");
+    if (
+      itemError ||
+      !itemData ||
+      itemData.length === 0
+    ) {
+      console.error(
+        "Could not load questionnaire items:",
+        itemError
+      );
+
+      setRunnerError(
+        "The questionnaire items could not be loaded."
+      );
       setRunnerLoading(false);
       return;
+    }
+
+    if (!assignmentId) {
+      const { data: sessionData, error: sessionError } =
+        await supabase
+          .from("assessment_sessions")
+          .insert({
+            user_id: user.id,
+            questionnaire_id: questionnaire.id,
+            version_id: version.id,
+            status: "in_progress",
+          })
+          .select("id")
+          .single();
+
+      if (sessionError || !sessionData) {
+        console.error(
+          "Could not create assessment session:",
+          sessionError
+        );
+
+        setRunnerError(
+          "The assessment could not be started."
+        );
+        setRunnerLoading(false);
+        return;
+      }
+
+      createdSessionId = sessionData.id;
     }
 
     setSelectedQuestionnaire(questionnaire);
-    setItems((itemData || []) as QuestionnaireItem[]);
+    setItems(
+      (itemData || []) as QuestionnaireItem[]
+    );
     setAnswers({});
     setCurrentItemIndex(0);
-    setSessionId(sessionData.id);
+    setSessionId(createdSessionId);
+    setActiveAssignmentId(assignmentId);
     setView("runner");
     setRunnerLoading(false);
+
+    if (assignmentId) {
+      void loadAssignedAssessments();
+    }
   }
 
   function calculateScores() {
@@ -2060,6 +2280,12 @@ function Assessments() {
     }
 
     await loadAssessmentHistory();
+
+    if (activeAssignmentId) {
+      await loadAssignedAssessments();
+      setActiveAssignmentId(null);
+    }
+
     setSubmitting(false);
   }
 
@@ -2750,6 +2976,155 @@ function Assessments() {
         </div>
       )}
 
+      <Panel
+        title="Assigned by your clinician"
+        description="Assessments requested through an active PsyLattice clinician connection."
+      >
+        {assignmentError && (
+          <div className="mb-4 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+            {assignmentError}
+          </div>
+        )}
+
+        {loadingAssignments ? (
+          <div className="rounded-2xl bg-slate-50 px-5 py-8 text-center">
+            <p className="text-sm font-medium text-slate-600">
+              Loading assigned assessments...
+            </p>
+          </div>
+        ) : assignedAssessments.length === 0 ? (
+          <div className="rounded-2xl bg-slate-50 p-5">
+            <p className="font-medium">
+              No active clinician assignments
+            </p>
+
+            <p className="mt-2 text-sm leading-6 text-slate-500">
+              If a connected clinician requests an assessment,
+              it will appear here. You can still use the
+              questionnaire library independently below.
+            </p>
+          </div>
+        ) : (
+          <div className="divide-y divide-slate-100">
+            {assignedAssessments.map((assignment) => {
+              const questionnaire =
+                questionnaires.find(
+                  (item) =>
+                    item.id ===
+                    assignment.questionnaire_id
+                ) || null;
+
+              const dueText = assignment.due_date
+                ? new Date(
+                    `${assignment.due_date}T00:00:00`
+                  ).toLocaleDateString([], {
+                    day: "2-digit",
+                    month: "short",
+                    year: "numeric",
+                  })
+                : "No due date";
+
+              return (
+                <div
+                  key={assignment.assignment_id}
+                  className="py-5 first:pt-0 last:pb-0"
+                >
+                  <div className="flex flex-col justify-between gap-4 lg:flex-row lg:items-start">
+                    <div className="min-w-0">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <p className="font-semibold text-slate-950">
+                          {assignment.questionnaire_acronym ||
+                            assignment.questionnaire_name}
+                        </p>
+
+                        <span className="rounded-full bg-cyan-50 px-3 py-1 text-xs font-medium text-cyan-800">
+                          {assignment.status ===
+                          "in_progress"
+                            ? "In progress"
+                            : "Assigned"}
+                        </span>
+                      </div>
+
+                      {assignment.questionnaire_acronym && (
+                        <p className="mt-1 text-xs text-slate-400">
+                          {assignment.questionnaire_name}
+                        </p>
+                      )}
+
+                      <p className="mt-3 text-sm text-slate-600">
+                        Assigned by{" "}
+                        <span className="font-medium">
+                          {assignment.clinician_name}
+                        </span>
+                        {" · "}
+                        {dueText}
+                      </p>
+
+                      {assignment.note && (
+                        <div className="mt-3 rounded-xl bg-slate-50 p-4">
+                          <p className="text-xs font-medium text-slate-400">
+                            Message from clinician
+                          </p>
+
+                          <p className="mt-2 text-sm leading-6 text-slate-600">
+                            {assignment.note}
+                          </p>
+                        </div>
+                      )}
+                    </div>
+
+                    <button
+                      type="button"
+                      disabled={
+                        runnerLoading ||
+                        !questionnaire
+                      }
+                      onClick={() => {
+                        if (questionnaire) {
+                          void startAssessment(
+                            questionnaire,
+                            assignment.assignment_id
+                          );
+                        }
+                      }}
+                      className="shrink-0 rounded-xl bg-slate-950 px-5 py-3 text-sm font-semibold text-white transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-50"
+                    >
+                      {runnerLoading
+                        ? "Loading..."
+                        : assignment.status ===
+                            "in_progress"
+                          ? "Continue assessment"
+                          : "Start assessment"}
+                    </button>
+                  </div>
+
+                  {!questionnaire && !loading && (
+                    <p className="mt-3 text-xs text-amber-700">
+                      This questionnaire is not currently
+                      available in your Self catalogue.
+                    </p>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        )}
+
+        <div className="mt-5 rounded-xl border border-cyan-100 bg-cyan-50/60 p-4">
+          <p className="text-sm font-medium text-cyan-950">
+            Completing an assignment does not change your
+            sharing choices.
+          </p>
+
+          <p className="mt-1 text-xs leading-5 text-slate-600">
+            Your clinician can see the assignment status, but
+            assessment scores are only available to them when
+            you have enabled Self-assessment results in
+            Privacy & Sharing.
+          </p>
+        </div>
+      </Panel>
+
       <Panel title="Browse assessments">
         <div className="grid gap-4 lg:grid-cols-[1fr_auto] lg:items-end">
           <label className="block">
@@ -2946,1066 +3321,1096 @@ function Assessments() {
    MONITORING
    ========================================================= */
 
-function Monitoring() {
-  type MonitoringPlan = {
-    id: string;
-    name: string;
-    construct: string;
-    duration_days: number;
-    prompts_per_day: number;
-    start_date: string;
-    status: string;
+
+type MonitoringBlockType =
+  | "slider"
+  | "single_choice"
+  | "multiple_choice"
+  | "yes_no"
+  | "number"
+  | "short_text"
+  | "long_text"
+  | "instruction"
+  | "activity"
+  | "questionnaire"
+  | "time_duration"
+  | "mood";
+
+type MonitoringCondition = {
+  sourceKey: string;
+  operator: string;
+  value: string;
+};
+
+type MonitoringVisibility = {
+  mode: "always" | "conditional";
+  logic: "AND" | "OR";
+  conditions: MonitoringCondition[];
+};
+
+type MonitoringProtocolItemDraft = {
+  item_id?: string;
+  key: string;
+  type: MonitoringBlockType;
+  prompt: string;
+  required: boolean;
+  config: Record<string, any>;
+  visibility: MonitoringVisibility;
+};
+
+type MonitoringProtocolScheduleDraft = {
+  schedule_id?: string;
+  key: string;
+  label: string;
+  start_time: string;
+  end_time: string;
+  items: MonitoringProtocolItemDraft[];
+};
+
+type MonitoringQuestionnaireOption = {
+  questionnaire_id: string;
+  questionnaire_name: string;
+  questionnaire_acronym: string | null;
+  questionnaire_slug: string;
+  questionnaire_category: string;
+  item_count: number;
+  estimated_minutes: number | null;
+};
+
+function monitoringDraftKey(prefix: string) {
+  return `${prefix}-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
+}
+
+function newMonitoringItem(
+  type: MonitoringBlockType,
+  index: number
+): MonitoringProtocolItemDraft {
+  const defaults: Record<MonitoringBlockType, { prompt: string; config: Record<string, any> }> = {
+    slider: {
+      prompt: "How would you rate this right now?",
+      config: { min: 0, max: 10, step: 1, minLabel: "Not at all", maxLabel: "Extremely" },
+    },
+    single_choice: {
+      prompt: "Choose the option that fits best.",
+      config: { options: ["Option 1", "Option 2", "Option 3"] },
+    },
+    multiple_choice: {
+      prompt: "Select all that apply.",
+      config: { options: ["Option 1", "Option 2", "Option 3"] },
+    },
+    yes_no: { prompt: "Is this true right now?", config: {} },
+    number: { prompt: "Enter a number.", config: { min: 0, max: 100, step: 1 } },
+    short_text: { prompt: "Write a short response.", config: {} },
+    long_text: { prompt: "Tell us more.", config: {} },
+    instruction: { prompt: "Read this before continuing.", config: {} },
+    activity: {
+      prompt: "Complete this activity.",
+      config: { instructions: "Follow the activity instructions, then mark it complete.", durationMinutes: 2 },
+    },
+    questionnaire: {
+      prompt: "Complete this questionnaire.",
+      config: { questionnaire_id: "", questionnaire_name: "", questionnaire_acronym: "" },
+    },
+    time_duration: { prompt: "How long?", config: { unit: "minutes", min: 0, max: 1440 } },
+    mood: {
+      prompt: "Which mood best describes how you feel?",
+      config: { options: ["Calm", "Happy", "Sad", "Anxious", "Irritated", "Tired"] },
+    },
   };
 
-  type MonitoringSchedule = {
-    id: string;
-    label: string;
-    start_time: string;
-    end_time: string;
-    sort_order: number;
+  return {
+    key: monitoringDraftKey(`item-${index + 1}`),
+    type,
+    prompt: defaults[type].prompt,
+    required: type !== "instruction",
+    config: defaults[type].config,
+    visibility: { mode: "always", logic: "AND", conditions: [] },
   };
+}
 
-  type MonitoringEntry = {
-    id: string;
-    schedule_id: string;
-    entry_date: string;
-    stress: number;
-    activity: string | null;
-    note: string | null;
-    created_at: string;
-  };
-
-  type ScheduleDraft = {
-    id?: string;
-    label: string;
-    start_time: string;
-    end_time: string;
-  };
-
-  const defaultSchedules: ScheduleDraft[] = [
+function defaultMonitoringProtocol(): MonitoringProtocolScheduleDraft[] {
+  const protocol: MonitoringProtocolScheduleDraft[] = [
     {
+      key: monitoringDraftKey("morning"),
       label: "Morning",
       start_time: "08:00",
       end_time: "10:00",
+      items: [
+        {
+          ...newMonitoringItem("slider", 0),
+          prompt: "How stressed do you feel right now?",
+          config: { min: 0, max: 10, step: 1, minLabel: "Not at all", maxLabel: "Extremely" },
+        },
+        {
+          ...newMonitoringItem("single_choice", 1),
+          prompt: "What are you doing right now?",
+          config: { options: ["Studying", "Working", "Resting", "Eating", "Exercising", "Socialising", "Travelling", "Other"] },
+        },
+        {
+          ...newMonitoringItem("long_text", 2),
+          prompt: "Anything important you want to note?",
+          required: false,
+        },
+      ],
     },
     {
+      key: monitoringDraftKey("afternoon"),
       label: "Afternoon",
       start_time: "15:00",
       end_time: "17:00",
+      items: [
+        {
+          ...newMonitoringItem("slider", 0),
+          prompt: "How stressed do you feel right now?",
+          config: { min: 0, max: 10, step: 1, minLabel: "Not at all", maxLabel: "Extremely" },
+        },
+        {
+          ...newMonitoringItem("yes_no", 1),
+          prompt: "Has anything stressful happened since your last check-in?",
+        },
+        {
+          ...newMonitoringItem("short_text", 2),
+          prompt: "What happened?",
+          required: false,
+          visibility: {
+            mode: "conditional",
+            logic: "AND",
+            conditions: [{ sourceKey: "", operator: "equals", value: "Yes" }],
+          },
+        },
+      ],
     },
     {
+      key: monitoringDraftKey("evening"),
       label: "Evening",
       start_time: "20:00",
       end_time: "22:00",
+      items: [
+        {
+          ...newMonitoringItem("mood", 0),
+          prompt: "Which mood best describes your evening?",
+        },
+        {
+          ...newMonitoringItem("long_text", 1),
+          prompt: "What stood out most about today?",
+          required: false,
+        },
+      ],
     },
   ];
 
-  const [stress, setStress] = useState(6);
-  const [activity, setActivity] = useState("Studying");
-  const [note, setNote] = useState("");
+  for (const schedule of protocol) {
+    // Repair the default conditional source after stable keys are generated.
+    if (schedule.label === "Afternoon" && schedule.items[2]) {
+      schedule.items[2].visibility.conditions[0].sourceKey = schedule.items[1].key;
+    }
+  }
 
-  const [selectedScheduleId, setSelectedScheduleId] = useState("");
-  const [savingEntry, setSavingEntry] = useState(false);
-  const [entryError, setEntryError] = useState("");
-  const [entrySuccess, setEntrySuccess] = useState("");
-  const [todayEntries, setTodayEntries] = useState<MonitoringEntry[]>([]);
-  const [loadingEntries, setLoadingEntries] = useState(false);
+  return protocol;
+}
 
-  const [plan, setPlan] = useState<MonitoringPlan | null>(null);
-  const [schedules, setSchedules] = useState<MonitoringSchedule[]>([]);
-  const [scheduleDrafts, setScheduleDrafts] =
-    useState<ScheduleDraft[]>(defaultSchedules);
+function monitoringOperators(type: MonitoringBlockType) {
+  if (type === "slider" || type === "number" || type === "time_duration") {
+    return [
+      ["equals", "Equals"],
+      ["not_equals", "Does not equal"],
+      ["gt", "Greater than"],
+      ["gte", "Greater than or equal"],
+      ["lt", "Less than"],
+      ["lte", "Less than or equal"],
+      ["answered", "Is answered"],
+      ["not_answered", "Is not answered"],
+    ];
+  }
+  if (type === "multiple_choice") {
+    return [
+      ["contains", "Contains"],
+      ["not_contains", "Does not contain"],
+      ["answered", "Is answered"],
+      ["not_answered", "Is not answered"],
+    ];
+  }
+  if (type === "short_text" || type === "long_text") {
+    return [
+      ["contains_text", "Contains text"],
+      ["answered", "Is answered"],
+      ["not_answered", "Is not answered"],
+    ];
+  }
+  return [
+    ["equals", "Is"],
+    ["not_equals", "Is not"],
+    ["answered", "Is answered"],
+    ["not_answered", "Is not answered"],
+  ];
+}
 
-  const [loadingPlan, setLoadingPlan] = useState(true);
-  const [showPlanEditor, setShowPlanEditor] = useState(false);
-  const [savingPlan, setSavingPlan] = useState(false);
-  const [planError, setPlanError] = useState("");
-  const [planSuccess, setPlanSuccess] = useState("");
-  const [planName, setPlanName] = useState("Stress Monitoring");
-  const [durationDays, setDurationDays] = useState(7);
+function monitoringResponseAnswered(value: any) {
+  if (value === null || value === undefined || value === "") return false;
+  if (Array.isArray(value)) return value.length > 0;
+  if (typeof value === "object" && "completed" in value) return Boolean(value.completed);
+  return true;
+}
 
-  function updateSchedule(
-    index: number,
-    field: "label" | "start_time" | "end_time",
-    value: string
-  ) {
-    setScheduleDrafts((previous) =>
-      previous.map((schedule, scheduleIndex) =>
-        scheduleIndex === index
-          ? {
-              ...schedule,
-              [field]: value,
-            }
-          : schedule
-      )
-    );
+function monitoringConditionMatches(condition: MonitoringCondition, sourceType: MonitoringBlockType, response: any) {
+  const answered = monitoringResponseAnswered(response);
+  if (condition.operator === "answered") return answered;
+  if (condition.operator === "not_answered") return !answered;
+  if (!answered) return false;
+
+  const target = condition.value;
+  if (["slider", "number", "time_duration"].includes(sourceType)) {
+    const left = Number(response);
+    const right = Number(target);
+    if (Number.isNaN(left) || Number.isNaN(right)) return false;
+    if (condition.operator === "gt") return left > right;
+    if (condition.operator === "gte") return left >= right;
+    if (condition.operator === "lt") return left < right;
+    if (condition.operator === "lte") return left <= right;
+    if (condition.operator === "not_equals") return left !== right;
+    return left === right;
+  }
+  if (sourceType === "multiple_choice") {
+    const values = Array.isArray(response) ? response.map(String) : [];
+    if (condition.operator === "not_contains") return !values.includes(target);
+    return values.includes(target);
+  }
+  if (condition.operator === "contains_text") {
+    return String(response).toLowerCase().includes(target.toLowerCase());
+  }
+  if (condition.operator === "not_equals") return String(response) !== target;
+  return String(response) === target;
+}
+
+function monitoringVisibleItems(items: MonitoringProtocolItemDraft[], responses: Record<string, any>) {
+  const byKey = new Map(items.map((item) => [item.key, item]));
+  return items.filter((item) => {
+    if (item.visibility?.mode !== "conditional") return true;
+    const conditions = item.visibility.conditions || [];
+    if (conditions.length === 0) return true;
+    const results = conditions.map((condition) => {
+      const source = byKey.get(condition.sourceKey);
+      if (!source) return false;
+      return monitoringConditionMatches(condition, source.type, responses[condition.sourceKey]);
+    });
+    return item.visibility.logic === "OR" ? results.some(Boolean) : results.every(Boolean);
+  });
+}
+
+function cleanHiddenMonitoringResponses(items: MonitoringProtocolItemDraft[], incoming: Record<string, any>) {
+  let next = { ...incoming };
+  for (let pass = 0; pass < items.length + 1; pass += 1) {
+    const visible = new Set(monitoringVisibleItems(items, next).map((item) => item.key));
+    let changed = false;
+    for (const key of Object.keys(next)) {
+      if (!visible.has(key)) {
+        delete next[key];
+        changed = true;
+      }
+    }
+    if (!changed) break;
+  }
+  return next;
+}
+
+function monitoringResponseText(value: any) {
+  if (value === null || value === undefined || value === "") return "—";
+  if (Array.isArray(value)) return value.join(", ") || "—";
+  if (typeof value === "object") {
+    if (value.completed && value.questionnaire_name) return `Completed ${value.questionnaire_name}`;
+    if (value.completed) return "Completed";
+    return JSON.stringify(value);
+  }
+  if (typeof value === "boolean") return value ? "Completed" : "Not completed";
+  return String(value);
+}
+
+function MonitoringProtocolBuilderV2({
+  protocol,
+  onChange,
+  questionnaires,
+}: {
+  protocol: MonitoringProtocolScheduleDraft[];
+  onChange: (protocol: MonitoringProtocolScheduleDraft[]) => void;
+  questionnaires: MonitoringQuestionnaireOption[];
+}) {
+  const blockTypes: Array<[MonitoringBlockType, string]> = [
+    ["slider", "Slider / rating"],
+    ["single_choice", "Single choice"],
+    ["multiple_choice", "Multiple choice"],
+    ["yes_no", "Yes / No"],
+    ["number", "Number"],
+    ["short_text", "Short text"],
+    ["long_text", "Long text"],
+    ["mood", "Mood / emotion"],
+    ["time_duration", "Time / duration"],
+    ["activity", "Activity"],
+    ["questionnaire", "Questionnaire library"],
+    ["instruction", "Instruction / information"],
+  ];
+
+  function updateSchedule(index: number, patch: Partial<MonitoringProtocolScheduleDraft>) {
+    onChange(protocol.map((schedule, i) => (i === index ? { ...schedule, ...patch } : schedule)));
   }
 
   function addSchedule() {
-    if (scheduleDrafts.length >= 12) {
-      return;
-    }
-
-    setScheduleDrafts((previous) => [
-      ...previous,
+    if (protocol.length >= 12) return;
+    onChange([
+      ...protocol,
       {
-        label: `Check-in ${previous.length + 1}`,
+        key: monitoringDraftKey(`checkin-${protocol.length + 1}`),
+        label: `Check-in ${protocol.length + 1}`,
         start_time: "12:00",
         end_time: "13:00",
+        items: [newMonitoringItem("slider", 0)],
       },
     ]);
   }
 
   function removeSchedule(index: number) {
-    if (scheduleDrafts.length <= 1) {
-      return;
-    }
-
-    setScheduleDrafts((previous) =>
-      previous.filter((_, scheduleIndex) => scheduleIndex !== index)
-    );
+    if (protocol.length <= 1) return;
+    onChange(protocol.filter((_, i) => i !== index));
   }
 
-  function changePromptCount(requestedCount: number) {
-    const count = Math.max(1, Math.min(12, requestedCount));
-
-    setScheduleDrafts((previous) => {
-      if (count === previous.length) {
-        return previous;
-      }
-
-      if (count < previous.length) {
-        return previous.slice(0, count);
-      }
-
-      const newSchedules = [...previous];
-
-      while (newSchedules.length < count) {
-        const number = newSchedules.length + 1;
-
-        newSchedules.push({
-          label: `Check-in ${number}`,
-          start_time: "12:00",
-          end_time: "13:00",
-        });
-      }
-
-      return newSchedules;
-    });
+  function updateItem(scheduleIndex: number, itemIndex: number, patch: Partial<MonitoringProtocolItemDraft>) {
+    const schedule = protocol[scheduleIndex];
+    const items = schedule.items.map((item, i) => (i === itemIndex ? { ...item, ...patch } : item));
+    updateSchedule(scheduleIndex, { items });
   }
 
-  function getLocalDateString() {
-    const now = new Date();
-
-    return [
-      now.getFullYear(),
-      String(now.getMonth() + 1).padStart(2, "0"),
-      String(now.getDate()).padStart(2, "0"),
-    ].join("-");
+  function addItem(scheduleIndex: number, type: MonitoringBlockType) {
+    const schedule = protocol[scheduleIndex];
+    if (schedule.items.length >= 50) return;
+    updateSchedule(scheduleIndex, { items: [...schedule.items, newMonitoringItem(type, schedule.items.length)] });
   }
 
-  async function loadTodayEntries(planId: string) {
-    setLoadingEntries(true);
-
-    const supabase = createClient();
-
-    const {
-      data: { user },
-      error: userError,
-    } = await supabase.auth.getUser();
-
-    if (userError || !user) {
-      setEntryError("Today's check-ins could not be loaded.");
-      setLoadingEntries(false);
-      return;
-    }
-
-    const { data, error } = await supabase
-      .from("monitoring_entries")
-      .select(
-        "id, schedule_id, entry_date, stress, activity, note, created_at"
-      )
-      .eq("user_id", user.id)
-      .eq("plan_id", planId)
-      .eq("entry_date", getLocalDateString())
-      .order("created_at", {
-        ascending: true,
-      });
-
-    if (error) {
-      console.error(
-        "Could not load today's monitoring entries:",
-        error.message
-      );
-      setEntryError("Today's check-ins could not be loaded.");
-      setLoadingEntries(false);
-      return;
-    }
-
-    setTodayEntries((data || []) as MonitoringEntry[]);
-    setLoadingEntries(false);
+  function removeItem(scheduleIndex: number, itemIndex: number) {
+    const schedule = protocol[scheduleIndex];
+    if (schedule.items.length <= 1) return;
+    const removedKey = schedule.items[itemIndex].key;
+    const items = schedule.items
+      .filter((_, i) => i !== itemIndex)
+      .map((item) => ({
+        ...item,
+        visibility: {
+          ...item.visibility,
+          conditions: item.visibility.conditions.filter((condition) => condition.sourceKey !== removedKey),
+        },
+      }));
+    updateSchedule(scheduleIndex, { items });
   }
 
-  async function loadMonitoringPlan() {
-    setLoadingPlan(true);
-    setPlanError("");
-
-    const supabase = createClient();
-
-    const {
-      data: { user },
-      error: userError,
-    } = await supabase.auth.getUser();
-
-    if (userError || !user) {
-      setPlanError("Your monitoring plan could not be loaded.");
-      setLoadingPlan(false);
-      return;
-    }
-
-    const { data: existingPlan, error: planLoadError } = await supabase
-      .from("monitoring_plans")
-      .select(
-        "id, name, construct, duration_days, prompts_per_day, start_date, status"
-      )
-      .eq("user_id", user.id)
-      .eq("status", "active")
-      .order("created_at", {
-        ascending: false,
-      })
-      .limit(1)
-      .maybeSingle();
-
-    if (planLoadError) {
-      console.error(
-        "Could not load monitoring plan:",
-        planLoadError.message
-      );
-      setPlanError("Your monitoring plan could not be loaded.");
-      setLoadingPlan(false);
-      return;
-    }
-
-    if (!existingPlan) {
-      setPlan(null);
-      setSchedules([]);
-      setTodayEntries([]);
-      setScheduleDrafts(defaultSchedules);
-      setSelectedScheduleId("");
-      setShowPlanEditor(true);
-      setLoadingPlan(false);
-      return;
-    }
-
-    setPlan(existingPlan as MonitoringPlan);
-    setPlanName(existingPlan.name);
-    setDurationDays(existingPlan.duration_days);
-
-    const { data: existingSchedules, error: scheduleLoadError } = await supabase
-      .from("monitoring_schedules")
-      .select("id, label, start_time, end_time, sort_order")
-      .eq("plan_id", existingPlan.id)
-      .eq("is_active", true)
-      .order("sort_order", {
-        ascending: true,
-      });
-
-    if (scheduleLoadError) {
-      console.error(
-        "Could not load monitoring schedules:",
-        scheduleLoadError.message
-      );
-      setPlanError("Your monitoring schedule could not be loaded.");
-      setLoadingPlan(false);
-      return;
-    }
-
-    const loadedSchedules = (existingSchedules || []) as MonitoringSchedule[];
-
-    setSchedules(loadedSchedules);
-
-    setSelectedScheduleId((current) => {
-      const currentStillExists = loadedSchedules.some(
-        (schedule) => schedule.id === current
-      );
-
-      if (currentStillExists) {
-        return current;
-      }
-
-      return loadedSchedules[0]?.id || "";
-    });
-
-    setScheduleDrafts(
-      loadedSchedules.map((schedule) => ({
-        id: schedule.id,
-        label: schedule.label,
-        start_time: schedule.start_time.slice(0, 5),
-        end_time: schedule.end_time.slice(0, 5),
-      }))
-    );
-
-    await loadTodayEntries(existingPlan.id);
-
-    setLoadingPlan(false);
-  }
-
-  useEffect(() => {
-    void loadMonitoringPlan();
-    // This initial load should run once when the Monitoring screen mounts.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-
-  async function saveMonitoringPlan() {
-    if (savingPlan) {
-      return;
-    }
-
-    setSavingPlan(true);
-    setPlanError("");
-    setPlanSuccess("");
-
-    const supabase = createClient();
-
-    try {
-      const {
-        data: { user },
-        error: userError,
-      } = await supabase.auth.getUser();
-
-      if (userError || !user) {
-        throw new Error(
-          "You must be signed in to save a monitoring plan."
-        );
-      }
-
-      if (!planName.trim()) {
-        throw new Error("Please enter a name for your monitoring plan.");
-      }
-
-      if (durationDays < 1 || durationDays > 365) {
-        throw new Error("Duration must be between 1 and 365 days.");
-      }
-
-      if (scheduleDrafts.length < 1 || scheduleDrafts.length > 12) {
-        throw new Error("Choose between 1 and 12 daily check-ins.");
-      }
-
-      for (const schedule of scheduleDrafts) {
-        if (!schedule.label.trim()) {
-          throw new Error("Every check-in needs a name.");
-        }
-
-        if (!schedule.start_time || !schedule.end_time) {
-          throw new Error(
-            "Every check-in needs a start and end time."
-          );
-        }
-
-        if (schedule.start_time >= schedule.end_time) {
-          throw new Error(
-            `"${schedule.label}" must end after it starts.`
-          );
-        }
-      }
-
-      if (plan) {
-        const { error: updateError } = await supabase
-          .from("monitoring_plans")
-          .update({
-            name: planName.trim(),
-            construct: "Stress",
-            duration_days: durationDays,
-            prompts_per_day: scheduleDrafts.length,
-            updated_at: new Date().toISOString(),
-          })
-          .eq("id", plan.id)
-          .eq("user_id", user.id);
-
-        if (updateError) {
-          throw updateError;
-        }
-
-        const retainedScheduleIds = scheduleDrafts
-          .map((schedule) => schedule.id)
-          .filter((id): id is string => Boolean(id));
-
-        const schedulesToDisable = schedules
-          .filter(
-            (schedule) => !retainedScheduleIds.includes(schedule.id)
-          )
-          .map((schedule) => schedule.id);
-
-        if (schedulesToDisable.length > 0) {
-          const { error: disableError } = await supabase
-            .from("monitoring_schedules")
-            .update({
-              is_active: false,
-            })
-            .in("id", schedulesToDisable)
-            .eq("user_id", user.id);
-
-          if (disableError) {
-            throw disableError;
-          }
-        }
-
-        for (let index = 0; index < scheduleDrafts.length; index += 1) {
-          const schedule = scheduleDrafts[index];
-
-          if (schedule.id) {
-            const { error: scheduleUpdateError } = await supabase
-              .from("monitoring_schedules")
-              .update({
-                label: schedule.label.trim(),
-                start_time: schedule.start_time,
-                end_time: schedule.end_time,
-                sort_order: index + 1,
-                is_active: true,
-              })
-              .eq("id", schedule.id)
-              .eq("user_id", user.id);
-
-            if (scheduleUpdateError) {
-              throw scheduleUpdateError;
-            }
-          } else {
-            const { error: scheduleCreateError } = await supabase
-              .from("monitoring_schedules")
-              .insert({
-                user_id: user.id,
-                plan_id: plan.id,
-                label: schedule.label.trim(),
-                start_time: schedule.start_time,
-                end_time: schedule.end_time,
-                sort_order: index + 1,
-                is_active: true,
-              });
-
-            if (scheduleCreateError) {
-              throw scheduleCreateError;
-            }
-          }
-        }
-
-        setPlanSuccess("Monitoring plan updated.");
-      } else {
-        const { data: createdPlan, error: createPlanError } = await supabase
-          .from("monitoring_plans")
-          .insert({
-            user_id: user.id,
-            name: planName.trim(),
-            construct: "Stress",
-            duration_days: durationDays,
-            prompts_per_day: scheduleDrafts.length,
-            status: "active",
-          })
-          .select("id")
-          .single();
-
-        if (createPlanError) {
-          throw createPlanError;
-        }
-
-        const { error: scheduleError } = await supabase
-          .from("monitoring_schedules")
-          .insert(
-            scheduleDrafts.map((schedule, index) => ({
-              user_id: user.id,
-              plan_id: createdPlan.id,
-              label: schedule.label.trim(),
-              start_time: schedule.start_time,
-              end_time: schedule.end_time,
-              sort_order: index + 1,
-              is_active: true,
-            }))
-          );
-
-        if (scheduleError) {
-          throw scheduleError;
-        }
-
-        setPlanSuccess("Monitoring plan started.");
-      }
-
-      setShowPlanEditor(false);
-      await loadMonitoringPlan();
-    } catch (error) {
-      console.error("Saving monitoring plan failed:", error);
-
-      setPlanError(
-        error instanceof Error
-          ? error.message
-          : "The monitoring plan could not be saved."
-      );
-    } finally {
-      setSavingPlan(false);
-    }
-  }
-
-  async function saveCheckIn() {
-    if (savingEntry || !plan || !selectedScheduleId) {
-      return;
-    }
-
-    setSavingEntry(true);
-    setEntryError("");
-    setEntrySuccess("");
-
-    const supabase = createClient();
-
-    try {
-      const {
-        data: { user },
-        error: userError,
-      } = await supabase.auth.getUser();
-
-      if (userError || !user) {
-        throw new Error("You must be signed in to save a check-in.");
-      }
-
-      const { error: saveError } = await supabase
-        .from("monitoring_entries")
-        .upsert(
-          {
-            user_id: user.id,
-            plan_id: plan.id,
-            schedule_id: selectedScheduleId,
-            entry_date: getLocalDateString(),
-            stress,
-            activity,
-            note: note.trim() || null,
-          },
-          {
-            onConflict: "user_id,schedule_id,entry_date",
-          }
-        );
-
-      if (saveError) {
-        throw saveError;
-      }
-
-      const selectedSchedule = schedules.find(
-        (schedule) => schedule.id === selectedScheduleId
-      );
-
-      setEntrySuccess(
-        `${selectedSchedule?.label || "Check-in"} saved successfully.`
-      );
-      setNote("");
-
-      await loadTodayEntries(plan.id);
-    } catch (error) {
-      console.error("Saving check-in failed:", error);
-
-      setEntryError(
-        error instanceof Error
-          ? error.message
-          : "Your check-in could not be saved."
-      );
-    } finally {
-      setSavingEntry(false);
-    }
-  }
-
-  const activeScheduleIds = new Set(
-    schedules.map((schedule) => schedule.id)
-  );
-
-  const activeTodayEntries = todayEntries.filter((entry) =>
-    activeScheduleIds.has(entry.schedule_id)
-  );
-
-  const completedToday = activeTodayEntries.length;
-  const totalToday = schedules.length;
-
-  const completionPercentage =
-    totalToday > 0
-      ? Math.round((completedToday / totalToday) * 100)
-      : 0;
-
-  const averageStress =
-    activeTodayEntries.length > 0
-      ? (
-          activeTodayEntries.reduce(
-            (total, entry) => total + entry.stress,
-            0
-          ) / activeTodayEntries.length
-        ).toFixed(1)
-      : null;
-
-  function scheduleCompleted(scheduleId: string) {
-    return activeTodayEntries.some(
-      (entry) => entry.schedule_id === scheduleId
-    );
-  }
-
-  if (loadingPlan) {
-    return (
-      <Panel title="Daily Monitoring">
-        <p className="text-sm text-slate-500">
-          Loading your monitoring plan...
-        </p>
-      </Panel>
-    );
+  function moveItem(scheduleIndex: number, itemIndex: number, direction: -1 | 1) {
+    const schedule = protocol[scheduleIndex];
+    const target = itemIndex + direction;
+    if (target < 0 || target >= schedule.items.length) return;
+    const items = [...schedule.items];
+    [items[itemIndex], items[target]] = [items[target], items[itemIndex]];
+    // Remove conditions that would become forward references after reordering.
+    const positions = new Map(items.map((item, i) => [item.key, i]));
+    const safeItems = items.map((item, i) => ({
+      ...item,
+      visibility: {
+        ...item.visibility,
+        conditions: item.visibility.conditions.filter((condition) => (positions.get(condition.sourceKey) ?? 999) < i),
+      },
+    }));
+    updateSchedule(scheduleIndex, { items: safeItems });
   }
 
   return (
     <div className="space-y-5">
-      {/* PLAN EDITOR */}
-
-      {showPlanEditor && (
-        <Panel
-          title={
-            plan ? "Manage monitoring plan" : "Create monitoring plan"
-          }
-          description="Choose how you want PsyLattice to structure your daily check-ins."
-        >
-          <div className="space-y-7">
-            <label className="block">
-              <span className="text-sm font-medium text-slate-700">
-                Plan name
-              </span>
-
-              <input
-                type="text"
-                value={planName}
-                onChange={(event) => setPlanName(event.target.value)}
-                maxLength={100}
-                className="mt-2 w-full rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm outline-none focus:border-cyan-700"
-              />
-            </label>
-
-            <label className="block">
-              <span className="text-sm font-medium text-slate-700">
-                Duration
-              </span>
-
-              <div className="mt-2 flex max-w-xs items-center gap-3">
+      {protocol.map((schedule, scheduleIndex) => (
+        <section key={schedule.key} className="rounded-2xl border border-slate-200 bg-white p-5">
+          <div className="flex flex-col justify-between gap-4 lg:flex-row lg:items-end">
+            <div className="grid flex-1 gap-3 md:grid-cols-[1fr_160px_160px]">
+              <label>
+                <span className="text-xs font-medium text-slate-500">Check-in name</span>
                 <input
-                  type="number"
-                  min="1"
-                  max="365"
-                  value={durationDays}
-                  onChange={(event) =>
-                    setDurationDays(Number(event.target.value))
-                  }
-                  className="w-28 rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm outline-none focus:border-cyan-700"
+                  value={schedule.label}
+                  onChange={(event) => updateSchedule(scheduleIndex, { label: event.target.value })}
+                  className="mt-2 w-full rounded-xl border border-slate-200 px-3 py-2.5 text-sm outline-none focus:border-cyan-700"
                 />
-
-                <span className="text-sm text-slate-500">days</span>
-              </div>
-            </label>
-
-            <div>
-              <div className="flex flex-wrap items-end justify-between gap-4">
-                <div>
-                  <p className="text-sm font-medium text-slate-700">
-                    Daily check-ins
-                  </p>
-
-                  <p className="mt-1 text-xs text-slate-400">
-                    Choose how many times you want to check in each day.
-                  </p>
-                </div>
-
-                <div className="flex items-center gap-3">
-                  <input
-                    type="number"
-                    min="1"
-                    max="12"
-                    value={scheduleDrafts.length}
-                    onChange={(event) =>
-                      changePromptCount(Number(event.target.value))
-                    }
-                    className="w-20 rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-center text-sm font-semibold outline-none focus:border-cyan-700"
-                  />
-
-                  <span className="text-sm text-slate-500">/ day</span>
-                </div>
-              </div>
-
-              <div className="mt-5 space-y-3">
-                {scheduleDrafts.map((schedule, index) => (
-                  <div
-                    key={schedule.id || `new-${index}`}
-                    className="rounded-2xl border border-slate-200 bg-white p-4"
-                  >
-                    <div className="grid gap-4 lg:grid-cols-[1fr_180px_24px_180px_auto] lg:items-end">
-                      <label>
-                        <span className="text-xs font-medium text-slate-500">
-                          Check-in name
-                        </span>
-
-                        <input
-                          type="text"
-                          value={schedule.label}
-                          onChange={(event) =>
-                            updateSchedule(
-                              index,
-                              "label",
-                              event.target.value
-                            )
-                          }
-                          maxLength={50}
-                          placeholder={`Check-in ${index + 1}`}
-                          className="mt-2 w-full rounded-xl border border-slate-200 px-3 py-2.5 text-sm outline-none focus:border-cyan-700"
-                        />
-                      </label>
-
-                      <label>
-                        <span className="text-xs font-medium text-slate-500">
-                          From
-                        </span>
-
-                        <input
-                          type="time"
-                          step="60"
-                          value={schedule.start_time}
-                          onChange={(event) =>
-                            updateSchedule(
-                              index,
-                              "start_time",
-                              event.target.value
-                            )
-                          }
-                          className="mt-2 w-full cursor-pointer rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm text-slate-900 outline-none transition focus:border-cyan-700 focus:ring-2 focus:ring-cyan-100"
-                        />
-                      </label>
-
-                      <div className="hidden pb-3 text-center text-slate-300 lg:block">
-                        →
-                      </div>
-
-                      <label>
-                        <span className="text-xs font-medium text-slate-500">
-                          Until
-                        </span>
-
-                        <input
-                          type="time"
-                          step="60"
-                          value={schedule.end_time}
-                          onChange={(event) =>
-                            updateSchedule(
-                              index,
-                              "end_time",
-                              event.target.value
-                            )
-                          }
-                          className="mt-2 w-full cursor-pointer rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm text-slate-900 outline-none transition focus:border-cyan-700 focus:ring-2 focus:ring-cyan-100"
-                        />
-                      </label>
-
-                      <button
-                        type="button"
-                        onClick={() => removeSchedule(index)}
-                        disabled={scheduleDrafts.length <= 1}
-                        title="Remove check-in"
-                        className="rounded-xl border border-slate-200 px-3 py-2.5 text-sm font-semibold text-slate-400 transition hover:border-red-200 hover:bg-red-50 hover:text-red-600 disabled:cursor-not-allowed disabled:opacity-30"
-                      >
-                        Remove
-                      </button>
-                    </div>
-                  </div>
-                ))}
-              </div>
-
-              <button
-                type="button"
-                onClick={addSchedule}
-                disabled={scheduleDrafts.length >= 12}
-                className="mt-4 rounded-xl border border-cyan-200 bg-cyan-50 px-4 py-2.5 text-sm font-semibold text-cyan-900 transition hover:bg-cyan-100 disabled:cursor-not-allowed disabled:opacity-40"
-              >
-                + Add check-in
-              </button>
-
-              <p className="mt-2 text-xs text-slate-400">
-                Maximum 12 check-ins per day.
-              </p>
+              </label>
+              <label>
+                <span className="text-xs font-medium text-slate-500">From</span>
+                <input
+                  type="time"
+                  value={schedule.start_time}
+                  onChange={(event) => updateSchedule(scheduleIndex, { start_time: event.target.value })}
+                  className="mt-2 w-full rounded-xl border border-slate-200 px-3 py-2.5 text-sm outline-none focus:border-cyan-700"
+                />
+              </label>
+              <label>
+                <span className="text-xs font-medium text-slate-500">Until</span>
+                <input
+                  type="time"
+                  value={schedule.end_time}
+                  onChange={(event) => updateSchedule(scheduleIndex, { end_time: event.target.value })}
+                  className="mt-2 w-full rounded-xl border border-slate-200 px-3 py-2.5 text-sm outline-none focus:border-cyan-700"
+                />
+              </label>
             </div>
-
-            {planError && (
-              <div className="rounded-xl border border-red-200 bg-red-50 px-4 py-3">
-                <p className="text-sm text-red-700">{planError}</p>
-              </div>
-            )}
-
-            <div className="flex flex-wrap gap-3">
-              <button
-                type="button"
-                onClick={() => void saveMonitoringPlan()}
-                disabled={savingPlan}
-                className="rounded-xl bg-slate-950 px-5 py-3 text-sm font-semibold text-white transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-50"
-              >
-                {savingPlan
-                  ? "Saving..."
-                  : plan
-                    ? "Save changes"
-                    : "Start monitoring"}
-              </button>
-
-              {plan && (
-                <button
-                  type="button"
-                  onClick={() => {
-                    setPlanError("");
-                    setShowPlanEditor(false);
-                  }}
-                  disabled={savingPlan}
-                  className="rounded-xl border border-slate-200 bg-white px-5 py-3 text-sm font-semibold text-slate-600"
-                >
-                  Cancel
-                </button>
-              )}
-            </div>
-          </div>
-        </Panel>
-      )}
-
-      {/* ACTIVE MONITORING PLAN */}
-
-      {plan && !showPlanEditor && (
-        <>
-          <div className="flex flex-wrap items-center justify-between gap-4">
-            <div>
-              <p className="text-xs font-semibold uppercase tracking-[0.14em] text-cyan-700">
-                Active monitoring
-              </p>
-
-              <h2 className="mt-1 text-xl font-semibold">{plan.name}</h2>
-            </div>
-
             <button
               type="button"
-              onClick={() => {
-                setPlanSuccess("");
-                setPlanError("");
-                setShowPlanEditor(true);
-              }}
-              className="rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm font-semibold text-slate-600 transition hover:bg-slate-50"
+              disabled={protocol.length <= 1}
+              onClick={() => removeSchedule(scheduleIndex)}
+              className="rounded-xl border border-red-200 bg-white px-3 py-2.5 text-xs font-semibold text-red-700 disabled:opacity-30"
             >
-              Manage monitoring
+              Remove check-in
             </button>
           </div>
 
-          {planSuccess && (
-            <div className="rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3">
-              <p className="text-sm text-emerald-700">{planSuccess}</p>
-            </div>
-          )}
-
-          <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
-            <StatCard
-              label="Today's check-ins"
-              value={
-                loadingEntries
-                  ? "..."
-                  : `${completedToday} / ${totalToday}`
-              }
-              detail="Completed today"
-            />
-
-            <StatCard
-              label="Current stress"
-              value={
-                loadingEntries
-                  ? "..."
-                  : averageStress
-                    ? `${averageStress} / 10`
-                    : "No data"
-              }
-              detail="Average today"
-            />
-
-            <StatCard
-              label="Completion"
-              value={
-                loadingEntries ? "..." : `${completionPercentage}%`
-              }
-              detail="Today's schedule"
-            />
-
-            <StatCard
-              label="Protocol"
-              value={`${plan.duration_days} days`}
-              detail={`${plan.prompts_per_day} check-ins / day`}
-            />
-          </div>
-
-          <div className="grid gap-5 xl:grid-cols-2">
-            <Panel
-              title="Momentary check-in"
-              description="Usually takes less than one minute."
-            >
-              <div className="mb-7">
-                <label className="block">
-                  <span className="text-sm font-medium text-slate-700">
-                    Which check-in are you completing?
-                  </span>
-
-                  <select
-                    value={selectedScheduleId}
-                    onChange={(event) => {
-                      setSelectedScheduleId(event.target.value);
-                      setEntrySuccess("");
-                      setEntryError("");
-                    }}
-                    className="mt-2 w-full rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm outline-none focus:border-cyan-700"
-                  >
-                    {schedules.map((schedule) => (
-                      <option key={schedule.id} value={schedule.id}>
-                        {schedule.label} ·{" "}
-                        {schedule.start_time.slice(0, 5)}–
-                        {schedule.end_time.slice(0, 5)}
-                      </option>
-                    ))}
-                  </select>
-                </label>
-              </div>
-
-              <div>
-                <div className="flex items-center justify-between gap-4">
-                  <p className="font-medium">
-                    How stressed do you feel right now?
-                  </p>
-
-                  <span className="rounded-lg bg-cyan-50 px-3 py-1 text-sm font-semibold text-cyan-800">
-                    {stress} / 10
-                  </span>
-                </div>
-
-                <input
-                  type="range"
-                  min="0"
-                  max="10"
-                  value={stress}
-                  onChange={(event) =>
-                    setStress(Number(event.target.value))
-                  }
-                  className="mt-5 w-full accent-cyan-800"
-                />
-              </div>
-
-              <div className="mt-7">
-                <p className="font-medium">What are you doing right now?</p>
-
-                <div className="mt-3 flex flex-wrap gap-2">
-                  {[
-                    "Studying",
-                    "Resting",
-                    "Socialising",
-                    "Commuting",
-                  ].map((item) => (
-                    <button
-                      key={item}
-                      type="button"
-                      onClick={() => setActivity(item)}
-                      className={`rounded-full border px-3 py-2 text-xs font-medium ${
-                        activity === item
-                          ? "border-cyan-700 bg-cyan-50 text-cyan-800"
-                          : "border-slate-200 text-slate-500"
-                      }`}
-                    >
-                      {item}
-                    </button>
-                  ))}
-                </div>
-              </div>
-
-              <label className="mt-7 block">
-                <span className="font-medium">Optional note</span>
-
-                <textarea
-                  value={note}
-                  onChange={(event) => setNote(event.target.value)}
-                  maxLength={2000}
-                  placeholder="Anything important about this moment?"
-                  className="mt-3 min-h-24 w-full rounded-xl border border-slate-200 p-3 text-sm outline-none focus:border-cyan-700"
-                />
-              </label>
-
-              <button
-                type="button"
-                onClick={() => void saveCheckIn()}
-                disabled={savingEntry || !selectedScheduleId}
-                className="mt-5 w-full rounded-xl bg-slate-950 px-5 py-3 text-sm font-semibold text-white transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-50"
-              >
-                {savingEntry ? "Saving..." : "Save check-in"}
-              </button>
-
-              {entrySuccess && (
-                <div className="mt-3 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3">
-                  <p className="text-sm text-emerald-700">
-                    {entrySuccess}
-                  </p>
-                </div>
-              )}
-
-              {entryError && (
-                <div className="mt-3 rounded-xl border border-red-200 bg-red-50 px-4 py-3">
-                  <p className="text-sm text-red-700">{entryError}</p>
-                </div>
-              )}
-            </Panel>
-
-            <Panel title="Your monitoring schedule">
-              {schedules.length > 0 ? (
-                <div className="divide-y divide-slate-100">
-                  {schedules.map((schedule) => {
-                    const isDone = scheduleCompleted(schedule.id);
-
-                    return (
-                      <div
-                        key={schedule.id}
-                        className="flex items-center justify-between gap-4 py-5 first:pt-0 last:pb-0"
+          <div className="mt-6 space-y-4">
+            {schedule.items.map((item, itemIndex) => {
+              const previousItems = schedule.items.slice(0, itemIndex);
+              const visibility = item.visibility || { mode: "always", logic: "AND", conditions: [] };
+              return (
+                <div key={item.key} className="rounded-2xl border border-slate-200 bg-slate-50/40 p-4">
+                  <div className="flex flex-wrap items-center justify-between gap-3">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <select
+                        value={item.type}
+                        onChange={(event) => {
+                          const type = event.target.value as MonitoringBlockType;
+                          const fresh = newMonitoringItem(type, itemIndex);
+                          updateItem(scheduleIndex, itemIndex, {
+                            type,
+                            prompt: fresh.prompt,
+                            config: fresh.config,
+                            required: fresh.required,
+                          });
+                        }}
+                        className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs font-semibold"
                       >
-                        <div>
-                          <div className="flex items-center gap-2">
-                            <p className="font-medium">{schedule.label}</p>
+                        {blockTypes.map(([value, label]) => <option key={value} value={value}>{label}</option>)}
+                      </select>
+                      <span className="text-xs text-slate-400">Block {itemIndex + 1}</span>
+                    </div>
+                    <div className="flex gap-2">
+                      <button type="button" disabled={itemIndex === 0} onClick={() => moveItem(scheduleIndex, itemIndex, -1)} className="rounded-lg border border-slate-200 bg-white px-2.5 py-1.5 text-xs disabled:opacity-30">↑</button>
+                      <button type="button" disabled={itemIndex === schedule.items.length - 1} onClick={() => moveItem(scheduleIndex, itemIndex, 1)} className="rounded-lg border border-slate-200 bg-white px-2.5 py-1.5 text-xs disabled:opacity-30">↓</button>
+                      <button type="button" disabled={schedule.items.length <= 1} onClick={() => removeItem(scheduleIndex, itemIndex)} className="rounded-lg border border-red-200 bg-white px-2.5 py-1.5 text-xs font-semibold text-red-700 disabled:opacity-30">Remove</button>
+                    </div>
+                  </div>
 
-                            {isDone && (
-                              <span className="rounded-full bg-emerald-50 px-2 py-0.5 text-[10px] font-semibold text-emerald-700">
-                                Done
-                              </span>
-                            )}
-                          </div>
+                  <label className="mt-4 block">
+                    <span className="text-xs font-medium text-slate-500">Prompt / title</span>
+                    <input
+                      value={item.prompt}
+                      onChange={(event) => updateItem(scheduleIndex, itemIndex, { prompt: event.target.value })}
+                      className="mt-2 w-full rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm outline-none focus:border-cyan-700"
+                    />
+                  </label>
 
-                          <p className="mt-1 text-sm text-slate-500">
-                            {isDone
-                              ? "Completed today"
-                              : "Not completed yet"}
-                          </p>
-                        </div>
+                  {(item.type === "single_choice" || item.type === "multiple_choice" || item.type === "mood") && (
+                    <label className="mt-4 block">
+                      <span className="text-xs font-medium text-slate-500">Options (one per line)</span>
+                      <textarea
+                        value={(item.config.options || []).join("\n")}
+                        onChange={(event) => updateItem(scheduleIndex, itemIndex, { config: { ...item.config, options: event.target.value.split("\n").map((value) => value.trim()).filter(Boolean) } })}
+                        className="mt-2 min-h-24 w-full rounded-xl border border-slate-200 bg-white p-3 text-sm outline-none focus:border-cyan-700"
+                      />
+                    </label>
+                  )}
 
-                        <span className="text-xs font-medium text-slate-400">
-                          {schedule.start_time.slice(0, 5)}–
-                          {schedule.end_time.slice(0, 5)}
-                        </span>
+                  {item.type === "slider" && (
+                    <div className="mt-4 grid gap-3 sm:grid-cols-3 lg:grid-cols-5">
+                      {[["min", "Minimum"], ["max", "Maximum"], ["step", "Step"]].map(([key, label]) => (
+                        <label key={key}>
+                          <span className="text-xs font-medium text-slate-500">{label}</span>
+                          <input type="number" value={item.config[key] ?? ""} onChange={(event) => updateItem(scheduleIndex, itemIndex, { config: { ...item.config, [key]: Number(event.target.value) } })} className="mt-2 w-full rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm" />
+                        </label>
+                      ))}
+                      <label>
+                        <span className="text-xs font-medium text-slate-500">Low label</span>
+                        <input value={item.config.minLabel || ""} onChange={(event) => updateItem(scheduleIndex, itemIndex, { config: { ...item.config, minLabel: event.target.value } })} className="mt-2 w-full rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm" />
+                      </label>
+                      <label>
+                        <span className="text-xs font-medium text-slate-500">High label</span>
+                        <input value={item.config.maxLabel || ""} onChange={(event) => updateItem(scheduleIndex, itemIndex, { config: { ...item.config, maxLabel: event.target.value } })} className="mt-2 w-full rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm" />
+                      </label>
+                    </div>
+                  )}
+
+                  {(item.type === "number" || item.type === "time_duration") && (
+                    <div className="mt-4 grid gap-3 sm:grid-cols-3">
+                      <label><span className="text-xs font-medium text-slate-500">Minimum</span><input type="number" value={item.config.min ?? ""} onChange={(event) => updateItem(scheduleIndex, itemIndex, { config: { ...item.config, min: Number(event.target.value) } })} className="mt-2 w-full rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm" /></label>
+                      <label><span className="text-xs font-medium text-slate-500">Maximum</span><input type="number" value={item.config.max ?? ""} onChange={(event) => updateItem(scheduleIndex, itemIndex, { config: { ...item.config, max: Number(event.target.value) } })} className="mt-2 w-full rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm" /></label>
+                      {item.type === "time_duration" ? (
+                        <label><span className="text-xs font-medium text-slate-500">Unit</span><select value={item.config.unit || "minutes"} onChange={(event) => updateItem(scheduleIndex, itemIndex, { config: { ...item.config, unit: event.target.value } })} className="mt-2 w-full rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm"><option value="minutes">Minutes</option><option value="hours">Hours</option><option value="seconds">Seconds</option></select></label>
+                      ) : (
+                        <label><span className="text-xs font-medium text-slate-500">Step</span><input type="number" value={item.config.step ?? 1} onChange={(event) => updateItem(scheduleIndex, itemIndex, { config: { ...item.config, step: Number(event.target.value) } })} className="mt-2 w-full rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm" /></label>
+                      )}
+                    </div>
+                  )}
+
+                  {item.type === "activity" && (
+                    <div className="mt-4 grid gap-3 sm:grid-cols-[1fr_180px]">
+                      <label><span className="text-xs font-medium text-slate-500">Activity instructions</span><textarea value={item.config.instructions || ""} onChange={(event) => updateItem(scheduleIndex, itemIndex, { config: { ...item.config, instructions: event.target.value } })} className="mt-2 min-h-20 w-full rounded-xl border border-slate-200 bg-white p-3 text-sm" /></label>
+                      <label><span className="text-xs font-medium text-slate-500">Minutes</span><input type="number" min="1" value={item.config.durationMinutes ?? 2} onChange={(event) => updateItem(scheduleIndex, itemIndex, { config: { ...item.config, durationMinutes: Number(event.target.value) } })} className="mt-2 w-full rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm" /></label>
+                    </div>
+                  )}
+
+                  {item.type === "questionnaire" && (
+                    <label className="mt-4 block">
+                      <span className="text-xs font-medium text-slate-500">Questionnaire from library</span>
+                      <select
+                        value={item.config.questionnaire_id || ""}
+                        onChange={(event) => {
+                          const selected = questionnaires.find((questionnaire) => questionnaire.questionnaire_id === event.target.value);
+                          updateItem(scheduleIndex, itemIndex, {
+                            config: {
+                              ...item.config,
+                              questionnaire_id: event.target.value,
+                              questionnaire_name: selected?.questionnaire_name || "",
+                              questionnaire_acronym: selected?.questionnaire_acronym || "",
+                            },
+                          });
+                        }}
+                        className="mt-2 w-full rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm"
+                      >
+                        <option value="">Choose questionnaire…</option>
+                        {questionnaires.map((questionnaire) => (
+                          <option key={questionnaire.questionnaire_id} value={questionnaire.questionnaire_id}>
+                            {questionnaire.questionnaire_acronym ? `${questionnaire.questionnaire_acronym} — ${questionnaire.questionnaire_name}` : questionnaire.questionnaire_name}
+                          </option>
+                        ))}
+                      </select>
+                    </label>
+                  )}
+
+                  <div className="mt-5 flex flex-wrap items-center gap-5 border-t border-slate-200 pt-4">
+                    {item.type !== "instruction" && (
+                      <label className="flex items-center gap-2 text-xs font-medium text-slate-600">
+                        <input type="checkbox" checked={item.required} onChange={(event) => updateItem(scheduleIndex, itemIndex, { required: event.target.checked })} />
+                        Required
+                      </label>
+                    )}
+                    <label className="flex items-center gap-2 text-xs font-medium text-slate-600">
+                      <input
+                        type="checkbox"
+                        checked={visibility.mode === "conditional"}
+                        disabled={previousItems.length === 0}
+                        onChange={(event) => updateItem(scheduleIndex, itemIndex, {
+                          visibility: event.target.checked
+                            ? { mode: "conditional", logic: "AND", conditions: previousItems[0] ? [{ sourceKey: previousItems[0].key, operator: "equals", value: previousItems[0].type === "yes_no" ? "Yes" : "" }] : [] }
+                            : { mode: "always", logic: "AND", conditions: [] },
+                        })}
+                      />
+                      Show only when condition is met
+                    </label>
+                  </div>
+
+                  {visibility.mode === "conditional" && (
+                    <div className="mt-4 rounded-xl border border-cyan-100 bg-cyan-50/50 p-4">
+                      <div className="flex flex-wrap items-center justify-between gap-3">
+                        <p className="text-xs font-semibold uppercase tracking-[0.1em] text-cyan-900">Conditional branching</p>
+                        <select
+                          value={visibility.logic}
+                          onChange={(event) => updateItem(scheduleIndex, itemIndex, { visibility: { ...visibility, logic: event.target.value as "AND" | "OR" } })}
+                          className="rounded-lg border border-cyan-200 bg-white px-3 py-2 text-xs font-semibold text-cyan-900"
+                        >
+                          <option value="AND">All conditions (AND)</option>
+                          <option value="OR">Any condition (OR)</option>
+                        </select>
                       </div>
-                    );
-                  })}
-                </div>
-              ) : (
-                <p className="text-sm text-slate-500">
-                  No active check-in windows.
-                </p>
-              )}
 
-              <div className="mt-6 rounded-2xl bg-slate-50 p-4">
-                <p className="text-sm leading-6 text-slate-500">
-                  Your completion status is calculated from the check-ins
-                  stored in your PsyLattice account. Automated notifications
-                  will be added later.
-                </p>
-              </div>
-            </Panel>
+                      <div className="mt-3 space-y-3">
+                        {visibility.conditions.map((condition, conditionIndex) => {
+                          const source = previousItems.find((previous) => previous.key === condition.sourceKey) || previousItems[0];
+                          const operators = monitoringOperators(source?.type || "single_choice");
+                          return (
+                            <div key={conditionIndex} className="grid gap-2 lg:grid-cols-[1.2fr_.8fr_1fr_auto]">
+                              <select
+                                value={condition.sourceKey}
+                                onChange={(event) => {
+                                  const nextSource = previousItems.find((previous) => previous.key === event.target.value);
+                                  const next = visibility.conditions.map((current, i) => i === conditionIndex ? { sourceKey: event.target.value, operator: monitoringOperators(nextSource?.type || "single_choice")[0][0], value: nextSource?.type === "yes_no" ? "Yes" : "" } : current);
+                                  updateItem(scheduleIndex, itemIndex, { visibility: { ...visibility, conditions: next } });
+                                }}
+                                className="rounded-lg border border-cyan-200 bg-white px-3 py-2 text-xs"
+                              >
+                                {previousItems.map((previous) => <option key={previous.key} value={previous.key}>{previous.prompt}</option>)}
+                              </select>
+                              <select
+                                value={condition.operator}
+                                onChange={(event) => {
+                                  const next = visibility.conditions.map((current, i) => i === conditionIndex ? { ...current, operator: event.target.value } : current);
+                                  updateItem(scheduleIndex, itemIndex, { visibility: { ...visibility, conditions: next } });
+                                }}
+                                className="rounded-lg border border-cyan-200 bg-white px-3 py-2 text-xs"
+                              >
+                                {operators.map(([value, label]) => <option key={value} value={value}>{label}</option>)}
+                              </select>
+                              {condition.operator === "answered" || condition.operator === "not_answered" ? (
+                                <div className="rounded-lg border border-cyan-100 bg-white px-3 py-2 text-xs text-slate-400">No comparison value</div>
+                              ) : source?.type === "yes_no" ? (
+                                <select value={condition.value} onChange={(event) => {
+                                  const next = visibility.conditions.map((current, i) => i === conditionIndex ? { ...current, value: event.target.value } : current);
+                                  updateItem(scheduleIndex, itemIndex, { visibility: { ...visibility, conditions: next } });
+                                }} className="rounded-lg border border-cyan-200 bg-white px-3 py-2 text-xs"><option value="Yes">Yes</option><option value="No">No</option></select>
+                              ) : (source?.type === "single_choice" || source?.type === "mood" || source?.type === "multiple_choice") ? (
+                                <select value={condition.value} onChange={(event) => {
+                                  const next = visibility.conditions.map((current, i) => i === conditionIndex ? { ...current, value: event.target.value } : current);
+                                  updateItem(scheduleIndex, itemIndex, { visibility: { ...visibility, conditions: next } });
+                                }} className="rounded-lg border border-cyan-200 bg-white px-3 py-2 text-xs"><option value="">Choose value…</option>{(source.config.options || []).map((option: string) => <option key={option} value={option}>{option}</option>)}</select>
+                              ) : (
+                                <input value={condition.value} onChange={(event) => {
+                                  const next = visibility.conditions.map((current, i) => i === conditionIndex ? { ...current, value: event.target.value } : current);
+                                  updateItem(scheduleIndex, itemIndex, { visibility: { ...visibility, conditions: next } });
+                                }} placeholder="Value" className="rounded-lg border border-cyan-200 bg-white px-3 py-2 text-xs" />
+                              )}
+                              <button type="button" onClick={() => {
+                                const next = visibility.conditions.filter((_, i) => i !== conditionIndex);
+                                updateItem(scheduleIndex, itemIndex, { visibility: next.length ? { ...visibility, conditions: next } : { mode: "always", logic: "AND", conditions: [] } });
+                              }} className="rounded-lg border border-red-200 bg-white px-3 py-2 text-xs font-semibold text-red-700">Remove</button>
+                            </div>
+                          );
+                        })}
+                      </div>
+
+                      <button
+                        type="button"
+                        disabled={previousItems.length === 0}
+                        onClick={() => {
+                          const source = previousItems[0];
+                          if (!source) return;
+                          updateItem(scheduleIndex, itemIndex, { visibility: { ...visibility, conditions: [...visibility.conditions, { sourceKey: source.key, operator: monitoringOperators(source.type)[0][0], value: source.type === "yes_no" ? "Yes" : "" }] } });
+                        }}
+                        className="mt-3 rounded-lg border border-cyan-200 bg-white px-3 py-2 text-xs font-semibold text-cyan-900 disabled:opacity-40"
+                      >
+                        + Add condition
+                      </button>
+                    </div>
+                  )}
+                </div>
+              );
+            })}
           </div>
-        </>
-      )}
+
+          <div className="mt-5 flex flex-wrap items-center gap-2 border-t border-slate-100 pt-4">
+            <span className="text-xs font-medium text-slate-500">Add block:</span>
+            {blockTypes.map(([value, label]) => (
+              <button key={value} type="button" onClick={() => addItem(scheduleIndex, value)} className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-slate-600 hover:border-cyan-200 hover:bg-cyan-50">+ {label}</button>
+            ))}
+          </div>
+        </section>
+      ))}
+
+      <button type="button" disabled={protocol.length >= 12} onClick={addSchedule} className="rounded-xl border border-cyan-200 bg-cyan-50 px-4 py-2.5 text-sm font-semibold text-cyan-900 disabled:opacity-40">+ Add another daily check-in</button>
     </div>
   );
 }
+
+type MonitoringV2Plan = {
+  plan_id: string;
+  plan_name: string;
+  duration_days: number;
+  start_date: string;
+  protocol: MonitoringProtocolScheduleDraft[];
+};
+
+type MonitoringV2Checkin = {
+  checkin_id: string;
+  plan_id: string;
+  schedule_id: string;
+  schedule_label: string;
+  entry_date: string;
+  completed_at: string;
+  responses: Array<{ item_id: string; item_key: string; type: MonitoringBlockType; prompt: string; response: any }>;
+};
+
+type MonitoringV2Request = {
+  request_id: string;
+  connection_id: string;
+  clinician_id: string;
+  clinician_name: string;
+  name: string;
+  duration_days: number;
+  note: string | null;
+  protocol: MonitoringProtocolScheduleDraft[];
+  created_at: string;
+};
+
+type MonitoringSharingConnection = {
+  connection_id: string;
+  clinician_id: string;
+  clinician_name: string;
+  connected_at: string;
+  share_assessments: boolean;
+  share_monitoring: boolean;
+  share_progress: boolean;
+  share_wearables: boolean;
+  share_regulation: boolean;
+  permissions_updated_at: string | null;
+};
+
+function Monitoring({ changeScreen }: { changeScreen: (screen: Screen) => void }) {
+  const [questionnaires, setQuestionnaires] = useState<MonitoringQuestionnaireOption[]>([]);
+  const [plan, setPlan] = useState<MonitoringV2Plan | null>(null);
+  const [protocol, setProtocol] = useState<MonitoringProtocolScheduleDraft[]>(defaultMonitoringProtocol());
+  const [planName, setPlanName] = useState("My monitoring protocol");
+  const [durationDays, setDurationDays] = useState(7);
+  const [editingProtocol, setEditingProtocol] = useState(false);
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState("");
+  const [success, setSuccess] = useState("");
+
+  const [requests, setRequests] = useState<MonitoringV2Request[]>([]);
+  const [loadingRequests, setLoadingRequests] = useState(true);
+  const [reviewingRequest, setReviewingRequest] = useState<MonitoringV2Request | null>(null);
+  const [respondingRequestId, setRespondingRequestId] = useState<string | null>(null);
+
+  const [sharingConnections, setSharingConnections] = useState<MonitoringSharingConnection[]>([]);
+  const [updatingSharingId, setUpdatingSharingId] = useState<string | null>(null);
+
+  const [checkins, setCheckins] = useState<MonitoringV2Checkin[]>([]);
+  const [selectedScheduleId, setSelectedScheduleId] = useState("");
+  const [responses, setResponses] = useState<Record<string, any>>({});
+  const [savingCheckin, setSavingCheckin] = useState(false);
+  const [checkinMessage, setCheckinMessage] = useState("");
+  const [completedQuestionnaires, setCompletedQuestionnaires] = useState<Record<string, { session_id: string; questionnaire_name: string }>>({});
+
+  async function loadQuestionnaires() {
+    const supabase = createClient();
+    const { data, error: catalogueError } = await supabase.rpc("psylattice_monitoring_questionnaire_catalogue");
+    if (!catalogueError) setQuestionnaires((data ?? []) as MonitoringQuestionnaireOption[]);
+  }
+
+  async function loadPlan() {
+    const supabase = createClient();
+    const { data, error: planError } = await supabase.rpc("psylattice_my_monitoring_protocol_v2");
+    if (planError) {
+      setError("Your monitoring protocol could not be loaded.");
+      setLoading(false);
+      return;
+    }
+    const row = Array.isArray(data) && data.length ? (data[0] as MonitoringV2Plan) : null;
+    setPlan(row);
+    if (row) {
+      setPlanName(row.plan_name);
+      setDurationDays(row.duration_days);
+      setProtocol(row.protocol || []);
+      setSelectedScheduleId((current) => current || row.protocol?.[0]?.schedule_id || "");
+      setEditingProtocol(false);
+    } else {
+      const fresh = defaultMonitoringProtocol();
+      setPlanName("My monitoring protocol");
+      setDurationDays(7);
+      setProtocol(fresh);
+      setSelectedScheduleId("");
+      setEditingProtocol(true);
+    }
+    setLoading(false);
+  }
+
+  async function loadRequests() {
+    setLoadingRequests(true);
+    const supabase = createClient();
+    const { data, error: requestError } = await supabase.rpc("psylattice_my_monitoring_requests_v2");
+    if (requestError) setError("Clinician monitoring requests could not be loaded.");
+    else setRequests((data ?? []) as MonitoringV2Request[]);
+    setLoadingRequests(false);
+  }
+
+  async function loadSharingConnections() {
+    const supabase = createClient();
+    const { data, error: sharingError } = await supabase.rpc("psylattice_my_clinicians_and_permissions");
+    if (!sharingError) setSharingConnections((data ?? []) as MonitoringSharingConnection[]);
+  }
+
+  async function loadCheckins() {
+    const supabase = createClient();
+    const { data, error: checkinError } = await supabase.rpc("psylattice_my_monitoring_checkins_v2", { p_days: 14 });
+    if (!checkinError) setCheckins((data ?? []) as MonitoringV2Checkin[]);
+  }
+
+  async function loadCompletedQuestionnairesToday() {
+    const supabase = createClient();
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) return;
+    const start = new Date();
+    start.setHours(0, 0, 0, 0);
+    const { data } = await supabase
+      .from("assessment_sessions")
+      .select("id, questionnaire_id, completed_at")
+      .eq("user_id", user.id)
+      .eq("status", "completed")
+      .gte("completed_at", start.toISOString())
+      .order("completed_at", { ascending: false });
+    const map: Record<string, { session_id: string; questionnaire_name: string }> = {};
+    for (const session of data || []) {
+      if (!map[session.questionnaire_id]) {
+        const q = questionnaires.find((questionnaire) => questionnaire.questionnaire_id === session.questionnaire_id);
+        map[session.questionnaire_id] = { session_id: session.id, questionnaire_name: q?.questionnaire_name || "Questionnaire" };
+      }
+    }
+    setCompletedQuestionnaires(map);
+  }
+
+  useEffect(() => {
+    void Promise.all([loadQuestionnaires(), loadPlan(), loadRequests(), loadSharingConnections(), loadCheckins()]);
+  }, []);
+
+  useEffect(() => {
+    if (questionnaires.length) void loadCompletedQuestionnairesToday();
+  }, [questionnaires.length]);
+
+  const activeSchedule = plan?.protocol.find((schedule) => schedule.schedule_id === selectedScheduleId) || plan?.protocol[0] || null;
+
+  useEffect(() => {
+    if (!activeSchedule?.schedule_id || !plan?.plan_id) return;
+    setSelectedScheduleId(activeSchedule.schedule_id);
+    const key = `psylattice-monitoring-draft:${plan.plan_id}:${activeSchedule.schedule_id}:${new Date().toISOString().slice(0, 10)}`;
+    try {
+      const saved = sessionStorage.getItem(key);
+      setResponses(saved ? JSON.parse(saved) : {});
+    } catch {
+      setResponses({});
+    }
+    setCheckinMessage("");
+  }, [activeSchedule?.schedule_id, plan?.plan_id]);
+
+  useEffect(() => {
+    if (!activeSchedule?.schedule_id || !plan?.plan_id) return;
+    const key = `psylattice-monitoring-draft:${plan.plan_id}:${activeSchedule.schedule_id}:${new Date().toISOString().slice(0, 10)}`;
+    try { sessionStorage.setItem(key, JSON.stringify(responses)); } catch {}
+  }, [responses, activeSchedule?.schedule_id, plan?.plan_id]);
+
+  function validateProtocolDraft() {
+    if (!planName.trim()) return "Enter a protocol name.";
+    if (durationDays < 1 || durationDays > 365) return "Duration must be between 1 and 365 days.";
+    if (!protocol.length || protocol.length > 12) return "Choose between 1 and 12 daily check-ins.";
+    for (const schedule of protocol) {
+      if (!schedule.label.trim()) return "Every check-in needs a name.";
+      if (!schedule.start_time || !schedule.end_time || schedule.start_time >= schedule.end_time) return `Check the time window for ${schedule.label || "a check-in"}.`;
+      if (!schedule.items.length) return `${schedule.label} needs at least one block.`;
+      for (const item of schedule.items) {
+        if (!item.prompt.trim()) return "Every block needs a prompt or title.";
+        if (item.type === "questionnaire" && !item.config.questionnaire_id) return "Choose a questionnaire for every questionnaire block.";
+        if (item.visibility.mode === "conditional" && !item.visibility.conditions.length) return "Conditional blocks need at least one condition.";
+      }
+    }
+    return "";
+  }
+
+  async function saveProtocol() {
+    if (saving) return;
+    const validation = validateProtocolDraft();
+    if (validation) { setError(validation); return; }
+    setSaving(true); setError(""); setSuccess("");
+    const supabase = createClient();
+    const rpc = reviewingRequest ? "psylattice_accept_monitoring_request_v2" : "psylattice_save_my_monitoring_protocol_v2";
+    const args = reviewingRequest
+      ? { p_request_id: reviewingRequest.request_id, p_name: planName.trim(), p_duration_days: durationDays, p_protocol: protocol }
+      : { p_plan_id: plan?.plan_id || null, p_name: planName.trim(), p_duration_days: durationDays, p_protocol: protocol };
+    const { error: saveError } = await supabase.rpc(rpc, args);
+    if (saveError) {
+      console.error("Monitoring V2 save failed:", saveError);
+      setError(saveError.message || "The monitoring protocol could not be saved.");
+      setSaving(false);
+      return;
+    }
+    setSuccess(reviewingRequest ? `Protocol from ${reviewingRequest.clinician_name} accepted with your changes.` : "Monitoring protocol saved.");
+    setReviewingRequest(null);
+    setEditingProtocol(false);
+    setSaving(false);
+    await Promise.all([loadPlan(), loadRequests(), loadCheckins()]);
+  }
+
+  function reviewRequest(request: MonitoringV2Request) {
+    setReviewingRequest(request);
+    setPlanName(request.name);
+    setDurationDays(request.duration_days);
+    setProtocol(request.protocol || defaultMonitoringProtocol());
+    setEditingProtocol(true);
+    setError(""); setSuccess("");
+  }
+
+  async function declineRequest(request: MonitoringV2Request) {
+    if (respondingRequestId) return;
+    if (!window.confirm(`Decline the monitoring protocol from ${request.clinician_name}?`)) return;
+    setRespondingRequestId(request.request_id);
+    const supabase = createClient();
+    const { error: declineError } = await supabase.rpc("psylattice_decline_monitoring_request_v2", { p_request_id: request.request_id });
+    if (declineError) setError("The monitoring request could not be declined.");
+    else setSuccess("Monitoring request declined.");
+    setRespondingRequestId(null);
+    await loadRequests();
+  }
+
+  async function stopProtocol() {
+    if (!plan || !window.confirm("Stop this monitoring protocol? Your previous check-ins will remain in your history, but no further check-ins will be active.")) return;
+    const supabase = createClient();
+    const { error: stopError } = await supabase.rpc("psylattice_stop_my_monitoring_protocol", { p_plan_id: plan.plan_id });
+    if (stopError) { setError("The monitoring protocol could not be stopped."); return; }
+    setSuccess("Monitoring protocol stopped.");
+    await loadPlan();
+  }
+
+  async function setMonitoringSharing(connection: MonitoringSharingConnection, share: boolean) {
+    if (updatingSharingId) return;
+    setUpdatingSharingId(connection.connection_id);
+    setError("");
+    const supabase = createClient();
+    const { error: sharingError } = await supabase.rpc("psylattice_set_clinician_permissions", {
+      p_connection_id: connection.connection_id,
+      p_share_assessments: connection.share_assessments,
+      p_share_monitoring: share,
+      p_share_progress: connection.share_progress,
+      p_share_wearables: connection.share_wearables,
+      p_share_regulation: connection.share_regulation,
+    });
+    if (sharingError) setError("Monitoring sharing could not be updated.");
+    else {
+      setSharingConnections((current) => current.map((item) => item.connection_id === connection.connection_id ? { ...item, share_monitoring: share } : item));
+      setSuccess(share ? `Monitoring sharing resumed with ${connection.clinician_name}.` : `Monitoring sharing stopped for ${connection.clinician_name}.`);
+    }
+    setUpdatingSharingId(null);
+  }
+
+  function effectiveResponsesForSchedule(schedule: MonitoringProtocolScheduleDraft | null) {
+    if (!schedule) return responses;
+    const next = { ...responses };
+    for (const item of schedule.items) {
+      if (item.type === "questionnaire") {
+        const id = item.config.questionnaire_id;
+        const completed = id ? completedQuestionnaires[id] : null;
+        if (completed) next[item.key] = { completed: true, questionnaire_id: id, questionnaire_name: completed.questionnaire_name, assessment_session_id: completed.session_id };
+      }
+    }
+    return cleanHiddenMonitoringResponses(schedule.items, next);
+  }
+
+  async function submitCheckin() {
+    if (!plan || !activeSchedule?.schedule_id || savingCheckin) return;
+    const effective = effectiveResponsesForSchedule(activeSchedule);
+    const visible = monitoringVisibleItems(activeSchedule.items, effective);
+    const missing = visible.find((item) => item.required && item.type !== "instruction" && !monitoringResponseAnswered(effective[item.key]));
+    if (missing) { setCheckinMessage(`Please complete: ${missing.prompt}`); return; }
+    setSavingCheckin(true); setCheckinMessage("");
+    const supabase = createClient();
+    const payload = visible
+      .filter((item) => item.type !== "instruction" && item.item_id && monitoringResponseAnswered(effective[item.key]))
+      .map((item) => ({ item_id: item.item_id, response: effective[item.key] }));
+    const { error: submitError } = await supabase.rpc("psylattice_submit_monitoring_checkin_v2", {
+      p_plan_id: plan.plan_id,
+      p_schedule_id: activeSchedule.schedule_id,
+      p_responses: payload,
+    });
+    if (submitError) {
+      console.error("Check-in submit failed:", submitError);
+      setCheckinMessage("This check-in could not be saved.");
+    } else {
+      setCheckinMessage(`${activeSchedule.label} saved.`);
+      setResponses({});
+      try { sessionStorage.removeItem(`psylattice-monitoring-draft:${plan.plan_id}:${activeSchedule.schedule_id}:${new Date().toISOString().slice(0, 10)}`); } catch {}
+      await loadCheckins();
+    }
+    setSavingCheckin(false);
+  }
+
+  function updateResponse(item: MonitoringProtocolItemDraft, value: any) {
+    if (!activeSchedule) return;
+    setResponses((current) => cleanHiddenMonitoringResponses(activeSchedule.items, { ...current, [item.key]: value }));
+    setCheckinMessage("");
+  }
+
+  const today = new Date().toISOString().slice(0, 10);
+  const todayCompletedScheduleIds = new Set(checkins.filter((checkin) => checkin.entry_date === today).map((checkin) => checkin.schedule_id));
+  const effective = effectiveResponsesForSchedule(activeSchedule);
+  const visibleItems = activeSchedule ? monitoringVisibleItems(activeSchedule.items, effective) : [];
+
+  if (loading) return <Panel title="Daily Monitoring"><p className="text-sm text-slate-500">Loading Monitoring Builder V2...</p></Panel>;
+
+  return (
+    <div className="space-y-5">
+      {error && <div className="rounded-2xl border border-red-200 bg-red-50 px-5 py-4 text-sm text-red-700">{error}</div>}
+      {success && <div className="rounded-2xl border border-emerald-200 bg-emerald-50 px-5 py-4 text-sm text-emerald-800">{success}</div>}
+
+      <Panel title="Clinician monitoring requests" description="A clinician can suggest a full protocol. You can review, edit questions, change timing, change branching logic, add or remove blocks, or decline it.">
+        {loadingRequests ? <p className="text-sm text-slate-500">Loading requests...</p> : requests.length === 0 ? (
+          <div className="rounded-2xl bg-slate-50 p-5"><p className="font-medium">No pending monitoring requests</p><p className="mt-2 text-sm text-slate-500">Any new clinician protocol will appear here for your approval.</p></div>
+        ) : (
+          <div className="divide-y divide-slate-100">
+            {requests.map((request) => (
+              <div key={request.request_id} className="flex flex-col justify-between gap-4 py-4 first:pt-0 last:pb-0 lg:flex-row lg:items-start">
+                <div><p className="font-semibold">{request.name}</p><p className="mt-1 text-sm text-slate-500">From {request.clinician_name} · {request.duration_days} days · {request.protocol.length} check-ins/day</p>{request.note && <p className="mt-3 rounded-xl bg-slate-50 p-3 text-sm text-slate-600">{request.note}</p>}</div>
+                <div className="flex gap-2"><button type="button" onClick={() => reviewRequest(request)} className="rounded-xl bg-slate-950 px-4 py-2.5 text-xs font-semibold text-white">Review & customise</button><button type="button" disabled={respondingRequestId === request.request_id} onClick={() => void declineRequest(request)} className="rounded-xl border border-slate-200 px-4 py-2.5 text-xs font-semibold text-slate-600">Decline</button></div>
+              </div>
+            ))}
+          </div>
+        )}
+      </Panel>
+
+      <Panel title="Monitoring sharing" description="Stopping a protocol and stopping data sharing are separate choices.">
+        {sharingConnections.length === 0 ? <p className="text-sm text-slate-500">No connected clinicians.</p> : (
+          <div className="divide-y divide-slate-100">
+            {sharingConnections.map((connection) => (
+              <div key={connection.connection_id} className="flex flex-col justify-between gap-3 py-4 first:pt-0 last:pb-0 sm:flex-row sm:items-center">
+                <div><p className="text-sm font-medium">{connection.clinician_name}</p><p className="mt-1 text-xs text-slate-400">{connection.share_monitoring ? "Currently receiving your authorised monitoring feed." : "Monitoring data is currently private from this clinician."}</p></div>
+                <button type="button" disabled={updatingSharingId === connection.connection_id} onClick={() => void setMonitoringSharing(connection, !connection.share_monitoring)} className={`rounded-xl px-4 py-2.5 text-xs font-semibold ${connection.share_monitoring ? "border border-red-200 bg-white text-red-700" : "bg-slate-950 text-white"}`}>{updatingSharingId === connection.connection_id ? "Updating..." : connection.share_monitoring ? "Stop sharing monitoring" : "Share monitoring"}</button>
+              </div>
+            ))}
+          </div>
+        )}
+      </Panel>
+
+      <Panel title={reviewingRequest ? "Review clinician protocol" : plan ? "Your active monitoring protocol" : "Create your monitoring protocol"} description="Build different content for each check-in. Conditional questions may depend on any earlier block, including another conditional block.">
+        <div className="grid gap-4 sm:grid-cols-[1fr_180px_auto] sm:items-end">
+          <label><span className="text-xs font-medium text-slate-500">Protocol name</span><input value={planName} onChange={(event) => setPlanName(event.target.value)} disabled={!editingProtocol} className="mt-2 w-full rounded-xl border border-slate-200 px-3 py-2.5 text-sm disabled:bg-slate-50" /></label>
+          <label><span className="text-xs font-medium text-slate-500">Duration (days)</span><input type="number" min="1" max="365" value={durationDays} onChange={(event) => setDurationDays(Number(event.target.value))} disabled={!editingProtocol} className="mt-2 w-full rounded-xl border border-slate-200 px-3 py-2.5 text-sm disabled:bg-slate-50" /></label>
+          {!editingProtocol ? <button type="button" onClick={() => { setReviewingRequest(null); setEditingProtocol(true); }} className="rounded-xl border border-cyan-200 bg-cyan-50 px-4 py-2.5 text-sm font-semibold text-cyan-900">Customise protocol</button> : null}
+        </div>
+
+        {editingProtocol ? (
+          <div className="mt-6"><MonitoringProtocolBuilderV2 protocol={protocol} onChange={setProtocol} questionnaires={questionnaires} /><div className="mt-6 flex flex-wrap gap-2"><button type="button" disabled={saving} onClick={() => void saveProtocol()} className="rounded-xl bg-slate-950 px-5 py-3 text-sm font-semibold text-white disabled:opacity-50">{saving ? "Saving..." : reviewingRequest ? "Accept & use customised protocol" : plan ? "Save protocol" : "Start protocol"}</button>{(plan || reviewingRequest) && <button type="button" disabled={saving} onClick={() => { setEditingProtocol(false); setReviewingRequest(null); if (plan) { setPlanName(plan.plan_name); setDurationDays(plan.duration_days); setProtocol(plan.protocol); } }} className="rounded-xl border border-slate-200 px-5 py-3 text-sm font-semibold text-slate-600">Cancel</button>}</div></div>
+        ) : plan ? (
+          <div className="mt-5 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">{plan.protocol.map((schedule) => <div key={schedule.schedule_id || schedule.key} className="rounded-xl border border-slate-200 p-4"><p className="font-medium">{schedule.label}</p><p className="mt-1 text-xs text-slate-400">{schedule.start_time}–{schedule.end_time} · {schedule.items.length} blocks</p></div>)}</div>
+        ) : null}
+
+        {plan && !reviewingRequest && <div className="mt-6 border-t border-slate-100 pt-5"><button type="button" onClick={() => void stopProtocol()} className="rounded-xl border border-red-200 bg-white px-4 py-2.5 text-sm font-semibold text-red-700">Stop monitoring protocol</button><p className="mt-2 text-xs text-slate-400">Stopping keeps your previous check-in history.</p></div>}
+      </Panel>
+
+      {plan && !editingProtocol && (
+        <Panel title="Today's flexible check-ins" description="Only questions whose conditions are currently satisfied are shown. If an earlier answer changes, answers from newly hidden branches are cleared automatically.">
+          <div className="flex flex-wrap gap-2">{plan.protocol.map((schedule) => <button key={schedule.schedule_id || schedule.key} type="button" onClick={() => setSelectedScheduleId(schedule.schedule_id || "")} className={`rounded-xl px-4 py-2.5 text-sm font-semibold ${activeSchedule?.schedule_id === schedule.schedule_id ? "bg-slate-950 text-white" : "border border-slate-200 bg-white text-slate-600"}`}>{todayCompletedScheduleIds.has(schedule.schedule_id || "") ? "✓ " : ""}{schedule.label}</button>)}</div>
+
+          {activeSchedule && <div className="mt-6 space-y-5">
+            <div className="rounded-xl bg-slate-50 p-4"><p className="font-medium">{activeSchedule.label}</p><p className="mt-1 text-xs text-slate-400">{activeSchedule.start_time}–{activeSchedule.end_time} · {visibleItems.length} visible blocks</p></div>
+            {visibleItems.map((item) => {
+              const value = effective[item.key];
+              const options = (item.config.options || []) as string[];
+              return <div key={item.key} className="rounded-2xl border border-slate-200 p-5">
+                <div className="flex items-start justify-between gap-3"><div><p className="font-medium text-slate-900">{item.prompt}</p>{item.required && item.type !== "instruction" && <p className="mt-1 text-[11px] font-medium text-cyan-800">Required</p>}</div><span className="rounded-full bg-slate-50 px-2.5 py-1 text-[10px] font-semibold uppercase text-slate-400">{item.type.replaceAll("_", " ")}</span></div>
+
+                {item.type === "instruction" && <p className="mt-4 text-sm leading-6 text-slate-600">{item.config.text || item.prompt}</p>}
+                {item.type === "slider" && <div className="mt-5"><div className="flex justify-between text-xs text-slate-400"><span>{item.config.minLabel || item.config.min}</span><span className="font-semibold text-slate-700">{value ?? item.config.min ?? 0}</span><span>{item.config.maxLabel || item.config.max}</span></div><input type="range" min={item.config.min ?? 0} max={item.config.max ?? 10} step={item.config.step ?? 1} value={value ?? item.config.min ?? 0} onChange={(event) => updateResponse(item, Number(event.target.value))} className="mt-3 w-full" /></div>}
+                {(item.type === "single_choice" || item.type === "mood") && <div className="mt-4 grid gap-2 sm:grid-cols-2">{options.map((option) => <button key={option} type="button" onClick={() => updateResponse(item, option)} className={`rounded-xl border px-4 py-3 text-left text-sm ${value === option ? "border-cyan-700 bg-cyan-50 text-cyan-950" : "border-slate-200"}`}>{option}</button>)}</div>}
+                {item.type === "yes_no" && <div className="mt-4 flex gap-2">{["Yes", "No"].map((option) => <button key={option} type="button" onClick={() => updateResponse(item, option)} className={`rounded-xl border px-5 py-3 text-sm font-semibold ${value === option ? "border-cyan-700 bg-cyan-50 text-cyan-950" : "border-slate-200"}`}>{option}</button>)}</div>}
+                {item.type === "multiple_choice" && <div className="mt-4 grid gap-2 sm:grid-cols-2">{options.map((option) => { const selected = Array.isArray(value) && value.includes(option); return <button key={option} type="button" onClick={() => { const current = Array.isArray(value) ? value : []; updateResponse(item, selected ? current.filter((entry: string) => entry !== option) : [...current, option]); }} className={`rounded-xl border px-4 py-3 text-left text-sm ${selected ? "border-cyan-700 bg-cyan-50" : "border-slate-200"}`}>{selected ? "✓ " : ""}{option}</button>; })}</div>}
+                {(item.type === "number" || item.type === "time_duration") && <div className="mt-4 flex items-center gap-3"><input type="number" min={item.config.min} max={item.config.max} step={item.config.step || 1} value={value ?? ""} onChange={(event) => updateResponse(item, event.target.value === "" ? "" : Number(event.target.value))} className="w-44 rounded-xl border border-slate-200 px-4 py-3 text-sm" />{item.type === "time_duration" && <span className="text-sm text-slate-500">{item.config.unit || "minutes"}</span>}</div>}
+                {item.type === "short_text" && <input value={value ?? ""} onChange={(event) => updateResponse(item, event.target.value)} className="mt-4 w-full rounded-xl border border-slate-200 px-4 py-3 text-sm" />}
+                {item.type === "long_text" && <textarea value={value ?? ""} onChange={(event) => updateResponse(item, event.target.value)} className="mt-4 min-h-28 w-full rounded-xl border border-slate-200 p-4 text-sm" />}
+                {item.type === "activity" && <div className="mt-4 rounded-xl bg-slate-50 p-4"><p className="text-sm leading-6 text-slate-600">{item.config.instructions}</p><p className="mt-2 text-xs text-slate-400">Suggested duration: {item.config.durationMinutes || 2} minutes</p><button type="button" onClick={() => updateResponse(item, !value)} className={`mt-4 rounded-xl px-4 py-2.5 text-sm font-semibold ${value ? "bg-emerald-100 text-emerald-800" : "bg-slate-950 text-white"}`}>{value ? "✓ Completed" : "Mark activity complete"}</button></div>}
+                {item.type === "questionnaire" && (() => { const qid = item.config.questionnaire_id; const completed = qid ? completedQuestionnaires[qid] : null; return <div className="mt-4 rounded-xl border border-cyan-100 bg-cyan-50/60 p-4"><p className="font-medium text-cyan-950">{item.config.questionnaire_acronym || item.config.questionnaire_name || "Questionnaire"}</p><p className="mt-1 text-xs text-slate-500">This block references the real questionnaire in the PsyLattice library. Its standardized items are not edited inside the monitoring builder.</p>{completed ? <p className="mt-3 text-sm font-semibold text-emerald-700">✓ Completed today</p> : <button type="button" onClick={() => changeScreen("assessments")} className="mt-3 rounded-xl bg-slate-950 px-4 py-2.5 text-sm font-semibold text-white">Complete questionnaire</button>}</div>; })()}
+              </div>;
+            })}
+            {checkinMessage && <div className={`rounded-xl px-4 py-3 text-sm ${checkinMessage.includes("saved") ? "border border-emerald-200 bg-emerald-50 text-emerald-800" : "border border-amber-200 bg-amber-50 text-amber-800"}`}>{checkinMessage}</div>}
+            <button type="button" disabled={savingCheckin} onClick={() => void submitCheckin()} className="rounded-xl bg-slate-950 px-5 py-3 text-sm font-semibold text-white disabled:opacity-50">{savingCheckin ? "Saving..." : todayCompletedScheduleIds.has(activeSchedule.schedule_id || "") ? "Update today's check-in" : "Save check-in"}</button>
+          </div>}
+        </Panel>
+      )}
+
+      <Panel title="Recent monitoring history" description="Flexible responses are stored block-by-block. Hidden branch responses are not submitted.">
+        {checkins.length === 0 ? <p className="text-sm text-slate-500">No V2 check-ins yet.</p> : <div className="divide-y divide-slate-100">{checkins.slice(0, 12).map((checkin) => <div key={checkin.checkin_id} className="py-4 first:pt-0 last:pb-0"><div className="flex justify-between gap-3"><p className="text-sm font-semibold">{checkin.schedule_label}</p><span className="text-xs text-slate-400">{new Date(checkin.completed_at).toLocaleString()}</span></div><div className="mt-3 grid gap-2 sm:grid-cols-2">{checkin.responses.slice(0, 6).map((response) => <div key={response.item_id} className="rounded-lg bg-slate-50 p-3"><p className="text-[11px] text-slate-400">{response.prompt}</p><p className="mt-1 text-sm text-slate-700">{monitoringResponseText(response.response)}</p></div>)}</div></div>)}</div>}
+      </Panel>
+    </div>
+  );
+}
+
 
 /* =========================================================
    SELF REGULATION
@@ -5143,6 +5548,7 @@ function Progress() {
           )
           .eq("user_id", user.id)
           .eq("status", "active")
+        .is("ended_at", null)
           .order("created_at", { ascending: false })
           .limit(1)
           .maybeSingle(),
@@ -6019,6 +6425,7 @@ type ConnectedClinicianPermission = {
   connection_id: string;
   clinician_id: string;
   clinician_name: string;
+  clinician_email: string;
   connected_at: string;
   share_assessments: boolean;
   share_monitoring: boolean;
@@ -6082,37 +6489,69 @@ function Privacy() {
   >(null);
   const [connectionMessage, setConnectionMessage] = useState("");
 
-  useEffect(() => {
-    async function loadClinicianSharing() {
+  async function loadClinicianSharing(
+    showLoading = true
+  ) {
+    if (showLoading) {
       setLoadingClinicians(true);
-      setSharingError("");
-
-      const supabase = createClient();
-
-      const { data, error } = await supabase.rpc(
-        "psylattice_my_clinicians_and_permissions"
-      );
-
-      if (error) {
-        console.error(
-          "Could not load clinician sharing permissions:",
-          error
-        );
-
-        setSharingError(
-          "Your clinician sharing settings could not be loaded."
-        );
-        setLoadingClinicians(false);
-        return;
-      }
-
-      setClinicians(
-        (data ?? []) as ConnectedClinicianPermission[]
-      );
-      setLoadingClinicians(false);
     }
 
-    void loadClinicianSharing();
+    setSharingError("");
+
+    const supabase = createClient();
+
+    const { data, error } = await supabase.rpc(
+      "psylattice_my_clinicians_and_permissions_v2"
+    );
+
+    if (error) {
+      console.error(
+        "Could not load clinician sharing permissions:",
+        error
+      );
+
+      setSharingError(
+        "Your clinician sharing settings could not be loaded."
+      );
+      setLoadingClinicians(false);
+      return;
+    }
+
+    setClinicians(
+      (data ?? []) as ConnectedClinicianPermission[]
+    );
+    setLoadingClinicians(false);
+  }
+
+  useEffect(() => {
+    void loadClinicianSharing(true);
+
+    function refreshOnFocus() {
+      void loadClinicianSharing(false);
+    }
+
+    function refreshWhenVisible() {
+      if (document.visibilityState === "visible") {
+        void loadClinicianSharing(false);
+      }
+    }
+
+    window.addEventListener("focus", refreshOnFocus);
+    document.addEventListener(
+      "visibilitychange",
+      refreshWhenVisible
+    );
+
+    return () => {
+      window.removeEventListener(
+        "focus",
+        refreshOnFocus
+      );
+      document.removeEventListener(
+        "visibilitychange",
+        refreshWhenVisible
+      );
+    };
   }, []);
 
   async function updatePermission(
@@ -6199,6 +6638,10 @@ function Privacy() {
     setSavingConnectionId(null);
     setSavedConnectionId(clinician.connection_id);
 
+    // Re-read the authoritative row after every change. This keeps
+    // this card tied to the exact clinician connection that was edited.
+    void loadClinicianSharing(false);
+
     window.setTimeout(() => {
       setSavedConnectionId((current) =>
         current === clinician.connection_id
@@ -6260,6 +6703,8 @@ function Privacy() {
     setConnectionMessage(
       `${clinician.clinician_name} has been removed. Their PsyLattice access through this connection has ended.`
     );
+
+    void loadClinicianSharing(false);
   }
 
   return (
@@ -6319,6 +6764,17 @@ function Privacy() {
         title="Clinician sharing"
         description="Choose exactly what each connected clinician can access. Changes are saved immediately."
       >
+        <div className="mb-4 flex justify-end">
+          <button
+            type="button"
+            disabled={loadingClinicians}
+            onClick={() => void loadClinicianSharing(true)}
+            className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-slate-600 transition hover:bg-slate-50 disabled:opacity-50"
+          >
+            Refresh clinician connections
+          </button>
+        </div>
+
         {connectionMessage && (
           <div className="mb-4 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-800">
             {connectionMessage}
@@ -6393,16 +6849,31 @@ function Privacy() {
                         {clinicianInitials}
                       </div>
 
-                      <div>
-                        <p className="font-semibold text-slate-950">
+                      <div className="min-w-0">
+                        <p className="text-[10px] font-semibold uppercase tracking-[0.12em] text-cyan-800">
+                          Connected clinician
+                        </p>
+
+                        <p className="mt-1 font-semibold text-slate-950">
                           {clinician.clinician_name}
                         </p>
+
+                        {clinician.clinician_email && (
+                          <p className="mt-1 break-all text-xs font-medium text-slate-500">
+                            {clinician.clinician_email}
+                          </p>
+                        )}
 
                         <p className="mt-1 text-xs text-slate-400">
                           Connected{" "}
                           {new Date(
                             clinician.connected_at
                           ).toLocaleDateString()}
+                          {" · "}
+                          Connection{" "}
+                          {clinician.connection_id
+                            .slice(-6)
+                            .toUpperCase()}
                         </p>
                       </div>
                     </div>
@@ -6437,6 +6908,20 @@ function Privacy() {
                           </span>
                         )}
                     </div>
+                  </div>
+
+                  <div className="border-b border-cyan-100 bg-cyan-50/50 px-5 py-4">
+                    <p className="text-sm font-semibold text-cyan-950">
+                      Sharing with {clinician.clinician_name}
+                    </p>
+
+                    <p className="mt-1 text-xs leading-5 text-slate-600">
+                      Every switch below applies only to this clinician
+                      {clinician.clinician_email
+                        ? ` (${clinician.clinician_email})`
+                        : ""}. Changing these settings does not change
+                      what you share with any other connected clinician.
+                    </p>
                   </div>
 
                   <div className="divide-y divide-slate-100 px-5">
@@ -6680,7 +7165,7 @@ const [
       const supabase = createClient();
 
       const { data, error } = await supabase.rpc(
-        "psylattice_my_clinician_invitations"
+        "psylattice_my_clinician_invitations_v2"
       );
 
       if (error) {
@@ -6746,7 +7231,7 @@ const [
         return <Assessments />;
 
       case "monitoring":
-        return <Monitoring />;
+        return <Monitoring changeScreen={setScreen} />;
 
       case "regulation":
         return <Regulation />;

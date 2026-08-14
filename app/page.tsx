@@ -1074,120 +1074,133 @@ const activePricing = pricingContent[pricingRegion];
               </p>
             </div>
           </div>
-
-         <div className="mt-10 grid gap-5 lg:grid-cols-3">
+          
+<div className="mt-10 grid gap-5 lg:grid-cols-3">
   {activePricing.cards
     .filter((card) =>
-      ["self", "clinician", "researcher"].includes(card.id)
+      ["self", "researcher", "clinician"].includes(card.id)
     )
-    .map((card) => (
-      <article
-        key={card.id}
-        className={`flex h-full flex-col rounded-[24px] border p-6 transition duration-300 hover:-translate-y-1 hover:shadow-xl ${
-          card.featured
-            ? "border-cyan-200 bg-gradient-to-br from-cyan-50 via-white to-white shadow-md shadow-cyan-100/40"
-            : "border-slate-200 bg-white hover:border-slate-300 hover:shadow-slate-200/40"
-        }`}
-      >
-        <div className="flex items-start justify-between gap-3">
-          <div>
-            <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-cyan-800">
-              {card.eyebrow}
-            </p>
+    .sort(
+      (a, b) =>
+        ["self", "researcher", "clinician"].indexOf(a.id) -
+        ["self", "researcher", "clinician"].indexOf(b.id)
+    )
+    .map((card) => {
+      const isResearcher = card.id === "researcher";
 
-            <h3 className="mt-2 text-xl font-semibold tracking-tight text-slate-950">
-              {card.title}
-            </h3>
-          </div>
-
-          {card.featured && (
-            <span className="rounded-full bg-cyan-900 px-3 py-1 text-[11px] font-medium text-white">
-              Most popular
-            </span>
+      return (
+        <article
+          key={card.id}
+          className={`relative flex h-full flex-col rounded-[24px] border p-6 transition duration-300 hover:-translate-y-1 hover:shadow-xl ${
+            isResearcher
+              ? "border-cyan-200 bg-gradient-to-br from-cyan-50 via-white to-white shadow-lg shadow-cyan-100/60"
+              : "border-slate-200 bg-white hover:border-slate-300 hover:shadow-slate-200/40"
+          }`}
+        >
+          {/* Most valuable badge */}
+          {isResearcher && (
+            <div className="absolute -top-3 left-1/2 -translate-x-1/2">
+              <span className="whitespace-nowrap rounded-full bg-cyan-950 px-4 py-1.5 text-[11px] font-semibold uppercase tracking-[0.12em] text-white shadow-sm">
+                Most valuable
+              </span>
+            </div>
           )}
-        </div>
 
-        <div className="mt-5">
-          <div className="flex items-end gap-2">
-            <span className="text-3xl font-semibold tracking-tight text-slate-950">
-              {card.price}
-            </span>
+          <div className="flex items-start justify-between gap-3">
+            <div>
+              <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-cyan-800">
+                {card.eyebrow}
+              </p>
 
-            {card.cadence ? (
-              <span className="pb-0.5 text-sm text-slate-500">
-                {card.cadence}
-              </span>
-            ) : null}
+              <h3 className="mt-2 text-xl font-semibold tracking-tight text-slate-950">
+                {card.title}
+              </h3>
+            </div>
           </div>
 
-          <p className="mt-3 text-sm leading-6 text-slate-600">
-            {card.description}
-          </p>
-        </div>
+          <div className="mt-5">
+            <div className="flex items-end gap-2">
+              <span className="text-3xl font-semibold tracking-tight text-slate-950">
+                {card.price}
+              </span>
 
-        <div className="my-5 h-px bg-slate-100" />
+              {card.cadence ? (
+                <span className="pb-0.5 text-sm text-slate-500">
+                  {card.cadence}
+                </span>
+              ) : null}
+            </div>
 
-        <ul className="space-y-2.5">
-          {card.bullets.map((bullet) => (
-            <li
-              key={bullet}
-              className="flex items-start gap-2.5 text-sm leading-5 text-slate-600"
+            <p className="mt-3 text-sm leading-6 text-slate-600">
+              {card.description}
+            </p>
+          </div>
+
+          <div className="my-5 h-px bg-slate-100" />
+
+          <ul className="space-y-2.5">
+            {card.bullets.map((bullet) => (
+              <li
+                key={bullet}
+                className="flex items-start gap-2.5 text-sm leading-5 text-slate-600"
+              >
+                <span className="mt-0.5 text-cyan-700">
+                  <CheckIcon />
+                </span>
+
+                <span>{bullet}</span>
+              </li>
+            ))}
+          </ul>
+
+          {/* Research study pricing button */}
+          {isResearcher ? (
+            <button
+              type="button"
+              onClick={() => setShowResearchPricing(true)}
+              className="mt-6 flex w-full items-center justify-between rounded-xl bg-cyan-950 px-4 py-3.5 text-left text-sm font-semibold text-white shadow-sm transition hover:bg-cyan-900"
             >
-              <span className="mt-0.5 text-cyan-700">
-                <CheckIcon />
+              <span>
+                You only pay when you launch a live study
               </span>
 
-              <span>{bullet}</span>
-            </li>
-          ))}
-        </ul>
+              <span className="ml-3 text-lg text-cyan-200">
+                →
+              </span>
+            </button>
+          ) : (
+            <div className="mt-6 rounded-xl bg-slate-50 px-4 py-3 text-xs leading-5 text-slate-500">
+              {card.note}
+            </div>
+          )}
 
-        {card.id === "researcher" ? (
-          <button
-            type="button"
-            onClick={() => setShowResearchPricing(true)}
-            className="mt-6 flex w-full items-center justify-between rounded-xl bg-cyan-900 px-4 py-3.5 text-left text-sm font-semibold text-white transition hover:bg-cyan-900"
-          >
-            <span>
-              You only pay when you launch a live study
-            </span>
-
-            <span className="ml-3 text-cyan-200">
-              →
-            </span>
-          </button>
-        ) : (
-          <div className="mt-6 rounded-xl bg-slate-50 px-4 py-3 text-xs leading-5 text-slate-500">
-            {card.note}
-          </div>
-        )}
-
-        <div className="mt-5 pt-1">
-          <Link
-            href={card.ctaHref}
-            className={`inline-flex w-full items-center justify-center gap-2 rounded-xl px-5 py-3 text-sm font-medium transition ${
-              card.featured
-                ? "bg-slate-950 text-white hover:bg-slate-800"
-                : "border border-slate-300 bg-white text-slate-900 hover:border-slate-400"
-            }`}
-          >
-            {card.ctaLabel}
-            <ArrowIcon />
-          </Link>
-
-          <p className="mt-3 text-[11px] leading-5 text-slate-400">
-            By continuing, you agree to the{" "}
+          <div className="mt-auto pt-5">
             <Link
-              href="/terms"
-              className="font-medium text-slate-600 underline underline-offset-2 transition hover:text-slate-950"
+              href={card.ctaHref}
+              className={`inline-flex w-full items-center justify-center gap-2 rounded-xl px-5 py-3 text-sm font-medium transition ${
+                isResearcher
+                  ? "border border-cyan-900 bg-white text-cyan-950 hover:bg-cyan-50"
+                  : "border border-slate-300 bg-white text-slate-900 hover:border-slate-400"
+              }`}
             >
-              Terms of Use
+              {card.ctaLabel}
+              <ArrowIcon />
             </Link>
-            .
-          </p>
-        </div>
-      </article>
-    ))}
+
+            <p className="mt-3 text-[11px] leading-5 text-slate-400">
+              By continuing, you agree to the{" "}
+              <Link
+                href="/terms"
+                className="font-medium text-slate-600 underline underline-offset-2 transition hover:text-slate-950"
+              >
+                Terms of Use
+              </Link>
+              .
+            </p>
+          </div>
+        </article>
+      );
+    })}
 </div>
           <div className="mt-12 grid gap-5 lg:grid-cols-[1.1fr_.9fr]">
             <div className="rounded-[24px] border border-slate-200 bg-slate-950 p-7 text-white">

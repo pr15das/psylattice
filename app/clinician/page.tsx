@@ -1,8 +1,9 @@
 "use client";
 
 import Link from "next/link";
-import { useState, type ReactNode } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 import PsyLatticeLogo from "@/components/PsyLatticeLogo";
+import { createClient } from "@/lib/supabase/client";
 
 type Screen =
   | "dashboard"
@@ -267,10 +268,10 @@ function Dashboard({
 
           <button
             type="button"
-            onClick={() => changeScreen("overview")}
+            onClick={() => changeScreen("clients")}
             className="mt-5 flex items-center gap-2 text-sm font-semibold"
           >
-            Open Maya's record
+            View connected clients
             <ArrowIcon />
           </button>
         </Panel>
@@ -362,251 +363,1118 @@ function Dashboard({
 /* =========================================================
    CLIENTS
    ========================================================= */
+type ConnectedClient = {
+  connection_id: string;
+  client_id: string;
+  client_name: string;
+  connected_at: string;
+  connection_status: string;
+};
 
-function Clients({
-  changeScreen,
+type ClientSharingPermissions = {
+  connection_id: string;
+  client_id: string;
+  share_assessments: boolean;
+  share_monitoring: boolean;
+  share_progress: boolean;
+  share_wearables: boolean;
+  share_regulation: boolean;
+  permissions_updated_at: string | null;
+};
+
+const clientPermissionDefinitions: Array<{
+  key:
+    | "share_assessments"
+    | "share_monitoring"
+    | "share_progress"
+    | "share_wearables"
+    | "share_regulation";
+  title: string;
+  description: string;
+}> = [
+  {
+    key: "share_assessments",
+    title: "Self-assessment results",
+    description:
+      "Assessment results the client has authorised for clinician access.",
+  },
+  {
+    key: "share_monitoring",
+    title: "Daily monitoring",
+    description:
+      "Daily check-ins and ambulatory monitoring information.",
+  },
+  {
+    key: "share_progress",
+    title: "Progress & trends",
+    description:
+      "Longitudinal summaries and progress views derived from shared information.",
+  },
+  {
+    key: "share_wearables",
+    title: "Wearable summaries",
+    description:
+      "Authorised wearable summaries when wearable data is connected.",
+  },
+  {
+    key: "share_regulation",
+    title: "Self-regulation progress",
+    description:
+      "Progress from self-regulation plans and completed activities.",
+  },
+];
+
+function useClientSharingPermissions(
+  client: ConnectedClient | null
+) {
+  const [permissions, setPermissions] =
+    useState<ClientSharingPermissions | null>(null);
+  const [loadingPermissions, setLoadingPermissions] =
+    useState(false);
+  const [permissionsError, setPermissionsError] = useState("");
+
+  useEffect(() => {
+    let active = true;
+
+    async function loadPermissions() {
+      if (!client) {
+        setPermissions(null);
+        setPermissionsError("");
+        setLoadingPermissions(false);
+        return;
+      }
+
+      setLoadingPermissions(true);
+      setPermissionsError("");
+
+      const supabase = createClient();
+
+      const { data, error } = await supabase.rpc(
+        "psylattice_connected_client_permissions",
+        {
+          p_connection_id: client.connection_id,
+        }
+      );
+
+      if (!active) {
+        return;
+      }
+
+      if (error) {
+        console.error(
+          "Could not load client sharing permissions:",
+          error
+        );
+
+        setPermissions(null);
+        setPermissionsError(
+          "This client's sharing permissions could not be loaded."
+        );
+        setLoadingPermissions(false);
+        return;
+      }
+
+      const row =
+        Array.isArray(data) && data.length > 0
+          ? (data[0] as ClientSharingPermissions)
+          : null;
+
+      setPermissions(row);
+      setLoadingPermissions(false);
+    }
+
+    void loadPermissions();
+
+    return () => {
+      active = false;
+    };
+  }, [client?.connection_id]);
+
+  return {
+    permissions,
+    loadingPermissions,
+    permissionsError,
+  };
+}
+
+function ConnectedClients({
+  onOpenClient,
+  onRemoveClient,
 }: {
-  changeScreen: (screen: Screen) => void;
+  onOpenClient: (client: ConnectedClient) => void;
+  onRemoveClient: (client: ConnectedClient) => Promise<boolean>;
 }) {
-  const clients = [
-    {
-      initials: "MS",
-      name: "Maya S.",
-      id: "CL-1042",
-      detail: "New assessment and ambulatory data available.",
-      status: "Needs review",
-      type: "warning" as const,
-    },
-    {
-      initials: "AK",
-      name: "Arjun K.",
-      id: "CL-1018",
-      detail: "Follow-up due today.",
-      status: "Follow-up",
-      type: "accent" as const,
-    },
-    {
-      initials: "LP",
-      name: "Lina P.",
-      id: "CL-1093",
-      detail: "Wearable permission changed.",
-      status: "Consent update",
-      type: "neutral" as const,
-    },
-    {
-      initials: "SR",
-      name: "Sofia R.",
-      id: "CL-0974",
-      detail: "No pending professional tasks.",
-      status: "Stable",
-      type: "success" as const,
-    },
-  ];
+  const [clients, setClients] = useState<ConnectedClient[]>([]);
+  const [loadingClients, setLoadingClients] = useState(true);
+  const [clientsError, setClientsError] = useState("");
+  const [search, setSearch] = useState("");
+  const [removingClientId, setRemovingClientId] = useState<
+    string | null
+  >(null);
+
+  useEffect(() => {
+    async function loadConnectedClients() {
+      setLoadingClients(true);
+      setClientsError("");
+
+      const supabase = createClient();
+
+      const { data, error } = await supabase.rpc(
+        "psylattice_my_connected_clients"
+      );
+
+      if (error) {
+        console.error(
+          "Could not load connected clients:",
+          error
+        );
+
+        setClientsError(
+          "Your connected clients could not be loaded."
+        );
+
+        setLoadingClients(false);
+        return;
+      }
+
+      setClients((data ?? []) as ConnectedClient[]);
+      setLoadingClients(false);
+    }
+
+    void loadConnectedClients();
+  }, []);
+
+  const normalizedSearch = search.trim().toLowerCase();
+
+  const visibleClients = clients.filter((client) =>
+    client.client_name
+      .toLowerCase()
+      .includes(normalizedSearch)
+  );
+
+  async function handleRemoveClient(
+    client: ConnectedClient
+  ) {
+    if (removingClientId) {
+      return;
+    }
+
+    setClientsError("");
+    setRemovingClientId(client.connection_id);
+
+    const removed = await onRemoveClient(client);
+
+    if (removed) {
+      setClients((current) =>
+        current.filter(
+          (item) =>
+            item.connection_id !== client.connection_id
+        )
+      );
+    }
+
+    setRemovingClientId(null);
+  }
+
+  function initialsFromName(name: string) {
+    const initials = name
+      .trim()
+      .split(/\s+/)
+      .filter(Boolean)
+      .slice(0, 2)
+      .map((part) => part.charAt(0))
+      .join("")
+      .toUpperCase();
+
+    return initials || "PL";
+  }
 
   return (
-    <div className="space-y-5">
-      <Panel title="Find clients">
-        <div className="grid gap-3 md:grid-cols-[1fr_220px]">
+    <div className="space-y-4">
+      <Panel
+        title="Connected clients"
+        description="People who have accepted your clinician connection request."
+      >
+        <div className="mb-5">
           <input
-            placeholder="Search name or client ID..."
-            className="rounded-xl border border-slate-200 px-4 py-3 text-sm outline-none focus:border-cyan-700"
+            value={search}
+            onChange={(event) =>
+              setSearch(event.target.value)
+            }
+            placeholder="Search connected clients..."
+            className="w-full rounded-xl border border-slate-200 px-4 py-3 text-sm outline-none transition focus:border-cyan-700"
           />
-
-          <select className="rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm">
-            <option>All assigned clients</option>
-            <option>Needs review</option>
-            <option>Active monitoring</option>
-            <option>Follow-up due</option>
-          </select>
         </div>
-      </Panel>
 
-      <div className="grid gap-4 lg:grid-cols-2">
-        {clients.map((client) => (
-          <button
-            type="button"
-            key={client.id}
-            onClick={() => changeScreen("overview")}
-            className="rounded-2xl border border-slate-200 bg-white p-5 text-left transition hover:border-slate-300 hover:bg-slate-50"
-          >
-            <div className="flex items-start gap-4">
-              <PersonAvatar initials={client.initials} large />
+        {clientsError && (
+          <div className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+            {clientsError}
+          </div>
+        )}
 
-              <div className="min-w-0 flex-1">
-                <div className="flex flex-wrap items-start justify-between gap-3">
-                  <div>
-                    <h2 className="font-semibold">{client.name}</h2>
-                    <p className="mt-1 text-xs text-slate-400">
-                      {client.id}
-                    </p>
-                  </div>
-
-                  <Status type={client.type}>{client.status}</Status>
-                </div>
-
-                <p className="mt-4 text-sm leading-6 text-slate-500">
-                  {client.detail}
-                </p>
-              </div>
+        {loadingClients ? (
+          <div className="rounded-xl bg-slate-50 px-5 py-8 text-center">
+            <p className="text-sm font-medium text-slate-600">
+              Loading connected clients...
+            </p>
+          </div>
+        ) : clients.length === 0 ? (
+          <div className="rounded-xl border border-dashed border-slate-300 bg-slate-50/50 px-5 py-10 text-center">
+            <div className="mx-auto flex h-11 w-11 items-center justify-center rounded-full bg-cyan-50 text-lg text-cyan-800">
+              +
             </div>
-          </button>
-        ))}
-      </div>
+
+            <p className="mt-4 text-sm font-semibold text-slate-800">
+              No connected clients yet
+            </p>
+
+            <p className="mx-auto mt-2 max-w-md text-sm leading-6 text-slate-500">
+              When someone accepts your clinician invitation
+              from their PsyLattice Self account, they will
+              appear here.
+            </p>
+          </div>
+        ) : visibleClients.length === 0 ? (
+          <div className="rounded-xl bg-slate-50 px-5 py-8 text-center">
+            <p className="text-sm font-medium text-slate-700">
+              No matching clients
+            </p>
+
+            <p className="mt-1 text-xs text-slate-400">
+              Try another search.
+            </p>
+          </div>
+        ) : (
+          <div className="grid gap-4 lg:grid-cols-2">
+            {visibleClients.map((client) => {
+              const removing =
+                removingClientId === client.connection_id;
+
+              return (
+                <div
+                  key={client.connection_id}
+                  className="rounded-2xl border border-slate-200 bg-white p-5 transition hover:border-cyan-200 hover:shadow-sm"
+                >
+                  <div className="flex items-start gap-4">
+                    <PersonAvatar
+                      initials={initialsFromName(
+                        client.client_name
+                      )}
+                      large
+                    />
+
+                    <div className="min-w-0 flex-1">
+                      <div className="flex flex-wrap items-start justify-between gap-3">
+                        <div>
+                          <h3 className="font-semibold text-slate-950">
+                            {client.client_name}
+                          </h3>
+
+                          <p className="mt-1 text-xs text-slate-400">
+                            Connected{" "}
+                            {new Date(
+                              client.connected_at
+                            ).toLocaleDateString()}
+                          </p>
+                        </div>
+
+                        <Status type="success">
+                          Active
+                        </Status>
+                      </div>
+
+                      <p className="mt-4 text-sm leading-6 text-slate-500">
+                        This person has accepted your PsyLattice
+                        clinician connection.
+                      </p>
+
+                      <div className="mt-5 flex flex-wrap gap-2">
+                        <button
+                          type="button"
+                          disabled={removing}
+                          onClick={() =>
+                            onOpenClient(client)
+                          }
+                          className="inline-flex items-center gap-2 rounded-xl bg-slate-950 px-4 py-2.5 text-xs font-semibold text-white transition hover:bg-slate-800 disabled:opacity-50"
+                        >
+                          Open client
+                          <ArrowIcon />
+                        </button>
+
+                        <button
+                          type="button"
+                          disabled={removing}
+                          onClick={() =>
+                            void handleRemoveClient(client)
+                          }
+                          className="rounded-xl border border-red-200 bg-white px-4 py-2.5 text-xs font-semibold text-red-700 transition hover:bg-red-50 disabled:cursor-not-allowed disabled:opacity-50"
+                        >
+                          {removing
+                            ? "Removing..."
+                            : "Remove client"}
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        )}
+      </Panel>
     </div>
   );
 }
+function Clients({
+  onOpenClient,
+  onRemoveClient,
+}: {
+  onOpenClient: (client: ConnectedClient) => void;
+  onRemoveClient: (client: ConnectedClient) => Promise<boolean>;
+}) {
+  const [showInviteModal, setShowInviteModal] = useState(false);
 
+  const [inviteEmail, setInviteEmail] = useState("");
+  const [inviteMessage, setInviteMessage] = useState("");
+  const [inviteError, setInviteError] = useState("");
+  const [pageError, setPageError] = useState("");
+
+  const [loadingInvitations, setLoadingInvitations] = useState(true);
+  const [sendingInvitation, setSendingInvitation] = useState(false);
+
+  const [pendingInvitations, setPendingInvitations] = useState<
+    Array<{
+      id: string;
+      email: string;
+      message: string;
+      createdAt: string;
+    }>
+  >([]);
+
+  
+
+  useEffect(() => {
+    async function loadInvitations() {
+      setLoadingInvitations(true);
+      setPageError("");
+
+      const supabase = createClient();
+
+      const {
+        data: { user },
+        error: userError,
+      } = await supabase.auth.getUser();
+
+      if (userError || !user) {
+        setPageError(
+          "We could not confirm your account. Please sign in again."
+        );
+        setLoadingInvitations(false);
+        return;
+      }
+
+      const { data, error } = await supabase
+        .from("clinician_client_invitations")
+        .select("id, client_email, message, created_at")
+        .eq("clinician_id", user.id)
+        .eq("status", "pending")
+        .order("created_at", { ascending: false });
+
+      if (error) {
+        console.error("Could not load client invitations:", error);
+
+        setPageError(
+          "Pending invitations could not be loaded. Please try again."
+        );
+
+        setLoadingInvitations(false);
+        return;
+      }
+
+      setPendingInvitations(
+        (data ?? []).map((row) => ({
+          id: row.id,
+          email: row.client_email,
+          message: row.message ?? "",
+          createdAt: row.created_at,
+        }))
+      );
+
+      setLoadingInvitations(false);
+    }
+
+    void loadInvitations();
+  }, []);
+
+
+  function openInviteModal() {
+    setInviteEmail("");
+    setInviteMessage("");
+    setInviteError("");
+    setShowInviteModal(true);
+  }
+
+  function closeInviteModal() {
+    if (sendingInvitation) return;
+
+    setShowInviteModal(false);
+    setInviteError("");
+  }
+
+  async function sendInvitation() {
+    if (sendingInvitation) return;
+
+    const normalizedEmail = inviteEmail.trim().toLowerCase();
+
+    if (!normalizedEmail) {
+      setInviteError("Enter the client's email address.");
+      return;
+    }
+
+    if (
+      !normalizedEmail.includes("@") ||
+      !normalizedEmail.includes(".")
+    ) {
+      setInviteError("Enter a valid email address.");
+      return;
+    }
+
+    const alreadyPending = pendingInvitations.some(
+      (invite) => invite.email.toLowerCase() === normalizedEmail
+    );
+
+    if (alreadyPending) {
+      setInviteError(
+        "An invitation to this email is already pending."
+      );
+      return;
+    }
+
+    setSendingInvitation(true);
+    setInviteError("");
+    setPageError("");
+
+    const supabase = createClient();
+
+    const {
+      data: { user },
+      error: userError,
+    } = await supabase.auth.getUser();
+
+    if (userError || !user) {
+      setInviteError(
+        "We could not confirm your account. Please sign in again."
+      );
+      setSendingInvitation(false);
+      return;
+    }
+
+    const { data, error } = await supabase
+      .from("clinician_client_invitations")
+      .insert({
+        clinician_id: user.id,
+        client_email: normalizedEmail,
+        message: inviteMessage.trim() || null,
+        status: "pending",
+      })
+      .select("id, client_email, message, created_at")
+      .single();
+
+    if (error) {
+      console.error("Could not create client invitation:", error);
+
+      if (error.code === "23505") {
+        setInviteError(
+          "An invitation to this email is already pending."
+        );
+      } else {
+        setInviteError(
+          "The invitation could not be created. Please try again."
+        );
+      }
+
+      setSendingInvitation(false);
+      return;
+    }
+
+    setPendingInvitations((current) => [
+      {
+        id: data.id,
+        email: data.client_email,
+        message: data.message ?? "",
+        createdAt: data.created_at,
+      },
+      ...current,
+    ]);
+
+    setInviteEmail("");
+    setInviteMessage("");
+    setInviteError("");
+    setSendingInvitation(false);
+    setShowInviteModal(false);
+  }
+
+  async function cancelInvitation(id: string) {
+    setPageError("");
+
+    const supabase = createClient();
+
+    const { error } = await supabase
+      .from("clinician_client_invitations")
+      .update({
+        status: "cancelled",
+        updated_at: new Date().toISOString(),
+      })
+      .eq("id", id);
+
+    if (error) {
+      console.error("Could not cancel invitation:", error);
+
+      setPageError(
+        "The invitation could not be cancelled. Please try again."
+      );
+
+      return;
+    }
+
+    setPendingInvitations((current) =>
+      current.filter((invite) => invite.id !== id)
+    );
+  }
+
+  return (
+    <>
+      <div className="space-y-5">
+        {/* Header */}
+        <div className="flex flex-col justify-between gap-4 rounded-2xl border border-slate-200 bg-white p-5 sm:flex-row sm:items-center">
+          <div>
+            <p className="text-sm font-semibold text-slate-950">
+              Your clients
+            </p>
+
+            <p className="mt-1 max-w-2xl text-sm leading-6 text-slate-500">
+              View connected clients or invite someone to connect their
+              PsyLattice Self account with your professional workspace.
+            </p>
+          </div>
+
+          <button
+            type="button"
+            onClick={openInviteModal}
+            className="inline-flex shrink-0 items-center justify-center gap-2 rounded-xl bg-slate-950 px-5 py-3 text-sm font-semibold text-white transition hover:bg-slate-800"
+          >
+            <span className="text-lg font-light">+</span>
+            Add client
+          </button>
+        </div>
+
+        {pageError && (
+          <div className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+            {pageError}
+          </div>
+        )}
+        <ConnectedClients
+          onOpenClient={onOpenClient}
+          onRemoveClient={onRemoveClient}
+        />
+
+        {/* Pending invitations */}
+        <Panel
+          title="Pending invitations"
+          description="Invitations remain pending until the client accepts the connection from their PsyLattice Self account."
+        >
+          {loadingInvitations ? (
+            <div className="rounded-xl bg-slate-50 px-5 py-7 text-center">
+              <p className="text-sm font-medium text-slate-600">
+                Loading invitations...
+              </p>
+            </div>
+          ) : pendingInvitations.length === 0 ? (
+            <div className="rounded-xl bg-slate-50 px-5 py-7 text-center">
+              <p className="text-sm font-medium text-slate-700">
+                No pending invitations
+              </p>
+
+              <p className="mt-1 text-xs leading-5 text-slate-400">
+                New client invitations will appear here.
+              </p>
+            </div>
+          ) : (
+            <div className="divide-y divide-slate-100">
+              {pendingInvitations.map((invite) => (
+                <div
+                  key={invite.id}
+                  className="flex flex-col justify-between gap-4 py-4 first:pt-0 last:pb-0 sm:flex-row sm:items-center"
+                >
+                  <div className="min-w-0">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <p className="truncate text-sm font-medium text-slate-900">
+                        {invite.email}
+                      </p>
+
+                      <Status type="warning">Pending</Status>
+                    </div>
+
+                    <p className="mt-1 text-xs text-slate-400">
+                      Invitation created ·{" "}
+                      {new Date(invite.createdAt).toLocaleString()}
+                    </p>
+
+                    {invite.message && (
+                      <p className="mt-2 max-w-2xl text-xs leading-5 text-slate-500">
+                        “{invite.message}”
+                      </p>
+                    )}
+                  </div>
+
+                  <button
+                    type="button"
+                    onClick={() =>
+                      void cancelInvitation(invite.id)
+                    }
+                    className="shrink-0 rounded-lg border border-slate-200 px-3 py-2 text-xs font-semibold text-slate-500 transition hover:border-red-200 hover:bg-red-50 hover:text-red-700"
+                  >
+                    Cancel invitation
+                  </button>
+                </div>
+              ))}
+            </div>
+          )}
+        </Panel>
+      </div>
+
+      {/* Invite client modal */}
+      {showInviteModal && (
+        <div
+          className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-950/50 px-4 py-8 backdrop-blur-sm"
+          onMouseDown={closeInviteModal}
+        >
+          <div
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="invite-client-title"
+            onMouseDown={(event) => event.stopPropagation()}
+            className="w-full max-w-xl overflow-hidden rounded-[24px] border border-slate-200 bg-white shadow-[0_30px_100px_-25px_rgba(15,23,42,0.45)]"
+          >
+            <div className="flex items-start justify-between gap-5 border-b border-slate-100 px-6 py-5">
+              <div>
+                <p className="text-xs font-semibold uppercase tracking-[0.16em] text-cyan-800">
+                  Client connection
+                </p>
+
+                <h2
+                  id="invite-client-title"
+                  className="mt-2 text-xl font-semibold tracking-tight text-slate-950"
+                >
+                  Invite a client
+                </h2>
+
+                <p className="mt-2 text-sm leading-6 text-slate-500">
+                  The client will need to accept the connection before
+                  you can access any information from their PsyLattice
+                  Self account.
+                </p>
+              </div>
+
+              <button
+                type="button"
+                onClick={closeInviteModal}
+                disabled={sendingInvitation}
+                aria-label="Close"
+                className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full border border-slate-200 text-lg text-slate-400 transition hover:bg-slate-50 hover:text-slate-900 disabled:opacity-50"
+              >
+                ×
+              </button>
+            </div>
+
+            <div className="space-y-5 p-6">
+              <label className="block">
+                <span className="text-sm font-medium text-slate-800">
+                  Client email
+                </span>
+
+                <p className="mt-1 text-xs text-slate-400">
+                  Use the email they use, or will use, for PsyLattice.
+                </p>
+
+                <input
+                  type="email"
+                  value={inviteEmail}
+                  disabled={sendingInvitation}
+                  onChange={(event) => {
+                    setInviteEmail(event.target.value);
+                    setInviteError("");
+                  }}
+                  placeholder="client@example.com"
+                  className="mt-3 w-full rounded-xl border border-slate-200 px-4 py-3 text-sm outline-none transition focus:border-cyan-700 disabled:bg-slate-50"
+                />
+              </label>
+
+              <label className="block">
+                <span className="text-sm font-medium text-slate-800">
+                  Optional message
+                </span>
+
+                <textarea
+                  value={inviteMessage}
+                  disabled={sendingInvitation}
+                  onChange={(event) =>
+                    setInviteMessage(event.target.value)
+                  }
+                  placeholder="For example: I'm inviting you to use PsyLattice for the assessments and monitoring we discussed."
+                  className="mt-2 min-h-28 w-full resize-none rounded-xl border border-slate-200 p-4 text-sm leading-6 outline-none transition focus:border-cyan-700 disabled:bg-slate-50"
+                />
+              </label>
+
+              <div className="rounded-xl border border-cyan-100 bg-cyan-50/60 p-4">
+                <p className="text-sm font-medium text-cyan-950">
+                  The client stays in control.
+                </p>
+
+                <p className="mt-1 text-xs leading-5 text-slate-600">
+                  Sending an invitation does not give you access to
+                  their PsyLattice data. Sharing permissions are chosen
+                  after the client accepts the connection.
+                </p>
+              </div>
+
+              {inviteError && (
+                <div className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+                  {inviteError}
+                </div>
+              )}
+            </div>
+
+            <div className="flex flex-col-reverse gap-2 border-t border-slate-100 bg-slate-50/70 px-6 py-4 sm:flex-row sm:justify-end">
+              <button
+                type="button"
+                disabled={sendingInvitation}
+                onClick={closeInviteModal}
+                className="rounded-xl border border-slate-200 bg-white px-5 py-3 text-sm font-semibold text-slate-600 transition hover:bg-slate-50 disabled:opacity-50"
+              >
+                Cancel
+              </button>
+
+              <button
+                type="button"
+                disabled={sendingInvitation}
+                onClick={() => void sendInvitation()}
+                className="rounded-xl bg-slate-950 px-5 py-3 text-sm font-semibold text-white transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-60"
+              >
+                {sendingInvitation
+                  ? "Sending..."
+                  : "Send invitation"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+    </>
+  );
+}
 /* =========================================================
    CLIENT OVERVIEW
    ========================================================= */
 
 function ClientOverview({
   changeScreen,
+  client,
+  onRemoveClient,
 }: {
   changeScreen: (screen: Screen) => void;
+  client: ConnectedClient | null;
+  onRemoveClient: (client: ConnectedClient) => Promise<boolean>;
 }) {
+  const [removingClient, setRemovingClient] = useState(false);
+
+  const {
+    permissions,
+    loadingPermissions,
+    permissionsError,
+  } = useClientSharingPermissions(client);
+
+  if (!client) {
+    return (
+      <div className="rounded-2xl border border-slate-200 bg-white p-8 text-center">
+        <p className="text-lg font-semibold text-slate-950">
+          Select a client first
+        </p>
+
+        <p className="mx-auto mt-2 max-w-lg text-sm leading-6 text-slate-500">
+          Open a connected client from the Clients page to view their
+          professional workspace.
+        </p>
+
+        <button
+          type="button"
+          onClick={() => changeScreen("clients")}
+          className="mt-5 rounded-xl bg-slate-950 px-5 py-3 text-sm font-semibold text-white"
+        >
+          View clients
+        </button>
+      </div>
+    );
+  }
+
+  const initials =
+    client.client_name
+      .trim()
+      .split(/\s+/)
+      .filter(Boolean)
+      .slice(0, 2)
+      .map((part) => part.charAt(0))
+      .join("")
+      .toUpperCase() || "PL";
+
+  const sharedPermissionCount = permissions
+    ? clientPermissionDefinitions.filter(
+        (definition) => permissions[definition.key]
+      ).length
+    : 0;
+
+  async function removeCurrentClient() {
+    if (!client || removingClient) {
+      return;
+    }
+
+    setRemovingClient(true);
+
+    const removed = await onRemoveClient(client);
+
+    if (removed) {
+      changeScreen("clients");
+    }
+
+    setRemovingClient(false);
+  }
+
   return (
     <div className="space-y-5">
       <div className="flex flex-wrap items-center justify-between gap-4 rounded-2xl border border-slate-200 bg-white p-5">
         <div className="flex items-center gap-4">
-          <PersonAvatar initials="MS" large />
+          <PersonAvatar initials={initials} large />
 
           <div>
-            <h2 className="text-xl font-semibold">Maya S.</h2>
+            <h2 className="text-xl font-semibold text-slate-950">
+              {client.client_name}
+            </h2>
+
             <p className="mt-1 text-sm text-slate-500">
-              CL-1042 · Assigned to you
+              Connected{" "}
+              {new Date(client.connected_at).toLocaleDateString()}
             </p>
           </div>
         </div>
 
-        <div className="flex flex-wrap gap-2">
-          <Status type="accent">Active monitoring</Status>
-          <Status>Next session · 14 Aug</Status>
-        </div>
-      </div>
-
-      <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
-        <StatCard
-          label="Latest stress score"
-          value="21"
-          detail="Moderate screening range"
-        />
-
-        <StatCard
-          label="EMA completion"
-          value="82%"
-          detail="Past 14 days"
-        />
-
-        <StatCard
-          label="Average sleep"
-          value="6h 18m"
-          detail="Past 7 days"
-        />
-
-        <StatCard
-          label="Next session"
-          value="14 Aug"
-          detail="14:30"
-        />
-      </div>
-
-      <div className="grid gap-5 xl:grid-cols-[1.15fr_.85fr]">
-        <Panel title="Integrated snapshot">
-          <div className="divide-y divide-slate-100">
-            {[
-              [
-                "Self-report",
-                "Latest stress score is lower than the previous administration.",
-                "Assessment",
-              ],
-              [
-                "Ambulatory",
-                "Higher stress has frequently been reported during afternoon study periods.",
-                "EMA",
-              ],
-              [
-                "Wearable context",
-                "Shorter sleep on 4 of the past 7 nights.",
-                "Authorised",
-              ],
-              [
-                "Care activity",
-                "Initial consultation scheduled.",
-                "Clinical",
-              ],
-            ].map(([title, description, status]) => (
-              <div
-                key={title}
-                className="flex items-start justify-between gap-5 py-4 first:pt-0 last:pb-0"
-              >
-                <div>
-                  <p className="text-sm font-medium">{title}</p>
-                  <p className="mt-1 text-sm leading-6 text-slate-500">
-                    {description}
-                  </p>
-                </div>
-
-                <Status>{status}</Status>
-              </div>
-            ))}
-          </div>
-        </Panel>
-
-        <Panel title="Professional actions">
-          <div className="grid gap-2">
-            <button
-              type="button"
-              onClick={() => changeScreen("notes")}
-              className="rounded-xl bg-slate-950 px-4 py-3 text-left text-sm font-semibold text-white"
-            >
-              Add professional note
-            </button>
-
-            <button
-              type="button"
-              onClick={() => changeScreen("assessments")}
-              className="rounded-xl border border-slate-200 px-4 py-3 text-left text-sm font-semibold"
-            >
-              Review assessments
-            </button>
-
-            <button
-              type="button"
-              onClick={() => changeScreen("ambulatory")}
-              className="rounded-xl border border-slate-200 px-4 py-3 text-left text-sm font-semibold"
-            >
-              Open ambulatory data
-            </button>
-
-            <button
-              type="button"
-              onClick={() => changeScreen("care")}
-              className="rounded-xl border border-slate-200 px-4 py-3 text-left text-sm font-semibold"
-            >
-              Care pathway
-            </button>
-          </div>
-        </Panel>
-      </div>
-
-      <Panel title="Current client-authorised access">
-        <div className="rounded-2xl border border-cyan-100 bg-cyan-50/60 p-5">
-          <p className="font-medium">Data permissions</p>
-
-          <p className="mt-2 max-w-4xl text-sm leading-6 text-slate-600">
-            This demo client currently authorises access to self-assessments,
-            ambulatory reports, sleep, activity and daily resting-heart-rate
-            summaries. Continuous heart-rate and HRV information are not
-            shared.
-          </p>
+        <div className="flex flex-wrap items-center gap-2">
+          <Status type="success">Connected</Status>
 
           <button
             type="button"
-            onClick={() => changeScreen("permissions")}
-            className="mt-4 text-sm font-semibold text-cyan-900"
+            disabled={removingClient}
+            onClick={() => void removeCurrentClient()}
+            className="rounded-xl border border-red-200 bg-white px-3 py-2 text-xs font-semibold text-red-700 transition hover:bg-red-50 disabled:cursor-not-allowed disabled:opacity-50"
           >
-            Review permissions
+            {removingClient
+              ? "Removing..."
+              : "Remove client"}
+          </button>
+        </div>
+      </div>
+
+      <div className="rounded-2xl border border-cyan-200 bg-cyan-50/60 p-5">
+        <div className="flex items-start gap-4">
+          <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-white font-semibold text-cyan-800">
+            <CheckIcon />
+          </div>
+
+          <div>
+            <p className="font-semibold text-cyan-950">
+              Clinician connection active
+            </p>
+
+            <p className="mt-2 max-w-3xl text-sm leading-6 text-slate-600">
+              This client has accepted your connection request. Acceptance
+              does not automatically provide access to their assessments,
+              monitoring, wearable information or other personal data.
+            </p>
+          </div>
+        </div>
+      </div>
+
+      <Panel
+        title="Client-authorised information"
+        description="A summary of the categories this client currently allows you to access."
+      >
+        {loadingPermissions ? (
+          <div className="rounded-2xl bg-slate-50 px-5 py-8 text-center">
+            <p className="text-sm font-medium text-slate-600">
+              Loading sharing permissions...
+            </p>
+          </div>
+        ) : permissionsError ? (
+          <div className="rounded-2xl border border-red-200 bg-red-50 px-5 py-4">
+            <p className="text-sm text-red-700">
+              {permissionsError}
+            </p>
+          </div>
+        ) : permissions ? (
+          <div className="space-y-5">
+            <div className="flex flex-col justify-between gap-4 rounded-2xl border border-slate-200 bg-slate-50/60 p-5 sm:flex-row sm:items-center">
+              <div>
+                <p className="text-sm font-semibold text-slate-950">
+                  {sharedPermissionCount} of 5 categories shared
+                </p>
+
+                <p className="mt-1 text-xs leading-5 text-slate-500">
+                  The client controls these permissions from
+                  Self → Privacy & Sharing.
+                </p>
+              </div>
+
+              <Status
+                type={
+                  sharedPermissionCount > 0
+                    ? "success"
+                    : "neutral"
+                }
+              >
+                {sharedPermissionCount > 0
+                  ? "Authorised access"
+                  : "Nothing shared"}
+              </Status>
+            </div>
+
+            <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+              {clientPermissionDefinitions.map(
+                (definition) => {
+                  const shared =
+                    permissions[definition.key];
+
+                  return (
+                    <div
+                      key={definition.key}
+                      className={`rounded-xl border p-4 ${
+                        shared
+                          ? "border-emerald-100 bg-emerald-50/60"
+                          : "border-slate-200 bg-slate-50"
+                      }`}
+                    >
+                      <div className="flex items-center justify-between gap-3">
+                        <p className="text-sm font-medium text-slate-800">
+                          {definition.title}
+                        </p>
+
+                        <span
+                          className={`text-sm font-semibold ${
+                            shared
+                              ? "text-emerald-700"
+                              : "text-slate-400"
+                          }`}
+                        >
+                          {shared ? "✓" : "—"}
+                        </span>
+                      </div>
+                    </div>
+                  );
+                }
+              )}
+            </div>
+
+            <div className="rounded-xl border border-slate-200 bg-white p-4">
+              <div className="flex items-center justify-between gap-4">
+                <div>
+                  <p className="text-sm font-medium text-slate-800">
+                    Luna AI conversations
+                  </p>
+
+                  <p className="mt-1 text-xs leading-5 text-slate-400">
+                    Private conversation history is not included
+                    in clinician sharing permissions.
+                  </p>
+                </div>
+
+                <Status type="accent">Private</Status>
+              </div>
+            </div>
+
+            <button
+              type="button"
+              onClick={() => changeScreen("permissions")}
+              className="inline-flex items-center gap-2 rounded-xl border border-cyan-200 bg-white px-4 py-2.5 text-sm font-semibold text-cyan-900 transition hover:bg-cyan-50"
+            >
+              View consent & data access
+              <ArrowIcon />
+            </button>
+          </div>
+        ) : (
+          <div className="rounded-2xl border border-dashed border-slate-300 bg-slate-50/60 p-8 text-center">
+            <p className="font-semibold text-slate-800">
+              No permission record available
+            </p>
+
+            <p className="mx-auto mt-2 max-w-xl text-sm leading-6 text-slate-500">
+              No client-authorised sharing record was returned
+              for this active connection.
+            </p>
+          </div>
+        )}
+      </Panel>
+
+      <Panel title="Professional actions">
+        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+          <button
+            type="button"
+            disabled={
+              loadingPermissions ||
+              !permissions?.share_assessments
+            }
+            onClick={() => changeScreen("assessments")}
+            className={`rounded-xl border p-4 text-left transition ${
+              permissions?.share_assessments
+                ? "border-cyan-200 bg-cyan-50/50 hover:bg-cyan-50"
+                : "border-slate-200 bg-slate-50 opacity-60"
+            }`}
+          >
+            <p className="text-sm font-semibold text-slate-700">
+              Review shared assessments
+            </p>
+
+            <p className="mt-1 text-xs leading-5 text-slate-400">
+              {loadingPermissions
+                ? "Checking client permission..."
+                : permissions?.share_assessments
+                  ? "Open this client's authorised completed assessment results."
+                  : "Assessment results are not currently shared by this client."}
+            </p>
+          </button>
+
+          <button
+            type="button"
+            disabled
+            className="rounded-xl border border-slate-200 bg-slate-50 p-4 text-left opacity-60"
+          >
+            <p className="text-sm font-semibold text-slate-700">
+              Assign monitoring
+            </p>
+
+            <p className="mt-1 text-xs leading-5 text-slate-400">
+              Available after sharing permissions are configured.
+            </p>
+          </button>
+
+          <button
+            type="button"
+            disabled
+            className="rounded-xl border border-slate-200 bg-slate-50 p-4 text-left opacity-60"
+          >
+            <p className="text-sm font-semibold text-slate-700">
+              Add professional note
+            </p>
+
+            <p className="mt-1 text-xs leading-5 text-slate-400">
+              Client-specific professional records will be connected next.
+            </p>
           </button>
         </div>
       </Panel>
@@ -618,127 +1486,415 @@ function ClientOverview({
    ASSESSMENTS
    ========================================================= */
 
-function Assessments() {
-  const [note, setNote] = useState(
-    "Stress score has reduced compared with the previous administration. Review alongside current academic context and momentary reports.",
-  );
+type ClinicianAssessmentRecord = {
+  session_id: string;
+  questionnaire_id: string;
+  questionnaire_name: string;
+  questionnaire_acronym: string | null;
+  scores: Record<string, number> | null;
+  completed_at: string;
+};
+
+function Assessments({
+  client,
+  changeScreen,
+}: {
+  client: ConnectedClient | null;
+  changeScreen: (screen: Screen) => void;
+}) {
+  const {
+    permissions,
+    loadingPermissions,
+    permissionsError,
+  } = useClientSharingPermissions(client);
+
+  const [assessments, setAssessments] = useState<
+    ClinicianAssessmentRecord[]
+  >([]);
+  const [loadingAssessments, setLoadingAssessments] =
+    useState(false);
+  const [assessmentError, setAssessmentError] = useState("");
+
+  useEffect(() => {
+    let active = true;
+
+    async function loadSharedAssessments() {
+      setAssessmentError("");
+
+      if (
+        !client ||
+        loadingPermissions ||
+        !permissions ||
+        !permissions.share_assessments
+      ) {
+        setAssessments([]);
+        setLoadingAssessments(false);
+        return;
+      }
+
+      setLoadingAssessments(true);
+
+      const supabase = createClient();
+
+      const { data, error } = await supabase.rpc(
+        "psylattice_connected_client_assessments",
+        {
+          p_connection_id: client.connection_id,
+        }
+      );
+
+      if (!active) {
+        return;
+      }
+
+      if (error) {
+        console.error(
+          "Could not load shared client assessments:",
+          error
+        );
+
+        setAssessmentError(
+          "This client's shared assessments could not be loaded."
+        );
+        setAssessments([]);
+        setLoadingAssessments(false);
+        return;
+      }
+
+      setAssessments(
+        (data ?? []) as ClinicianAssessmentRecord[]
+      );
+      setLoadingAssessments(false);
+    }
+
+    void loadSharedAssessments();
+
+    return () => {
+      active = false;
+    };
+  }, [
+    client?.connection_id,
+    loadingPermissions,
+    permissions?.share_assessments,
+  ]);
+
+  if (!client) {
+    return (
+      <div className="rounded-2xl border border-slate-200 bg-white p-8 text-center">
+        <p className="text-lg font-semibold text-slate-950">
+          Select a client first
+        </p>
+
+        <p className="mx-auto mt-2 max-w-lg text-sm leading-6 text-slate-500">
+          Open a connected client from the Clients page before
+          reviewing assessment information.
+        </p>
+
+        <button
+          type="button"
+          onClick={() => changeScreen("clients")}
+          className="mt-5 rounded-xl bg-slate-950 px-5 py-3 text-sm font-semibold text-white"
+        >
+          View clients
+        </button>
+      </div>
+    );
+  }
+
+  const initials =
+    client.client_name
+      .trim()
+      .split(/\s+/)
+      .filter(Boolean)
+      .slice(0, 2)
+      .map((part) => part.charAt(0))
+      .join("")
+      .toUpperCase() || "PL";
+
+  const latestAssessment =
+    assessments.length > 0 ? assessments[0] : null;
+
+  const distinctQuestionnaires = new Set(
+    assessments.map(
+      (assessment) => assessment.questionnaire_id
+    )
+  ).size;
 
   return (
     <div className="space-y-5">
-      <Panel title="Assessment history">
-        <div className="divide-y divide-slate-100">
-          {[
-            [
-              "09 Aug 2026",
-              "Perceived Stress Scale",
-              "Score 21",
-              "Awaiting review",
-            ],
-            [
-              "26 Jul 2026",
-              "Perceived Stress Scale",
-              "Score 25",
-              "Reviewed",
-            ],
-            [
-              "12 Jul 2026",
-              "Wellbeing Check",
-              "Baseline recorded",
-              "Reviewed",
-            ],
-            [
-              "19 Jun 2026",
-              "Sleep Self-Check",
-              "Initial baseline",
-              "Historical",
-            ],
-          ].map(([date, title, result, status]) => (
-            <div
-              key={`${date}-${title}`}
-              className="grid gap-3 py-4 first:pt-0 last:pb-0 md:grid-cols-[130px_1fr_150px_130px] md:items-center"
-            >
-              <span className="text-xs text-slate-400">{date}</span>
+      <div className="flex flex-wrap items-center justify-between gap-4 rounded-2xl border border-slate-200 bg-white p-5">
+        <div className="flex items-center gap-4">
+          <PersonAvatar initials={initials} large />
 
-              <span className="text-sm font-medium">{title}</span>
+          <div>
+            <p className="text-xs font-medium uppercase tracking-[0.12em] text-slate-400">
+              Shared assessments
+            </p>
 
-              <span className="text-sm text-slate-500">{result}</span>
+            <h2 className="mt-1 text-xl font-semibold text-slate-950">
+              {client.client_name}
+            </h2>
 
-              <Status
-                type={
-                  status === "Awaiting review"
-                    ? "warning"
-                    : status === "Reviewed"
-                      ? "success"
-                      : "neutral"
-                }
-              >
-                {status}
-              </Status>
-            </div>
-          ))}
-        </div>
-      </Panel>
-
-      <div className="grid gap-5 xl:grid-cols-2">
-        <Panel title="Repeated score view">
-          <div className="space-y-6">
-            <ProgressBar label="26 Jul" value={63} text="25" />
-            <ProgressBar label="09 Aug" value={53} text="21" />
+            <p className="mt-1 text-sm text-slate-500">
+              Assessment access follows this client's
+              current sharing permission.
+            </p>
           </div>
+        </div>
 
-          <p className="mt-5 text-xs leading-5 text-slate-400">
-            Repeated measurements are shown descriptively. Clinical meaning
-            requires professional interpretation and additional context.
-          </p>
-        </Panel>
-
-        <Panel title="Professional interpretation">
-          <label>
-            <span className="text-sm font-medium">Review note</span>
-
-            <textarea
-              value={note}
-              onChange={(event) => setNote(event.target.value)}
-              className="mt-2 min-h-32 w-full rounded-xl border border-slate-200 p-4 text-sm leading-6 outline-none focus:border-cyan-700"
-            />
-          </label>
-
-          <button className="mt-4 rounded-xl bg-slate-950 px-5 py-3 text-sm font-semibold text-white">
-            Save interpretation
-          </button>
-        </Panel>
+        {loadingPermissions ? (
+          <Status>Checking access</Status>
+        ) : permissions?.share_assessments ? (
+          <Status type="success">Shared</Status>
+        ) : (
+          <Status>Not shared</Status>
+        )}
       </div>
 
-      <Panel title="Assign an assessment">
-        <div className="grid gap-4 md:grid-cols-[1fr_220px_auto] md:items-end">
-          <label>
-            <span className="text-sm font-medium">Assessment</span>
-
-            <select className="mt-2 w-full rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm">
-              <option>Perceived Stress Scale</option>
-              <option>Wellbeing Check</option>
-              <option>Sleep Self-Check</option>
-            </select>
-          </label>
-
-          <label>
-            <span className="text-sm font-medium">Due</span>
-
-            <select className="mt-2 w-full rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm">
-              <option>In 7 days</option>
-              <option>In 14 days</option>
-              <option>In 30 days</option>
-            </select>
-          </label>
-
-          <button className="rounded-xl border border-slate-200 px-5 py-3 text-sm font-semibold">
-            Assign
-          </button>
+      {loadingPermissions ? (
+        <Panel title="Assessment access">
+          <div className="rounded-2xl bg-slate-50 px-5 py-8 text-center">
+            <p className="text-sm font-medium text-slate-600">
+              Checking assessment permission...
+            </p>
+          </div>
+        </Panel>
+      ) : permissionsError ? (
+        <div className="rounded-2xl border border-red-200 bg-red-50 px-5 py-4">
+          <p className="text-sm text-red-700">
+            {permissionsError}
+          </p>
         </div>
-      </Panel>
+      ) : !permissions?.share_assessments ? (
+        <Panel
+          title="Assessment access"
+          description="The client controls this permission from their Self workspace."
+        >
+          <div className="rounded-2xl border border-dashed border-slate-300 bg-slate-50/60 px-6 py-10 text-center">
+            <div className="mx-auto flex h-11 w-11 items-center justify-center rounded-full bg-slate-100 text-sm font-semibold text-slate-500">
+              🔒
+            </div>
+
+            <p className="mt-4 font-semibold text-slate-800">
+              Assessment results are not shared
+            </p>
+
+            <p className="mx-auto mt-2 max-w-xl text-sm leading-6 text-slate-500">
+              {client.client_name} has not authorised access
+              to Self-assessment results. PsyLattice will not
+              return their assessment records to this
+              Clinical workspace while this permission is off.
+            </p>
+
+            <button
+              type="button"
+              onClick={() => changeScreen("permissions")}
+              className="mt-5 rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm font-semibold text-slate-700 transition hover:bg-slate-50"
+            >
+              View consent & data access
+            </button>
+          </div>
+        </Panel>
+      ) : (
+        <>
+          {assessmentError && (
+            <div className="rounded-2xl border border-red-200 bg-red-50 px-5 py-4">
+              <p className="text-sm text-red-700">
+                {assessmentError}
+              </p>
+            </div>
+          )}
+
+          <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
+            <StatCard
+              label="Completed assessments"
+              value={
+                loadingAssessments
+                  ? "..."
+                  : String(assessments.length)
+              }
+              detail="Authorised completed records"
+            />
+
+            <StatCard
+              label="Measures represented"
+              value={
+                loadingAssessments
+                  ? "..."
+                  : String(distinctQuestionnaires)
+              }
+              detail="Distinct questionnaires"
+            />
+
+            <StatCard
+              label="Latest completion"
+              value={
+                loadingAssessments
+                  ? "..."
+                  : latestAssessment
+                    ? new Date(
+                        latestAssessment.completed_at
+                      ).toLocaleDateString([], {
+                        day: "2-digit",
+                        month: "short",
+                        year: "numeric",
+                      })
+                    : "None"
+              }
+              detail="Most recent shared result"
+            />
+          </div>
+
+          <Panel
+            title="Assessment history"
+            description="Completed Self assessments returned through the client's active assessment-sharing permission."
+          >
+            {loadingAssessments ? (
+              <div className="rounded-2xl bg-slate-50 px-5 py-8 text-center">
+                <p className="text-sm font-medium text-slate-600">
+                  Loading shared assessments...
+                </p>
+              </div>
+            ) : assessments.length === 0 ? (
+              <div className="rounded-2xl border border-dashed border-slate-300 bg-slate-50/60 px-6 py-10 text-center">
+                <p className="font-semibold text-slate-800">
+                  No completed assessments yet
+                </p>
+
+                <p className="mx-auto mt-2 max-w-xl text-sm leading-6 text-slate-500">
+                  Assessment sharing is enabled, but this
+                  client does not currently have a completed
+                  assessment record available through the
+                  shared-assessment endpoint.
+                </p>
+              </div>
+            ) : (
+              <div className="divide-y divide-slate-100">
+                {assessments.map((assessment) => {
+                  const scoreEntries = assessment.scores
+                    ? Object.entries(
+                        assessment.scores
+                      ).filter(
+                        ([, value]) =>
+                          typeof value === "number"
+                      )
+                    : [];
+
+                  return (
+                    <div
+                      key={assessment.session_id}
+                      className="py-5 first:pt-0 last:pb-0"
+                    >
+                      <div className="flex flex-col justify-between gap-4 sm:flex-row sm:items-start">
+                        <div>
+                          <div className="flex flex-wrap items-center gap-2">
+                            <p className="font-semibold text-slate-950">
+                              {
+                                assessment.questionnaire_name
+                              }
+                            </p>
+
+                            {assessment.questionnaire_acronym && (
+                              <Status type="accent">
+                                {
+                                  assessment.questionnaire_acronym
+                                }
+                              </Status>
+                            )}
+                          </div>
+
+                          <p className="mt-2 text-xs text-slate-400">
+                            Completed{" "}
+                            {new Date(
+                              assessment.completed_at
+                            ).toLocaleString()}
+                          </p>
+                        </div>
+
+                        <Status type="success">
+                          Client shared
+                        </Status>
+                      </div>
+
+                      {scoreEntries.length > 0 ? (
+                        <div className="mt-4 flex flex-wrap gap-2">
+                          {scoreEntries.map(
+                            ([label, value]) => (
+                              <span
+                                key={label}
+                                className="rounded-full border border-cyan-100 bg-cyan-50/60 px-3 py-1.5 text-xs font-medium text-cyan-900"
+                              >
+                                {label}: {value}
+                              </span>
+                            )
+                          )}
+                        </div>
+                      ) : (
+                        <p className="mt-4 text-sm text-slate-500">
+                          No scored summary is stored for this
+                          completed session.
+                        </p>
+                      )}
+
+                      <p className="mt-4 max-w-4xl text-xs leading-5 text-slate-400">
+                        Questionnaire scores are displayed as
+                        recorded results. Clinical meaning
+                        requires professional interpretation
+                        and appropriate context.
+                      </p>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </Panel>
+
+          <Panel title="Assessment access boundary">
+            <div className="rounded-2xl border border-cyan-100 bg-cyan-50/60 p-5">
+              <p className="font-medium text-cyan-950">
+                Access is checked in Supabase, not only hidden
+                in the interface.
+              </p>
+
+              <p className="mt-2 max-w-4xl text-sm leading-6 text-slate-600">
+                The Clinical workspace requests assessment
+                history through a restricted database
+                function. The function returns completed
+                assessment summaries only when this clinician
+                has an active connection to the client and the
+                client currently allows assessment sharing.
+              </p>
+            </div>
+          </Panel>
+
+          <Panel title="Assign an assessment">
+            <div className="rounded-2xl bg-slate-50 p-5">
+              <p className="font-medium text-slate-800">
+                Assessment assignment is the next workflow.
+              </p>
+
+              <p className="mt-2 max-w-3xl text-sm leading-6 text-slate-500">
+                Reading authorised existing results is now
+                separate from assigning a new assessment. We
+                will connect assignment to the Self workspace
+                in the next assessment step.
+              </p>
+
+              <button
+                type="button"
+                disabled
+                className="mt-4 rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm font-semibold text-slate-400"
+              >
+                Assign assessment · Coming next
+              </button>
+            </div>
+          </Panel>
+        </>
+      )}
     </div>
   );
 }
+
 
 /* =========================================================
    AMBULATORY MONITORING
@@ -1495,111 +2651,213 @@ function Reports() {
    PERMISSIONS
    ========================================================= */
 
-function Permissions() {
+function Permissions({
+  client,
+}: {
+  client: ConnectedClient | null;
+}) {
+  const {
+    permissions,
+    loadingPermissions,
+    permissionsError,
+  } = useClientSharingPermissions(client);
+
+  if (!client) {
+    return (
+      <div className="rounded-2xl border border-slate-200 bg-white p-8 text-center">
+        <p className="text-lg font-semibold text-slate-950">
+          Select a client first
+        </p>
+
+        <p className="mx-auto mt-2 max-w-lg text-sm leading-6 text-slate-500">
+          Open a connected client from the Clients page before
+          reviewing Consent & Data Access.
+        </p>
+      </div>
+    );
+  }
+
+  const initials =
+    client.client_name
+      .trim()
+      .split(/\s+/)
+      .filter(Boolean)
+      .slice(0, 2)
+      .map((part) => part.charAt(0))
+      .join("")
+      .toUpperCase() || "PL";
+
+  const sharedPermissionCount = permissions
+    ? clientPermissionDefinitions.filter(
+        (definition) => permissions[definition.key]
+      ).length
+    : 0;
+
   return (
     <div className="space-y-5">
-      <Panel title="Client-authorised data">
-        <div className="divide-y divide-slate-100">
-          {[
-            [
-              "Self-assessment responses",
-              "Available for current support pathway",
-              "Authorised",
-            ],
-            [
-              "Ambulatory assessment",
-              "Momentary responses + context",
-              "Authorised",
-            ],
-            [
-              "Sleep",
-              "Duration and timing summaries",
-              "Authorised",
-            ],
-            ["Activity", "Daily activity summaries", "Authorised"],
-            [
-              "Resting heart rate",
-              "Daily summary",
-              "Authorised",
-            ],
-            ["Heart-rate variability", "Not shared", "Unavailable"],
-            [
-              "AI Guide conversations",
-              "Not shared with clinician by default",
-              "Private",
-            ],
-          ].map(([name, detail, status]) => (
-            <div
-              key={name}
-              className="flex items-center justify-between gap-5 py-4 first:pt-0 last:pb-0"
-            >
+      <div className="flex flex-wrap items-center justify-between gap-4 rounded-2xl border border-slate-200 bg-white p-5">
+        <div className="flex items-center gap-4">
+          <PersonAvatar initials={initials} large />
+
+          <div>
+            <p className="text-xs font-medium uppercase tracking-[0.12em] text-slate-400">
+              Consent & Data Access
+            </p>
+
+            <h2 className="mt-1 text-xl font-semibold text-slate-950">
+              {client.client_name}
+            </h2>
+
+            <p className="mt-1 text-sm text-slate-500">
+              Connected{" "}
+              {new Date(client.connected_at).toLocaleDateString()}
+            </p>
+          </div>
+        </div>
+
+        <Status type="success">Connected</Status>
+      </div>
+
+      <Panel
+        title="Client-authorised access"
+        description="This is a read-only view of the sharing choices made by the client in their Self workspace."
+      >
+        {loadingPermissions ? (
+          <div className="rounded-2xl bg-slate-50 px-5 py-8 text-center">
+            <p className="text-sm font-medium text-slate-600">
+              Loading permissions...
+            </p>
+          </div>
+        ) : permissionsError ? (
+          <div className="rounded-2xl border border-red-200 bg-red-50 px-5 py-4">
+            <p className="text-sm text-red-700">
+              {permissionsError}
+            </p>
+          </div>
+        ) : permissions ? (
+          <div className="space-y-5">
+            <div className="flex flex-col justify-between gap-4 rounded-2xl border border-cyan-100 bg-cyan-50/60 p-5 sm:flex-row sm:items-center">
               <div>
-                <p className="text-sm font-medium">{name}</p>
-                <p className="mt-1 text-xs text-slate-400">{detail}</p>
+                <p className="font-semibold text-cyan-950">
+                  {sharedPermissionCount} of 5 categories currently shared
+                </p>
+
+                <p className="mt-1 text-sm leading-6 text-slate-600">
+                  Only the client can change these permissions.
+                  Changes made in Self → Privacy & Sharing are
+                  reflected here.
+                </p>
               </div>
 
               <Status
                 type={
-                  status === "Authorised"
+                  sharedPermissionCount > 0
                     ? "success"
-                    : status === "Private"
-                      ? "accent"
-                      : "neutral"
+                    : "neutral"
                 }
               >
-                {status}
+                {sharedPermissionCount > 0
+                  ? "Access granted"
+                  : "No data access"}
               </Status>
             </div>
-          ))}
-        </div>
+
+            <div className="divide-y divide-slate-100">
+              {clientPermissionDefinitions.map(
+                (definition) => {
+                  const shared =
+                    permissions[definition.key];
+
+                  return (
+                    <div
+                      key={definition.key}
+                      className="flex items-center justify-between gap-5 py-4 first:pt-0 last:pb-0"
+                    >
+                      <div>
+                        <p className="text-sm font-medium text-slate-800">
+                          {definition.title}
+                        </p>
+
+                        <p className="mt-1 max-w-3xl text-xs leading-5 text-slate-400">
+                          {definition.description}
+                        </p>
+                      </div>
+
+                      <Status
+                        type={
+                          shared
+                            ? "success"
+                            : "neutral"
+                        }
+                      >
+                        {shared
+                          ? "Shared"
+                          : "Not shared"}
+                      </Status>
+                    </div>
+                  );
+                }
+              )}
+
+              <div className="flex items-center justify-between gap-5 py-4">
+                <div>
+                  <p className="text-sm font-medium text-slate-800">
+                    Luna AI conversations
+                  </p>
+
+                  <p className="mt-1 max-w-3xl text-xs leading-5 text-slate-400">
+                    Private AI conversation history is not
+                    exposed through clinician sharing permissions.
+                  </p>
+                </div>
+
+                <Status type="accent">Private</Status>
+              </div>
+            </div>
+
+            {permissions.permissions_updated_at && (
+              <p className="text-xs text-slate-400">
+                Client permissions last updated{" "}
+                {new Date(
+                  permissions.permissions_updated_at
+                ).toLocaleString()}
+              </p>
+            )}
+          </div>
+        ) : (
+          <div className="rounded-2xl border border-dashed border-slate-300 bg-slate-50/60 px-5 py-9 text-center">
+            <p className="font-semibold text-slate-800">
+              No permission record available
+            </p>
+
+            <p className="mx-auto mt-2 max-w-xl text-sm leading-6 text-slate-500">
+              PsyLattice did not receive a sharing-permission
+              record for this active connection.
+            </p>
+          </div>
+        )}
       </Panel>
 
-      <Panel title="Minimum necessary access">
+      <Panel title="Access rule">
         <div className="rounded-2xl bg-slate-50 p-5">
           <p className="font-medium">
-            Professional access should be intentionally narrow.
+            Client connection does not equal data access.
           </p>
 
           <p className="mt-2 max-w-4xl text-sm leading-6 text-slate-500">
-            Clinicians should only see assigned clients and data sources
-            authorised for the relevant workflow. Permission changes should
-            later take effect immediately and be included in the audit trail.
+            A connected client can keep every category private.
+            Clinical data pages should only expose information
+            covered by an active client-authorised permission.
+            The next implementation step will enforce these
+            permissions on the underlying assessment,
+            monitoring, progress and wearable queries.
           </p>
-        </div>
-      </Panel>
-
-      <Panel title="Sharing history">
-        <div className="divide-y divide-slate-100">
-          {[
-            [
-              "09 Aug · 12:42",
-              "Client removed HRV sharing permission",
-            ],
-            [
-              "26 Jul · 10:01",
-              "Client authorised ambulatory-data access",
-            ],
-            [
-              "26 Jul · 10:01",
-              "Client authorised assessment sharing",
-            ],
-          ].map(([date, action]) => (
-            <div
-              key={`${date}-${action}`}
-              className="flex gap-5 py-4 first:pt-0 last:pb-0"
-            >
-              <span className="w-28 shrink-0 text-xs text-slate-400">
-                {date}
-              </span>
-
-              <span className="text-sm">{action}</span>
-            </div>
-          ))}
         </div>
       </Panel>
     </div>
   );
 }
+
 
 /* =========================================================
    SETTINGS
@@ -1715,6 +2973,54 @@ function Settings() {
 
 export default function ClinicianWorkspace() {
   const [screen, setScreen] = useState<Screen>("dashboard");
+  const [selectedClient, setSelectedClient] =
+    useState<ConnectedClient | null>(null);
+
+  function openClient(client: ConnectedClient) {
+    setSelectedClient(client);
+    setScreen("overview");
+  }
+
+  async function removeClientConnection(
+    client: ConnectedClient
+  ): Promise<boolean> {
+    const confirmed = window.confirm(
+      `Remove ${client.client_name} from your Clinical workspace?\n\nThis ends the clinician-client connection and immediately removes your access through PsyLattice sharing permissions. It does not delete the client's Self account or personal data.`
+    );
+
+    if (!confirmed) {
+      return false;
+    }
+
+    const supabase = createClient();
+
+    const { error } = await supabase.rpc(
+      "psylattice_end_connection_as_clinician",
+      {
+        p_connection_id: client.connection_id,
+      }
+    );
+
+    if (error) {
+      console.error(
+        "Could not remove client connection:",
+        error
+      );
+
+      window.alert(
+        "The client connection could not be removed. Please try again."
+      );
+      return false;
+    }
+
+    setSelectedClient((current) =>
+      current?.connection_id === client.connection_id
+        ? null
+        : current
+    );
+
+    return true;
+  }
 
   const activeNavigation = navigation.find((item) => item.id === screen)!;
 
@@ -1768,13 +3074,29 @@ export default function ClinicianWorkspace() {
         return <Dashboard changeScreen={setScreen} />;
 
       case "clients":
-        return <Clients changeScreen={setScreen} />;
+        return (
+          <Clients
+            onOpenClient={openClient}
+            onRemoveClient={removeClientConnection}
+          />
+        );
 
       case "overview":
-        return <ClientOverview changeScreen={setScreen} />;
+        return (
+          <ClientOverview
+            changeScreen={setScreen}
+            client={selectedClient}
+            onRemoveClient={removeClientConnection}
+          />
+        );
 
       case "assessments":
-        return <Assessments />;
+        return (
+          <Assessments
+            client={selectedClient}
+            changeScreen={setScreen}
+          />
+        );
 
       case "ambulatory":
         return <Ambulatory />;
@@ -1801,7 +3123,7 @@ export default function ClinicianWorkspace() {
         return <Reports />;
 
       case "permissions":
-        return <Permissions />;
+        return <Permissions client={selectedClient} />;
 
       case "settings":
         return <Settings />;

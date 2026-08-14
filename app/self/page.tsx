@@ -345,6 +345,260 @@ function DashboardAssessmentSummary({
 /* =========================================================
    DASHBOARD
    ========================================================= */
+type ClinicianInvitation = {
+  invitation_id: string;
+  clinician_id: string;
+  clinician_name: string;
+  message: string | null;
+  created_at: string;
+};
+
+function ClinicianInvitations({
+  onCountChange,
+}: {
+  onCountChange?: (count: number) => void;
+}) {  const [invitations, setInvitations] = useState<ClinicianInvitation[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [respondingId, setRespondingId] = useState<string | null>(null);
+  const [error, setError] = useState("");
+  const [successMessage, setSuccessMessage] = useState("");
+
+  useEffect(() => {
+    async function loadInvitations() {
+      setLoading(true);
+      setError("");
+
+      const supabase = createClient();
+
+      const { data, error } = await supabase.rpc(
+        "psylattice_my_clinician_invitations"
+      );
+
+      if (error) {
+        console.error(
+          "Could not load clinician invitations:",
+          error
+        );
+
+        setError(
+          "Your clinician invitations could not be loaded."
+        );
+
+        setLoading(false);
+        return;
+      }
+
+      const loadedInvitations =
+  (data ?? []) as ClinicianInvitation[];
+
+setInvitations(loadedInvitations);
+onCountChange?.(loadedInvitations.length);
+
+setLoading(false);
+    }
+
+    void loadInvitations();
+  }, []);
+
+  async function respondToInvitation(
+    invitationId: string,
+    response: "accept" | "decline"
+  ) {
+    if (respondingId) return;
+
+    setRespondingId(invitationId);
+    setError("");
+    setSuccessMessage("");
+
+    const supabase = createClient();
+
+    const functionName =
+      response === "accept"
+        ? "psylattice_accept_clinician_invitation"
+        : "psylattice_decline_clinician_invitation";
+
+    const { error } = await supabase.rpc(functionName, {
+      p_invitation_id: invitationId,
+    });
+
+    if (error) {
+      console.error(
+        `Could not ${response} clinician invitation:`,
+        error
+      );
+
+      setError(
+        response === "accept"
+          ? "The clinician connection could not be accepted. Please try again."
+          : "The invitation could not be declined. Please try again."
+      );
+
+      setRespondingId(null);
+      return;
+    }
+
+ const remainingInvitations = invitations.filter(
+  (invitation) =>
+    invitation.invitation_id !== invitationId
+);
+
+setInvitations(remainingInvitations);
+onCountChange?.(remainingInvitations.length);
+
+    setSuccessMessage(
+      response === "accept"
+        ? "Clinician connection accepted. You remain in control of what information you share."
+        : "Clinician invitation declined."
+    );
+
+    setRespondingId(null);
+  }
+
+  if (loading) {
+    return null;
+  }
+
+  if (
+    invitations.length === 0 &&
+    !error &&
+    !successMessage
+  ) {
+    return null;
+  }
+
+  return (
+    <div className="space-y-3">
+      {successMessage && (
+        <div className="rounded-2xl border border-emerald-200 bg-emerald-50 px-5 py-4">
+          <div className="flex items-start gap-3">
+            <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-emerald-100 text-sm font-semibold text-emerald-700">
+              ✓
+            </div>
+
+            <div>
+              <p className="text-sm font-semibold text-emerald-900">
+                Connection updated
+              </p>
+
+              <p className="mt-1 text-sm leading-6 text-emerald-800">
+                {successMessage}
+              </p>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {error && (
+        <div className="rounded-2xl border border-red-200 bg-red-50 px-5 py-4 text-sm text-red-700">
+          {error}
+        </div>
+      )}
+
+      {invitations.map((invitation) => {
+        const responding =
+          respondingId === invitation.invitation_id;
+
+        return (
+          <section
+            key={invitation.invitation_id}
+            className="overflow-hidden rounded-2xl border border-cyan-200 bg-white shadow-sm"
+          >
+            <div className="border-b border-cyan-100 bg-gradient-to-r from-cyan-50 to-white px-5 py-4">
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                <div>
+                  <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-cyan-800">
+                    Clinician invitation
+                  </p>
+
+                  <h2 className="mt-1 text-lg font-semibold tracking-tight text-slate-950">
+                    {invitation.clinician_name} would like to connect
+                  </h2>
+                </div>
+
+                <span className="rounded-full bg-cyan-100 px-3 py-1 text-xs font-medium text-cyan-800">
+                  Your approval required
+                </span>
+              </div>
+            </div>
+
+            <div className="p-5">
+              <p className="max-w-3xl text-sm leading-6 text-slate-600">
+                This clinician has invited you to connect your
+                PsyLattice Self account with their Clinical workspace.
+                They will not receive access to your personal
+                information simply because the invitation was sent.
+              </p>
+
+              {invitation.message && (
+                <div className="mt-4 rounded-xl bg-slate-50 p-4">
+                  <p className="text-xs font-medium text-slate-400">
+                    Message from clinician
+                  </p>
+
+                  <p className="mt-2 text-sm leading-6 text-slate-600">
+                    {invitation.message}
+                  </p>
+                </div>
+              )}
+
+              <div className="mt-4 rounded-xl border border-slate-200 p-4">
+                <p className="text-sm font-medium text-slate-800">
+                  You stay in control of your data
+                </p>
+
+                <p className="mt-1 text-xs leading-5 text-slate-500">
+                  Accepting creates the clinician connection. We will
+                  choose exactly what information can be shared in the
+                  next step. Your private Luna conversations are not
+                  shared with a clinician by default.
+                </p>
+              </div>
+
+              <div className="mt-5 flex flex-col gap-2 sm:flex-row">
+                <button
+                  type="button"
+                  disabled={responding}
+                  onClick={() =>
+                    void respondToInvitation(
+                      invitation.invitation_id,
+                      "accept"
+                    )
+                  }
+                  className="rounded-xl bg-slate-950 px-5 py-3 text-sm font-semibold text-white transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                  {responding
+                    ? "Updating..."
+                    : "Accept connection"}
+                </button>
+
+                <button
+                  type="button"
+                  disabled={responding}
+                  onClick={() =>
+                    void respondToInvitation(
+                      invitation.invitation_id,
+                      "decline"
+                    )
+                  }
+                  className="rounded-xl border border-slate-200 bg-white px-5 py-3 text-sm font-semibold text-slate-600 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                  Decline
+                </button>
+              </div>
+
+              <p className="mt-4 text-xs text-slate-400">
+                Invited{" "}
+                {new Date(
+                  invitation.created_at
+                ).toLocaleDateString()}
+              </p>
+            </div>
+          </section>
+        );
+      })}
+    </div>
+  );
+}
 
 function Dashboard({
   changeScreen,
@@ -694,8 +948,9 @@ function Dashboard({
         )
       : 0;
 
-  return (
+return (
     <div className="space-y-5">
+
       {monitoringError && (
         <div className="rounded-2xl border border-red-200 bg-red-50 px-5 py-4">
           <p className="text-sm text-red-700">{monitoringError}</p>
@@ -5679,9 +5934,17 @@ function Wearables() {
    NOTIFICATIONS
    ========================================================= */
 
-function Notifications() {
+function Notifications({
+  onInvitationCountChange,
+}: {
+  onInvitationCountChange: (count: number) => void;
+}) {
   return (
     <div className="space-y-5">
+      <ClinicianInvitations
+        onCountChange={onInvitationCountChange}
+      />
+
       <Panel title="Your reminder rhythm">
         <div className="divide-y divide-slate-100">
           {[
@@ -5745,7 +6008,260 @@ function Notifications() {
    PRIVACY
    ========================================================= */
 
+type SharingPermissionKey =
+  | "share_assessments"
+  | "share_monitoring"
+  | "share_progress"
+  | "share_wearables"
+  | "share_regulation";
+
+type ConnectedClinicianPermission = {
+  connection_id: string;
+  clinician_id: string;
+  clinician_name: string;
+  connected_at: string;
+  share_assessments: boolean;
+  share_monitoring: boolean;
+  share_progress: boolean;
+  share_wearables: boolean;
+  share_regulation: boolean;
+  permissions_updated_at: string | null;
+};
+
+const sharingPermissionDefinitions: Array<{
+  key: SharingPermissionKey;
+  title: string;
+  description: string;
+}> = [
+  {
+    key: "share_assessments",
+    title: "Self-assessment results",
+    description:
+      "Allow this clinician to access assessment results you choose to keep in PsyLattice.",
+  },
+  {
+    key: "share_monitoring",
+    title: "Daily monitoring",
+    description:
+      "Allow access to your daily check-ins and ambulatory monitoring entries.",
+  },
+  {
+    key: "share_progress",
+    title: "Progress & trends",
+    description:
+      "Allow access to longitudinal summaries and progress views derived from shared data.",
+  },
+  {
+    key: "share_wearables",
+    title: "Wearable summaries",
+    description:
+      "Allow access to authorised wearable summaries when wearable data is connected.",
+  },
+  {
+    key: "share_regulation",
+    title: "Self-regulation progress",
+    description:
+      "Allow access to progress from your self-regulation plans and completed activities.",
+  },
+];
+
 function Privacy() {
+  const [clinicians, setClinicians] = useState<
+    ConnectedClinicianPermission[]
+  >([]);
+  const [loadingClinicians, setLoadingClinicians] = useState(true);
+  const [sharingError, setSharingError] = useState("");
+  const [savingConnectionId, setSavingConnectionId] = useState<
+    string | null
+  >(null);
+  const [savedConnectionId, setSavedConnectionId] = useState<
+    string | null
+  >(null);
+  const [removingConnectionId, setRemovingConnectionId] = useState<
+    string | null
+  >(null);
+  const [connectionMessage, setConnectionMessage] = useState("");
+
+  useEffect(() => {
+    async function loadClinicianSharing() {
+      setLoadingClinicians(true);
+      setSharingError("");
+
+      const supabase = createClient();
+
+      const { data, error } = await supabase.rpc(
+        "psylattice_my_clinicians_and_permissions"
+      );
+
+      if (error) {
+        console.error(
+          "Could not load clinician sharing permissions:",
+          error
+        );
+
+        setSharingError(
+          "Your clinician sharing settings could not be loaded."
+        );
+        setLoadingClinicians(false);
+        return;
+      }
+
+      setClinicians(
+        (data ?? []) as ConnectedClinicianPermission[]
+      );
+      setLoadingClinicians(false);
+    }
+
+    void loadClinicianSharing();
+  }, []);
+
+  async function updatePermission(
+    clinician: ConnectedClinicianPermission,
+    key: SharingPermissionKey,
+    enabled: boolean
+  ) {
+    if (savingConnectionId) {
+      return;
+    }
+
+    setSharingError("");
+    setSavedConnectionId(null);
+    setSavingConnectionId(clinician.connection_id);
+
+    const previousClinician = clinician;
+    const updatedClinician: ConnectedClinicianPermission = {
+      ...clinician,
+      [key]: enabled,
+    };
+
+    setClinicians((current) =>
+      current.map((item) =>
+        item.connection_id === clinician.connection_id
+          ? updatedClinician
+          : item
+      )
+    );
+
+    const supabase = createClient();
+
+    const { error } = await supabase.rpc(
+      "psylattice_set_clinician_permissions",
+      {
+        p_connection_id: clinician.connection_id,
+        p_share_assessments:
+          updatedClinician.share_assessments,
+        p_share_monitoring:
+          updatedClinician.share_monitoring,
+        p_share_progress:
+          updatedClinician.share_progress,
+        p_share_wearables:
+          updatedClinician.share_wearables,
+        p_share_regulation:
+          updatedClinician.share_regulation,
+      }
+    );
+
+    if (error) {
+      console.error(
+        "Could not update clinician sharing permission:",
+        error
+      );
+
+      setClinicians((current) =>
+        current.map((item) =>
+          item.connection_id ===
+          previousClinician.connection_id
+            ? previousClinician
+            : item
+        )
+      );
+
+      setSharingError(
+        "That sharing preference could not be saved. Please try again."
+      );
+      setSavingConnectionId(null);
+      return;
+    }
+
+    const savedAt = new Date().toISOString();
+
+    setClinicians((current) =>
+      current.map((item) =>
+        item.connection_id === clinician.connection_id
+          ? {
+              ...item,
+              permissions_updated_at: savedAt,
+            }
+          : item
+      )
+    );
+
+    setSavingConnectionId(null);
+    setSavedConnectionId(clinician.connection_id);
+
+    window.setTimeout(() => {
+      setSavedConnectionId((current) =>
+        current === clinician.connection_id
+          ? null
+          : current
+      );
+    }, 2200);
+  }
+
+  async function removeClinician(
+    clinician: ConnectedClinicianPermission
+  ) {
+    if (removingConnectionId || savingConnectionId) {
+      return;
+    }
+
+    const confirmed = window.confirm(
+      `Remove ${clinician.clinician_name} from your PsyLattice account?\n\nThis ends the clinician connection and immediately removes their access through PsyLattice sharing permissions. Your personal data is not deleted.`
+    );
+
+    if (!confirmed) {
+      return;
+    }
+
+    setSharingError("");
+    setConnectionMessage("");
+    setRemovingConnectionId(clinician.connection_id);
+
+    const supabase = createClient();
+
+    const { error } = await supabase.rpc(
+      "psylattice_end_connection_as_client",
+      {
+        p_connection_id: clinician.connection_id,
+      }
+    );
+
+    if (error) {
+      console.error(
+        "Could not remove clinician connection:",
+        error
+      );
+
+      setSharingError(
+        "The clinician connection could not be removed. Please try again."
+      );
+      setRemovingConnectionId(null);
+      return;
+    }
+
+    setClinicians((current) =>
+      current.filter(
+        (item) =>
+          item.connection_id !== clinician.connection_id
+      )
+    );
+
+    setRemovingConnectionId(null);
+    setConnectionMessage(
+      `${clinician.clinician_name} has been removed. Their PsyLattice access through this connection has ended.`
+    );
+  }
+
   return (
     <div className="space-y-5">
       <Panel title="Your privacy">
@@ -5753,23 +6269,31 @@ function Privacy() {
           {[
             [
               "Self-assessment data",
-              "Private to your personal account",
-              "Private",
-            ],
-            [
-              "AI Guide conversations",
-              "Used only within your personal workflow",
-              "Private",
-            ],
-            [
-              "Wearable signals",
-              "Sleep, activity and resting heart rate",
-              "3 signals",
-            ],
-            [
-              "Therapist sharing",
-              "No automatic sharing",
+              "Private unless you explicitly share it with a connected clinician.",
               "You control it",
+            ],
+            [
+              "Luna AI conversations",
+              "Your private AI conversation history is not available to connected clinicians.",
+              "Always private",
+            ],
+            [
+              "Clinician connections",
+              clinicians.length === 0
+                ? "No clinicians are currently connected."
+                : `${clinicians.length} active clinician ${
+                    clinicians.length === 1
+                      ? "connection"
+                      : "connections"
+                  }.`,
+              clinicians.length === 0
+                ? "None"
+                : `${clinicians.length} connected`,
+            ],
+            [
+              "Sharing model",
+              "Accepting a connection does not automatically share your PsyLattice information.",
+              "Off by default",
             ],
           ].map(([title, description, status]) => (
             <div
@@ -5778,10 +6302,12 @@ function Privacy() {
             >
               <div>
                 <p className="text-sm font-medium">{title}</p>
-                <p className="mt-1 text-xs text-slate-400">{description}</p>
+                <p className="mt-1 text-xs leading-5 text-slate-400">
+                  {description}
+                </p>
               </div>
 
-              <span className="rounded-full bg-slate-50 px-3 py-1 text-xs font-medium text-slate-500">
+              <span className="shrink-0 rounded-full bg-slate-50 px-3 py-1 text-xs font-medium text-slate-500">
                 {status}
               </span>
             </div>
@@ -5789,23 +6315,274 @@ function Privacy() {
         </div>
       </Panel>
 
-      <Panel title="Therapist sharing">
+      <Panel
+        title="Clinician sharing"
+        description="Choose exactly what each connected clinician can access. Changes are saved immediately."
+      >
+        {connectionMessage && (
+          <div className="mb-4 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-800">
+            {connectionMessage}
+          </div>
+        )}
+
+        {sharingError && (
+          <div className="mb-4 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+            {sharingError}
+          </div>
+        )}
+
+        {loadingClinicians ? (
+          <div className="rounded-2xl bg-slate-50 px-5 py-8 text-center">
+            <p className="text-sm font-medium text-slate-600">
+              Loading clinician connections...
+            </p>
+          </div>
+        ) : clinicians.length === 0 ? (
+          <div className="rounded-2xl border border-dashed border-slate-300 bg-slate-50/60 px-6 py-10 text-center">
+            <div className="mx-auto flex h-11 w-11 items-center justify-center rounded-full bg-cyan-50 text-sm font-semibold text-cyan-800">
+              C
+            </div>
+
+            <p className="mt-4 font-semibold text-slate-800">
+              No connected clinicians
+            </p>
+
+            <p className="mx-auto mt-2 max-w-xl text-sm leading-6 text-slate-500">
+              When you accept a clinician connection request,
+              that clinician will appear here. Nothing is shared
+              automatically when a connection is created.
+            </p>
+          </div>
+        ) : (
+          <div className="space-y-5">
+            {clinicians.map((clinician) => {
+              const saving =
+                savingConnectionId ===
+                clinician.connection_id;
+
+              const removing =
+                removingConnectionId ===
+                clinician.connection_id;
+
+              const hasSharedInformation =
+                clinician.share_assessments ||
+                clinician.share_monitoring ||
+                clinician.share_progress ||
+                clinician.share_wearables ||
+                clinician.share_regulation;
+
+              const clinicianInitials =
+                clinician.clinician_name
+                  .trim()
+                  .split(/\s+/)
+                  .filter(Boolean)
+                  .slice(0, 2)
+                  .map((part) =>
+                    part.charAt(0).toUpperCase()
+                  )
+                  .join("") || "CL";
+
+              return (
+                <section
+                  key={clinician.connection_id}
+                  className="overflow-hidden rounded-2xl border border-slate-200 bg-white"
+                >
+                  <div className="flex flex-col justify-between gap-4 border-b border-slate-100 bg-slate-50/60 px-5 py-4 sm:flex-row sm:items-center">
+                    <div className="flex items-center gap-3">
+                      <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-cyan-50 text-sm font-semibold text-cyan-800">
+                        {clinicianInitials}
+                      </div>
+
+                      <div>
+                        <p className="font-semibold text-slate-950">
+                          {clinician.clinician_name}
+                        </p>
+
+                        <p className="mt-1 text-xs text-slate-400">
+                          Connected{" "}
+                          {new Date(
+                            clinician.connected_at
+                          ).toLocaleDateString()}
+                        </p>
+                      </div>
+                    </div>
+
+                    <div className="flex items-center gap-2">
+                      {saving && (
+                        <span className="text-xs font-medium text-slate-400">
+                          Saving...
+                        </span>
+                      )}
+
+                      {savedConnectionId ===
+                        clinician.connection_id && (
+                        <span className="rounded-full bg-emerald-50 px-3 py-1 text-xs font-medium text-emerald-700">
+                          Saved
+                        </span>
+                      )}
+
+                      {!saving &&
+                        savedConnectionId !==
+                          clinician.connection_id && (
+                          <span
+                            className={`rounded-full px-3 py-1 text-xs font-medium ${
+                              hasSharedInformation
+                                ? "bg-cyan-50 text-cyan-800"
+                                : "bg-slate-100 text-slate-500"
+                            }`}
+                          >
+                            {hasSharedInformation
+                              ? "Some data shared"
+                              : "Nothing shared"}
+                          </span>
+                        )}
+                    </div>
+                  </div>
+
+                  <div className="divide-y divide-slate-100 px-5">
+                    {sharingPermissionDefinitions.map(
+                      (permission) => {
+                        const enabled =
+                          clinician[permission.key];
+
+                        return (
+                          <div
+                            key={permission.key}
+                            className="flex items-center justify-between gap-5 py-4"
+                          >
+                            <div className="pr-3">
+                              <p className="text-sm font-medium text-slate-800">
+                                {permission.title}
+                              </p>
+
+                              <p className="mt-1 max-w-3xl text-xs leading-5 text-slate-400">
+                                {
+                                  permission.description
+                                }
+                              </p>
+                            </div>
+
+                            <button
+                              type="button"
+                              role="switch"
+                              aria-checked={enabled}
+                              aria-label={`${permission.title} for ${clinician.clinician_name}`}
+                              disabled={saving || removing}
+                              onClick={() =>
+                                void updatePermission(
+                                  clinician,
+                                  permission.key,
+                                  !enabled
+                                )
+                              }
+                              className={`relative h-7 w-12 shrink-0 rounded-full transition disabled:cursor-wait disabled:opacity-60 ${
+                                enabled
+                                  ? "bg-cyan-700"
+                                  : "bg-slate-200"
+                              }`}
+                            >
+                              <span
+                                className={`absolute top-1 h-5 w-5 rounded-full bg-white shadow-sm transition-all ${
+                                  enabled
+                                    ? "left-6"
+                                    : "left-1"
+                                }`}
+                              />
+                            </button>
+                          </div>
+                        );
+                      }
+                    )}
+
+                    <div className="flex items-center justify-between gap-5 py-4">
+                      <div className="pr-3">
+                        <div className="flex items-center gap-2">
+                          <p className="text-sm font-medium text-slate-800">
+                            Luna AI conversations
+                          </p>
+
+                          <span className="rounded-full bg-slate-100 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.08em] text-slate-500">
+                            Private
+                          </span>
+                        </div>
+
+                        <p className="mt-1 max-w-3xl text-xs leading-5 text-slate-400">
+                          Conversation history is not included
+                          in clinician sharing permissions.
+                        </p>
+                      </div>
+
+                      <div className="flex h-7 w-12 shrink-0 items-center justify-center rounded-full bg-slate-100 text-xs text-slate-400">
+                        🔒
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="border-t border-slate-100 bg-slate-50/60 px-5 py-4">
+                    <div className="flex flex-col justify-between gap-4 sm:flex-row sm:items-center">
+                      <div>
+                        <p className="text-xs leading-5 text-slate-500">
+                          You can change sharing choices at any time.
+                          Removing the clinician ends the connection and
+                          disables all sharing through it.
+                        </p>
+
+                        {clinician.permissions_updated_at && (
+                          <p className="mt-2 text-[11px] text-slate-400">
+                            Permissions last updated{" "}
+                            {new Date(
+                              clinician.permissions_updated_at
+                            ).toLocaleString()}
+                          </p>
+                        )}
+                      </div>
+
+                      <button
+                        type="button"
+                        disabled={saving || removing}
+                        onClick={() =>
+                          void removeClinician(clinician)
+                        }
+                        className="shrink-0 rounded-xl border border-red-200 bg-white px-4 py-2.5 text-xs font-semibold text-red-700 transition hover:bg-red-50 disabled:cursor-not-allowed disabled:opacity-50"
+                      >
+                        {removing
+                          ? "Removing..."
+                          : "Remove clinician"}
+                      </button>
+                    </div>
+                  </div>
+                </section>
+              );
+            })}
+          </div>
+        )}
+      </Panel>
+
+      <Panel title="Privacy principle">
         <div className="rounded-2xl border border-cyan-100 bg-cyan-50/60 p-5">
-          <p className="font-medium">
-            Nothing is automatically sent to a therapist.
+          <p className="font-medium text-cyan-950">
+            Connection and sharing are separate choices.
           </p>
 
-          <p className="mt-2 max-w-3xl text-sm leading-6 text-slate-600">
-            You choose which assessments, progress summaries, ambulatory
-            trends or wearable summaries appear in a therapist summary.
+          <p className="mt-2 max-w-4xl text-sm leading-6 text-slate-600">
+            A clinician can be connected to your account
+            without receiving access to your personal
+            PsyLattice information. You decide which
+            categories are shared with each clinician
+            individually.
           </p>
 
-          <button
-            type="button"
-            className="mt-5 rounded-xl border border-cyan-200 bg-white px-4 py-2.5 text-sm font-semibold text-cyan-900"
-          >
-            Prepare therapist summary
-          </button>
+          <div className="mt-4 rounded-xl border border-white/80 bg-white/80 p-4">
+            <p className="text-sm font-medium text-slate-800">
+              Luna remains private.
+            </p>
+
+            <p className="mt-1 text-xs leading-5 text-slate-500">
+              PsyLattice does not expose your private Luna
+              conversation history through clinician sharing
+              permissions.
+            </p>
+          </div>
         </div>
       </Panel>
 
@@ -5813,20 +6590,27 @@ function Privacy() {
         <div className="grid gap-3 sm:grid-cols-2">
           <button
             type="button"
-            className="rounded-xl border border-slate-200 p-4 text-left"
+            className="rounded-xl border border-slate-200 p-4 text-left transition hover:bg-slate-50"
           >
-            <p className="text-sm font-medium">Download my data</p>
-            <p className="mt-1 text-xs text-slate-400">
-              Request a portable copy of your PsyLattice information.
+            <p className="text-sm font-medium">
+              Download my data
+            </p>
+
+            <p className="mt-1 text-xs leading-5 text-slate-400">
+              Request a portable copy of your PsyLattice
+              information.
             </p>
           </button>
 
           <button
             type="button"
-            className="rounded-xl border border-slate-200 p-4 text-left"
+            className="rounded-xl border border-slate-200 p-4 text-left transition hover:bg-slate-50"
           >
-            <p className="text-sm font-medium">Consent centre</p>
-            <p className="mt-1 text-xs text-slate-400">
+            <p className="text-sm font-medium">
+              Consent centre
+            </p>
+
+            <p className="mt-1 text-xs leading-5 text-slate-400">
               Review optional data and sharing permissions.
             </p>
           </button>
@@ -5836,6 +6620,7 @@ function Privacy() {
   );
 }
 
+
 /* =========================================================
    MAIN SELF WORKSPACE
    ========================================================= */
@@ -5843,10 +6628,15 @@ function Privacy() {
 export default function SelfWorkspace() {
   const router = useRouter();
 
-  const [screen, setScreen] = useState<Screen>("dashboard");
-  const [fullName, setFullName] = useState("");
-  const [signingOut, setSigningOut] = useState(false);
-  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+const [screen, setScreen] = useState<Screen>("dashboard");
+const [fullName, setFullName] = useState("");
+const [signingOut, setSigningOut] = useState(false);
+const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+
+const [
+  pendingClinicianInvitations,
+  setPendingClinicianInvitations,
+] = useState(0);
 
   useEffect(() => {
     async function loadProfile() {
@@ -5882,8 +6672,33 @@ export default function SelfWorkspace() {
       );
     }
 
-    void loadProfile();
+        void loadProfile();
   }, [router]);
+
+  useEffect(() => {
+    async function loadPendingClinicianInvitationCount() {
+      const supabase = createClient();
+
+      const { data, error } = await supabase.rpc(
+        "psylattice_my_clinician_invitations"
+      );
+
+      if (error) {
+        console.error(
+          "Could not load clinician invitation count:",
+          error
+        );
+
+        return;
+      }
+
+      setPendingClinicianInvitations(
+        Array.isArray(data) ? data.length : 0
+      );
+    }
+
+    void loadPendingClinicianInvitationCount();
+  }, []);
 
   async function handleSignOut() {
     setSigningOut(true);
@@ -5942,8 +6757,14 @@ export default function SelfWorkspace() {
       case "wearables":
         return <Wearables />;
 
-      case "notifications":
-        return <Notifications />;
+     case "notifications":
+  return (
+    <Notifications
+      onInvitationCountChange={
+        setPendingClinicianInvitations
+      }
+    />
+  );
 
       case "privacy":
         return <Privacy />;
@@ -6035,8 +6856,12 @@ export default function SelfWorkspace() {
           >
             {navigation.map((item) => (
               <option key={item.id} value={item.id}>
-                {item.label}
-              </option>
+  {item.label}
+  {item.id === "notifications" &&
+  pendingClinicianInvitations > 0
+    ? ` (${pendingClinicianInvitations})`
+    : ""}
+</option>
             ))}
           </select>
         </div>
@@ -6133,7 +6958,7 @@ export default function SelfWorkspace() {
           }`}
         >
           <span
-            className={`flex shrink-0 items-center justify-center ${
+            className={`relative flex shrink-0 items-center justify-center ${
               sidebarCollapsed
                 ? "h-8 w-8 rounded-lg text-[11px] font-semibold"
                 : ""
@@ -6143,6 +6968,11 @@ export default function SelfWorkspace() {
                 : ""
             }`}
           >
+            {sidebarCollapsed &&
+  item.id === "notifications" &&
+  pendingClinicianInvitations > 0 && (
+    <span className="absolute -right-1 -top-1 h-2.5 w-2.5 rounded-full border-2 border-white bg-cyan-700" />
+  )}
             {sidebarCollapsed ? (
               item.id === "dashboard" ? (
                 "D"
@@ -6177,10 +7007,19 @@ export default function SelfWorkspace() {
     <span>{item.label}</span>
 
     {item.id === "ai" && (
-      <span className="rounded-full border border-yellow-500 bg-yellow-200 px-2 py-0.5 text-[9px] font-bold uppercase tracking-[0.12em] text-yellow-500">
+      <span className="rounded-full border border-yellow-500 bg-yellow-200 px-2 py-0.5 text-[9px] font-bold uppercase tracking-[0.12em] text-yellow-600">
         New
       </span>
     )}
+
+    {item.id === "notifications" &&
+      pendingClinicianInvitations > 0 && (
+        <span className="flex min-w-5 items-center justify-center rounded-full bg-cyan-700 px-1.5 py-0.5 text-[10px] font-bold text-white">
+          {pendingClinicianInvitations > 9
+            ? "9+"
+            : pendingClinicianInvitations}
+        </span>
+      )}
   </div>
 )}
         </button>

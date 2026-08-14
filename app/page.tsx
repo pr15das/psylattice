@@ -1304,11 +1304,7 @@ const activePricing = pricingContent[pricingRegion];
             Choose the size of your live study.
           </h3>
 
-          <p className="mt-1 max-w-2xl text-sm leading-6 text-slate-500">
-            Your researcher account, Study Builder and testing tools remain
-            free. You only pay when you are ready to collect real participant
-            data.
-          </p>
+        
         </div>
 
         <button

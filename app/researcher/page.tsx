@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useEffect, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
 import PsyLatticeLogo from "@/components/PsyLatticeLogo";
+import AccountSwitcher from "@/components/AccountSwitcher";
 import FollowupManager from "@/components/FollowupManager";
 import {
   AmbulatoryProtocolBuilder,
@@ -11668,6 +11669,25 @@ export default function ResearcherWorkspace() {
     openCustomQuestionnaireBuilder,
     setOpenCustomQuestionnaireBuilder,
   ] = useState(false);
+  const [sidebarCollapsed, setSidebarCollapsed] =
+    useState(false);
+
+  useEffect(() => {
+    const saved = window.localStorage.getItem(
+      "psylattice-research-sidebar-collapsed"
+    );
+
+    if (saved === "true") {
+      setSidebarCollapsed(true);
+    }
+  }, []);
+
+  useEffect(() => {
+    window.localStorage.setItem(
+      "psylattice-research-sidebar-collapsed",
+      String(sidebarCollapsed)
+    );
+  }, [sidebarCollapsed]);
 
   function editStudy(studyId: string) {
     setEditingStudyId(studyId);
@@ -11814,9 +11834,10 @@ export default function ResearcherWorkspace() {
           <div className="hidden items-center gap-3 sm:flex">
             <Status type="accent">Researcher</Status>
 
-            <div className="flex h-9 w-9 items-center justify-center rounded-full bg-slate-100 text-xs font-semibold text-slate-600">
-              PD
-            </div>
+            <AccountSwitcher
+              initials="PD"
+              currentWorkspace="researcher"
+            />
 
             <Link
               href="/signin"
@@ -11843,12 +11864,51 @@ export default function ResearcherWorkspace() {
       <div className="min-h-[calc(100vh-80px)]">
         {/* Sidebar */}
 
-        <aside className="fixed bottom-0 left-0 top-20 z-40 hidden w-[245px] overflow-y-auto border-r border-slate-200 bg-white p-4 lg:block">
-          {groups.map((group) => (
-            <div key={group} className="mb-6">
-              <p className="px-3 pb-2 text-[10px] font-semibold uppercase tracking-[0.17em] text-slate-400">
-                {group}
-              </p>
+        <aside
+          className={`fixed bottom-0 left-0 top-20 z-40 hidden overflow-y-auto border-r border-slate-200 bg-white p-3 transition-[width] duration-200 lg:block ${
+            sidebarCollapsed ? "w-[76px]" : "w-[245px]"
+          }`}
+        >
+          <div
+            className={`mb-4 flex ${
+              sidebarCollapsed ? "justify-center" : "justify-end"
+            }`}
+          >
+            <button
+              type="button"
+              onClick={() =>
+                setSidebarCollapsed((current) => !current)
+              }
+              aria-label={
+                sidebarCollapsed
+                  ? "Expand research sidebar"
+                  : "Collapse research sidebar"
+              }
+              title={
+                sidebarCollapsed
+                  ? "Expand sidebar"
+                  : "Collapse sidebar"
+              }
+              className="flex h-9 w-9 items-center justify-center rounded-xl border border-slate-200 bg-white text-lg font-semibold text-slate-500 transition hover:bg-slate-50 hover:text-slate-950"
+            >
+              {sidebarCollapsed ? "›" : "‹"}
+            </button>
+          </div>
+
+          {groups.map((group, groupIndex) => (
+            <div
+              key={group}
+              className={`mb-6 ${
+                sidebarCollapsed && groupIndex > 0
+                  ? "border-t border-slate-100 pt-4"
+                  : ""
+              }`}
+            >
+              {!sidebarCollapsed && (
+                <p className="px-3 pb-2 text-[10px] font-semibold uppercase tracking-[0.17em] text-slate-400">
+                  {group}
+                </p>
+              )}
 
               <nav className="space-y-1">
                 {navigation
@@ -11861,19 +11921,35 @@ export default function ResearcherWorkspace() {
                         key={item.id}
                         type="button"
                         onClick={() => setScreen(item.id)}
-                        className={`flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-left text-sm transition ${
+                        title={
+                          sidebarCollapsed
+                            ? item.label
+                            : undefined
+                        }
+                        aria-label={item.label}
+                        className={`flex w-full items-center rounded-xl py-2.5 text-sm transition ${
+                          sidebarCollapsed
+                            ? "justify-center px-2"
+                            : "gap-3 px-3 text-left"
+                        } ${
                           active
                             ? "bg-cyan-50 font-semibold text-cyan-900"
                             : "text-slate-500 hover:bg-slate-50 hover:text-slate-950"
                         }`}
                       >
                         <span
-                          className={`h-1.5 w-1.5 rounded-full ${
-                            active ? "bg-cyan-700" : "bg-slate-300"
+                          className={`rounded-full transition-all ${
+                            sidebarCollapsed
+                              ? "h-2.5 w-2.5"
+                              : "h-1.5 w-1.5"
+                          } ${
+                            active
+                              ? "bg-cyan-700"
+                              : "bg-slate-300"
                           }`}
                         />
 
-                        {item.label}
+                        {!sidebarCollapsed && item.label}
                       </button>
                     );
                   })}
@@ -11881,21 +11957,36 @@ export default function ResearcherWorkspace() {
             </div>
           ))}
 
-          <div className="mt-8 rounded-2xl bg-slate-950 p-4 text-white">
-            <p className="text-xs font-medium text-cyan-200">
-              Research workspace
-            </p>
+          {sidebarCollapsed ? (
+            <div
+              title="Research workspace"
+              className="mx-auto mt-8 flex h-10 w-10 items-center justify-center rounded-xl bg-slate-950 text-xs font-semibold text-cyan-200"
+            >
+              R
+            </div>
+          ) : (
+            <div className="mt-8 rounded-2xl bg-slate-950 p-4 text-white">
+              <p className="text-xs font-medium text-cyan-200">
+                Research workspace
+              </p>
 
-            <p className="mt-2 text-xs leading-5 text-slate-400">
-              Saved studies, participant records and recruitment links shown
-              here are loaded from your PsyLattice research database.
-            </p>
-          </div>
+              <p className="mt-2 text-xs leading-5 text-slate-400">
+                Saved studies, participant records and recruitment links shown
+                here are loaded from your PsyLattice research database.
+              </p>
+            </div>
+          )}
         </aside>
 
         {/* Main content */}
 
-        <section className="min-w-0 p-5 sm:p-6 lg:ml-[245px] lg:p-8">
+        <section
+          className={`min-w-0 p-5 transition-[margin] duration-200 sm:p-6 lg:p-8 ${
+            sidebarCollapsed
+              ? "lg:ml-[76px]"
+              : "lg:ml-[245px]"
+          }`}
+        >
           <div className="mx-auto max-w-[1450px]">
             <div className="mb-7">
               <div className="mb-2 flex flex-wrap items-center gap-2">

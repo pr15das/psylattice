@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { createClient } from "@/lib/supabase/client";
 import PsyLatticeLogo from "@/components/PsyLatticeLogo";
+import AccountSwitcher from "@/components/AccountSwitcher";
 import {
   AmbulatoryProtocolBuilder,
   ambulatoryResponseAnswered,
@@ -11821,12 +11822,11 @@ const [
               For myself
             </span>
 
-            <div
-              title={fullName || "PsyLattice user"}
-              className="flex h-9 w-9 items-center justify-center rounded-full bg-slate-100 text-xs font-semibold text-slate-600"
-            >
-              {initials}
-            </div>
+            <AccountSwitcher
+              initials={initials}
+              currentWorkspace="self"
+              title={fullName || "Switch workspace"}
+            />
 
             <button
               type="button"

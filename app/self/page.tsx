@@ -6,6 +6,8 @@ import { useEffect, useRef, useState, type ReactNode } from "react";
 import { createClient } from "@/lib/supabase/client";
 import PsyLatticeLogo from "@/components/PsyLatticeLogo";
 import AccountSwitcher from "@/components/AccountSwitcher";
+import ClientAppointmentsWorkspace from "@/components/ClientAppointmentsWorkspace";
+import PsyLatticeMessagesWorkspace, { MessageUnreadBadge } from "@/components/PsyLatticeMessagesWorkspace";
 import {
   AmbulatoryProtocolBuilder,
   ambulatoryResponseAnswered,
@@ -29,6 +31,8 @@ type Screen =
   | "regulation"
   | "progress"
   | "wearables"
+  | "appointments"
+  | "messages"
   | "notifications"
   | "privacy";
 
@@ -43,6 +47,8 @@ const navigation: {
   { id: "regulation", label: "Self-Regulation" },
   { id: "progress", label: "Progress" },
   { id: "wearables", label: "Wearables" },
+  { id: "appointments", label: "Appointments" },
+  { id: "messages", label: "Messages" },
   { id: "notifications", label: "Notifications" },
   { id: "privacy", label: "Privacy & Sharing" },
 ];
@@ -11486,6 +11492,19 @@ export default function SelfWorkspace() {
   const router = useRouter();
 
 const [screen, setScreen] = useState<Screen>("dashboard");
+
+useEffect(() => {
+  const requestedScreen =
+    new URLSearchParams(
+      window.location.search
+    ).get("screen");
+
+  if (
+    requestedScreen === "messages"
+  ) {
+    setScreen("messages");
+  }
+}, []);
 const [fullName, setFullName] = useState("");
 const [signingOut, setSigningOut] = useState(false);
 const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
@@ -11717,6 +11736,156 @@ const [
       .join("")
       .toUpperCase() || "PL";
 
+  function AppointmentsScreen() {
+    return (
+      <div className="space-y-5">
+        <section className="rounded-3xl border border-slate-200 bg-white">
+          <div className="border-b border-slate-100 p-5">
+            <h2 className="text-lg font-semibold text-slate-950">
+              Appointments
+            </h2>
+            <p className="mt-1 max-w-3xl text-sm leading-6 text-slate-500">
+              View clinician-scheduled appointments, preparation messages and shared appointment links. Private clinician notes are never shown here.
+            </p>
+          </div>
+        </section>
+
+        <ClientAppointmentsWorkspace />
+      </div>
+    );
+  }
+
+  function MessagesScreen() {
+    type CurrentClinician = {
+      connection_id: string;
+      clinician_id: string;
+      clinician_name: string;
+      clinician_email: string;
+      connected_at: string;
+      share_assessments: boolean;
+      share_monitoring: boolean;
+      share_progress: boolean;
+      share_wearables: boolean;
+      share_regulation: boolean;
+    };
+
+    const [currentClinician, setCurrentClinician] =
+      useState<CurrentClinician | null>(null);
+    const [loadingCurrentClinician, setLoadingCurrentClinician] =
+      useState(true);
+    const [currentClinicianError, setCurrentClinicianError] =
+      useState("");
+
+    useEffect(() => {
+      let cancelled = false;
+
+      async function loadCurrentClinician() {
+        setLoadingCurrentClinician(true);
+        setCurrentClinicianError("");
+
+        const supabase = createClient();
+
+        const { data, error } = await supabase.rpc(
+          "psylattice_my_clinicians_and_permissions_v2"
+        );
+
+        if (cancelled) {
+          return;
+        }
+
+        if (error) {
+          console.error(
+            "Could not load current clinician for Messages:",
+            error
+          );
+          setCurrentClinicianError(
+            "Your current clinician connection could not be loaded."
+          );
+          setCurrentClinician(null);
+          setLoadingCurrentClinician(false);
+          return;
+        }
+
+        const clinicians =
+          (data ?? []) as CurrentClinician[];
+
+        // Messages deliberately uses the exact same clinician source
+        // as the Self dashboard. PsyLattice supports one current
+        // clinician relationship for the Self workspace.
+        setCurrentClinician(
+          clinicians.length > 0
+            ? clinicians[0]
+            : null
+        );
+        setLoadingCurrentClinician(false);
+      }
+
+      void loadCurrentClinician();
+
+      return () => {
+        cancelled = true;
+      };
+    }, []);
+
+    return (
+      <div className="space-y-5">
+        <section className="overflow-hidden rounded-3xl border border-slate-200 bg-white">
+          <div className="bg-gradient-to-r from-cyan-50/70 via-white to-white px-5 py-5">
+            <p className="text-xs font-semibold uppercase tracking-[0.15em] text-cyan-800">
+              Connected care
+            </p>
+
+            <h2 className="mt-2 text-xl font-semibold tracking-tight text-slate-950">
+              Messages
+            </h2>
+
+            <p className="mt-2 max-w-3xl text-sm leading-6 text-slate-500">
+              Keep non-urgent communication with your current clinician in one private PsyLattice space. Your messaging channel is separate from assessment, monitoring and progress-sharing permissions.
+            </p>
+          </div>
+        </section>
+
+        {loadingCurrentClinician ? (
+          <div className="rounded-3xl border border-slate-200 bg-white p-10 text-center">
+            <p className="text-sm text-slate-500">
+              Loading your clinician conversation...
+            </p>
+          </div>
+        ) : currentClinicianError ? (
+          <div className="rounded-3xl border border-red-200 bg-red-50 p-6 text-sm text-red-700">
+            {currentClinicianError}
+          </div>
+        ) : !currentClinician ? (
+          <div className="rounded-3xl border border-slate-200 bg-white p-10 text-center">
+            <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-2xl bg-cyan-50 text-xl text-cyan-800">
+              ✉
+            </div>
+
+            <h3 className="mt-4 text-lg font-semibold text-slate-900">
+              No clinician currently connected
+            </h3>
+
+            <p className="mx-auto mt-2 max-w-lg text-sm leading-6 text-slate-500">
+              Secure messaging becomes available when you have an active PsyLattice clinician connection.
+            </p>
+          </div>
+        ) : (
+          <PsyLatticeMessagesWorkspace
+            mode="client"
+            fixedThread={{
+              connection_id:
+                currentClinician.connection_id,
+              peer_id:
+                currentClinician.clinician_id,
+              peer_name:
+                currentClinician.clinician_name,
+            }}
+          />
+        )}
+      </div>
+    );
+  }
+
   const activeNavigation = navigation.find(
     (item) => item.id === screen,
   )!;
@@ -11750,6 +11919,12 @@ const [
 
       case "wearables":
         return <Wearables />;
+
+      case "appointments":
+        return <AppointmentsScreen />;
+
+      case "messages":
+        return <MessagesScreen />;
 
      case "notifications":
   return (
@@ -11790,6 +11965,12 @@ const [
 
       case "wearables":
         return "Optionally combine your self-reports with authorised wearable summaries.";
+
+      case "appointments":
+        return "See your upcoming clinician appointments, shared notes and appointment links.";
+
+      case "messages":
+        return "Secure, non-urgent messaging with your connected clinicians.";
 
       case "notifications":
         return "Control how and when PsyLattice reminds you to check in.";
@@ -11931,7 +12112,7 @@ const [
         : "px-4"
     }`}
   >
-    {navigation.slice(0, 8).map((item) => {
+    {navigation.slice(0, 9).map((item) => {
       const active = item.id === screen;
 
       return (
@@ -11966,6 +12147,11 @@ const [
             }`}
           >
             {sidebarCollapsed &&
+              item.id === "messages" && (
+                <MessageUnreadBadge compact />
+              )}
+
+            {sidebarCollapsed &&
   ((item.id === "notifications" &&
     pendingClinicianInvitations > 0) ||
     (item.id === "monitoring" &&
@@ -11987,6 +12173,10 @@ const [
                 "P"
               ) : item.id === "wearables" ? (
                 "W"
+              ) : item.id === "appointments" ? (
+                "AP"
+              ) : item.id === "messages" ? (
+                "MS"
               ) : (
                 "N"
               )
@@ -12004,6 +12194,10 @@ const [
           {!sidebarCollapsed && (
   <div className="flex items-center gap-2">
     <span>{item.label}</span>
+
+    {item.id === "messages" && (
+      <MessageUnreadBadge />
+    )}
 
     {item.id === "ai" && (
       <span className="rounded-full border border-yellow-500 bg-yellow-200 px-2 py-0.5 text-[9px] font-bold uppercase tracking-[0.12em] text-yellow-600">

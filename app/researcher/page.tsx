@@ -730,6 +730,13 @@ function Studies({
   const [filter, setFilter] = useState("All");
   const [search, setSearch] = useState("");
   const [selectedStudyId, setSelectedStudyId] = useState("");
+  const [updatingStudyId, setUpdatingStudyId] = useState("");
+  const [studyActionMessage, setStudyActionMessage] = useState("");
+  const [studyActionError, setStudyActionError] = useState("");
+  const [deleteStudyTarget, setDeleteStudyTarget] =
+    useState<ResearchStudy | null>(null);
+  const [deleteConfirmation, setDeleteConfirmation] = useState("");
+  const [deletingStudy, setDeletingStudy] = useState(false);
 
   useEffect(() => {
     async function loadStudies() {
@@ -849,6 +856,165 @@ function Studies({
     return labels[status] || status.replaceAll("_", " ");
   }
 
+  const studyStatusOptions = [
+    "draft",
+    "ready_for_review",
+    "active",
+    "paused",
+    "completed",
+    "archived",
+  ];
+
+  async function updateStudyStatus(
+    studyId: string,
+    nextStatus: string
+  ) {
+    if (updatingStudyId || !studyId) {
+      return;
+    }
+
+    setUpdatingStudyId(studyId);
+    setStudyActionMessage("");
+    setStudyActionError("");
+
+    const supabase = createClient();
+
+    const {
+      data: { user },
+      error: userError,
+    } = await supabase.auth.getUser();
+
+    if (userError || !user) {
+      setStudyActionError(
+        "Your study status could not be changed."
+      );
+      setUpdatingStudyId("");
+      return;
+    }
+
+    const updatedAt = new Date().toISOString();
+
+    const { data, error } = await supabase
+      .from("research_studies")
+      .update({
+        status: nextStatus,
+        updated_at: updatedAt,
+      })
+      .eq("id", studyId)
+      .eq("owner_user_id", user.id)
+      .select(
+        "id, title, participant_description, design, target_sample_size, status, components, created_at, updated_at"
+      )
+      .single();
+
+    if (error || !data) {
+      console.error(
+        "Could not update study status:",
+        error
+      );
+      setStudyActionError(
+        error?.message ||
+          "The study status could not be changed."
+      );
+      setUpdatingStudyId("");
+      return;
+    }
+
+    setStudies((current) =>
+      current.map((study) =>
+        study.id === studyId
+          ? (data as ResearchStudy)
+          : study
+      )
+    );
+
+    setStudyActionMessage(
+      `${data.title} is now ${statusLabel(
+        data.status
+      ).toLowerCase()}.`
+    );
+    setUpdatingStudyId("");
+  }
+
+  async function deleteStudyPermanently() {
+    const study = deleteStudyTarget;
+
+    if (
+      !study ||
+      deletingStudy ||
+      deleteConfirmation !== study.title
+    ) {
+      return;
+    }
+
+    setDeletingStudy(true);
+    setStudyActionMessage("");
+    setStudyActionError("");
+
+    const supabase = createClient();
+
+    const {
+      data: { user },
+      error: userError,
+    } = await supabase.auth.getUser();
+
+    if (userError || !user) {
+      setStudyActionError(
+        "The study could not be deleted."
+      );
+      setDeletingStudy(false);
+      return;
+    }
+
+    const { error } = await supabase
+      .from("research_studies")
+      .delete()
+      .eq("id", study.id)
+      .eq("owner_user_id", user.id);
+
+    if (error) {
+      console.error("Could not delete study:", error);
+      setStudyActionError(
+        error.message ||
+          "The study could not be deleted."
+      );
+      setDeletingStudy(false);
+      return;
+    }
+
+    const remainingStudies = studies.filter(
+      (candidate) => candidate.id !== study.id
+    );
+
+    setStudies(remainingStudies);
+    setParticipants((current) =>
+      current.filter(
+        (participant) =>
+          participant.study_id !== study.id
+      )
+    );
+    setLinks((current) =>
+      current.filter(
+        (link) => link.study_id !== study.id
+      )
+    );
+    setMeasures((current) =>
+      current.filter(
+        (measure) => measure.study_id !== study.id
+      )
+    );
+
+    setSelectedStudyId(
+      remainingStudies[0]?.id || ""
+    );
+    setDeleteStudyTarget(null);
+    setDeleteConfirmation("");
+    setDeletingStudy(false);
+    setStudyActionMessage(
+      `${study.title} was permanently deleted.`
+    );
+  }
+
   function componentLabels(study: ResearchStudy) {
     const available: Array<[string, string]> = [
       ["consent", "Consent"],
@@ -933,6 +1099,22 @@ function Studies({
       {studiesError && (
         <div className="rounded-2xl border border-red-200 bg-red-50 px-5 py-4">
           <p className="text-sm text-red-700">{studiesError}</p>
+        </div>
+      )}
+
+      {studyActionError && (
+        <div className="rounded-2xl border border-red-200 bg-red-50 px-5 py-4">
+          <p className="text-sm text-red-700">
+            {studyActionError}
+          </p>
+        </div>
+      )}
+
+      {studyActionMessage && (
+        <div className="rounded-2xl border border-emerald-200 bg-emerald-50 px-5 py-4">
+          <p className="text-sm text-emerald-800">
+            {studyActionMessage}
+          </p>
         </div>
       )}
 
@@ -1040,12 +1222,38 @@ function Studies({
                   </div>
 
                   <div>
-                    <Status type={statusType(study.status)}>
-                      {statusLabel(study.status)}
-                    </Status>
+                    <select
+                      value={study.status}
+                      disabled={
+                        updatingStudyId === study.id
+                      }
+                      onChange={(event) =>
+                        void updateStudyStatus(
+                          study.id,
+                          event.target.value
+                        )
+                      }
+                      aria-label={`Change status for ${study.title}`}
+                      className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-slate-700 outline-none transition focus:border-cyan-700 disabled:opacity-50"
+                    >
+                      {studyStatusOptions.map(
+                        (status) => (
+                          <option
+                            key={status}
+                            value={status}
+                          >
+                            {statusLabel(status)}
+                          </option>
+                        )
+                      )}
+                    </select>
+
                     <p className="mt-2 text-[11px] text-slate-400">
-                      Updated{" "}
-                      {new Date(study.updated_at).toLocaleDateString()}
+                      {updatingStudyId === study.id
+                        ? "Updating status..."
+                        : `Updated ${new Date(
+                            study.updated_at
+                          ).toLocaleDateString()}`}
                     </p>
                   </div>
 
@@ -1140,32 +1348,190 @@ function Studies({
             </div>
           </div>
 
-          <div className="mt-6 flex flex-wrap gap-2 border-t border-slate-100 pt-5">
-            <button
-              type="button"
-              onClick={() => editStudy(selectedStudy.id)}
-              className="rounded-xl bg-cyan-800 px-4 py-2.5 text-sm font-semibold text-white"
-            >
-              Edit study
-            </button>
+          <div className="mt-6 border-t border-slate-100 pt-5">
+            <div className="mb-5 rounded-2xl border border-slate-200 bg-slate-50/70 p-4">
+              <div className="flex flex-col justify-between gap-4 md:flex-row md:items-center">
+                <div>
+                  <p className="text-sm font-semibold text-slate-800">
+                    Study status
+                  </p>
+                  <p className="mt-1 max-w-2xl text-xs leading-5 text-slate-500">
+                    Active studies accept live participants. Paused,
+                    completed and archived studies stop new live
+                    participation while preserving the study record.
+                  </p>
+                </div>
 
-            <button
-              type="button"
-              onClick={() => changeScreen("participants")}
-              className="rounded-xl border border-slate-200 px-4 py-2.5 text-sm font-semibold"
-            >
-              View participants
-            </button>
+                <select
+                  value={selectedStudy.status}
+                  disabled={
+                    updatingStudyId === selectedStudy.id
+                  }
+                  onChange={(event) =>
+                    void updateStudyStatus(
+                      selectedStudy.id,
+                      event.target.value
+                    )
+                  }
+                  className="min-w-[190px] rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm font-semibold text-slate-700 outline-none focus:border-cyan-700 disabled:opacity-50"
+                >
+                  {studyStatusOptions.map((status) => (
+                    <option
+                      key={status}
+                      value={status}
+                    >
+                      {statusLabel(status)}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            </div>
 
-            <button
-              type="button"
-              onClick={() => changeScreen("links")}
-              className="rounded-xl bg-slate-950 px-4 py-2.5 text-sm font-semibold text-white"
-            >
-              Participant links
-            </button>
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <div className="flex flex-wrap gap-2">
+                <button
+                  type="button"
+                  onClick={() => editStudy(selectedStudy.id)}
+                  className="rounded-xl bg-cyan-800 px-4 py-2.5 text-sm font-semibold text-white"
+                >
+                  Edit study
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => changeScreen("participants")}
+                  className="rounded-xl border border-slate-200 px-4 py-2.5 text-sm font-semibold"
+                >
+                  View participants
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => changeScreen("links")}
+                  className="rounded-xl bg-slate-950 px-4 py-2.5 text-sm font-semibold text-white"
+                >
+                  Participant links
+                </button>
+              </div>
+
+              <button
+                type="button"
+                onClick={() => {
+                  setStudyActionError("");
+                  setStudyActionMessage("");
+                  setDeleteConfirmation("");
+                  setDeleteStudyTarget(
+                    selectedStudy
+                  );
+                }}
+                className="rounded-xl border border-red-200 bg-white px-4 py-2.5 text-sm font-semibold text-red-700 transition hover:bg-red-50"
+              >
+                Delete study
+              </button>
+            </div>
           </div>
         </Panel>
+      )}
+
+      {deleteStudyTarget && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-950/45 p-4">
+          <div className="w-full max-w-lg rounded-3xl border border-slate-200 bg-white shadow-2xl">
+            <div className="border-b border-slate-100 px-6 py-5">
+              <p className="text-lg font-semibold text-slate-950">
+                Delete study permanently?
+              </p>
+              <p className="mt-2 text-sm leading-6 text-slate-500">
+                This is a destructive action. The study and its linked
+                research records will be removed according to the database
+                deletion rules.
+              </p>
+            </div>
+
+            <div className="space-y-5 p-6">
+              <div className="rounded-2xl border border-red-100 bg-red-50 p-4">
+                <p className="text-sm font-semibold text-red-800">
+                  {deleteStudyTarget.title}
+                </p>
+                <p className="mt-2 text-xs leading-5 text-red-700">
+                  {liveParticipantCount(
+                    deleteStudyTarget.id
+                  )} live participant
+                  {liveParticipantCount(
+                    deleteStudyTarget.id
+                  ) === 1
+                    ? ""
+                    : "s"}
+                  {" · "}
+                  {testParticipantCount(
+                    deleteStudyTarget.id
+                  )} test participant
+                  {testParticipantCount(
+                    deleteStudyTarget.id
+                  ) === 1
+                    ? ""
+                    : "s"}
+                  {" · "}
+                  {measureCount(
+                    deleteStudyTarget.id
+                  )} questionnaire selection
+                  {measureCount(
+                    deleteStudyTarget.id
+                  ) === 1
+                    ? ""
+                    : "s"}
+                </p>
+              </div>
+
+              <label className="block">
+                <span className="text-xs font-medium text-slate-600">
+                  Type the exact study title to confirm deletion
+                </span>
+                <input
+                  value={deleteConfirmation}
+                  onChange={(event) =>
+                    setDeleteConfirmation(
+                      event.target.value
+                    )
+                  }
+                  placeholder={deleteStudyTarget.title}
+                  autoFocus
+                  className="mt-2 w-full rounded-xl border border-slate-200 px-4 py-3 text-sm outline-none focus:border-red-400"
+                />
+              </label>
+
+              <div className="flex flex-wrap justify-end gap-2 border-t border-slate-100 pt-5">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setDeleteStudyTarget(null);
+                    setDeleteConfirmation("");
+                  }}
+                  disabled={deletingStudy}
+                  className="rounded-xl border border-slate-200 px-4 py-2.5 text-sm font-semibold text-slate-600 disabled:opacity-50"
+                >
+                  Cancel
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() =>
+                    void deleteStudyPermanently()
+                  }
+                  disabled={
+                    deletingStudy ||
+                    deleteConfirmation !==
+                      deleteStudyTarget.title
+                  }
+                  className="rounded-xl bg-red-600 px-4 py-2.5 text-sm font-semibold text-white disabled:cursor-not-allowed disabled:opacity-40"
+                >
+                  {deletingStudy
+                    ? "Deleting..."
+                    : "Permanently delete study"}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );

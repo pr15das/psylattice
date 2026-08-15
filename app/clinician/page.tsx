@@ -4,6 +4,10 @@ import Link from "next/link";
 import { useEffect, useState, type ReactNode } from "react";
 import PsyLatticeLogo from "@/components/PsyLatticeLogo";
 import AccountSwitcher from "@/components/AccountSwitcher";
+import ClinicalNotesWorkspace from "@/components/ClinicalNotesWorkspace";
+import CarePathwayWorkspace from "@/components/CarePathwayWorkspace";
+import AppointmentsWorkspace from "@/components/AppointmentsWorkspace";
+import PsyLatticeMessagesWorkspace, { MessageUnreadBadge } from "@/components/PsyLatticeMessagesWorkspace";
 import { createClient } from "@/lib/supabase/client";
 import {
   AmbulatoryProtocolBuilder,
@@ -8198,21 +8202,49 @@ function Notes({
   }
 
   return (
-    <Panel
-      title={`${client.client_name} · Professional Notes`}
-      description="This tab is client-scoped. The selected client can be changed above without returning to the Clients page."
-    >
-      <div className="rounded-2xl bg-slate-50 p-6">
-        <p className="font-semibold text-slate-800">
-          Client-specific professional notes are not connected to a persistent clinical-record backend yet.
-        </p>
+    <div className="space-y-5">
+      <Panel
+        title={`${client.client_name} · Professional Notes`}
+        description="Private clinician-authored documentation for the selected client. Organise notes into folders and edit them with the rich-text workspace below."
+      >
+        <div className="grid gap-3 md:grid-cols-3">
+          <div className="rounded-xl border border-slate-200 bg-slate-50/60 p-4">
+            <p className="text-xs font-semibold uppercase tracking-[0.14em] text-slate-400">
+              Client
+            </p>
+            <p className="mt-2 text-sm font-semibold text-slate-800">
+              {client.client_name}
+            </p>
+          </div>
 
-        <p className="mt-2 max-w-3xl text-sm leading-6 text-slate-500">
-          PsyLattice is not displaying demo client records here. This tab will
-          be connected only when its real backend workflow is implemented.
-        </p>
-      </div>
-    </Panel>
+          <div className="rounded-xl border border-slate-200 bg-slate-50/60 p-4">
+            <p className="text-xs font-semibold uppercase tracking-[0.14em] text-slate-400">
+              Record type
+            </p>
+            <p className="mt-2 text-sm font-semibold text-slate-800">
+              Private professional notes
+            </p>
+          </div>
+
+          <div className="rounded-xl border border-cyan-100 bg-cyan-50/60 p-4">
+            <p className="text-xs font-semibold uppercase tracking-[0.14em] text-cyan-700">
+              Sharing
+            </p>
+            <p className="mt-2 text-sm font-semibold text-cyan-950">
+              Not shared with client
+            </p>
+          </div>
+        </div>
+      </Panel>
+
+      <ClinicalNotesWorkspace
+        client={{
+          connection_id: client.connection_id,
+          client_id: client.client_id,
+          client_name: client.client_name,
+        }}
+      />
+    </div>
   );
 }
 
@@ -8239,21 +8271,49 @@ function CarePathway({
   }
 
   return (
-    <Panel
-      title={`${client.client_name} · Care Pathway`}
-      description="This tab is client-scoped. The selected client can be changed above without returning to the Clients page."
-    >
-      <div className="rounded-2xl bg-slate-50 p-6">
-        <p className="font-semibold text-slate-800">
-          The care-pathway backend has not been connected yet. No fictional pathway data is shown.
-        </p>
+    <div className="space-y-5">
+      <Panel
+        title={`${client.client_name} · Care Pathway`}
+        description="Build a structured, clinician-authored plan with goals, linked care actions and formal review points."
+      >
+        <div className="grid gap-3 md:grid-cols-3">
+          <div className="rounded-xl border border-slate-200 bg-slate-50/60 p-4">
+            <p className="text-xs font-semibold uppercase tracking-[0.14em] text-slate-400">
+              Client
+            </p>
+            <p className="mt-2 text-sm font-semibold text-slate-800">
+              {client.client_name}
+            </p>
+          </div>
 
-        <p className="mt-2 max-w-3xl text-sm leading-6 text-slate-500">
-          PsyLattice is not displaying demo client records here. This tab will
-          be connected only when its real backend workflow is implemented.
-        </p>
-      </div>
-    </Panel>
+          <div className="rounded-xl border border-slate-200 bg-slate-50/60 p-4">
+            <p className="text-xs font-semibold uppercase tracking-[0.14em] text-slate-400">
+              Planning model
+            </p>
+            <p className="mt-2 text-sm font-semibold text-slate-800">
+              Goals → actions → reviews
+            </p>
+          </div>
+
+          <div className="rounded-xl border border-cyan-100 bg-cyan-50/60 p-4">
+            <p className="text-xs font-semibold uppercase tracking-[0.14em] text-cyan-700">
+              Sharing
+            </p>
+            <p className="mt-2 text-sm font-semibold text-cyan-950">
+              Private clinician plan
+            </p>
+          </div>
+        </div>
+      </Panel>
+
+      <CarePathwayWorkspace
+        client={{
+          connection_id: client.connection_id,
+          client_id: client.client_id,
+          client_name: client.client_name,
+        }}
+      />
+    </div>
   );
 }
 
@@ -8269,32 +8329,65 @@ function Appointments({
   if (!client) {
     return (
       <div className="rounded-2xl border border-slate-200 bg-white p-8 text-center">
-        <p className="text-lg font-semibold">
+        <p className="text-lg font-semibold text-slate-950">
           Select a client above
         </p>
-        <p className="mt-2 text-sm text-slate-500">
-          Choose a client to work in Appointments.
+
+        <p className="mx-auto mt-2 max-w-lg text-sm leading-6 text-slate-500">
+          Choose a connected client using the Client context selector to view
+          their appointment calendar and manage upcoming sessions.
         </p>
       </div>
     );
   }
 
   return (
-    <Panel
-      title={`${client.client_name} · Appointments`}
-      description="This tab is client-scoped. The selected client can be changed above without returning to the Clients page."
-    >
-      <div className="rounded-2xl bg-slate-50 p-6">
-        <p className="font-semibold text-slate-800">
-          Client-specific appointment scheduling is not connected yet.
-        </p>
+    <div className="space-y-5">
+      <Panel
+        title={`${client.client_name} · Appointments`}
+        description="Schedule, reschedule and track appointments for this client. Client-visible appointment information stays separate from private clinician notes."
+      >
+        <div className="grid gap-3 md:grid-cols-3">
+          <div className="rounded-xl border border-slate-200 bg-slate-50/60 p-4">
+            <p className="text-xs font-semibold uppercase tracking-[0.14em] text-slate-400">
+              Client
+            </p>
 
-        <p className="mt-2 max-w-3xl text-sm leading-6 text-slate-500">
-          PsyLattice is not displaying demo client records here. This tab will
-          be connected only when its real backend workflow is implemented.
-        </p>
-      </div>
-    </Panel>
+            <p className="mt-2 text-sm font-semibold text-slate-800">
+              {client.client_name}
+            </p>
+          </div>
+
+          <div className="rounded-xl border border-slate-200 bg-slate-50/60 p-4">
+            <p className="text-xs font-semibold uppercase tracking-[0.14em] text-slate-400">
+              Scheduling
+            </p>
+
+            <p className="mt-2 text-sm font-semibold text-slate-800">
+              Calendar + client agenda
+            </p>
+          </div>
+
+          <div className="rounded-xl border border-cyan-100 bg-cyan-50/60 p-4">
+            <p className="text-xs font-semibold uppercase tracking-[0.14em] text-cyan-700">
+              Privacy
+            </p>
+
+            <p className="mt-2 text-sm font-semibold text-cyan-950">
+              Private and client-visible fields stay separate
+            </p>
+          </div>
+        </div>
+      </Panel>
+
+      <AppointmentsWorkspace
+        client={{
+          connection_id: client.connection_id,
+          client_id: client.client_id,
+          client_name: client.client_name,
+        }}
+      />
+    </div>
   );
 }
 
@@ -8302,40 +8395,31 @@ function Appointments({
    MESSAGES
    ========================================================= */
 
-function Messages({
-  client,
-}: {
-  client: ConnectedClient | null;
-}) {
-  if (!client) {
-    return (
-      <div className="rounded-2xl border border-slate-200 bg-white p-8 text-center">
-        <p className="text-lg font-semibold">
-          Select a client above
-        </p>
-        <p className="mt-2 text-sm text-slate-500">
-          Choose a client to work in Messages.
-        </p>
-      </div>
-    );
-  }
-
+function Messages() {
   return (
-    <Panel
-      title={`${client.client_name} · Messages`}
-      description="This tab is client-scoped. The selected client can be changed above without returning to the Clients page."
-    >
-      <div className="rounded-2xl bg-slate-50 p-6">
-        <p className="font-semibold text-slate-800">
-          Secure client messaging is not connected yet.
-        </p>
+    <div className="space-y-5">
+      <section className="overflow-hidden rounded-3xl border border-slate-200 bg-white">
+        <div className="bg-gradient-to-r from-cyan-50/70 via-white to-white px-5 py-5">
+          <p className="text-xs font-semibold uppercase tracking-[0.15em] text-cyan-800">
+            Connected care
+          </p>
 
-        <p className="mt-2 max-w-3xl text-sm leading-6 text-slate-500">
-          PsyLattice is not displaying demo client records here. This tab will
-          be connected only when its real backend workflow is implemented.
-        </p>
-      </div>
-    </Panel>
+          <h2 className="mt-2 text-xl font-semibold tracking-tight text-slate-950">
+            Client conversations
+          </h2>
+
+          <p className="mt-2 max-w-3xl text-sm leading-6 text-slate-500">
+            View all active client conversations in one secure inbox. Select a
+            client inside the messaging workspace instead of changing the
+            Clinical client-context selector.
+          </p>
+        </div>
+      </section>
+
+      <PsyLatticeMessagesWorkspace
+        mode="clinician"
+      />
+    </div>
   );
 }
 
@@ -8732,6 +8816,19 @@ function Settings() {
 
 export default function ClinicianWorkspace() {
   const [screen, setScreen] = useState<Screen>("dashboard");
+
+  useEffect(() => {
+    const requestedScreen =
+      new URLSearchParams(
+        window.location.search
+      ).get("screen");
+
+    if (
+      requestedScreen === "messages"
+    ) {
+      setScreen("messages");
+    }
+  }, []);
   const [selectedClient, setSelectedClient] =
     useState<ConnectedClient | null>(null);
   const [clinicianName, setClinicianName] = useState("");
@@ -8922,7 +9019,7 @@ export default function ClinicianWorkspace() {
       "Manage upcoming sessions and outstanding professional tasks.",
 
     messages:
-      "Communicate with clients within an authorised professional workflow.",
+      "Manage secure conversations with your active clients from one professional inbox.",
 
     reports:
       "Prepare structured professional summaries from authorised information.",
@@ -9016,12 +9113,7 @@ export default function ClinicianWorkspace() {
         );
 
       case "messages":
-        return (
-          <Messages
-            key={selectedClient?.connection_id ?? "no-client"}
-            client={selectedClient}
-          />
-        );
+        return <Messages />;
 
       case "reports":
         return (
@@ -9063,7 +9155,6 @@ export default function ClinicianWorkspace() {
     "notes",
     "care",
     "appointments",
-    "messages",
     "reports",
     "permissions",
   ]);
@@ -9191,19 +9282,34 @@ export default function ClinicianWorkspace() {
                             : "text-slate-500 hover:bg-slate-50 hover:text-slate-950"
                         }`}
                       >
-                        <span
-                          className={`rounded-full transition-all ${
-                            sidebarCollapsed
-                              ? "h-2.5 w-2.5"
-                              : "h-1.5 w-1.5"
-                          } ${
-                            active
-                              ? "bg-cyan-700"
-                              : "bg-slate-300"
-                          }`}
-                        />
+                        <span className="relative flex shrink-0 items-center justify-center">
+                          <span
+                            className={`rounded-full transition-all ${
+                              sidebarCollapsed
+                                ? "h-2.5 w-2.5"
+                                : "h-1.5 w-1.5"
+                            } ${
+                              active
+                                ? "bg-cyan-700"
+                                : "bg-slate-300"
+                            }`}
+                          />
 
-                        {!sidebarCollapsed && item.label}
+                          {sidebarCollapsed &&
+                            item.id === "messages" && (
+                              <MessageUnreadBadge compact />
+                            )}
+                        </span>
+
+                        {!sidebarCollapsed && (
+                          <span className="flex min-w-0 flex-1 items-center">
+                            <span>{item.label}</span>
+
+                            {item.id === "messages" && (
+                              <MessageUnreadBadge />
+                            )}
+                          </span>
+                        )}
                       </button>
                     );
                   })}

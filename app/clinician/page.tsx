@@ -6041,65 +6041,340 @@ type MonitoringV2SharedFeed = {
   }>;
 };
 
-function Ambulatory({ client, changeScreen }: { client: ConnectedClient | null; changeScreen: (screen: Screen) => void }) {
-  const { permissions, loadingPermissions, permissionsError } = useClientSharingPermissions(client);
-  const [questionnaires, setQuestionnaires] = useState<MonitoringQuestionnaireOption[]>([]);
-  const [protocolName, setProtocolName] = useState("Clinical monitoring protocol");
-  const [durationDays, setDurationDays] = useState(7);
+function Ambulatory({
+  client,
+  changeScreen,
+}: {
+  client: ConnectedClient | null;
+  changeScreen: (screen: Screen) => void;
+}) {
+  const {
+    permissions,
+    loadingPermissions,
+    permissionsError,
+  } = useClientSharingPermissions(client);
+
+  const [questionnaires, setQuestionnaires] = useState<
+    MonitoringQuestionnaireOption[]
+  >([]);
+
+  const [showProtocolBuilder, setShowProtocolBuilder] =
+    useState(false);
+
+  const [protocolName, setProtocolName] =
+    useState("Clinical monitoring protocol");
+  const [durationDays, setDurationDays] =
+    useState(7);
   const [note, setNote] = useState("");
-  const [protocol, setProtocol] = useState<MonitoringProtocolScheduleDraft[]>(defaultMonitoringProtocol());
-  const [requests, setRequests] = useState<MonitoringV2RequestClinical[]>([]);
-  const [loadingRequests, setLoadingRequests] = useState(false);
-  const [requestMessage, setRequestMessage] = useState("");
-  const [requestError, setRequestError] = useState("");
+  const [protocol, setProtocol] = useState<
+    MonitoringProtocolScheduleDraft[]
+  >(defaultMonitoringProtocol());
+
+  const [requests, setRequests] = useState<
+    MonitoringV2RequestClinical[]
+  >([]);
+  const [loadingRequests, setLoadingRequests] =
+    useState(false);
+  const [requestMessage, setRequestMessage] =
+    useState("");
+  const [requestError, setRequestError] =
+    useState("");
   const [sending, setSending] = useState(false);
-  const [cancellingId, setCancellingId] = useState<string | null>(null);
-  const [receivingMonitoring, setReceivingMonitoring] = useState(true);
-  const [updatingReceiving, setUpdatingReceiving] = useState(false);
-  const [sharedFeed, setSharedFeed] = useState<MonitoringV2SharedFeed | null>(null);
-  const [loadingFeed, setLoadingFeed] = useState(false);
-  const [feedError, setFeedError] = useState("");
-  const [stoppingProtocol, setStoppingProtocol] = useState(false);
+  const [cancellingId, setCancellingId] =
+    useState<string | null>(null);
+
+  const [receivingMonitoring, setReceivingMonitoring] =
+    useState(true);
+  const [updatingReceiving, setUpdatingReceiving] =
+    useState(false);
+
+  const [sharedFeed, setSharedFeed] =
+    useState<MonitoringV2SharedFeed | null>(null);
+  const [loadingFeed, setLoadingFeed] =
+    useState(false);
+  const [feedError, setFeedError] =
+    useState("");
+
+  const [stoppingProtocol, setStoppingProtocol] =
+    useState(false);
+
+  const [progressRangeDays, setProgressRangeDays] =
+    useState<7 | 14 | 30>(14);
+
+  function toLocalDateString(date: Date) {
+    return [
+      date.getFullYear(),
+      String(date.getMonth() + 1).padStart(
+        2,
+        "0"
+      ),
+      String(date.getDate()).padStart(2, "0"),
+    ].join("-");
+  }
+
+  function parseLocalDate(dateString: string) {
+    return new Date(
+      `${dateString}T00:00:00`
+    );
+  }
+
+  function addDays(date: Date, amount: number) {
+    const next = new Date(date);
+    next.setDate(next.getDate() + amount);
+    return next;
+  }
+
+  function buildDateRange(days: number) {
+    const now = new Date();
+    const today = new Date(
+      now.getFullYear(),
+      now.getMonth(),
+      now.getDate()
+    );
+
+    return Array.from(
+      {
+        length: days,
+      },
+      (_, index) => {
+        const daysAgo =
+          days - 1 - index;
+
+        return toLocalDateString(
+          addDays(today, -daysAgo)
+        );
+      }
+    );
+  }
+
+  function dateFallsWithinPlan(
+    dateString: string,
+    startDate: string,
+    planDurationDays: number
+  ) {
+    const date = parseLocalDate(dateString);
+    const start = parseLocalDate(startDate);
+    const end = addDays(
+      start,
+      planDurationDays - 1
+    );
+
+    return date >= start && date <= end;
+  }
+
+  function formatProgressDate(
+    dateString: string
+  ) {
+    return parseLocalDate(
+      dateString
+    ).toLocaleDateString([], {
+      day: "2-digit",
+      month: "short",
+    });
+  }
 
   async function loadCatalogue() {
     const supabase = createClient();
-    const { data, error } = await supabase.rpc("psylattice_monitoring_questionnaire_catalogue");
-    if (!error) setQuestionnaires((data ?? []) as MonitoringQuestionnaireOption[]);
+
+    const { data, error } =
+      await supabase.rpc(
+        "psylattice_monitoring_questionnaire_catalogue"
+      );
+
+    if (!error) {
+      setQuestionnaires(
+        (data ??
+          []) as MonitoringQuestionnaireOption[]
+      );
+    }
   }
 
-  async function loadRequests() {
-    if (!client) return;
-    setLoadingRequests(true);
+  async function loadRequests(
+    showLoading = true
+  ) {
+    if (!client) {
+      setRequests([]);
+      return;
+    }
+
+    if (showLoading) {
+      setLoadingRequests(true);
+    }
+
     const supabase = createClient();
-    const { data, error } = await supabase.rpc("psylattice_clinician_monitoring_requests_v2", { p_connection_id: client.connection_id });
-    if (error) setRequestError("Monitoring request history could not be loaded.");
-    else setRequests((data ?? []) as MonitoringV2RequestClinical[]);
+
+    const { data, error } =
+      await supabase.rpc(
+        "psylattice_clinician_monitoring_requests_v2",
+        {
+          p_connection_id:
+            client.connection_id,
+        }
+      );
+
+    if (error) {
+      console.error(
+        "Could not load monitoring request history:",
+        error
+      );
+
+      setRequestError(
+        "Monitoring request history could not be loaded."
+      );
+    } else {
+      setRequests(
+        (data ??
+          []) as MonitoringV2RequestClinical[]
+      );
+    }
+
     setLoadingRequests(false);
   }
 
   async function loadReceivingState() {
-    if (!client) return;
-    const supabase = createClient();
-    const { data, error } = await supabase.rpc("psylattice_monitoring_receiving_state", { p_connection_id: client.connection_id });
-    if (!error && typeof data === "boolean") setReceivingMonitoring(data);
-  }
-
-  async function loadFeed() {
-    if (!client || !permissions?.share_monitoring || !receivingMonitoring) {
-      setSharedFeed(null);
+    if (!client) {
       return;
     }
-    setLoadingFeed(true); setFeedError("");
+
     const supabase = createClient();
-    const { data, error } = await supabase.rpc("psylattice_connected_client_monitoring_v2", { p_connection_id: client.connection_id, p_days: 14 });
-    if (error) { setFeedError("Shared monitoring data could not be loaded."); setSharedFeed(null); }
-    else setSharedFeed(Array.isArray(data) && data.length ? (data[0] as MonitoringV2SharedFeed) : null);
+
+    const { data, error } =
+      await supabase.rpc(
+        "psylattice_monitoring_receiving_state",
+        {
+          p_connection_id:
+            client.connection_id,
+        }
+      );
+
+    if (
+      !error &&
+      typeof data === "boolean"
+    ) {
+      setReceivingMonitoring(data);
+    }
+  }
+
+  async function loadFeed(
+    showLoading = true
+  ) {
+    if (
+      !client ||
+      !permissions?.share_monitoring ||
+      !receivingMonitoring
+    ) {
+      setSharedFeed(null);
+      setLoadingFeed(false);
+      return;
+    }
+
+    if (showLoading) {
+      setLoadingFeed(true);
+    }
+
+    setFeedError("");
+
+    const supabase = createClient();
+
+    const { data, error } =
+      await supabase.rpc(
+        "psylattice_connected_client_monitoring_v2",
+        {
+          p_connection_id:
+            client.connection_id,
+          p_days: progressRangeDays,
+        }
+      );
+
+    if (error) {
+      console.error(
+        "Could not load shared monitoring feed:",
+        error
+      );
+
+      setFeedError(
+        "Shared monitoring data could not be loaded."
+      );
+      setSharedFeed(null);
+    } else {
+      setSharedFeed(
+        Array.isArray(data) &&
+          data.length > 0
+          ? (data[0] as MonitoringV2SharedFeed)
+          : null
+      );
+    }
+
     setLoadingFeed(false);
   }
 
-  useEffect(() => { void loadCatalogue(); }, []);
-  useEffect(() => { if (client) void Promise.all([loadRequests(), loadReceivingState()]); }, [client?.connection_id]);
-  useEffect(() => { void loadFeed(); }, [client?.connection_id, permissions?.share_monitoring, receivingMonitoring]);
+  useEffect(() => {
+    void loadCatalogue();
+  }, []);
+
+  useEffect(() => {
+    if (client) {
+      void Promise.all([
+        loadRequests(true),
+        loadReceivingState(),
+      ]);
+    }
+  }, [client?.connection_id]);
+
+  useEffect(() => {
+    void loadFeed(true);
+  }, [
+    client?.connection_id,
+    permissions?.share_monitoring,
+    receivingMonitoring,
+    progressRangeDays,
+  ]);
+
+  useEffect(() => {
+    function refreshOnFocus() {
+      if (!client) {
+        return;
+      }
+
+      void loadRequests(false);
+      void loadReceivingState();
+      void loadFeed(false);
+    }
+
+    function refreshWhenVisible() {
+      if (
+        document.visibilityState ===
+        "visible"
+      ) {
+        refreshOnFocus();
+      }
+    }
+
+    window.addEventListener(
+      "focus",
+      refreshOnFocus
+    );
+    document.addEventListener(
+      "visibilitychange",
+      refreshWhenVisible
+    );
+
+    return () => {
+      window.removeEventListener(
+        "focus",
+        refreshOnFocus
+      );
+      document.removeEventListener(
+        "visibilitychange",
+        refreshWhenVisible
+      );
+    };
+  }, [
+    client?.connection_id,
+    permissions?.share_monitoring,
+    receivingMonitoring,
+    progressRangeDays,
+  ]);
 
   function validateProtocolDraft() {
     if (!protocolName.trim()) {
@@ -6119,105 +6394,1408 @@ function Ambulatory({ client, changeScreen }: { client: ConnectedClient | null; 
   }
 
   async function sendRequest() {
-    if (!client || sending) return;
-    const validation = validateProtocolDraft();
-    if (validation) { setRequestError(validation); return; }
-    setSending(true); setRequestError(""); setRequestMessage("");
+    if (!client || sending) {
+      return;
+    }
+
+    const validation =
+      validateProtocolDraft();
+
+    if (validation) {
+      setRequestError(validation);
+      return;
+    }
+
+    setSending(true);
+    setRequestError("");
+    setRequestMessage("");
+
     const supabase = createClient();
-    const { error } = await supabase.rpc("psylattice_assign_monitoring_protocol_v2", {
-      p_connection_id: client.connection_id,
-      p_name: protocolName.trim(),
-      p_duration_days: durationDays,
-      p_note: note.trim() || null,
-      p_protocol: serializeMonitoringProtocol(protocol),
-    });
-    if (error) setRequestError(error.message.includes("already pending") ? "A protocol request is already pending for this client." : "The monitoring protocol could not be sent.");
-    else { setRequestMessage(`Monitoring protocol sent to ${client.client_name}.`); setNote(""); await loadRequests(); }
+
+    const { error } =
+      await supabase.rpc(
+        "psylattice_assign_monitoring_protocol_v2",
+        {
+          p_connection_id:
+            client.connection_id,
+          p_name: protocolName.trim(),
+          p_duration_days: durationDays,
+          p_note: note.trim() || null,
+          p_protocol:
+            serializeMonitoringProtocol(
+              protocol
+            ),
+        }
+      );
+
+    if (error) {
+      setRequestError(
+        error.message.includes(
+          "already pending"
+        )
+          ? "A protocol request is already pending for this client."
+          : "The monitoring protocol could not be sent."
+      );
+    } else {
+      setRequestMessage(
+        `Monitoring protocol sent to ${client.client_name}.`
+      );
+      setNote("");
+      setShowProtocolBuilder(false);
+      await loadRequests(true);
+    }
+
     setSending(false);
   }
 
-  async function cancelRequest(request: MonitoringV2RequestClinical) {
-    if (cancellingId || !window.confirm(`Cancel the pending “${request.name}” request?`)) return;
+  async function cancelRequest(
+    request: MonitoringV2RequestClinical
+  ) {
+    if (
+      cancellingId ||
+      !window.confirm(
+        `Cancel the pending “${request.name}” request?`
+      )
+    ) {
+      return;
+    }
+
     setCancellingId(request.request_id);
+
     const supabase = createClient();
-    const { error } = await supabase.rpc("psylattice_cancel_monitoring_request_v2", { p_request_id: request.request_id });
-    if (error) setRequestError("The request could not be cancelled.");
-    else setRequestMessage("Monitoring request cancelled.");
+
+    const { error } =
+      await supabase.rpc(
+        "psylattice_cancel_monitoring_request_v2",
+        {
+          p_request_id:
+            request.request_id,
+        }
+      );
+
+    if (error) {
+      setRequestError(
+        "The request could not be cancelled."
+      );
+    } else {
+      setRequestMessage(
+        "Monitoring request cancelled."
+      );
+    }
+
     setCancellingId(null);
-    await loadRequests();
+    await loadRequests(true);
   }
 
   async function toggleReceiving() {
-    if (!client || updatingReceiving) return;
+    if (
+      !client ||
+      updatingReceiving
+    ) {
+      return;
+    }
+
     setUpdatingReceiving(true);
+
     const next = !receivingMonitoring;
     const supabase = createClient();
-    const { error } = await supabase.rpc("psylattice_set_monitoring_receiving", { p_connection_id: client.connection_id, p_receive: next });
-    if (error) setFeedError("Receiving preference could not be updated.");
-    else { setReceivingMonitoring(next); setRequestMessage(next ? "Monitoring feed receiving resumed." : "You stopped receiving this client's monitoring feed. Client consent was not changed."); }
+
+    const { error } =
+      await supabase.rpc(
+        "psylattice_set_monitoring_receiving",
+        {
+          p_connection_id:
+            client.connection_id,
+          p_receive: next,
+        }
+      );
+
+    if (error) {
+      setFeedError(
+        "Receiving preference could not be updated."
+      );
+    } else {
+      setReceivingMonitoring(next);
+      setRequestMessage(
+        next
+          ? "Monitoring feed receiving resumed."
+          : "You stopped receiving this client's monitoring feed. Client consent was not changed."
+      );
+    }
+
     setUpdatingReceiving(false);
   }
 
   async function stopClientProtocol() {
-    if (!client || !sharedFeed || stoppingProtocol) return;
-    const assigned = requests.some((request) => request.monitoring_plan_id === sharedFeed.plan_id && request.status === "accepted");
-    if (!assigned) { setFeedError("This active protocol was not assigned through this clinician connection, so it cannot be stopped from your Clinical workspace."); return; }
-    if (!window.confirm(`Stop ${client.client_name}'s active clinician-assigned monitoring protocol? Historical check-ins will remain.`)) return;
+    if (
+      !client ||
+      !sharedFeed ||
+      stoppingProtocol
+    ) {
+      return;
+    }
+
+    const assigned = requests.some(
+      (request) =>
+        request.monitoring_plan_id ===
+          sharedFeed.plan_id &&
+        request.status === "accepted"
+    );
+
+    if (!assigned) {
+      setFeedError(
+        "This active protocol was not assigned through this clinician connection, so it cannot be stopped from your Clinical workspace."
+      );
+      return;
+    }
+
+    if (
+      !window.confirm(
+        `Stop ${client.client_name}'s active clinician-assigned monitoring protocol? Historical check-ins will remain.`
+      )
+    ) {
+      return;
+    }
+
     setStoppingProtocol(true);
+
     const supabase = createClient();
-    const { error } = await supabase.rpc("psylattice_stop_client_monitoring_protocol", { p_connection_id: client.connection_id, p_plan_id: sharedFeed.plan_id });
-    if (error) setFeedError("The monitoring protocol could not be stopped.");
-    else { setRequestMessage("Client monitoring protocol stopped."); await Promise.all([loadRequests(), loadFeed()]); }
+
+    const { error } =
+      await supabase.rpc(
+        "psylattice_stop_client_monitoring_protocol",
+        {
+          p_connection_id:
+            client.connection_id,
+          p_plan_id:
+            sharedFeed.plan_id,
+        }
+      );
+
+    if (error) {
+      setFeedError(
+        "The monitoring protocol could not be stopped."
+      );
+    } else {
+      setRequestMessage(
+        "Client monitoring protocol stopped."
+      );
+
+      await Promise.all([
+        loadRequests(true),
+        loadFeed(true),
+      ]);
+    }
+
     setStoppingProtocol(false);
   }
 
-  if (!client) return <div className="rounded-2xl border border-slate-200 bg-white p-8 text-center"><p className="text-lg font-semibold">Select a client first</p><p className="mt-2 text-sm text-slate-500">Open a connected client before building or reviewing monitoring.</p><button type="button" onClick={() => changeScreen("clients")} className="mt-5 rounded-xl bg-slate-950 px-5 py-3 text-sm font-semibold text-white">View clients</button></div>;
+  if (!client) {
+    return (
+      <div className="rounded-2xl border border-slate-200 bg-white p-8 text-center">
+        <p className="text-lg font-semibold">
+          Select a client first
+        </p>
 
-  const initials = client.client_name.trim().split(/\s+/).filter(Boolean).slice(0,2).map((part) => part[0]).join("").toUpperCase() || "PL";
-  const activeAssignedToThisClinician = sharedFeed ? requests.some((request) => request.monitoring_plan_id === sharedFeed.plan_id && request.status === "accepted") : false;
+        <p className="mt-2 text-sm text-slate-500">
+          Choose a connected client above before
+          building or reviewing monitoring.
+        </p>
+
+        <button
+          type="button"
+          onClick={() =>
+            changeScreen("clients")
+          }
+          className="mt-5 rounded-xl bg-slate-950 px-5 py-3 text-sm font-semibold text-white"
+        >
+          View clients
+        </button>
+      </div>
+    );
+  }
+
+  const initials =
+    client.client_name
+      .trim()
+      .split(/\s+/)
+      .filter(Boolean)
+      .slice(0, 2)
+      .map((part) =>
+        part.charAt(0)
+      )
+      .join("")
+      .toUpperCase() || "PL";
+
+  const activeAssignedToThisClinician =
+    sharedFeed
+      ? requests.some(
+          (request) =>
+            request.monitoring_plan_id ===
+              sharedFeed.plan_id &&
+            request.status === "accepted"
+        )
+      : false;
+
+  const selectedDates =
+    buildDateRange(
+      progressRangeDays
+    );
+
+  const schedulesPerDay =
+    sharedFeed?.protocol.length || 0;
+
+  const relevantProgressDates =
+    sharedFeed
+      ? selectedDates.filter((date) =>
+          dateFallsWithinPlan(
+            date,
+            sharedFeed.start_date,
+            sharedFeed.duration_days
+          )
+        )
+      : [];
+
+  const expectedCheckins =
+    relevantProgressDates.length *
+    schedulesPerDay;
+
+  const completedCheckins =
+    sharedFeed?.checkins.length || 0;
+
+  const monitoringConsistency =
+    expectedCheckins > 0
+      ? Math.min(
+          100,
+          Math.round(
+            (completedCheckins /
+              expectedCheckins) *
+              100
+          )
+        )
+      : 0;
+
+  const protocolItemMap = new Map<
+    string,
+    {
+      type: MonitoringBlockType;
+      prompt: string;
+      config: Record<string, any>;
+    }
+  >();
+
+  for (const schedule of
+    sharedFeed?.protocol || []) {
+    for (const item of
+      schedule.items || []) {
+      protocolItemMap.set(
+        item.key,
+        {
+          type: item.type,
+          prompt: item.prompt,
+          config: item.config || {},
+        }
+      );
+    }
+  }
+
+  function normaliseRatingToTen(
+    response: any,
+    config: Record<string, any>
+  ) {
+    const value = Number(response);
+
+    if (!Number.isFinite(value)) {
+      return null;
+    }
+
+    const min = Number(config.min);
+    const max = Number(config.max);
+
+    if (
+      Number.isFinite(min) &&
+      Number.isFinite(max) &&
+      max > min
+    ) {
+      return Math.max(
+        0,
+        Math.min(
+          10,
+          ((value - min) /
+            (max - min)) *
+            10
+        )
+      );
+    }
+
+    return value >= 0 &&
+      value <= 10
+      ? value
+      : null;
+  }
+
+  function ratingSeries(
+    checkins: MonitoringV2SharedFeed["checkins"]
+  ) {
+    const stressValues: number[] = [];
+    const sliderValues: number[] = [];
+
+    for (const checkin of checkins) {
+      for (const response of
+        checkin.responses || []) {
+        const item =
+          protocolItemMap.get(
+            response.item_key
+          );
+
+        if (!item) {
+          continue;
+        }
+
+        const value =
+          normaliseRatingToTen(
+            response.response,
+            item.config
+          );
+
+        if (value === null) {
+          continue;
+        }
+
+        if (
+          (item.type === "slider" ||
+            item.type === "number") &&
+          item.prompt
+            .toLowerCase()
+            .includes("stress")
+        ) {
+          stressValues.push(value);
+        }
+
+        if (
+          item.type === "slider"
+        ) {
+          sliderValues.push(value);
+        }
+      }
+    }
+
+    if (
+      stressValues.length > 0
+    ) {
+      return {
+        kind: "stress" as const,
+        values: stressValues,
+      };
+    }
+
+    if (
+      sliderValues.length > 0
+    ) {
+      return {
+        kind: "rating" as const,
+        values: sliderValues,
+      };
+    }
+
+    return {
+      kind: "none" as const,
+      values: [] as number[],
+    };
+  }
+
+  const overallRatings =
+    ratingSeries(
+      sharedFeed?.checkins || []
+    );
+
+  const averageRating =
+    overallRatings.values.length > 0
+      ? (
+          overallRatings.values.reduce(
+            (sum, value) =>
+              sum + value,
+            0
+          ) /
+          overallRatings.values.length
+        ).toFixed(1)
+      : null;
+
+  const ratingLabel =
+    overallRatings.kind === "stress"
+      ? "Average stress"
+      : "Average rating";
+
+  const monitoringProgressHistory =
+    [...selectedDates]
+      .reverse()
+      .map((date) => {
+        const checkins =
+          (
+            sharedFeed?.checkins || []
+          ).filter(
+            (checkin) =>
+              checkin.entry_date ===
+              date
+          );
+
+        const expected =
+          sharedFeed &&
+          dateFallsWithinPlan(
+            date,
+            sharedFeed.start_date,
+            sharedFeed.duration_days
+          )
+            ? schedulesPerDay
+            : 0;
+
+        const dailyRatings =
+          ratingSeries(checkins);
+
+        const average =
+          dailyRatings.values.length >
+          0
+            ? (
+                dailyRatings.values.reduce(
+                  (sum, value) =>
+                    sum + value,
+                  0
+                ) /
+                dailyRatings.values.length
+              ).toFixed(1)
+            : null;
+
+        return {
+          date,
+          completed:
+            checkins.length,
+          expected,
+          average,
+          kind: dailyRatings.kind,
+        };
+      })
+      .filter(
+        (day) =>
+          day.expected > 0 ||
+          day.completed > 0
+      );
+
+  const progressDaysWithData =
+    monitoringProgressHistory.filter(
+      (day) =>
+        day.average !== null
+    );
+
+  const highestProgressDay =
+    progressDaysWithData.length > 0
+      ? progressDaysWithData.reduce(
+          (highest, day) =>
+            Number(day.average) >
+            Number(highest.average)
+              ? day
+              : highest
+        )
+      : null;
+
+  const lowestProgressDay =
+    progressDaysWithData.length > 0
+      ? progressDaysWithData.reduce(
+          (lowest, day) =>
+            Number(day.average) <
+            Number(lowest.average)
+              ? day
+              : lowest
+        )
+      : null;
 
   return (
     <div className="space-y-5">
-      {requestMessage && <div className="rounded-2xl border border-emerald-200 bg-emerald-50 px-5 py-4 text-sm text-emerald-800">{requestMessage}</div>}
-      {requestError && <div className="rounded-2xl border border-red-200 bg-red-50 px-5 py-4 text-sm text-red-700">{requestError}</div>}
+      {requestMessage && (
+        <div className="rounded-2xl border border-emerald-200 bg-emerald-50 px-5 py-4 text-sm text-emerald-800">
+          {requestMessage}
+        </div>
+      )}
+
+      {requestError && (
+        <div className="rounded-2xl border border-red-200 bg-red-50 px-5 py-4 text-sm text-red-700">
+          {requestError}
+        </div>
+      )}
 
       <div className="flex flex-wrap items-center justify-between gap-4 rounded-2xl border border-slate-200 bg-white p-5">
-        <div className="flex items-center gap-4"><PersonAvatar initials={initials} large /><div><p className="text-xs font-medium uppercase tracking-[0.12em] text-slate-400">Monitoring Builder V2</p><h2 className="mt-1 text-xl font-semibold">{client.client_name}</h2><p className="mt-1 text-sm text-slate-500">Build flexible EMA/ESM protocols with branching, activities and library questionnaires.</p></div></div>
-        <div className="flex flex-wrap gap-2">{permissions?.share_monitoring ? <Status type="success">Client sharing ON</Status> : <Status>Client sharing OFF</Status>}<Status type={receivingMonitoring ? "accent" : "neutral"}>{receivingMonitoring ? "Receiving feed" : "Feed paused"}</Status></div>
+        <div className="flex items-center gap-4">
+          <PersonAvatar
+            initials={initials}
+            large
+          />
+
+          <div>
+            <p className="text-xs font-medium uppercase tracking-[0.12em] text-slate-400">
+              Ambulatory Monitoring
+            </p>
+
+            <h2 className="mt-1 text-xl font-semibold">
+              {client.client_name}
+            </h2>
+
+            <p className="mt-1 text-sm text-slate-500">
+              Review real check-ins,
+              longitudinal monitoring progress
+              and clinician-assigned protocols.
+            </p>
+          </div>
+        </div>
+
+        <div className="flex flex-wrap gap-2">
+          {permissions?.share_monitoring ? (
+            <Status type="success">
+              Client sharing ON
+            </Status>
+          ) : (
+            <Status>
+              Client sharing OFF
+            </Status>
+          )}
+
+          <Status
+            type={
+              receivingMonitoring
+                ? "accent"
+                : "neutral"
+            }
+          >
+            {receivingMonitoring
+              ? "Receiving feed"
+              : "Feed paused"}
+          </Status>
+        </div>
       </div>
 
-      <Panel title="Build a monitoring protocol" description="Each daily check-in can contain different blocks. Conditional logic can depend on any earlier response and can be nested across multiple levels.">
-        <div className="grid gap-4 md:grid-cols-[1fr_180px]">
-          <label><span className="text-xs font-medium text-slate-500">Protocol name</span><input value={protocolName} onChange={(event) => setProtocolName(event.target.value)} className="mt-2 w-full rounded-xl border border-slate-200 px-3 py-2.5 text-sm" /></label>
-          <label><span className="text-xs font-medium text-slate-500">Duration (days)</span><input type="number" min="1" max="365" value={durationDays} onChange={(event) => setDurationDays(Number(event.target.value))} className="mt-2 w-full rounded-xl border border-slate-200 px-3 py-2.5 text-sm" /></label>
-        </div>
-        <div className="mt-6"><MonitoringProtocolBuilderV2 protocol={protocol} onChange={setProtocol} questionnaires={questionnaires} /></div>
-        <label className="mt-6 block"><span className="text-xs font-medium text-slate-500">Optional message to client</span><textarea value={note} onChange={(event) => setNote(event.target.value)} className="mt-2 min-h-24 w-full rounded-xl border border-slate-200 p-4 text-sm" placeholder="Explain why you are suggesting this protocol or what you would like the client to observe." /></label>
-        <div className="mt-5 rounded-xl border border-cyan-100 bg-cyan-50/60 p-4"><p className="text-sm font-medium text-cyan-950">The client remains in control.</p><p className="mt-1 text-xs leading-5 text-slate-600">They can edit your schedule, questions, options, activities and branching before accepting. Questionnaire blocks continue to reference the standardized library questionnaire rather than editable copied items.</p></div>
-        <button type="button" disabled={sending} onClick={() => void sendRequest()} className="mt-5 rounded-xl bg-slate-950 px-5 py-3 text-sm font-semibold text-white disabled:opacity-50">{sending ? "Sending..." : "Send protocol to client"}</button>
-      </Panel>
+      <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white">
+        <button
+          type="button"
+          onClick={() =>
+            setShowProtocolBuilder(
+              (current) => !current
+            )
+          }
+          className="flex w-full items-center justify-between gap-5 p-5 text-left transition hover:bg-slate-50/60"
+        >
+          <div>
+            <p className="font-semibold text-slate-950">
+              Build a monitoring protocol
+            </p>
+
+            <p className="mt-1 max-w-4xl text-sm leading-6 text-slate-500">
+              Create flexible EMA/ESM
+              check-ins with sliders,
+              branching, activities and
+              questionnaire-library blocks.
+              The builder stays collapsed
+              until you choose to open it.
+            </p>
+          </div>
+
+          <span className="shrink-0 rounded-xl border border-cyan-200 bg-cyan-50 px-4 py-2.5 text-xs font-semibold text-cyan-900">
+            {showProtocolBuilder
+              ? "Collapse builder ↑"
+              : "Expand builder ↓"}
+          </span>
+        </button>
+
+        {showProtocolBuilder && (
+          <div className="border-t border-slate-100 p-5">
+            <div className="grid gap-4 md:grid-cols-[1fr_180px]">
+              <label>
+                <span className="text-xs font-medium text-slate-500">
+                  Protocol name
+                </span>
+
+                <input
+                  value={protocolName}
+                  onChange={(event) =>
+                    setProtocolName(
+                      event.target.value
+                    )
+                  }
+                  className="mt-2 w-full rounded-xl border border-slate-200 px-3 py-2.5 text-sm"
+                />
+              </label>
+
+              <label>
+                <span className="text-xs font-medium text-slate-500">
+                  Duration (days)
+                </span>
+
+                <input
+                  type="number"
+                  min="1"
+                  max="365"
+                  value={durationDays}
+                  onChange={(event) =>
+                    setDurationDays(
+                      Number(
+                        event.target.value
+                      )
+                    )
+                  }
+                  className="mt-2 w-full rounded-xl border border-slate-200 px-3 py-2.5 text-sm"
+                />
+              </label>
+            </div>
+
+            <div className="mt-6">
+              <MonitoringProtocolBuilderV2
+                protocol={protocol}
+                onChange={setProtocol}
+                questionnaires={
+                  questionnaires
+                }
+              />
+            </div>
+
+            <label className="mt-6 block">
+              <span className="text-xs font-medium text-slate-500">
+                Optional message to client
+              </span>
+
+              <textarea
+                value={note}
+                onChange={(event) =>
+                  setNote(
+                    event.target.value
+                  )
+                }
+                className="mt-2 min-h-24 w-full rounded-xl border border-slate-200 p-4 text-sm"
+                placeholder="Explain why you are suggesting this protocol or what you would like the client to observe."
+              />
+            </label>
+
+            <div className="mt-5 rounded-xl border border-cyan-100 bg-cyan-50/60 p-4">
+              <p className="text-sm font-medium text-cyan-950">
+                The client remains in control.
+              </p>
+
+              <p className="mt-1 text-xs leading-5 text-slate-600">
+                They can edit your
+                schedule, questions, options,
+                activities and branching
+                before accepting.
+                Questionnaire blocks continue
+                to reference the standardized
+                library questionnaire rather
+                than editable copied items.
+              </p>
+            </div>
+
+            <div className="mt-5 flex flex-wrap gap-2">
+              <button
+                type="button"
+                disabled={sending}
+                onClick={() =>
+                  void sendRequest()
+                }
+                className="rounded-xl bg-slate-950 px-5 py-3 text-sm font-semibold text-white disabled:opacity-50"
+              >
+                {sending
+                  ? "Sending..."
+                  : "Send protocol to client"}
+              </button>
+
+              <button
+                type="button"
+                onClick={() =>
+                  setShowProtocolBuilder(
+                    false
+                  )
+                }
+                className="rounded-xl border border-slate-200 bg-white px-5 py-3 text-sm font-semibold text-slate-600"
+              >
+                Collapse builder
+              </button>
+            </div>
+          </div>
+        )}
+      </div>
 
       <Panel title="Protocol request activity">
-        {loadingRequests ? <p className="text-sm text-slate-500">Loading requests...</p> : requests.length === 0 ? <p className="text-sm text-slate-500">No V2 monitoring requests yet.</p> : <div className="divide-y divide-slate-100">{requests.map((request) => <div key={request.request_id} className="flex flex-col justify-between gap-3 py-4 first:pt-0 last:pb-0 sm:flex-row sm:items-start"><div><div className="flex flex-wrap items-center gap-2"><p className="text-sm font-semibold">{request.name}</p><Status type={request.status === "accepted" ? "success" : request.status === "pending" ? "warning" : "neutral"}>{request.stopped_at ? `Stopped by ${request.stopped_by}` : request.status}</Status></div><p className="mt-1 text-xs text-slate-400">{request.duration_days} days · {request.protocol.length} check-ins/day · {new Date(request.created_at).toLocaleString()}</p></div>{request.status === "pending" && <button type="button" disabled={cancellingId === request.request_id} onClick={() => void cancelRequest(request)} className="rounded-lg border border-red-200 px-3 py-2 text-xs font-semibold text-red-700">{cancellingId === request.request_id ? "Cancelling..." : "Cancel request"}</button>}</div>)}</div>}
+        {loadingRequests ? (
+          <p className="text-sm text-slate-500">
+            Loading requests...
+          </p>
+        ) : requests.length === 0 ? (
+          <p className="text-sm text-slate-500">
+            No V2 monitoring requests yet.
+          </p>
+        ) : (
+          <div className="divide-y divide-slate-100">
+            {requests.map((request) => (
+              <div
+                key={request.request_id}
+                className="flex flex-col justify-between gap-3 py-4 first:pt-0 last:pb-0 sm:flex-row sm:items-start"
+              >
+                <div>
+                  <div className="flex flex-wrap items-center gap-2">
+                    <p className="text-sm font-semibold">
+                      {request.name}
+                    </p>
+
+                    <Status
+                      type={
+                        request.status ===
+                        "accepted"
+                          ? "success"
+                          : request.status ===
+                              "pending"
+                            ? "warning"
+                            : "neutral"
+                      }
+                    >
+                      {request.stopped_at
+                        ? `Stopped by ${request.stopped_by}`
+                        : request.status}
+                    </Status>
+                  </div>
+
+                  <p className="mt-1 text-xs text-slate-400">
+                    {request.duration_days}{" "}
+                    days ·{" "}
+                    {
+                      request.protocol
+                        .length
+                    }{" "}
+                    check-ins/day ·{" "}
+                    {new Date(
+                      request.created_at
+                    ).toLocaleString()}
+                  </p>
+                </div>
+
+                {request.status ===
+                  "pending" && (
+                  <button
+                    type="button"
+                    disabled={
+                      cancellingId ===
+                      request.request_id
+                    }
+                    onClick={() =>
+                      void cancelRequest(
+                        request
+                      )
+                    }
+                    className="rounded-lg border border-red-200 px-3 py-2 text-xs font-semibold text-red-700"
+                  >
+                    {cancellingId ===
+                    request.request_id
+                      ? "Cancelling..."
+                      : "Cancel request"}
+                  </button>
+                )}
+              </div>
+            ))}
+          </div>
+        )}
       </Panel>
 
-      <Panel title="Monitoring feed controls" description="Client consent and your receiving preference are independent.">
-        <div className="flex flex-col justify-between gap-4 rounded-xl bg-slate-50 p-5 sm:flex-row sm:items-center"><div><p className="font-medium">{receivingMonitoring ? "Receiving monitoring data when authorised" : "You paused this monitoring feed"}</p><p className="mt-1 text-xs leading-5 text-slate-500">Pausing receiving does not turn off the client's consent setting. You can resume later.</p></div><button type="button" disabled={updatingReceiving} onClick={() => void toggleReceiving()} className={`rounded-xl px-4 py-2.5 text-xs font-semibold ${receivingMonitoring ? "border border-red-200 bg-white text-red-700" : "bg-slate-950 text-white"}`}>{updatingReceiving ? "Updating..." : receivingMonitoring ? "Stop receiving monitoring" : "Resume receiving"}</button></div>
+      <Panel
+        title="Monitoring feed controls"
+        description="Client consent and your receiving preference are independent."
+      >
+        <div className="flex flex-col justify-between gap-4 rounded-xl bg-slate-50 p-5 sm:flex-row sm:items-center">
+          <div>
+            <p className="font-medium">
+              {receivingMonitoring
+                ? "Receiving monitoring data when authorised"
+                : "You paused this monitoring feed"}
+            </p>
+
+            <p className="mt-1 text-xs leading-5 text-slate-500">
+              Pausing receiving does not
+              turn off the client's consent
+              setting. You can resume later.
+            </p>
+          </div>
+
+          <button
+            type="button"
+            disabled={
+              updatingReceiving
+            }
+            onClick={() =>
+              void toggleReceiving()
+            }
+            className={`rounded-xl px-4 py-2.5 text-xs font-semibold ${
+              receivingMonitoring
+                ? "border border-red-200 bg-white text-red-700"
+                : "bg-slate-950 text-white"
+            }`}
+          >
+            {updatingReceiving
+              ? "Updating..."
+              : receivingMonitoring
+                ? "Stop receiving monitoring"
+                : "Resume receiving"}
+          </button>
+        </div>
       </Panel>
 
-      {permissionsError ? <div className="rounded-2xl border border-red-200 bg-red-50 px-5 py-4 text-sm text-red-700">{permissionsError}</div> : loadingPermissions ? <Panel title="Shared monitoring"><p className="text-sm text-slate-500">Checking client permission...</p></Panel> : !permissions?.share_monitoring ? (
-        <Panel title="Shared monitoring data"><div className="rounded-2xl border border-dashed border-slate-300 bg-slate-50 p-8 text-center"><p className="font-semibold">Monitoring data is not shared by the client</p><p className="mx-auto mt-2 max-w-xl text-sm text-slate-500">You can still build and send protocols, but the database will not return their monitoring responses until Daily monitoring sharing is enabled.</p><button type="button" onClick={() => changeScreen("permissions")} className="mt-5 rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm font-semibold">View consent & data access</button></div></Panel>
+      {permissionsError ? (
+        <div className="rounded-2xl border border-red-200 bg-red-50 px-5 py-4 text-sm text-red-700">
+          {permissionsError}
+        </div>
+      ) : loadingPermissions ? (
+        <Panel title="Shared monitoring">
+          <p className="text-sm text-slate-500">
+            Checking client permission...
+          </p>
+        </Panel>
+      ) : !permissions?.share_monitoring ? (
+        <Panel title="Shared monitoring data">
+          <div className="rounded-2xl border border-dashed border-slate-300 bg-slate-50 p-8 text-center">
+            <p className="font-semibold">
+              Monitoring data is not
+              shared by the client
+            </p>
+
+            <p className="mx-auto mt-2 max-w-xl text-sm text-slate-500">
+              You can still build and
+              send protocols, but the
+              database will not return
+              their monitoring responses
+              until Daily monitoring
+              sharing is enabled.
+            </p>
+
+            <button
+              type="button"
+              onClick={() =>
+                changeScreen(
+                  "permissions"
+                )
+              }
+              className="mt-5 rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm font-semibold"
+            >
+              View consent & data access
+            </button>
+          </div>
+        </Panel>
       ) : !receivingMonitoring ? (
-        <Panel title="Shared monitoring data"><div className="rounded-2xl bg-slate-50 p-6"><p className="font-semibold">You chose to stop receiving this feed.</p><p className="mt-2 text-sm text-slate-500">The client may still be sharing, but PsyLattice is not returning monitoring data to your Clinical workspace while your receiving preference is paused.</p></div></Panel>
+        <Panel title="Shared monitoring data">
+          <div className="rounded-2xl bg-slate-50 p-6">
+            <p className="font-semibold">
+              You chose to stop receiving
+              this feed.
+            </p>
+
+            <p className="mt-2 text-sm text-slate-500">
+              The client may still be
+              sharing, but PsyLattice is
+              not returning monitoring data
+              to your Clinical workspace
+              while your receiving
+              preference is paused.
+            </p>
+          </div>
+        </Panel>
       ) : (
         <>
-          {feedError && <div className="rounded-2xl border border-red-200 bg-red-50 px-5 py-4 text-sm text-red-700">{feedError}</div>}
-          <Panel title="Actual client protocol" description="This reflects the client's accepted/customised version, not necessarily the exact protocol you originally suggested.">
-            {loadingFeed ? <p className="text-sm text-slate-500">Loading shared protocol...</p> : !sharedFeed ? <p className="text-sm text-slate-500">No active shared V2 monitoring protocol.</p> : <div><div className="flex flex-col justify-between gap-4 sm:flex-row sm:items-center"><div><p className="font-semibold">{sharedFeed.plan_name}</p><p className="mt-1 text-sm text-slate-500">{sharedFeed.duration_days} days · {sharedFeed.protocol.length} daily check-ins</p></div>{activeAssignedToThisClinician && <button type="button" disabled={stoppingProtocol} onClick={() => void stopClientProtocol()} className="rounded-xl border border-red-200 bg-white px-4 py-2.5 text-xs font-semibold text-red-700">{stoppingProtocol ? "Stopping..." : "Stop this protocol"}</button>}</div><div className="mt-5 grid gap-3 md:grid-cols-2">{sharedFeed.protocol.map((schedule) => <div key={schedule.schedule_id || schedule.key} className="rounded-xl border border-slate-200 p-4"><p className="font-medium">{schedule.label}</p><p className="mt-1 text-xs text-slate-400">{schedule.start_time}–{schedule.end_time}</p><div className="mt-3 space-y-2">{schedule.items.map((item) => <div key={item.item_id || item.key} className="rounded-lg bg-slate-50 p-3"><div className="flex justify-between gap-2"><p className="text-xs font-medium text-slate-700">{item.prompt}</p><span className="text-[10px] uppercase text-slate-400">{item.type.replaceAll("_", " ")}</span></div>{item.visibility.mode === "conditional" && <p className="mt-1 text-[10px] font-medium text-cyan-800">Conditional · {item.visibility.conditions.length} rule(s)</p>}</div>)}</div></div>)}</div></div>}
+          {feedError && (
+            <div className="rounded-2xl border border-red-200 bg-red-50 px-5 py-4 text-sm text-red-700">
+              {feedError}
+            </div>
+          )}
+
+          <Panel
+            title="Client monitoring progress"
+            description="Monitoring-related progress derived from the same Monitoring V2 records used in the client's Self → Progress tab."
+          >
+            {!permissions?.share_progress ? (
+              <div className="rounded-2xl border border-dashed border-slate-300 bg-slate-50 p-6">
+                <p className="font-semibold text-slate-800">
+                  Progress & trends are
+                  not shared
+                </p>
+
+                <p className="mt-2 text-sm leading-6 text-slate-500">
+                  The client is sharing
+                  their Daily Monitoring
+                  feed, but has not
+                  authorised the separate
+                  Progress & trends
+                  permission. Raw authorised
+                  check-ins remain available
+                  below, while longitudinal
+                  progress summaries stay
+                  hidden.
+                </p>
+              </div>
+            ) : loadingFeed ? (
+              <p className="text-sm text-slate-500">
+                Loading client progress...
+              </p>
+            ) : !sharedFeed ? (
+              <div className="rounded-2xl bg-slate-50 p-5">
+                <p className="font-medium text-slate-800">
+                  No active shared
+                  monitoring plan
+                </p>
+              </div>
+            ) : (
+              <div className="space-y-5">
+                <div className="flex flex-wrap items-center justify-between gap-3">
+                  <div>
+                    <p className="text-sm font-semibold text-slate-900">
+                      {sharedFeed.plan_name}
+                    </p>
+
+                    <p className="mt-1 text-xs text-slate-500">
+                      Progress for the last{" "}
+                      {progressRangeDays} days
+                    </p>
+                  </div>
+
+                  <div className="flex rounded-xl border border-slate-200 bg-white p-1">
+                    {(
+                      [7, 14, 30] as const
+                    ).map((days) => (
+                      <button
+                        key={days}
+                        type="button"
+                        onClick={() =>
+                          setProgressRangeDays(
+                            days
+                          )
+                        }
+                        className={`rounded-lg px-4 py-2 text-xs font-semibold transition ${
+                          progressRangeDays ===
+                          days
+                            ? "bg-slate-950 text-white"
+                            : "text-slate-500 hover:bg-slate-50 hover:text-slate-900"
+                        }`}
+                      >
+                        {days} days
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+                  <StatCard
+                    label="Check-ins completed"
+                    value={`${completedCheckins} / ${expectedCheckins}`}
+                    detail={`Selected ${progressRangeDays}-day range`}
+                  />
+
+                  <StatCard
+                    label="Monitoring consistency"
+                    value={`${monitoringConsistency}%`}
+                    detail={`${schedulesPerDay} scheduled check-ins / day`}
+                  />
+
+                  <StatCard
+                    label={ratingLabel}
+                    value={
+                      averageRating
+                        ? `${averageRating} / 10`
+                        : "No data"
+                    }
+                    detail={
+                      overallRatings.kind ===
+                      "stress"
+                        ? "Across saved stress responses"
+                        : overallRatings.kind ===
+                            "rating"
+                          ? "Across saved slider responses"
+                          : "No numeric slider response in this range"
+                    }
+                  />
+
+                  <StatCard
+                    label="Days with ratings"
+                    value={String(
+                      progressDaysWithData.length
+                    )}
+                    detail="Days containing numeric monitoring ratings"
+                  />
+                </div>
+
+                <div className="grid gap-5 xl:grid-cols-[1.2fr_.8fr]">
+                  <div className="rounded-2xl border border-slate-200 p-5">
+                    <p className="font-semibold text-slate-900">
+                      Daily progress
+                    </p>
+
+                    <p className="mt-1 text-xs text-slate-500">
+                      Completion and
+                      available rating
+                      summaries by day.
+                    </p>
+
+                    {monitoringProgressHistory.length ===
+                    0 ? (
+                      <p className="mt-5 text-sm text-slate-500">
+                        No monitoring
+                        records are available
+                        in this range yet.
+                      </p>
+                    ) : (
+                      <div className="mt-5 divide-y divide-slate-100">
+                        {monitoringProgressHistory.map(
+                          (day) => {
+                            const percentage =
+                              day.expected > 0
+                                ? Math.min(
+                                    100,
+                                    Math.round(
+                                      (day.completed /
+                                        day.expected) *
+                                        100
+                                    )
+                                  )
+                                : 0;
+
+                            return (
+                              <div
+                                key={
+                                  day.date
+                                }
+                                className="grid gap-3 py-4 first:pt-0 last:pb-0 sm:grid-cols-[80px_1fr_auto] sm:items-center"
+                              >
+                                <p className="text-sm font-medium text-slate-800">
+                                  {formatProgressDate(
+                                    day.date
+                                  )}
+                                </p>
+
+                                <div>
+                                  <p className="text-xs text-slate-500">
+                                    {
+                                      day.completed
+                                    }{" "}
+                                    /{" "}
+                                    {
+                                      day.expected
+                                    }{" "}
+                                    check-ins
+                                  </p>
+
+                                  <div className="mt-2 h-2 overflow-hidden rounded-full bg-slate-100">
+                                    <div
+                                      className="h-full rounded-full bg-cyan-700"
+                                      style={{
+                                        width: `${percentage}%`,
+                                      }}
+                                    />
+                                  </div>
+                                </div>
+
+                                <span className="text-xs font-medium text-slate-500">
+                                  {day.average
+                                    ? `${
+                                        day.kind ===
+                                        "stress"
+                                          ? "Stress"
+                                          : "Avg"
+                                      } ${
+                                        day.average
+                                      } / 10`
+                                    : day.completed >
+                                        0
+                                      ? "Completed"
+                                      : "No rating"}
+                                </span>
+                              </div>
+                            );
+                          }
+                        )}
+                      </div>
+                    )}
+                  </div>
+
+                  <div className="rounded-2xl border border-cyan-100 bg-cyan-50/50 p-5">
+                    <p className="font-semibold text-cyan-950">
+                      Descriptive pattern
+                    </p>
+
+                    {highestProgressDay &&
+                    lowestProgressDay &&
+                    progressDaysWithData.length >=
+                      2 ? (
+                      <p className="mt-3 text-sm leading-6 text-slate-600">
+                        Within this{" "}
+                        {progressRangeDays}
+                        -day view, the
+                        highest daily average{" "}
+                        {overallRatings.kind ===
+                        "stress"
+                          ? "stress "
+                          : "slider rating "}
+                        was{" "}
+                        {
+                          highestProgressDay.average
+                        }
+                        /10 on{" "}
+                        {formatProgressDate(
+                          highestProgressDay.date
+                        )}
+                        , while the lowest
+                        was{" "}
+                        {
+                          lowestProgressDay.average
+                        }
+                        /10 on{" "}
+                        {formatProgressDate(
+                          lowestProgressDay.date
+                        )}
+                        .
+                      </p>
+                    ) : completedCheckins >
+                      0 ? (
+                      <p className="mt-3 text-sm leading-6 text-slate-600">
+                        Check-in progress is
+                        being recorded. At
+                        least two days with
+                        numeric slider
+                        responses are needed
+                        for a daily rating
+                        comparison.
+                      </p>
+                    ) : (
+                      <p className="mt-3 text-sm leading-6 text-slate-600">
+                        No completed
+                        monitoring check-ins
+                        are available in this
+                        range yet.
+                      </p>
+                    )}
+
+                    <p className="mt-4 text-xs leading-5 text-slate-500">
+                      These are descriptive
+                      summaries from the
+                      client's authorised
+                      Monitoring V2 records;
+                      they do not establish
+                      diagnosis or causation.
+                    </p>
+                  </div>
+                </div>
+              </div>
+            )}
           </Panel>
 
-          <Panel title="Recent shared check-ins" description="Responses are shown according to the actual blocks that were visible and submitted during each check-in.">
-            {!sharedFeed || sharedFeed.checkins.length === 0 ? <p className="text-sm text-slate-500">No shared V2 check-ins in the past 14 days.</p> : <div className="divide-y divide-slate-100">{sharedFeed.checkins.slice(0, 20).map((checkin) => <div key={checkin.checkin_id} className="py-5 first:pt-0 last:pb-0"><div className="flex flex-wrap items-center justify-between gap-3"><p className="font-semibold">{checkin.schedule_label}</p><span className="text-xs text-slate-400">{new Date(checkin.completed_at).toLocaleString()}</span></div><div className="mt-4 grid gap-3 sm:grid-cols-2">{checkin.responses.map((response) => <div key={response.item_id} className="rounded-xl bg-slate-50 p-4"><p className="text-xs text-slate-400">{response.prompt}</p><p className="mt-2 text-sm font-medium text-slate-700">{monitoringResponseText(response.response)}</p></div>)}</div></div>)}</div>}
+          <Panel
+            title="Actual client protocol"
+            description="This reflects the client's accepted/customised version, not necessarily the exact protocol you originally suggested."
+          >
+            {loadingFeed ? (
+              <p className="text-sm text-slate-500">
+                Loading shared protocol...
+              </p>
+            ) : !sharedFeed ? (
+              <p className="text-sm text-slate-500">
+                No active shared V2
+                monitoring protocol.
+              </p>
+            ) : (
+              <div>
+                <div className="flex flex-col justify-between gap-4 sm:flex-row sm:items-center">
+                  <div>
+                    <p className="font-semibold">
+                      {
+                        sharedFeed.plan_name
+                      }
+                    </p>
+
+                    <p className="mt-1 text-sm text-slate-500">
+                      {
+                        sharedFeed.duration_days
+                      }{" "}
+                      days ·{" "}
+                      {
+                        sharedFeed.protocol
+                          .length
+                      }{" "}
+                      daily check-ins
+                    </p>
+                  </div>
+
+                  {activeAssignedToThisClinician && (
+                    <button
+                      type="button"
+                      disabled={
+                        stoppingProtocol
+                      }
+                      onClick={() =>
+                        void stopClientProtocol()
+                      }
+                      className="rounded-xl border border-red-200 bg-white px-4 py-2.5 text-xs font-semibold text-red-700"
+                    >
+                      {stoppingProtocol
+                        ? "Stopping..."
+                        : "Stop this protocol"}
+                    </button>
+                  )}
+                </div>
+
+                <div className="mt-5 grid gap-3 md:grid-cols-2">
+                  {sharedFeed.protocol.map(
+                    (schedule) => (
+                      <div
+                        key={
+                          schedule.schedule_id ||
+                          schedule.key
+                        }
+                        className="rounded-xl border border-slate-200 p-4"
+                      >
+                        <p className="font-medium">
+                          {
+                            schedule.label
+                          }
+                        </p>
+
+                        <p className="mt-1 text-xs text-slate-400">
+                          {
+                            schedule.start_time
+                          }
+                          –
+                          {
+                            schedule.end_time
+                          }
+                        </p>
+
+                        <div className="mt-3 space-y-2">
+                          {schedule.items.map(
+                            (item) => (
+                              <div
+                                key={
+                                  item.item_id ||
+                                  item.key
+                                }
+                                className="rounded-lg bg-slate-50 p-3"
+                              >
+                                <div className="flex justify-between gap-2">
+                                  <p className="text-xs font-medium text-slate-700">
+                                    {
+                                      item.prompt
+                                    }
+                                  </p>
+
+                                  <span className="text-[10px] uppercase text-slate-400">
+                                    {item.type.replaceAll(
+                                      "_",
+                                      " "
+                                    )}
+                                  </span>
+                                </div>
+
+                                {item.visibility
+                                  .mode ===
+                                  "conditional" && (
+                                  <p className="mt-1 text-[10px] font-medium text-cyan-800">
+                                    Conditional ·{" "}
+                                    {
+                                      item
+                                        .visibility
+                                        .conditions
+                                        .length
+                                    }{" "}
+                                    rule(s)
+                                  </p>
+                                )}
+                              </div>
+                            )
+                          )}
+                        </div>
+                      </div>
+                    )
+                  )}
+                </div>
+              </div>
+            )}
+          </Panel>
+
+          <Panel
+            title="Recent shared check-ins"
+            description={`Responses are shown according to the actual blocks that were visible and submitted during each check-in. Showing the selected ${progressRangeDays}-day progress range.`}
+          >
+            <div className="mb-4 flex justify-end">
+              <button
+                type="button"
+                disabled={loadingFeed}
+                onClick={() =>
+                  void loadFeed(true)
+                }
+                className="rounded-xl border border-cyan-200 bg-white px-3 py-2 text-xs font-semibold text-cyan-900 disabled:opacity-50"
+              >
+                {loadingFeed
+                  ? "Refreshing..."
+                  : "Refresh monitoring data"}
+              </button>
+            </div>
+
+            {!sharedFeed ||
+            sharedFeed.checkins.length ===
+              0 ? (
+              <p className="text-sm text-slate-500">
+                No shared V2 check-ins in
+                the selected{" "}
+                {progressRangeDays}-day
+                range.
+              </p>
+            ) : (
+              <div className="divide-y divide-slate-100">
+                {sharedFeed.checkins
+                  .slice(0, 30)
+                  .map((checkin) => (
+                    <div
+                      key={
+                        checkin.checkin_id
+                      }
+                      className="py-5 first:pt-0 last:pb-0"
+                    >
+                      <div className="flex flex-wrap items-center justify-between gap-3">
+                        <p className="font-semibold">
+                          {
+                            checkin.schedule_label
+                          }
+                        </p>
+
+                        <span className="text-xs text-slate-400">
+                          {new Date(
+                            checkin.completed_at
+                          ).toLocaleString()}
+                        </span>
+                      </div>
+
+                      <div className="mt-4 grid gap-3 sm:grid-cols-2">
+                        {checkin.responses.map(
+                          (response) => (
+                            <div
+                              key={
+                                response.item_id
+                              }
+                              className="rounded-xl bg-slate-50 p-4"
+                            >
+                              <p className="text-xs text-slate-400">
+                                {
+                                  response.prompt
+                                }
+                              </p>
+
+                              <p className="mt-2 text-sm font-medium text-slate-700">
+                                {monitoringResponseText(
+                                  response.response
+                                )}
+                              </p>
+                            </div>
+                          )
+                        )}
+                      </div>
+                    </div>
+                  ))}
+              </div>
+            )}
           </Panel>
         </>
       )}
@@ -7079,6 +8657,70 @@ export default function ClinicianWorkspace() {
   const [screen, setScreen] = useState<Screen>("dashboard");
   const [selectedClient, setSelectedClient] =
     useState<ConnectedClient | null>(null);
+  const [clinicianName, setClinicianName] = useState("");
+  const [currentLocalTime, setCurrentLocalTime] = useState(
+    () => new Date()
+  );
+
+  useEffect(() => {
+    async function loadClinicianProfile() {
+      const supabase = createClient();
+
+      const {
+        data: { user },
+        error: userError,
+      } = await supabase.auth.getUser();
+
+      if (userError || !user) {
+        console.error(
+          "Could not load clinician account:",
+          userError
+        );
+        setClinicianName("Clinician");
+        return;
+      }
+
+      const { data: profile, error: profileError } =
+        await supabase
+          .from("profiles")
+          .select("full_name")
+          .eq("id", user.id)
+          .maybeSingle();
+
+      if (profileError) {
+        console.error(
+          "Could not load clinician profile:",
+          profileError
+        );
+      }
+
+      setClinicianName(
+        profile?.full_name?.trim() ||
+          user.user_metadata?.full_name?.trim?.() ||
+          user.email?.split("@")[0] ||
+          "Clinician"
+      );
+    }
+
+    void loadClinicianProfile();
+  }, []);
+
+  useEffect(() => {
+    const updateClock = () => {
+      setCurrentLocalTime(new Date());
+    };
+
+    updateClock();
+
+    const timer = window.setInterval(
+      updateClock,
+      60_000
+    );
+
+    return () => {
+      window.clearInterval(timer);
+    };
+  }, []);
 
   function openClient(client: ConnectedClient) {
     setSelectedClient(client);
@@ -7126,11 +8768,35 @@ export default function ClinicianWorkspace() {
     return true;
   }
 
+  const clinicianFirstName =
+    clinicianName.trim().split(/\s+/)[0] ||
+    "Clinician";
+
+  const clinicianInitials =
+    clinicianName
+      .trim()
+      .split(/\s+/)
+      .filter(Boolean)
+      .slice(0, 2)
+      .map((part) => part.charAt(0))
+      .join("")
+      .toUpperCase() || "CL";
+
+  const localHour =
+    currentLocalTime.getHours();
+
+  const greeting =
+    localHour < 12
+      ? "Good morning"
+      : localHour < 17
+        ? "Good afternoon"
+        : "Good evening";
+
   const activeNavigation = navigation.find((item) => item.id === screen)!;
 
   const descriptions: Record<Screen, string> = {
     dashboard:
-      "A concise view of your caseload, professional reviews, appointments and follow-up tasks.",
+      "A concise view of your connected caseload and authorised clinical data.",
 
     clients:
       "View only clients assigned to you or explicitly shared through an authorised professional workflow.",
@@ -7323,8 +8989,11 @@ export default function ClinicianWorkspace() {
           <div className="hidden items-center gap-3 sm:flex">
             <Status type="accent">Verified clinician</Status>
 
-            <div className="flex h-9 w-9 items-center justify-center rounded-full bg-slate-100 text-xs font-semibold">
-              AS
+            <div
+              title={clinicianName || "Clinician"}
+              className="flex h-9 w-9 items-center justify-center rounded-full bg-slate-100 text-xs font-semibold"
+            >
+              {clinicianInitials}
             </div>
 
             <Link
@@ -7420,7 +9089,7 @@ export default function ClinicianWorkspace() {
 
               <h1 className="text-2xl font-semibold tracking-[-0.025em] sm:text-3xl">
                 {screen === "dashboard"
-                  ? "Good afternoon, Dr. Sharma."
+                  ? `${greeting}, ${clinicianFirstName}.`
                   : activeNavigation.label}
               </h1>
 

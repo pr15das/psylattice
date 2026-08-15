@@ -725,6 +725,32 @@ function Dashboard({
   const [todayRegulationCompletions, setTodayRegulationCompletions] =
     useState<DashboardRegulationCompletion[]>([]);
 
+  type DashboardConnectedClinician = {
+    connection_id: string;
+    clinician_id: string;
+    clinician_name: string;
+    clinician_email: string;
+    connected_at: string;
+    share_assessments: boolean;
+    share_monitoring: boolean;
+    share_progress: boolean;
+    share_wearables: boolean;
+    share_regulation: boolean;
+  };
+
+  const [
+    dashboardClinicians,
+    setDashboardClinicians,
+  ] = useState<DashboardConnectedClinician[]>([]);
+  const [
+    loadingDashboardClinicians,
+    setLoadingDashboardClinicians,
+  ] = useState(true);
+  const [
+    dashboardClinicianError,
+    setDashboardClinicianError,
+  ] = useState("");
+
   function getLocalDateString(date = new Date()) {
     return [
       date.getFullYear(),
@@ -852,6 +878,41 @@ function Dashboard({
     };
   }
 
+  async function loadDashboardClinicians(
+    showLoading = true
+  ) {
+    if (showLoading) {
+      setLoadingDashboardClinicians(true);
+    }
+
+    setDashboardClinicianError("");
+
+    const supabase = createClient();
+
+    const { data, error } = await supabase.rpc(
+      "psylattice_my_clinicians_and_permissions_v2"
+    );
+
+    if (error) {
+      console.error(
+        "Could not load connected clinicians for dashboard:",
+        error
+      );
+
+      setDashboardClinicianError(
+        "Your connected clinician information could not be loaded."
+      );
+      setDashboardClinicians([]);
+      setLoadingDashboardClinicians(false);
+      return;
+    }
+
+    setDashboardClinicians(
+      (data ?? []) as DashboardConnectedClinician[]
+    );
+    setLoadingDashboardClinicians(false);
+  }
+
   async function loadDashboardMonitoring(
     showLoading = true
   ) {
@@ -934,9 +995,11 @@ function Dashboard({
   }
 
   useEffect(() => {
+    void loadDashboardClinicians(true);
     void loadDashboardMonitoring(true);
 
     function refreshMonitoring() {
+      void loadDashboardClinicians(false);
       void loadDashboardMonitoring(false);
     }
 
@@ -1234,6 +1297,14 @@ function Dashboard({
 
   return (
     <div className="space-y-5">
+      {dashboardClinicianError && (
+        <div className="rounded-2xl border border-red-200 bg-red-50 px-5 py-4">
+          <p className="text-sm text-red-700">
+            {dashboardClinicianError}
+          </p>
+        </div>
+      )}
+
       {monitoringError && (
         <div className="rounded-2xl border border-red-200 bg-red-50 px-5 py-4">
           <p className="text-sm text-red-700">
@@ -1254,9 +1325,10 @@ function Dashboard({
         <button
           type="button"
           disabled={loadingMonitoring}
-          onClick={() =>
-            void loadDashboardMonitoring(true)
-          }
+          onClick={() => {
+            void loadDashboardClinicians(true);
+            void loadDashboardMonitoring(true);
+          }}
           className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-slate-600 transition hover:bg-slate-50 disabled:opacity-50"
         >
           Refresh dashboard
@@ -1331,6 +1403,106 @@ function Dashboard({
           }
         />
       </div>
+
+      <Panel
+        title={
+          dashboardClinicians.length === 1
+            ? "Your connected clinician"
+            : "Your connected clinicians"
+        }
+        description="This is loaded from your active PsyLattice clinician connection, not from demo data."
+      >
+        {loadingDashboardClinicians ? (
+          <p className="text-sm text-slate-500">
+            Loading clinician connection...
+          </p>
+        ) : dashboardClinicians.length === 0 ? (
+          <div className="rounded-2xl bg-slate-50 p-5">
+            <p className="font-medium text-slate-800">
+              No clinician currently connected
+            </p>
+
+            <p className="mt-2 text-sm leading-6 text-slate-500">
+              When you accept a clinician invitation, their actual
+              PsyLattice account identity will appear here.
+            </p>
+          </div>
+        ) : (
+          <div className="divide-y divide-slate-100">
+            {dashboardClinicians.map((clinician) => {
+              const initials =
+                clinician.clinician_name
+                  .trim()
+                  .split(/\s+/)
+                  .filter(Boolean)
+                  .slice(0, 2)
+                  .map((part) => part.charAt(0))
+                  .join("")
+                  .toUpperCase() || "CL";
+
+              const sharedCount = [
+                clinician.share_assessments,
+                clinician.share_monitoring,
+                clinician.share_progress,
+                clinician.share_wearables,
+                clinician.share_regulation,
+              ].filter(Boolean).length;
+
+              return (
+                <div
+                  key={clinician.connection_id}
+                  className="flex flex-col justify-between gap-4 py-4 first:pt-0 last:pb-0 sm:flex-row sm:items-center"
+                >
+                  <div className="flex min-w-0 items-center gap-3">
+                    <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-cyan-50 text-sm font-semibold text-cyan-900">
+                      {initials}
+                    </div>
+
+                    <div className="min-w-0">
+                      <p className="font-semibold text-slate-950">
+                        {clinician.clinician_name}
+                      </p>
+
+                      {clinician.clinician_email && (
+                        <p className="mt-1 break-all text-xs text-slate-500">
+                          {clinician.clinician_email}
+                        </p>
+                      )}
+
+                      <p className="mt-1 text-xs text-slate-400">
+                        Connected{" "}
+                        {new Date(
+                          clinician.connected_at
+                        ).toLocaleDateString()}
+                      </p>
+                    </div>
+                  </div>
+
+                  <div className="flex flex-wrap items-center gap-2">
+                    <span className="rounded-full bg-emerald-50 px-3 py-1 text-xs font-medium text-emerald-700">
+                      Connected
+                    </span>
+
+                    <span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-medium text-slate-600">
+                      {sharedCount} / 5 categories shared
+                    </span>
+
+                    <button
+                      type="button"
+                      onClick={() =>
+                        changeScreen("privacy")
+                      }
+                      className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-slate-700 transition hover:bg-slate-50"
+                    >
+                      Manage sharing
+                    </button>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        )}
+      </Panel>
 
       <div className="grid gap-5 xl:grid-cols-[1.15fr_.85fr]">
         <Panel
@@ -6495,7 +6667,13 @@ type MonitoringSharingConnection = {
   permissions_updated_at: string | null;
 };
 
-function Monitoring({ changeScreen }: { changeScreen: (screen: Screen) => void }) {
+function Monitoring({
+  changeScreen,
+  onPendingRequestCountChange,
+}: {
+  changeScreen: (screen: Screen) => void;
+  onPendingRequestCountChange?: (count: number) => void;
+}) {
   const [questionnaires, setQuestionnaires] = useState<MonitoringQuestionnaireOption[]>([]);
   const [plan, setPlan] = useState<MonitoringV2Plan | null>(null);
   const [protocol, setProtocol] = useState<MonitoringProtocolScheduleDraft[]>(defaultMonitoringProtocol());
@@ -6558,9 +6736,26 @@ function Monitoring({ changeScreen }: { changeScreen: (screen: Screen) => void }
   async function loadRequests() {
     setLoadingRequests(true);
     const supabase = createClient();
-    const { data, error: requestError } = await supabase.rpc("psylattice_my_monitoring_requests_v2");
-    if (requestError) setError("Clinician monitoring requests could not be loaded.");
-    else setRequests((data ?? []) as MonitoringV2Request[]);
+
+    const { data, error: requestError } =
+      await supabase.rpc(
+        "psylattice_my_monitoring_requests_v2"
+      );
+
+    if (requestError) {
+      setError(
+        "Clinician monitoring requests could not be loaded."
+      );
+    } else {
+      const loadedRequests =
+        (data ?? []) as MonitoringV2Request[];
+
+      setRequests(loadedRequests);
+      onPendingRequestCountChange?.(
+        loadedRequests.length
+      );
+    }
+
     setLoadingRequests(false);
   }
 
@@ -10095,10 +10290,18 @@ const [screen, setScreen] = useState<Screen>("dashboard");
 const [fullName, setFullName] = useState("");
 const [signingOut, setSigningOut] = useState(false);
 const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+const [currentLocalTime, setCurrentLocalTime] = useState(
+  () => new Date()
+);
 
 const [
   pendingClinicianInvitations,
   setPendingClinicianInvitations,
+] = useState(0);
+
+const [
+  pendingMonitoringRequests,
+  setPendingMonitoringRequests,
 ] = useState(0);
 
   useEffect(() => {
@@ -10139,28 +10342,132 @@ const [
   }, [router]);
 
   useEffect(() => {
-    async function loadPendingClinicianInvitationCount() {
-      const supabase = createClient();
+    const updateClock = () => {
+      setCurrentLocalTime(new Date());
+    };
 
-      const { data, error } = await supabase.rpc(
-        "psylattice_my_clinician_invitations_v2"
+    updateClock();
+
+    const timer = window.setInterval(
+      updateClock,
+      60_000
+    );
+
+    function refreshClockOnFocus() {
+      updateClock();
+    }
+
+    function refreshClockWhenVisible() {
+      if (document.visibilityState === "visible") {
+        updateClock();
+      }
+    }
+
+    window.addEventListener(
+      "focus",
+      refreshClockOnFocus
+    );
+
+    document.addEventListener(
+      "visibilitychange",
+      refreshClockWhenVisible
+    );
+
+    return () => {
+      window.clearInterval(timer);
+
+      window.removeEventListener(
+        "focus",
+        refreshClockOnFocus
       );
 
-      if (error) {
-        console.error(
-          "Could not load clinician invitation count:",
-          error
-        );
+      document.removeEventListener(
+        "visibilitychange",
+        refreshClockWhenVisible
+      );
+    };
+  }, []);
 
-        return;
-      }
+  async function loadSelfNotificationCounts() {
+    const supabase = createClient();
 
+    const [
+      clinicianInvitationResult,
+      monitoringRequestResult,
+    ] = await Promise.all([
+      supabase.rpc(
+        "psylattice_my_clinician_invitations_v2"
+      ),
+      supabase.rpc(
+        "psylattice_my_monitoring_requests_v2"
+      ),
+    ]);
+
+    if (clinicianInvitationResult.error) {
+      console.error(
+        "Could not load clinician invitation count:",
+        clinicianInvitationResult.error
+      );
+    } else {
       setPendingClinicianInvitations(
-        Array.isArray(data) ? data.length : 0
+        Array.isArray(
+          clinicianInvitationResult.data
+        )
+          ? clinicianInvitationResult.data.length
+          : 0
       );
     }
 
-    void loadPendingClinicianInvitationCount();
+    if (monitoringRequestResult.error) {
+      console.error(
+        "Could not load monitoring request count:",
+        monitoringRequestResult.error
+      );
+    } else {
+      setPendingMonitoringRequests(
+        Array.isArray(
+          monitoringRequestResult.data
+        )
+          ? monitoringRequestResult.data.length
+          : 0
+      );
+    }
+  }
+
+  useEffect(() => {
+    void loadSelfNotificationCounts();
+
+    function refreshOnFocus() {
+      void loadSelfNotificationCounts();
+    }
+
+    function refreshWhenVisible() {
+      if (
+        document.visibilityState === "visible"
+      ) {
+        void loadSelfNotificationCounts();
+      }
+    }
+
+    window.addEventListener(
+      "focus",
+      refreshOnFocus
+    );
+    document.addEventListener(
+      "visibilitychange",
+      refreshWhenVisible
+    );
+
+    return () => {
+      window.removeEventListener(
+        "focus",
+        refreshOnFocus
+      );
+      document.removeEventListener(
+        "visibilitychange",
+        refreshWhenVisible
+      );
+    };
   }, []);
 
   async function handleSignOut() {
@@ -10182,6 +10489,24 @@ const [
 
   const firstName =
     fullName.trim().split(/\s+/)[0] || "there";
+
+  const localHour =
+    currentLocalTime.getHours();
+
+  function greetingForHour(hour: number) {
+    if (hour < 12) {
+      return "Good morning";
+    }
+
+    if (hour < 17) {
+      return "Good afternoon";
+    }
+
+    return "Good evening";
+  }
+
+  const greeting =
+    greetingForHour(localHour);
 
   const initials =
     fullName
@@ -10209,7 +10534,14 @@ const [
         return <Assessments />;
 
       case "monitoring":
-        return <Monitoring changeScreen={setScreen} />;
+        return (
+          <Monitoring
+            changeScreen={setScreen}
+            onPendingRequestCountChange={
+              setPendingMonitoringRequests
+            }
+          />
+        );
 
       case "regulation":
         return <Regulation />;
@@ -10320,6 +10652,10 @@ const [
             {navigation.map((item) => (
               <option key={item.id} value={item.id}>
   {item.label}
+  {item.id === "monitoring" &&
+  pendingMonitoringRequests > 0
+    ? ` (${pendingMonitoringRequests})`
+    : ""}
   {item.id === "notifications" &&
   pendingClinicianInvitations > 0
     ? ` (${pendingClinicianInvitations})`
@@ -10432,8 +10768,10 @@ const [
             }`}
           >
             {sidebarCollapsed &&
-  item.id === "notifications" &&
-  pendingClinicianInvitations > 0 && (
+  ((item.id === "notifications" &&
+    pendingClinicianInvitations > 0) ||
+    (item.id === "monitoring" &&
+      pendingMonitoringRequests > 0)) && (
     <span className="absolute -right-1 -top-1 h-2.5 w-2.5 rounded-full border-2 border-white bg-cyan-700" />
   )}
             {sidebarCollapsed ? (
@@ -10474,6 +10812,20 @@ const [
         New
       </span>
     )}
+
+    {item.id === "monitoring" &&
+      pendingMonitoringRequests > 0 && (
+        <span
+          title={`${pendingMonitoringRequests} clinician monitoring request${
+            pendingMonitoringRequests === 1 ? "" : "s"
+          }`}
+          className="flex min-w-5 items-center justify-center rounded-full bg-cyan-700 px-1.5 py-0.5 text-[10px] font-bold text-white"
+        >
+          {pendingMonitoringRequests > 9
+            ? "9+"
+            : pendingMonitoringRequests}
+        </span>
+      )}
 
     {item.id === "notifications" &&
       pendingClinicianInvitations > 0 && (
@@ -10553,9 +10905,10 @@ const [
         </p>
 
         <p className="mt-2 text-xs leading-5 text-slate-400">
-          The account itself is now authenticated.
-          Assessment and monitoring information
-          shown here is still demo data.
+          Assessment, monitoring and clinician
+          connection information shown in the
+          active Self workspace is loaded from
+          your PsyLattice account.
         </p>
       </div>
     </div>
@@ -10580,7 +10933,7 @@ const [
 
                 <h1 className="text-2xl font-semibold tracking-[-0.025em] sm:text-3xl">
                   {screen === "dashboard"
-                    ? `Good afternoon, ${firstName}.`
+                    ? `${greeting}, ${firstName}.`
                     : activeNavigation.label}
                 </h1>
 

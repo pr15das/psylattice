@@ -5,6 +5,12 @@ import { useEffect, useState, type ReactNode } from "react";
 import { useParams } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import PsyLatticeLogo from "@/components/PsyLatticeLogo";
+import {
+  ambulatoryVisibleItems,
+  cleanHiddenAmbulatoryResponses,
+  type AmbulatoryItemDraft,
+  type AmbulatoryScheduleDraft,
+} from "@/components/AmbulatoryProtocolBuilder";
 
 type JsonObject = Record<string, unknown>;
 
@@ -157,6 +163,90 @@ type PublicStudyPayload = {
   consent?: PublicConsent | null;
   demographics?: PublicDemographicQuestion[];
   measures?: PublicMeasure[];
+};
+
+type PublicAmbulatoryConfig = {
+  ok: boolean;
+  enabled: boolean;
+  reason?: string;
+  protocol_id?: string;
+  name?: string;
+  duration_days?: number;
+  participant_feedback_enabled?: boolean;
+  notifications_enabled?: boolean;
+  protocol?: AmbulatoryScheduleDraft[];
+};
+
+type AmbulatoryPrompt = {
+  prompt_id: string;
+  schedule_key: string;
+  schedule_label: string;
+  trigger_type: string;
+  local_date: string;
+  occurrence_index: number;
+  scheduled_for: string | null;
+  expires_at: string | null;
+  status:
+    | "pending"
+    | "opened"
+    | "completed"
+    | "missed"
+    | "cancelled";
+};
+
+type AmbulatoryDashboardPayload = {
+  ok: boolean;
+  error?: string;
+  study_id?: string;
+  study_title?: string;
+  public_id?: string;
+  protocol_id?: string;
+  protocol_name?: string;
+  duration_days?: number;
+  day_number?: number;
+  study_complete_available?: boolean;
+  participant_feedback_enabled?: boolean;
+  notifications_enabled?: boolean;
+  prompts?: AmbulatoryPrompt[];
+  event_schedules?: AmbulatoryScheduleDraft[];
+  completed_scheduled?: number;
+  expected_scheduled?: number;
+  event_checkins_completed?: number;
+};
+
+type ActiveAmbulatoryCheckin = {
+  checkin_id: string;
+  schedule: AmbulatoryScheduleDraft;
+  prompt_id?: string | null;
+};
+
+type AmbulatoryQuestionnairePayload = {
+  ok: boolean;
+  error?: string;
+  questionnaire?: {
+    id: string;
+    name: string;
+    acronym: string | null;
+    description: string | null;
+  };
+  version?: {
+    id: string;
+    version_label: string;
+    participant_instructions: string | null;
+    response_scale_description: string | null;
+  };
+  items?: Array<{
+    id: string;
+    item_key: string | null;
+    position: number;
+    prompt: string;
+    help_text: string | null;
+    subscale: string | null;
+    response_type: string;
+    required: boolean;
+    response_options: ResponseOption[];
+    response_config: JsonObject;
+  }>;
 };
 
 type AnswerValue =
@@ -1269,6 +1359,8 @@ export default function ParticipantStudyPage() {
   const [demographicAnswers, setDemographicAnswers] = useState<
     Record<string, AnswerValue>
   >({});
+  const [demographicsSaved, setDemographicsSaved] =
+    useState(false);
   const [savingDemographics, setSavingDemographics] = useState(false);
 
   const [completedMeasureIds, setCompletedMeasureIds] = useState<string[]>([]);
@@ -1279,10 +1371,46 @@ export default function ParticipantStudyPage() {
   const [savingMeasure, setSavingMeasure] = useState(false);
 
   const [phase, setPhase] = useState<
-    "landing" | "consent" | "demographics" | "measures" | "complete"
+    | "landing"
+    | "consent"
+    | "demographics"
+    | "measures"
+    | "study_dashboard"
+    | "ambulatory_checkin"
+    | "followup_contact"
+    | "complete"
   >("landing");
 
   const [followupConfigured, setFollowupConfigured] = useState(false);
+  const [followupContactEnabled, setFollowupContactEnabled] =
+    useState(false);
+  const [followupContactEmail, setFollowupContactEmail] = useState("");
+  const [followupContactConsent, setFollowupContactConsent] =
+    useState(false);
+  const [savingFollowupContact, setSavingFollowupContact] =
+    useState(false);
+  const [followupContactStatus, setFollowupContactStatus] =
+    useState("");
+
+  const [ambulatoryConfig, setAmbulatoryConfig] =
+    useState<PublicAmbulatoryConfig | null>(null);
+  const [ambulatoryDashboard, setAmbulatoryDashboard] =
+    useState<AmbulatoryDashboardPayload | null>(null);
+  const [loadingAmbulatoryDashboard, setLoadingAmbulatoryDashboard] =
+    useState(false);
+  const [ambulatoryMessage, setAmbulatoryMessage] = useState("");
+  const [activeAmbulatoryCheckin, setActiveAmbulatoryCheckin] =
+    useState<ActiveAmbulatoryCheckin | null>(null);
+  const [ambulatoryResponses, setAmbulatoryResponses] = useState<
+    Record<string, any>
+  >({});
+  const [savingAmbulatory, setSavingAmbulatory] = useState(false);
+  const [emailReminderAddress, setEmailReminderAddress] = useState("");
+  const [emailRemindersEnabled, setEmailRemindersEnabled] = useState(false);
+  const [emailReminderStatus, setEmailReminderStatus] = useState("");
+  const [savingEmailReminder, setSavingEmailReminder] = useState(false);
+  const [ambulatoryQuestionnaires, setAmbulatoryQuestionnaires] =
+    useState<Record<string, AmbulatoryQuestionnairePayload>>({});
 
   const baselineMeasures = (payload?.measures || [])
     .filter((measure) => measure.measurement_point === "baseline")
@@ -1331,6 +1459,56 @@ export default function ParticipantStudyPage() {
 
       setPayload(studyPayload);
 
+      const {
+        data: ambulatoryData,
+        error: ambulatoryError,
+      } = await supabase.rpc(
+        "psylattice_public_study_ambulatory",
+        {
+          p_token: token,
+        }
+      );
+
+      if (ambulatoryError) {
+        console.error(
+          "Could not load public ambulatory configuration:",
+          ambulatoryError
+        );
+        setAmbulatoryConfig({
+          ok: false,
+          enabled: false,
+        });
+      } else {
+        setAmbulatoryConfig(
+          (ambulatoryData ||
+            {
+              ok: true,
+              enabled: false,
+            }) as PublicAmbulatoryConfig
+        );
+      }
+
+      const {
+        data: followupSettings,
+        error: followupSettingsError,
+      } = await supabase.rpc(
+        "psylattice_public_followup_settings",
+        {
+          p_token: token,
+        }
+      );
+
+      const hasFollowupContact =
+        !followupSettingsError &&
+        Boolean(
+          followupSettings?.ok &&
+            followupSettings?.followup_enabled
+        );
+
+      setFollowupContactEnabled(
+        hasFollowupContact
+      );
+
       const storedSession =
         typeof window !== "undefined"
           ? window.localStorage.getItem(`psylattice-study-${token}`)
@@ -1353,7 +1531,65 @@ export default function ParticipantStudyPage() {
           );
 
           if (resumeData.session_status === "completed") {
+            if (hasFollowupContact) {
+              const {
+                data: contactData,
+                error: contactError,
+              } = await supabase.rpc(
+                "psylattice_followup_contact_status",
+                {
+                  p_session_token:
+                    storedSession,
+                }
+              );
+
+              if (
+                !contactError &&
+                contactData?.ok &&
+                !contactData?.recorded
+              ) {
+                setFollowupConfigured(true);
+                setPhase(
+                  "followup_contact"
+                );
+                setLoading(false);
+                return;
+              }
+
+              if (
+                !contactError &&
+                contactData?.ok
+              ) {
+                setFollowupContactEmail(
+                  String(
+                    contactData.email || ""
+                  )
+                );
+                setFollowupContactConsent(
+                  Boolean(
+                    contactData.consented
+                  )
+                );
+              }
+            }
+
             setPhase("complete");
+            setLoading(false);
+            return;
+          }
+
+          const hasAmbulatory =
+            Boolean(
+              (ambulatoryData as PublicAmbulatoryConfig | null)
+                ?.enabled
+            );
+
+          if (
+            hasAmbulatory &&
+            resumeData.participant_status ===
+              "baseline_complete"
+          ) {
+            setPhase("study_dashboard");
             setLoading(false);
             return;
           }
@@ -1366,6 +1602,10 @@ export default function ParticipantStudyPage() {
             Array.isArray(studyPayload.demographics) &&
             studyPayload.demographics.length > 0;
 
+          setDemographicsSaved(
+            Boolean(resumeData.demographics_saved)
+          );
+
           if (consentRequired && !resumeData.consent_saved) {
             setPhase("consent");
           } else if (
@@ -1374,7 +1614,55 @@ export default function ParticipantStudyPage() {
           ) {
             setPhase("demographics");
           } else {
-            setPhase("measures");
+            const completedIds =
+              Array.isArray(
+                resumeData.completed_measure_ids
+              )
+                ? resumeData.completed_measure_ids.map(
+                    String
+                  )
+                : [];
+
+            const baselineIds =
+              (studyPayload.measures || [])
+                .filter(
+                  (measure) =>
+                    measure.measurement_point ===
+                    "baseline"
+                )
+                .map(
+                  (measure) =>
+                    measure.study_measure_id
+                );
+
+            const baselineComplete =
+              baselineIds.every((id) =>
+                completedIds.includes(id)
+              );
+
+            if (
+              hasAmbulatory &&
+              baselineComplete
+            ) {
+              const { error: enterError } =
+                await supabase.rpc(
+                  "psylattice_enter_ambulatory_study",
+                  {
+                    p_session_token:
+                      storedSession,
+                  }
+                );
+
+              if (!enterError) {
+                setPhase(
+                  "study_dashboard"
+                );
+              } else {
+                setPhase("measures");
+              }
+            } else {
+              setPhase("measures");
+            }
           }
         } else {
           window.localStorage.removeItem(`psylattice-study-${token}`);
@@ -1399,6 +1687,548 @@ export default function ParticipantStudyPage() {
       setMeasureAnswers({});
     }
   }, [phase, completedMeasureIds.length]);
+
+
+  useEffect(() => {
+    if (phase !== "study_dashboard") {
+      return;
+    }
+
+    void loadAmbulatoryDashboard();
+
+    function refreshOnFocus() {
+      void loadAmbulatoryDashboard(false);
+    }
+
+    function refreshWhenVisible() {
+      if (document.visibilityState === "visible") {
+        void loadAmbulatoryDashboard(false);
+      }
+    }
+
+    window.addEventListener("focus", refreshOnFocus);
+    document.addEventListener(
+      "visibilitychange",
+      refreshWhenVisible
+    );
+
+    return () => {
+      window.removeEventListener(
+        "focus",
+        refreshOnFocus
+      );
+      document.removeEventListener(
+        "visibilitychange",
+        refreshWhenVisible
+      );
+    };
+  }, [phase, sessionToken]);
+
+  function timezoneOffsetMinutes() {
+    return new Date().getTimezoneOffset();
+  }
+
+  function timezoneName() {
+    try {
+      return (
+        Intl.DateTimeFormat()
+          .resolvedOptions()
+          .timeZone || ""
+      );
+    } catch {
+      return "";
+    }
+  }
+
+  async function enterAmbulatoryStudy() {
+    if (!sessionToken) {
+      return;
+    }
+
+    const supabase = createClient();
+
+    const { data, error } = await supabase.rpc(
+      "psylattice_enter_ambulatory_study",
+      {
+        p_session_token: sessionToken,
+      }
+    );
+
+    if (error || !data?.ok) {
+      console.error(
+        "Could not enter ambulatory phase:",
+        error
+      );
+      setPageError(
+        error?.message ||
+          "The ambulatory part of this study could not be started."
+      );
+      return;
+    }
+
+    setPhase("study_dashboard");
+  }
+
+  async function loadAmbulatoryDashboard(
+    showLoading = true
+  ) {
+    if (!sessionToken || !token) {
+      return;
+    }
+
+    if (showLoading) {
+      setLoadingAmbulatoryDashboard(true);
+    }
+
+    setAmbulatoryMessage("");
+
+    const supabase = createClient();
+
+    const { data, error } = await supabase.rpc(
+      "psylattice_ambulatory_dashboard",
+      {
+        p_token: token,
+        p_session_token: sessionToken,
+        p_timezone_offset_minutes:
+          timezoneOffsetMinutes(),
+        p_timezone_name: timezoneName(),
+      }
+    );
+
+    if (error || !data?.ok) {
+      console.error(
+        "Could not load ambulatory study dashboard:",
+        error
+      );
+      setPageError(
+        error?.message ||
+          data?.error ||
+          "Your study dashboard could not be loaded."
+      );
+      setLoadingAmbulatoryDashboard(false);
+      return;
+    }
+
+    setAmbulatoryDashboard(
+      data as AmbulatoryDashboardPayload
+    );
+
+    await loadParticipantEmailReminderPreference();
+
+    // Queue scheduled email reminders when the participant has
+    // explicitly supplied an email address and enabled reminders.
+    await supabase.rpc(
+      "psylattice_queue_participant_ambulatory_notifications",
+      {
+        p_session_token: sessionToken,
+        p_token: token,
+      }
+    );
+
+    setLoadingAmbulatoryDashboard(false);
+  }
+
+  async function loadParticipantEmailReminderPreference() {
+    if (!sessionToken) {
+      return;
+    }
+
+    const supabase = createClient();
+
+    const { data, error } = await supabase.rpc(
+      "psylattice_participant_email_reminder_preference",
+      {
+        p_session_token: sessionToken,
+      }
+    );
+
+    if (error || !data?.ok) {
+      return;
+    }
+
+    setEmailReminderAddress(
+      String(data.email || "")
+    );
+    setEmailRemindersEnabled(
+      Boolean(data.enabled)
+    );
+  }
+
+  async function saveParticipantEmailReminderPreference(
+    enabled: boolean
+  ) {
+    if (
+      !sessionToken ||
+      savingEmailReminder
+    ) {
+      return;
+    }
+
+    if (
+      enabled &&
+      !emailReminderAddress.trim()
+    ) {
+      setEmailReminderStatus(
+        "Enter an email address first."
+      );
+      return;
+    }
+
+    setSavingEmailReminder(true);
+    setEmailReminderStatus("");
+
+    const supabase = createClient();
+
+    const { data, error } = await supabase.rpc(
+      "psylattice_set_participant_email_reminders",
+      {
+        p_session_token: sessionToken,
+        p_email:
+          emailReminderAddress.trim(),
+        p_enabled: enabled,
+      }
+    );
+
+    if (error || !data?.ok) {
+      setEmailReminderStatus(
+        error?.message ||
+          data?.error ||
+          "Email reminder settings could not be saved."
+      );
+      setSavingEmailReminder(false);
+      return;
+    }
+
+    setEmailReminderAddress(
+      String(data.email || "")
+    );
+    setEmailRemindersEnabled(
+      Boolean(data.enabled)
+    );
+
+    if (enabled) {
+      await supabase.rpc(
+        "psylattice_queue_participant_ambulatory_notifications",
+        {
+          p_session_token: sessionToken,
+          p_token: token,
+        }
+      );
+    }
+
+    setEmailReminderStatus(
+      enabled
+        ? "Email reminders are enabled."
+        : "Email reminders are off."
+    );
+
+    setSavingEmailReminder(false);
+  }
+
+  async function startAmbulatoryCheckin(
+    scheduleKey: string,
+    promptId?: string | null
+  ) {
+    if (!sessionToken) {
+      return;
+    }
+
+    setPageError("");
+
+    const supabase = createClient();
+
+    const { data, error } = await supabase.rpc(
+      "psylattice_start_research_ambulatory_checkin",
+      {
+        p_token: token,
+        p_session_token: sessionToken,
+        p_schedule_key: scheduleKey,
+        p_prompt_id: promptId || null,
+        p_timezone_offset_minutes:
+          timezoneOffsetMinutes(),
+      }
+    );
+
+    if (error || !data?.ok) {
+      console.error(
+        "Could not start ambulatory check-in:",
+        error
+      );
+      setPageError(
+        error?.message ||
+          data?.error ||
+          "This check-in could not be opened."
+      );
+      return;
+    }
+
+    setActiveAmbulatoryCheckin({
+      checkin_id: String(data.checkin_id),
+      schedule:
+        data.schedule as AmbulatoryScheduleDraft,
+      prompt_id: promptId || null,
+    });
+    setAmbulatoryResponses({});
+    setPhase("ambulatory_checkin");
+  }
+
+  function updateAmbulatoryResponse(
+    item: AmbulatoryItemDraft,
+    value: any
+  ) {
+    if (!activeAmbulatoryCheckin) {
+      return;
+    }
+
+    const flattened =
+      activeAmbulatoryCheckin.schedule.items;
+
+    const next =
+      cleanHiddenAmbulatoryResponses(
+        flattened,
+        {
+          ...ambulatoryResponses,
+          [item.key]: value,
+        }
+      );
+
+    setAmbulatoryResponses(next);
+  }
+
+  async function loadAmbulatoryQuestionnaire(
+    questionnaireId: string
+  ) {
+    if (
+      ambulatoryQuestionnaires[
+        questionnaireId
+      ] ||
+      !sessionToken
+    ) {
+      return;
+    }
+
+    const supabase = createClient();
+
+    const { data, error } = await supabase.rpc(
+      "psylattice_public_ambulatory_questionnaire",
+      {
+        p_token: token,
+        p_session_token: sessionToken,
+        p_questionnaire_id:
+          questionnaireId,
+      }
+    );
+
+    if (error || !data?.ok) {
+      setPageError(
+        error?.message ||
+          data?.error ||
+          "The questionnaire could not be loaded."
+      );
+      return;
+    }
+
+    setAmbulatoryQuestionnaires(
+      (current) => ({
+        ...current,
+        [questionnaireId]:
+          data as AmbulatoryQuestionnairePayload,
+      })
+    );
+  }
+
+  async function submitAmbulatoryCheckin() {
+    if (
+      !activeAmbulatoryCheckin ||
+      savingAmbulatory
+    ) {
+      return;
+    }
+
+    const visibleItems =
+      ambulatoryVisibleItems(
+        activeAmbulatoryCheckin.schedule.items,
+        ambulatoryResponses
+      );
+
+    for (const item of visibleItems) {
+      if (
+        !item.required ||
+        item.type === "instruction"
+      ) {
+        continue;
+      }
+
+      const answer =
+        ambulatoryResponses[item.key];
+
+      const answered =
+        answer !== null &&
+        answer !== undefined &&
+        answer !== "" &&
+        (!Array.isArray(answer) ||
+          answer.length > 0);
+
+      if (!answered) {
+        setPageError(
+          `Please complete: ${item.prompt}`
+        );
+        return;
+      }
+    }
+
+    setSavingAmbulatory(true);
+    setPageError("");
+
+    const responses =
+      visibleItems
+        .filter(
+          (item) =>
+            item.type !== "instruction" &&
+            Object.prototype.hasOwnProperty.call(
+              ambulatoryResponses,
+              item.key
+            )
+        )
+        .map((item) => ({
+          item_key: item.key,
+          item_type: item.type,
+          prompt: item.prompt,
+          response:
+            ambulatoryResponses[item.key],
+        }));
+
+    const supabase = createClient();
+
+    const { data, error } = await supabase.rpc(
+      "psylattice_submit_research_ambulatory_checkin",
+      {
+        p_token: token,
+        p_session_token: sessionToken,
+        p_checkin_id:
+          activeAmbulatoryCheckin.checkin_id,
+        p_responses: responses,
+      }
+    );
+
+    if (error || !data?.ok) {
+      console.error(
+        "Could not submit ambulatory check-in:",
+        error
+      );
+      setPageError(
+        error?.message ||
+          data?.error ||
+          "The check-in could not be saved."
+      );
+      setSavingAmbulatory(false);
+      return;
+    }
+
+    setSavingAmbulatory(false);
+    setActiveAmbulatoryCheckin(null);
+    setAmbulatoryResponses({});
+    setAmbulatoryMessage(
+      "Check-in saved."
+    );
+    setPhase("study_dashboard");
+  }
+
+  async function completeAmbulatoryStudy() {
+    if (!sessionToken) {
+      return;
+    }
+
+    const supabase = createClient();
+
+    const { data, error } = await supabase.rpc(
+      "psylattice_complete_ambulatory_participation",
+      {
+        p_session_token: sessionToken,
+      }
+    );
+
+    if (error || !data?.ok) {
+      setPageError(
+        error?.message ||
+          data?.error ||
+          "The study could not be completed yet."
+      );
+      return;
+    }
+
+    const hasFollowup =
+      Boolean(
+        data.followup_configured
+      ) || followupContactEnabled;
+
+    setFollowupConfigured(
+      hasFollowup
+    );
+
+    if (hasFollowup) {
+      setPhase(
+        "followup_contact"
+      );
+    } else {
+      setPhase("complete");
+    }
+  }
+
+  async function saveFollowupContactChoice() {
+    if (!sessionToken || savingFollowupContact) {
+      return;
+    }
+
+    if (!followupContactEmail.trim()) {
+      setFollowupContactStatus(
+        "Enter the email address where you want to receive your follow-up study invitation."
+      );
+      return;
+    }
+
+    if (!followupContactConsent) {
+      setFollowupContactStatus(
+        "Please confirm consent to follow-up email contact before continuing."
+      );
+      return;
+    }
+
+    setSavingFollowupContact(true);
+    setFollowupContactStatus("");
+    setPageError("");
+
+    const supabase = createClient();
+
+    const { data, error } = await supabase.rpc(
+      "psylattice_save_followup_contact",
+      {
+        p_session_token: sessionToken,
+        p_email: followupContactEmail.trim(),
+        p_consented: true,
+      }
+    );
+
+    if (error || !data?.ok) {
+      setFollowupContactStatus(
+        error?.message ||
+          data?.error ||
+          "Your follow-up email could not be saved."
+      );
+      setSavingFollowupContact(false);
+      return;
+    }
+
+    setFollowupContactConsent(true);
+    setFollowupContactEmail(
+      String(data.email || "")
+    );
+    setFollowupContactStatus(
+      "Follow-up email saved."
+    );
+    setSavingFollowupContact(false);
+    setPhase("complete");
+  }
 
   async function startParticipation() {
     if (!payload?.link || starting) return;
@@ -1523,18 +2353,39 @@ export default function ParticipantStudyPage() {
 
     const supabase = createClient();
 
+    const consentVersionId =
+      payload?.consent?.id || "";
+
+    if (!consentVersionId) {
+      setPageError(
+        "The consent version could not be identified. Please reload the study."
+      );
+      setSavingConsent(false);
+      return;
+    }
+
     const { data, error } = await supabase.rpc(
       "psylattice_save_consent",
       {
         p_session_token: sessionToken,
         p_responses: consentAnswers,
+        p_consent_version_id:
+          consentVersionId,
       }
     );
 
     if (error || !data?.ok) {
-      console.error("Could not save consent:", error);
+      console.error(
+        "Could not save consent:",
+        error,
+        data
+      );
       setPageError(
-        error?.message || "Your consent responses could not be saved."
+        error?.message ||
+          (typeof data?.error === "string"
+            ? data.error
+            : "") ||
+          "Your consent responses could not be saved."
       );
       setSavingConsent(false);
       return;
@@ -1606,6 +2457,7 @@ export default function ParticipantStudyPage() {
       return;
     }
 
+    setDemographicsSaved(true);
     setPhase("measures");
     setSavingDemographics(false);
   }
@@ -1741,12 +2593,28 @@ export default function ParticipantStudyPage() {
       return;
     }
 
-    await completeParticipation();
+    if (ambulatoryConfig?.enabled) {
+      await enterAmbulatoryStudy();
+    } else {
+      await completeParticipation();
+    }
+
     setSavingMeasure(false);
   }
 
   async function completeParticipation() {
     if (!sessionToken) return;
+
+    if (
+      demographicsIncluded &&
+      !demographicsSaved
+    ) {
+      setPageError(
+        "Please complete the demographic questions before finishing the study."
+      );
+      setPhase("demographics");
+      return;
+    }
 
     const supabase = createClient();
 
@@ -1756,15 +2624,52 @@ export default function ParticipantStudyPage() {
     );
 
     if (error || !data?.ok) {
-      console.error("Could not complete participation:", error);
-      setPageError(
-        error?.message || "Your study session could not be completed."
+      const completionMessage =
+        error?.message ||
+        (typeof data?.error === "string"
+          ? data.error
+          : "") ||
+        "Your study session could not be completed.";
+
+      console.error(
+        "Could not complete participation:",
+        error,
+        data
       );
+
+      if (
+        completionMessage
+          .toLowerCase()
+          .includes("demographic")
+      ) {
+        setDemographicsSaved(false);
+        setPageError(
+          "Please complete the demographic questions before finishing the study."
+        );
+        setPhase("demographics");
+        return;
+      }
+
+      setPageError(completionMessage);
       return;
     }
 
-    setFollowupConfigured(Boolean(data.followup_configured));
-    setPhase("complete");
+    const hasFollowup =
+      Boolean(
+        data.followup_configured
+      ) || followupContactEnabled;
+
+    setFollowupConfigured(
+      hasFollowup
+    );
+
+    if (hasFollowup) {
+      setPhase(
+        "followup_contact"
+      );
+    } else {
+      setPhase("complete");
+    }
   }
 
   if (loading) {
@@ -1948,12 +2853,13 @@ export default function ParticipantStudyPage() {
                           <input
                             type="checkbox"
                             checked={consentAnswers[item.id] === true}
-                            onChange={(event) =>
+                            onChange={(event) => {
+                              setPageError("");
                               setConsentAnswers((previous) => ({
                                 ...previous,
                                 [item.id]: event.target.checked,
-                              }))
-                            }
+                              }));
+                            }}
                             className="mt-1"
                           />
                           <span className="text-sm text-slate-600">
@@ -1968,12 +2874,13 @@ export default function ParticipantStudyPage() {
                             <button
                               key={choice}
                               type="button"
-                              onClick={() =>
+                              onClick={() => {
+                                setPageError("");
                                 setConsentAnswers((previous) => ({
                                   ...previous,
                                   [item.id]: choice,
-                                }))
-                              }
+                                }));
+                              }}
                               className={`rounded-xl border px-4 py-2.5 text-sm ${
                                 consentAnswers[item.id] === choice
                                   ? "border-cyan-700 bg-cyan-50"
@@ -2162,17 +3069,1192 @@ export default function ParticipantStudyPage() {
     );
   }
 
+  if (phase === "study_dashboard") {
+    const prompts =
+      ambulatoryDashboard?.prompts || [];
+    const events =
+      ambulatoryDashboard?.event_schedules ||
+      [];
+    const expected =
+      ambulatoryDashboard?.expected_scheduled ||
+      0;
+    const completed =
+      ambulatoryDashboard?.completed_scheduled ||
+      0;
+    const compliance =
+      expected > 0
+        ? Math.min(
+            100,
+            Math.round(
+              (completed / expected) * 100
+            )
+          )
+        : 0;
+
+    const now = Date.now();
+
+    function promptState(
+      prompt: AmbulatoryPrompt
+    ) {
+      if (
+        prompt.status === "completed"
+      ) {
+        return "Completed";
+      }
+
+      if (
+        prompt.status === "missed"
+      ) {
+        return "Missed";
+      }
+
+      const scheduled =
+        prompt.scheduled_for
+          ? new Date(
+              prompt.scheduled_for
+            ).getTime()
+          : 0;
+      const expires =
+        prompt.expires_at
+          ? new Date(
+              prompt.expires_at
+            ).getTime()
+          : Number.POSITIVE_INFINITY;
+
+      if (
+        scheduled &&
+        now < scheduled
+      ) {
+        return "Later";
+      }
+
+      if (now <= expires) {
+        return "Due";
+      }
+
+      return "Missed";
+    }
+
+    return (
+      <Shell>
+        <div className="space-y-5">
+          {payload.link.is_test_link && (
+            <div className="rounded-2xl border border-amber-200 bg-amber-50 px-5 py-3 text-xs text-amber-800">
+              TEST longitudinal study · Participant ID {publicId}
+            </div>
+          )}
+
+          {pageError && (
+            <ErrorBox text={pageError} />
+          )}
+
+          {ambulatoryMessage && (
+            <div className="rounded-2xl border border-emerald-200 bg-emerald-50 px-5 py-4 text-sm text-emerald-800">
+              {ambulatoryMessage}
+            </div>
+          )}
+
+          <Card
+            title={
+              ambulatoryDashboard?.study_title ||
+              payload.study.title
+            }
+            description={`Study dashboard · Participant ${publicId}`}
+          >
+            {loadingAmbulatoryDashboard ? (
+              <p className="text-sm text-slate-500">
+                Loading today's study tasks...
+              </p>
+            ) : (
+              <div className="space-y-6">
+                <div className="grid gap-4 sm:grid-cols-3">
+                  <div className="rounded-2xl bg-slate-50 p-4">
+                    <p className="text-xs text-slate-400">
+                      Study day
+                    </p>
+                    <p className="mt-2 text-2xl font-semibold">
+                      {ambulatoryDashboard?.day_number ||
+                        1}
+                      {" / "}
+                      {ambulatoryDashboard?.duration_days ||
+                        ambulatoryConfig?.duration_days ||
+                        14}
+                    </p>
+                  </div>
+
+                  <div className="rounded-2xl bg-slate-50 p-4">
+                    <p className="text-xs text-slate-400">
+                      Scheduled prompts completed
+                    </p>
+                    <p className="mt-2 text-2xl font-semibold">
+                      {completed} / {expected}
+                    </p>
+                  </div>
+
+                  <div className="rounded-2xl bg-slate-50 p-4">
+                    <p className="text-xs text-slate-400">
+                      Event reports
+                    </p>
+                    <p className="mt-2 text-2xl font-semibold">
+                      {ambulatoryDashboard?.event_checkins_completed ||
+                        0}
+                    </p>
+                  </div>
+                </div>
+
+                <div>
+                  <div className="flex items-center justify-between gap-4">
+                    <p className="text-sm font-semibold">
+                      Study progress
+                    </p>
+                    <span className="text-xs text-slate-500">
+                      {compliance}% scheduled-prompt compliance
+                    </span>
+                  </div>
+
+                  <div className="mt-2 h-2 overflow-hidden rounded-full bg-slate-100">
+                    <div
+                      className="h-full rounded-full bg-cyan-700"
+                      style={{
+                        width: `${compliance}%`,
+                      }}
+                    />
+                  </div>
+
+                  <p className="mt-2 text-xs leading-5 text-slate-400">
+                    PsyLattice shows participation/adherence here by default,
+                    not psychological score feedback, so the dashboard does not
+                    inadvertently influence later study responses.
+                  </p>
+                </div>
+              </div>
+            )}
+          </Card>
+
+          <Card
+            title="Today's scheduled check-ins"
+            description="Scheduled prompts become available during their configured response window."
+          >
+            {prompts.length === 0 ? (
+              <p className="text-sm text-slate-500">
+                No scheduled prompts are configured for today.
+              </p>
+            ) : (
+              <div className="divide-y divide-slate-100">
+                {prompts.map((prompt) => {
+                  const state =
+                    promptState(prompt);
+                  const canOpen =
+                    state === "Due";
+
+                  return (
+                    <div
+                      key={prompt.prompt_id}
+                      className="flex flex-col justify-between gap-3 py-4 first:pt-0 last:pb-0 sm:flex-row sm:items-center"
+                    >
+                      <div>
+                        <p className="font-medium">
+                          {prompt.schedule_label}
+                        </p>
+
+                        <p className="mt-1 text-xs text-slate-400">
+                          {prompt.scheduled_for
+                            ? new Date(
+                                prompt.scheduled_for
+                              ).toLocaleTimeString(
+                                [],
+                                {
+                                  hour: "2-digit",
+                                  minute: "2-digit",
+                                }
+                              )
+                            : "Scheduled"}
+                          {prompt.expires_at
+                            ? ` · available until ${new Date(
+                                prompt.expires_at
+                              ).toLocaleTimeString(
+                                [],
+                                {
+                                  hour: "2-digit",
+                                  minute: "2-digit",
+                                }
+                              )}`
+                            : ""}
+                        </p>
+                      </div>
+
+                      <div className="flex items-center gap-2">
+                        <span
+                          className={`rounded-full px-3 py-1 text-xs font-medium ${
+                            state ===
+                            "Completed"
+                              ? "bg-emerald-50 text-emerald-700"
+                              : state ===
+                                  "Due"
+                                ? "bg-cyan-50 text-cyan-800"
+                                : state ===
+                                    "Missed"
+                                  ? "bg-slate-100 text-slate-500"
+                                  : "bg-amber-50 text-amber-700"
+                          }`}
+                        >
+                          {state}
+                        </span>
+
+                        {canOpen && (
+                          <button
+                            type="button"
+                            onClick={() =>
+                              void startAmbulatoryCheckin(
+                                prompt.schedule_key,
+                                prompt.prompt_id
+                              )
+                            }
+                            className="rounded-xl bg-slate-950 px-4 py-2.5 text-xs font-semibold text-white"
+                          >
+                            Start
+                          </button>
+                        )}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </Card>
+
+          {events.length > 0 && (
+            <Card
+              title="Event check-ins"
+              description="Use these whenever the defined event occurs. They are not tied to a clock time."
+            >
+              <div className="grid gap-3 sm:grid-cols-2">
+                {events.map((schedule) => (
+                  <button
+                    key={schedule.key}
+                    type="button"
+                    onClick={() =>
+                      void startAmbulatoryCheckin(
+                        schedule.key
+                      )
+                    }
+                    className="rounded-2xl border border-cyan-200 bg-cyan-50/50 p-5 text-left transition hover:bg-cyan-50"
+                  >
+                    <p className="font-semibold text-cyan-950">
+                      +{" "}
+                      {schedule.event_title ||
+                        schedule.label}
+                    </p>
+
+                    <p className="mt-2 text-xs leading-5 text-slate-500">
+                      {schedule.event_description ||
+                        "Complete this check-in whenever the event occurs."}
+                    </p>
+
+                    <p className="mt-3 text-[11px] text-slate-400">
+                      Up to{" "}
+                      {schedule.maximum_per_day ||
+                        8}{" "}
+                      reports/day
+                      {schedule.minimum_interval_minutes
+                        ? ` · at least ${schedule.minimum_interval_minutes} minutes apart`
+                        : ""}
+                    </p>
+                  </button>
+                ))}
+              </div>
+            </Card>
+          )}
+
+          {ambulatoryDashboard?.notifications_enabled && (
+            <Card
+              title="Email reminders"
+              description="Optional contact information for scheduled study reminders."
+            >
+              <div className="space-y-4">
+                <div>
+                  <p className="font-medium">
+                    Receive study check-in reminders by email
+                  </p>
+                  <p className="mt-1 text-sm leading-6 text-slate-500">
+                    Your reminder email is stored separately from your study
+                    response data. It is used for reminder delivery and is not
+                    included in the ordinary research-response export.
+                  </p>
+                </div>
+
+                <label className="block">
+                  <span className="text-xs font-medium text-slate-500">
+                    Reminder email
+                  </span>
+                  <input
+                    type="email"
+                    value={emailReminderAddress}
+                    onChange={(event) =>
+                      setEmailReminderAddress(
+                        event.target.value
+                      )
+                    }
+                    placeholder="you@example.com"
+                    className="mt-2 w-full rounded-xl border border-slate-200 px-4 py-3 text-sm"
+                  />
+                </label>
+
+                <label className="flex items-start gap-3 rounded-xl border border-slate-200 bg-slate-50/50 p-4">
+                  <input
+                    type="checkbox"
+                    checked={emailRemindersEnabled}
+                    onChange={(event) =>
+                      void saveParticipantEmailReminderPreference(
+                        event.target.checked
+                      )
+                    }
+                    disabled={savingEmailReminder}
+                    className="mt-1"
+                  />
+                  <div>
+                    <p className="text-sm font-medium">
+                      Send scheduled check-in reminders to this email
+                    </p>
+                    <p className="mt-1 text-xs leading-5 text-slate-500">
+                      You can turn reminders off at any time. Event-contingent
+                      check-ins remain available in the Study Dashboard and do
+                      not create clock-based reminder emails.
+                    </p>
+                  </div>
+                </label>
+
+                {emailRemindersEnabled && (
+                  <button
+                    type="button"
+                    disabled={savingEmailReminder}
+                    onClick={() =>
+                      void saveParticipantEmailReminderPreference(
+                        true
+                      )
+                    }
+                    className="rounded-xl border border-cyan-200 bg-cyan-50 px-4 py-2.5 text-sm font-semibold text-cyan-900 disabled:opacity-50"
+                  >
+                    {savingEmailReminder
+                      ? "Saving..."
+                      : "Save reminder email"}
+                  </button>
+                )}
+
+                {emailReminderStatus && (
+                  <p className="text-xs font-medium text-cyan-800">
+                    {emailReminderStatus}
+                  </p>
+                )}
+              </div>
+            </Card>
+          )}
+
+          {ambulatoryDashboard?.study_complete_available && (
+            <Card title="Study period complete">
+              <p className="text-sm leading-6 text-slate-500">
+                You have reached the end of the configured ambulatory period.
+                Submit the longitudinal study when you are ready.
+              </p>
+
+              <button
+                type="button"
+                onClick={() =>
+                  void completeAmbulatoryStudy()
+                }
+                className="mt-4 rounded-xl bg-slate-950 px-5 py-3 text-sm font-semibold text-white"
+              >
+                Complete study
+              </button>
+            </Card>
+          )}
+        </div>
+      </Shell>
+    );
+  }
+
+  if (
+    phase === "ambulatory_checkin" &&
+    activeAmbulatoryCheckin
+  ) {
+    const schedule =
+      activeAmbulatoryCheckin.schedule;
+
+    const visibleItems =
+      ambulatoryVisibleItems(
+        schedule.items,
+        ambulatoryResponses
+      );
+
+    return (
+      <Shell>
+        <div className="space-y-5">
+          {pageError && (
+            <ErrorBox text={pageError} />
+          )}
+
+          <Card
+            title={
+              schedule.event_title ||
+              schedule.label
+            }
+            description={
+              schedule.event_description ||
+              "Complete the questions that apply right now."
+            }
+          >
+            <div className="space-y-6">
+              {visibleItems.map(
+                (item, index) => {
+                  const value =
+                    ambulatoryResponses[
+                      item.key
+                    ];
+                  const options =
+                    (item.config
+                      .options ||
+                      []) as string[];
+
+                  return (
+                    <div
+                      key={item.key}
+                      className="rounded-2xl border border-slate-200 p-5"
+                    >
+                      <div className="flex items-start justify-between gap-4">
+                        <div>
+                          <p className="font-medium leading-6">
+                            {item.prompt}
+                          </p>
+                          {item.required &&
+                            item.type !==
+                              "instruction" && (
+                              <p className="mt-1 text-[11px] font-medium text-cyan-800">
+                                Required
+                              </p>
+                            )}
+                        </div>
+
+                        <span className="rounded-full bg-slate-50 px-2.5 py-1 text-[10px] font-semibold uppercase text-slate-400">
+                          {item.type.replaceAll(
+                            "_",
+                            " "
+                          )}
+                        </span>
+                      </div>
+
+                      {item.type ===
+                        "instruction" && (
+                        <p className="mt-4 whitespace-pre-wrap text-sm leading-6 text-slate-600">
+                          {item.config
+                            .text ||
+                            item.prompt}
+                        </p>
+                      )}
+
+                      {item.type ===
+                        "slider" && (
+                        <div className="mt-5">
+                          <div className="flex justify-between text-xs text-slate-400">
+                            <span>
+                              {item.config
+                                .minLabel ||
+                                item.config.min}
+                            </span>
+                            <span className="font-semibold text-slate-700">
+                              {value ??
+                                item.config
+                                  .min ??
+                                0}
+                            </span>
+                            <span>
+                              {item.config
+                                .maxLabel ||
+                                item.config.max}
+                            </span>
+                          </div>
+
+                          <input
+                            type="range"
+                            min={
+                              item.config.min ??
+                              0
+                            }
+                            max={
+                              item.config.max ??
+                              10
+                            }
+                            step={
+                              item.config.step ??
+                              1
+                            }
+                            value={
+                              value ??
+                              item.config.min ??
+                              0
+                            }
+                            onChange={(
+                              event
+                            ) =>
+                              updateAmbulatoryResponse(
+                                item,
+                                Number(
+                                  event
+                                    .target
+                                    .value
+                                )
+                              )
+                            }
+                            className="mt-3 w-full"
+                          />
+                        </div>
+                      )}
+
+                      {(item.type ===
+                        "single_choice" ||
+                        item.type ===
+                          "mood") && (
+                        <div className="mt-4 grid gap-2 sm:grid-cols-2">
+                          {options.map(
+                            (option) => (
+                              <button
+                                key={option}
+                                type="button"
+                                onClick={() =>
+                                  updateAmbulatoryResponse(
+                                    item,
+                                    option
+                                  )
+                                }
+                                className={`rounded-xl border px-4 py-3 text-left text-sm ${
+                                  value ===
+                                  option
+                                    ? "border-cyan-700 bg-cyan-50 text-cyan-950"
+                                    : "border-slate-200 bg-white"
+                                }`}
+                              >
+                                {option}
+                              </button>
+                            )
+                          )}
+                        </div>
+                      )}
+
+                      {item.type ===
+                        "yes_no" && (
+                        <div className="mt-4 flex gap-2">
+                          {["Yes", "No"].map(
+                            (option) => (
+                              <button
+                                key={option}
+                                type="button"
+                                onClick={() =>
+                                  updateAmbulatoryResponse(
+                                    item,
+                                    option
+                                  )
+                                }
+                                className={`rounded-xl border px-5 py-3 text-sm font-semibold ${
+                                  value ===
+                                  option
+                                    ? "border-cyan-700 bg-cyan-50 text-cyan-950"
+                                    : "border-slate-200"
+                                }`}
+                              >
+                                {option}
+                              </button>
+                            )
+                          )}
+                        </div>
+                      )}
+
+                      {item.type ===
+                        "multiple_choice" && (
+                        <div className="mt-4 grid gap-2 sm:grid-cols-2">
+                          {options.map(
+                            (option) => {
+                              const selected =
+                                Array.isArray(
+                                  value
+                                ) &&
+                                value.includes(
+                                  option
+                                );
+
+                              return (
+                                <button
+                                  key={
+                                    option
+                                  }
+                                  type="button"
+                                  onClick={() => {
+                                    const current =
+                                      Array.isArray(
+                                        value
+                                      )
+                                        ? value
+                                        : [];
+
+                                    updateAmbulatoryResponse(
+                                      item,
+                                      selected
+                                        ? current.filter(
+                                            (
+                                              entry: string
+                                            ) =>
+                                              entry !==
+                                              option
+                                          )
+                                        : [
+                                            ...current,
+                                            option,
+                                          ]
+                                    );
+                                  }}
+                                  className={`rounded-xl border px-4 py-3 text-left text-sm ${
+                                    selected
+                                      ? "border-cyan-700 bg-cyan-50"
+                                      : "border-slate-200"
+                                  }`}
+                                >
+                                  {selected
+                                    ? "✓ "
+                                    : ""}
+                                  {option}
+                                </button>
+                              );
+                            }
+                          )}
+                        </div>
+                      )}
+
+                      {(item.type ===
+                        "number" ||
+                        item.type ===
+                          "time_duration") && (
+                        <div className="mt-4 flex items-center gap-3">
+                          <input
+                            type="number"
+                            min={
+                              item.config.min
+                            }
+                            max={
+                              item.config.max
+                            }
+                            step={
+                              item.config.step ||
+                              1
+                            }
+                            value={value ?? ""}
+                            onChange={(
+                              event
+                            ) =>
+                              updateAmbulatoryResponse(
+                                item,
+                                event.target
+                                  .value === ""
+                                  ? ""
+                                  : Number(
+                                      event
+                                        .target
+                                        .value
+                                    )
+                              )
+                            }
+                            className="w-48 rounded-xl border border-slate-200 px-4 py-3 text-sm"
+                          />
+
+                          {item.type ===
+                            "time_duration" && (
+                            <span className="text-sm text-slate-500">
+                              {item.config
+                                .unit ||
+                                "minutes"}
+                            </span>
+                          )}
+                        </div>
+                      )}
+
+                      {item.type ===
+                        "short_text" && (
+                        <input
+                          value={value ?? ""}
+                          onChange={(
+                            event
+                          ) =>
+                            updateAmbulatoryResponse(
+                              item,
+                              event.target
+                                .value
+                            )
+                          }
+                          className="mt-4 w-full rounded-xl border border-slate-200 px-4 py-3 text-sm"
+                        />
+                      )}
+
+                      {item.type ===
+                        "long_text" && (
+                        <textarea
+                          value={value ?? ""}
+                          onChange={(
+                            event
+                          ) =>
+                            updateAmbulatoryResponse(
+                              item,
+                              event.target
+                                .value
+                            )
+                          }
+                          className="mt-4 min-h-28 w-full rounded-xl border border-slate-200 p-4 text-sm"
+                        />
+                      )}
+
+                      {item.type ===
+                        "activity" && (
+                        <div className="mt-4 rounded-xl bg-slate-50 p-4">
+                          <p className="text-sm leading-6 text-slate-600">
+                            {
+                              item.config
+                                .instructions
+                            }
+                          </p>
+                          <p className="mt-2 text-xs text-slate-400">
+                            Suggested duration:{" "}
+                            {item.config
+                              .durationMinutes ||
+                              2}{" "}
+                            minutes
+                          </p>
+                          <button
+                            type="button"
+                            onClick={() =>
+                              updateAmbulatoryResponse(
+                                item,
+                                !value
+                              )
+                            }
+                            className={`mt-4 rounded-xl px-4 py-2.5 text-sm font-semibold ${
+                              value
+                                ? "bg-emerald-100 text-emerald-800"
+                                : "bg-slate-950 text-white"
+                            }`}
+                          >
+                            {value
+                              ? "✓ Completed"
+                              : "Mark activity complete"}
+                          </button>
+                        </div>
+                      )}
+
+                      {item.type ===
+                        "questionnaire" &&
+                        (() => {
+                          const qid =
+                            String(
+                              item.config
+                                .questionnaire_id ||
+                                ""
+                            );
+
+                          const detail =
+                            qid
+                              ? ambulatoryQuestionnaires[
+                                  qid
+                                ]
+                              : null;
+
+                          const stored =
+                            value &&
+                            typeof value ===
+                              "object"
+                              ? value
+                              : {
+                                  questionnaire_id:
+                                    qid,
+                                  answers: {},
+                                  completed:
+                                    false,
+                                };
+
+                          if (!qid) {
+                            return (
+                              <p className="mt-4 text-sm text-red-700">
+                                Questionnaire is not configured.
+                              </p>
+                            );
+                          }
+
+                          if (!detail) {
+                            return (
+                              <button
+                                type="button"
+                                onClick={() =>
+                                  void loadAmbulatoryQuestionnaire(
+                                    qid
+                                  )
+                                }
+                                className="mt-4 rounded-xl bg-slate-950 px-4 py-2.5 text-sm font-semibold text-white"
+                              >
+                                Open questionnaire
+                              </button>
+                            );
+                          }
+
+                          const qItems =
+                            detail.items ||
+                            [];
+
+                          return (
+                            <div className="mt-4 rounded-2xl border border-cyan-100 bg-cyan-50/40 p-4">
+                              <p className="font-semibold text-cyan-950">
+                                {detail
+                                  .questionnaire
+                                  ?.name ||
+                                  item.config
+                                    .questionnaire_name}
+                              </p>
+
+                              {detail.version
+                                ?.participant_instructions && (
+                                <p className="mt-2 text-xs leading-5 text-slate-600">
+                                  {
+                                    detail
+                                      .version
+                                      .participant_instructions
+                                  }
+                                </p>
+                              )}
+
+                              <div className="mt-4 space-y-4">
+                                {qItems.map(
+                                  (
+                                    qItem
+                                  ) => {
+                                    const normalized: PublicItem =
+                                      {
+                                        id:
+                                          qItem.id,
+                                        block_id:
+                                          null,
+                                        item_key:
+                                          qItem.item_key,
+                                        position:
+                                          qItem.position,
+                                        prompt:
+                                          qItem.prompt,
+                                        help_text:
+                                          qItem.help_text,
+                                        subscale:
+                                          qItem.subscale,
+                                        reverse_scored:
+                                          false,
+                                        response_type:
+                                          qItem.response_type,
+                                        response_options:
+                                          qItem.response_options ||
+                                          [],
+                                        required:
+                                          qItem.required,
+                                        response_config:
+                                          qItem.response_config ||
+                                          {},
+                                        validation_config:
+                                          {},
+                                        scoring_config:
+                                          {},
+                                        display_logic:
+                                          {},
+                                        randomization_config:
+                                          {},
+                                        media_config:
+                                          {},
+                                        is_content_only:
+                                          false,
+                                      };
+
+                                    return (
+                                      <div
+                                        key={
+                                          qItem.id
+                                        }
+                                        className="rounded-xl border border-cyan-100 bg-white p-4"
+                                      >
+                                        <p className="text-sm font-medium">
+                                          {
+                                            qItem.prompt
+                                          }
+                                        </p>
+
+                                        <div className="mt-3">
+                                          <QuestionInput
+                                            item={
+                                              normalized
+                                            }
+                                            answer={
+                                              stored
+                                                .answers?.[
+                                                qItem
+                                                  .id
+                                              ]
+                                            }
+                                            onChange={(
+                                              next
+                                            ) => {
+                                              const answers =
+                                                {
+                                                  ...(stored.answers ||
+                                                    {}),
+                                                  [qItem.id]:
+                                                    next,
+                                                };
+
+                                              const requiredItems =
+                                                qItems.filter(
+                                                  (
+                                                    candidate
+                                                  ) =>
+                                                    candidate.required
+                                                );
+
+                                              const complete =
+                                                requiredItems.every(
+                                                  (
+                                                    candidate
+                                                  ) => {
+                                                    const candidateValue =
+                                                      answers[
+                                                        candidate
+                                                          .id
+                                                      ];
+
+                                                    return (
+                                                      candidateValue !==
+                                                        undefined &&
+                                                      candidateValue !==
+                                                        null &&
+                                                      candidateValue !==
+                                                        "" &&
+                                                      (!Array.isArray(
+                                                        candidateValue
+                                                      ) ||
+                                                        candidateValue.length >
+                                                          0)
+                                                    );
+                                                  }
+                                                );
+
+                                              updateAmbulatoryResponse(
+                                                item,
+                                                {
+                                                  questionnaire_id:
+                                                    qid,
+                                                  questionnaire_name:
+                                                    detail
+                                                      .questionnaire
+                                                      ?.name ||
+                                                    item
+                                                      .config
+                                                      .questionnaire_name,
+                                                  answers,
+                                                  completed:
+                                                    complete,
+                                                }
+                                              );
+                                            }}
+                                            sessionToken={
+                                              sessionToken
+                                            }
+                                          />
+                                        </div>
+                                      </div>
+                                    );
+                                  }
+                                )}
+                              </div>
+
+                              {stored.completed && (
+                                <p className="mt-4 text-sm font-semibold text-emerald-700">
+                                  ✓ Questionnaire complete
+                                </p>
+                              )}
+                            </div>
+                          );
+                        })()}
+                    </div>
+                  );
+                }
+              )}
+            </div>
+
+            <div className="mt-8 flex flex-wrap items-center justify-between gap-3 border-t border-slate-100 pt-5">
+              <button
+                type="button"
+                disabled={savingAmbulatory}
+                onClick={() => {
+                  setActiveAmbulatoryCheckin(
+                    null
+                  );
+                  setAmbulatoryResponses(
+                    {}
+                  );
+                  setPageError("");
+                  setPhase(
+                    "study_dashboard"
+                  );
+                }}
+                className="rounded-xl border border-slate-200 bg-white px-5 py-3 text-sm font-semibold text-slate-600"
+              >
+                Back to dashboard
+              </button>
+
+              <button
+                type="button"
+                disabled={savingAmbulatory}
+                onClick={() =>
+                  void submitAmbulatoryCheckin()
+                }
+                className="rounded-xl bg-slate-950 px-5 py-3 text-sm font-semibold text-white disabled:opacity-50"
+              >
+                {savingAmbulatory
+                  ? "Saving..."
+                  : "Submit check-in"}
+              </button>
+            </div>
+          </Card>
+        </div>
+      </Shell>
+    );
+  }
+
+  if (phase === "followup_contact") {
+    return (
+      <Shell>
+        <div className="space-y-5">
+          {pageError && (
+            <ErrorBox text={pageError} />
+          )}
+
+          <Card
+            title="Follow-up contact"
+            description="This study includes one or more later follow-up phases."
+          >
+            <div className="space-y-5">
+              <div className="rounded-2xl border border-cyan-100 bg-cyan-50/60 p-5">
+                <p className="font-medium text-cyan-950">
+                  Your current study responses are already saved.
+                </p>
+                <p className="mt-2 text-sm leading-6 text-cyan-900/75">
+                  To take part in the follow-up phase, enter an email address
+                  and consent to follow-up contact. This is the address
+                  PsyLattice will use to send your secure follow-up study
+                  invitation and later reminders. The email address is stored
+                  separately from the ordinary research-response data.
+                </p>
+              </div>
+
+              <label className="block">
+                <span className="text-sm font-medium text-slate-700">
+                  Follow-up email address
+                </span>
+                <input
+                  type="email"
+                  value={
+                    followupContactEmail
+                  }
+                  onChange={(event) =>
+                    setFollowupContactEmail(
+                      event.target.value
+                    )
+                  }
+                  placeholder="you@example.com"
+                  className="mt-2 w-full rounded-xl border border-slate-200 px-4 py-3 text-sm outline-none focus:border-cyan-700"
+                />
+              </label>
+
+              <label className="flex items-start gap-3 rounded-2xl border border-slate-200 p-4">
+                <input
+                  type="checkbox"
+                  checked={
+                    followupContactConsent
+                  }
+                  onChange={(event) =>
+                    setFollowupContactConsent(
+                      event.target.checked
+                    )
+                  }
+                  className="mt-1"
+                />
+                <div>
+                  <p className="text-sm font-medium text-slate-800">
+                    I consent to being contacted by email for follow-up phases
+                    of this study.
+                  </p>
+                  <p className="mt-1 text-xs leading-5 text-slate-500">
+                    This consent is specifically for later follow-up study
+                    invitations and reminders. It is separate from ambulatory
+                    check-in reminder preferences.
+                  </p>
+                </div>
+              </label>
+
+              {followupContactStatus && (
+                <p className="text-sm text-slate-600">
+                  {followupContactStatus}
+                </p>
+              )}
+
+              <div className="flex flex-wrap items-center justify-between gap-3 border-t border-slate-100 pt-5">
+                <p className="max-w-xl text-xs leading-5 text-slate-400">
+                  PsyLattice will send the follow-up invitation to the email
+                  address entered above.
+                </p>
+
+                <button
+                  type="button"
+                  onClick={() =>
+                    void saveFollowupContactChoice()
+                  }
+                  disabled={
+                    savingFollowupContact ||
+                    !followupContactConsent ||
+                    !followupContactEmail.trim()
+                  }
+                  className="rounded-xl bg-slate-950 px-5 py-2.5 text-sm font-semibold text-white disabled:opacity-50"
+                >
+                  {savingFollowupContact
+                    ? "Saving..."
+                    : "Save email & continue"}
+                </button>
+              </div>
+            </div>
+          </Card>
+        </div>
+      </Shell>
+    );
+  }
+
   if (phase === "measures") {
     if (!currentMeasure) {
       return (
         <Shell>
-          <Card title="Questionnaires complete">
+          <Card
+            title={
+              ambulatoryConfig?.enabled
+                ? "Baseline questionnaires complete"
+                : "Questionnaires complete"
+            }
+          >
             <button
               type="button"
-              onClick={() => void completeParticipation()}
+              onClick={() =>
+                ambulatoryConfig?.enabled
+                  ? void enterAmbulatoryStudy()
+                  : void completeParticipation()
+              }
               className="rounded-xl bg-slate-950 px-5 py-3 text-sm font-semibold text-white"
             >
-              Complete study
+              {ambulatoryConfig?.enabled
+                ? "Open study dashboard"
+                : "Complete study"}
             </button>
           </Card>
         </Shell>
@@ -2369,7 +4451,9 @@ export default function ParticipantStudyPage() {
         <div className="space-y-5">
           <div className="rounded-2xl bg-emerald-50 p-5">
             <p className="font-medium text-emerald-900">
-              Baseline session complete
+              {ambulatoryConfig?.enabled
+                ? "Longitudinal study complete"
+                : "Baseline session complete"}
             </p>
             <p className="mt-2 text-sm leading-6 text-emerald-800">
               Your pseudonymous participant ID is{" "}
@@ -2380,12 +4464,13 @@ export default function ParticipantStudyPage() {
           {followupConfigured && (
             <div className="rounded-2xl border border-cyan-100 bg-cyan-50/60 p-5">
               <p className="font-medium text-cyan-950">
-                This study includes a follow-up assessment
+                This study includes later follow-up phases
               </p>
               <p className="mt-2 text-sm leading-6 text-cyan-900/75">
-                Your baseline responses are complete. The research team will
-                provide the timing or access method for the follow-up according
-                to the study protocol.
+                If you consented to follow-up email contact, PsyLattice can
+                send you a new secure link when the research team opens a
+                later follow-up wave. Each wave may contain different
+                questionnaires.
               </p>
             </div>
           )}

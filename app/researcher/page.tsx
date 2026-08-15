@@ -4,6 +4,16 @@ import Link from "next/link";
 import { useEffect, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
 import PsyLatticeLogo from "@/components/PsyLatticeLogo";
+import FollowupManager from "@/components/FollowupManager";
+import {
+  AmbulatoryProtocolBuilder,
+  defaultAmbulatoryProtocol,
+  nestAmbulatoryProtocol,
+  serializeAmbulatoryProtocol,
+  validateAmbulatoryProtocol,
+  type AmbulatoryScheduleDraft,
+  type AmbulatoryQuestionnaireOption,
+} from "@/components/AmbulatoryProtocolBuilder";
 
 type Screen =
   | "dashboard"
@@ -11,6 +21,7 @@ type Screen =
   | "builder"
   | "library"
   | "ambulatory"
+  | "followup"
   | "participants"
   | "links"
   | "data"
@@ -29,6 +40,7 @@ const navigation: {
   { id: "builder", label: "Study Builder", group: "Research" },
   { id: "library", label: "Questionnaire Library", group: "Research" },
   { id: "ambulatory", label: "Ambulatory Assessment", group: "Research" },
+  { id: "followup", label: "Follow-up Manager", group: "Research" },
   { id: "participants", label: "Participants", group: "Research" },
   { id: "links", label: "Participant Links", group: "Research" },
 
@@ -672,8 +684,10 @@ function Dashboard({
 
 function Studies({
   changeScreen,
+  editStudy,
 }: {
   changeScreen: (screen: Screen) => void;
+  editStudy: (studyId: string) => void;
 }) {
   type ResearchStudy = {
     id: string;
@@ -951,7 +965,7 @@ function Studies({
 
           <button
             type="button"
-            onClick={() => changeScreen("builder")}
+            onClick={() => editStudy("")}
             className="rounded-xl bg-slate-950 px-5 py-3 text-sm font-semibold text-white"
           >
             + New study
@@ -974,7 +988,7 @@ function Studies({
             </p>
             <button
               type="button"
-              onClick={() => changeScreen("builder")}
+              onClick={() => editStudy("")}
               className="mt-4 rounded-xl bg-slate-950 px-4 py-2.5 text-sm font-semibold text-white"
             >
               Create your first study
@@ -1128,6 +1142,14 @@ function Studies({
           <div className="mt-6 flex flex-wrap gap-2 border-t border-slate-100 pt-5">
             <button
               type="button"
+              onClick={() => editStudy(selectedStudy.id)}
+              className="rounded-xl bg-cyan-800 px-4 py-2.5 text-sm font-semibold text-white"
+            >
+              Edit study
+            </button>
+
+            <button
+              type="button"
               onClick={() => changeScreen("participants")}
               className="rounded-xl border border-slate-200 px-4 py-2.5 text-sm font-semibold"
             >
@@ -1154,8 +1176,12 @@ function Studies({
 
 function StudyBuilder({
   changeScreen,
+  initialStudyId,
+  onStudyIdChange,
 }: {
   changeScreen: (screen: Screen) => void;
+  initialStudyId: string;
+  onStudyIdChange: (studyId: string) => void;
 }) {
   type StudyComponents = {
     consent: boolean;
@@ -1256,6 +1282,22 @@ function StudyBuilder({
   const [studyId, setStudyId] = useState("");
   const [consentVersionId, setConsentVersionId] = useState("");
   const [ambulatoryProtocolId, setAmbulatoryProtocolId] = useState("");
+  const [ambulatoryProtocolSummary, setAmbulatoryProtocolSummary] = useState<{
+    name: string;
+    duration_days: number | null;
+    is_enabled: boolean;
+    updated_at: string | null;
+    schedule_count: number;
+  } | null>(null);
+  const [followupWaveSummary, setFollowupWaveSummary] = useState<{
+    count: number;
+    active: number;
+    names: string[];
+  }>({
+    count: 0,
+    active: 0,
+    names: [],
+  });
   const [savingStudy, setSavingStudy] = useState(false);
   const [saveMessage, setSaveMessage] = useState("");
   const [studyError, setStudyError] = useState("");
@@ -1410,8 +1452,8 @@ function StudyBuilder({
     ...(components.demographics
       ? [{ key: "demographics", label: "Demographics" }]
       : []),
-    ...(components.baseline || components.followup
-      ? [{ key: "measures", label: "Measures" }]
+    ...(components.baseline
+      ? [{ key: "measures", label: "Baseline measures" }]
       : []),
     ...(components.ambulatory
       ? [{ key: "ambulatory", label: "Ambulatory" }]
@@ -1539,16 +1581,338 @@ function StudyBuilder({
   }, []);
 
   useEffect(() => {
-    setStudyMeasures((previous) =>
-      previous.filter((measure) => {
-        if (measure.measurement_point === "baseline") {
-          return components.baseline;
-        }
+    if (!initialStudyId) {
+      setFollowupWaveSummary({
+        count: 0,
+        active: 0,
+        names: [],
+      });
+      return;
+    }
 
-        return components.followup;
-      })
+    let cancelled = false;
+
+    async function loadFollowupSummary() {
+      const supabase = createClient();
+
+      const { data, error } = await supabase
+        .from("study_followup_waves")
+        .select("id, name, status, position")
+        .eq("study_id", initialStudyId)
+        .order("position", { ascending: true });
+
+      if (cancelled || error) {
+        if (error) {
+          console.error(
+            "Could not load follow-up wave summary:",
+            error
+          );
+        }
+        return;
+      }
+
+      const rows = data || [];
+
+      setFollowupWaveSummary({
+        count: rows.length,
+        active: rows.filter(
+          (wave: any) => wave.status === "active"
+        ).length,
+        names: rows.map(
+          (wave: any) => wave.name || "Follow-up"
+        ),
+      });
+    }
+
+    void loadFollowupSummary();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [initialStudyId]);
+
+  useEffect(() => {
+    if (!initialStudyId) {
+      return;
+    }
+
+    let cancelled = false;
+
+    async function loadSavedStudyDraft() {
+      setStudyError("");
+      setSaveMessage("Loading saved study draft...");
+
+      const supabase = createClient();
+
+      const {
+        data: { user },
+        error: userError,
+      } = await supabase.auth.getUser();
+
+      if (userError || !user || cancelled) {
+        if (!cancelled) {
+          setStudyError("The saved study draft could not be loaded.");
+          setSaveMessage("");
+        }
+        return;
+      }
+
+      const [
+        studyResult,
+        measuresResult,
+        demographicsResult,
+        consentVersionResult,
+        protocolResult,
+      ] = await Promise.all([
+        supabase
+          .from("research_studies")
+          .select(
+            "id, title, participant_description, design, target_sample_size, components"
+          )
+          .eq("id", initialStudyId)
+          .eq("owner_user_id", user.id)
+          .maybeSingle(),
+
+        supabase
+          .from("study_measures")
+          .select(
+            "id, questionnaire_id, questionnaire_version_id, measurement_point, required, config, position, followup_wave_id"
+          )
+          .eq("study_id", initialStudyId)
+          .eq("owner_user_id", user.id)
+          .is("followup_wave_id", null)
+          .order("position", { ascending: true }),
+
+        supabase
+          .from("study_demographic_questions")
+          .select(
+            "id, field_key, label, description, question_type, required, direct_identifier, response_config, validation_config, position"
+          )
+          .eq("study_id", initialStudyId)
+          .eq("owner_user_id", user.id)
+          .order("position", { ascending: true }),
+
+        supabase
+          .from("study_consent_versions")
+          .select(
+            "id, consent_method, participant_information, external_consent_note, updated_at"
+          )
+          .eq("study_id", initialStudyId)
+          .eq("owner_user_id", user.id)
+          .eq("is_current", true)
+          .order("updated_at", { ascending: false })
+          .limit(1)
+          .maybeSingle(),
+
+        supabase
+          .from("study_ambulatory_protocols")
+          .select(
+            "id, name, duration_days, is_enabled, updated_at, protocol_v3"
+          )
+          .eq("study_id", initialStudyId)
+          .eq("owner_user_id", user.id)
+          .order("updated_at", { ascending: false })
+          .limit(1)
+          .maybeSingle(),
+      ]);
+
+      if (cancelled) {
+        return;
+      }
+
+      if (studyResult.error || !studyResult.data) {
+        console.error(
+          "Could not load saved study:",
+          studyResult.error
+        );
+        setStudyError("The saved study draft could not be loaded.");
+        setSaveMessage("");
+        return;
+      }
+
+      const savedStudy = studyResult.data;
+      const savedComponents =
+        (savedStudy.components || {}) as Partial<StudyComponents>;
+
+      setStudyId(savedStudy.id);
+      setTitle(savedStudy.title || "Untitled research study");
+      setDescription(savedStudy.participant_description || "");
+      setDesign(savedStudy.design || "Cross-sectional survey");
+      setTargetSampleSize(
+        Number(savedStudy.target_sample_size || 100)
+      );
+      setComponents({
+        consent: savedComponents.consent ?? true,
+        demographics: savedComponents.demographics ?? true,
+        baseline: savedComponents.baseline ?? true,
+        ambulatory: savedComponents.ambulatory ?? false,
+        followup: savedComponents.followup ?? false,
+        wearables: savedComponents.wearables ?? false,
+        passive: savedComponents.passive ?? false,
+        uploads: savedComponents.uploads ?? false,
+      });
+
+      if (!measuresResult.error) {
+        setStudyMeasures(
+          (measuresResult.data || [])
+            .filter(
+              (row: any) =>
+                row.measurement_point === "baseline"
+            )
+            .map((row: any) => ({
+              id: row.id,
+              questionnaire_id: row.questionnaire_id,
+              questionnaire_version_id:
+                row.questionnaire_version_id,
+              name:
+                row.config?.questionnaire_name_snapshot ||
+                "Questionnaire",
+              acronym:
+                row.config?.questionnaire_acronym_snapshot ||
+                null,
+              category: row.config?.category || "Questionnaire",
+              source_type:
+                row.config?.source_type || "catalogue",
+              version_label:
+                row.config?.version_label_snapshot ||
+                "Saved version",
+              measurement_point: "baseline",
+              required: row.required !== false,
+            }))
+        );
+      }
+
+      if (!demographicsResult.error) {
+        setDemographicQuestions(
+          (demographicsResult.data || []).map((row: any) => ({
+            id: row.id,
+            field_key: row.field_key,
+            label: row.label,
+            description: row.description || "",
+            question_type: row.question_type,
+            required: Boolean(row.required),
+            direct_identifier: Boolean(row.direct_identifier),
+            options: Array.isArray(
+              row.response_config?.options
+            )
+              ? row.response_config.options
+              : [],
+            placeholder:
+              row.response_config?.placeholder || "",
+            min_value:
+              row.validation_config?.min_value == null
+                ? ""
+                : String(row.validation_config.min_value),
+            max_value:
+              row.validation_config?.max_value == null
+                ? ""
+                : String(row.validation_config.max_value),
+          }))
+        );
+      }
+
+      if (
+        !consentVersionResult.error &&
+        consentVersionResult.data
+      ) {
+        const savedConsent = consentVersionResult.data;
+
+        setConsentVersionId(savedConsent.id);
+        setConsentMethod(
+          (savedConsent.consent_method ||
+            "psylattice") as
+            | "psylattice"
+            | "external"
+            | "none"
+        );
+        setParticipantInformation(
+          savedConsent.participant_information || ""
+        );
+        setExternalConsentNote(
+          savedConsent.external_consent_note || ""
+        );
+
+        const { data: consentItemRows, error: consentItemsError } =
+          await supabase
+            .from("study_consent_items")
+            .select(
+              "id, prompt, response_type, required, response_config, position"
+            )
+            .eq("consent_version_id", savedConsent.id)
+            .eq("owner_user_id", user.id)
+            .order("position", { ascending: true });
+
+        if (!cancelled && !consentItemsError) {
+          setConsentItems(
+            (consentItemRows || []).map((row: any) => ({
+              id: row.id,
+              prompt: row.prompt,
+              response_type: row.response_type,
+              required: Boolean(row.required),
+              options: Array.isArray(
+                row.response_config?.options
+              )
+                ? row.response_config.options
+                : [],
+              correct_option:
+                row.response_config?.correct_option || "",
+            }))
+          );
+        }
+      } else {
+        setConsentVersionId("");
+      }
+
+      setAmbulatoryProtocolId(
+        protocolResult.data?.id || ""
+      );
+
+      if (protocolResult.data?.id) {
+        const protocolRows = Array.isArray(
+          protocolResult.data.protocol_v3
+        )
+          ? protocolResult.data.protocol_v3
+          : [];
+
+        setAmbulatoryProtocolSummary({
+          name:
+            protocolResult.data.name ||
+            "Ambulatory assessment",
+          duration_days:
+            protocolResult.data.duration_days == null
+              ? null
+              : Number(protocolResult.data.duration_days),
+          is_enabled:
+            protocolResult.data.is_enabled !== false,
+          updated_at:
+            protocolResult.data.updated_at || null,
+          schedule_count: protocolRows.length,
+        });
+      } else {
+        setAmbulatoryProtocolSummary(null);
+      }
+
+      setActiveStepKey("overview");
+      setSaveMessage("Saved study draft loaded.");
+      onStudyIdChange(savedStudy.id);
+    }
+
+    void loadSavedStudyDraft();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [initialStudyId]);
+
+  useEffect(() => {
+    setStudyMeasures((previous) =>
+      previous.filter(
+        (measure) =>
+          measure.measurement_point === "baseline" &&
+          components.baseline
+      )
     );
-  }, [components.baseline, components.followup]);
+  }, [components.baseline]);
 
   function addStudyMeasure(
     questionnaire: StudyMeasureCatalogueItem,
@@ -1934,19 +2298,19 @@ function StudyBuilder({
     );
   }
 
-  async function saveStudyDraft() {
-    if (savingStudy) return;
+  async function saveStudyDraft(): Promise<string | null> {
+    if (savingStudy) return null;
     setStudyError("");
     setSaveMessage("");
 
     if (!title.trim()) {
       setStudyError("Enter a study title before saving.");
-      return;
+      return null;
     }
 
     if (targetSampleSize < 1) {
       setStudyError("Target sample size must be at least 1.");
-      return;
+      return null;
     }
 
     if (
@@ -1955,7 +2319,7 @@ function StudyBuilder({
       consentItems.some((item) => !item.prompt.trim())
     ) {
       setStudyError("Every consent question needs wording.");
-      return;
+      return null;
     }
 
     if (
@@ -1963,7 +2327,7 @@ function StudyBuilder({
       demographicQuestions.some((question) => !question.label.trim())
     ) {
       setStudyError("Every demographic question needs a label.");
-      return;
+      return null;
     }
 
     setSavingStudy(true);
@@ -2013,23 +2377,24 @@ function StudyBuilder({
         setStudyId(data.id);
       }
 
+      onStudyIdChange(savedStudyId);
+
       const { error: deleteMeasuresError } = await supabase
         .from("study_measures")
         .delete()
         .eq("study_id", savedStudyId)
-        .eq("owner_user_id", user.id);
+        .eq("owner_user_id", user.id)
+        .is("followup_wave_id", null);
 
       if (deleteMeasuresError) {
         throw deleteMeasuresError;
       }
 
-      const measuresToSave = studyMeasures.filter((measure) => {
-        if (measure.measurement_point === "baseline") {
-          return components.baseline;
-        }
-
-        return components.followup;
-      });
+      const measuresToSave = studyMeasures.filter(
+        (measure) =>
+          measure.measurement_point === "baseline" &&
+          components.baseline
+      );
 
       if (measuresToSave.length > 0) {
         const { error: measuresError } = await supabase
@@ -2167,107 +2532,48 @@ function StudyBuilder({
         }
       }
 
-      if (components.ambulatory) {
-        const protocolPayload = {
-          study_id: savedStudyId,
-          owner_user_id: user.id,
-          name: protocolName.trim() || "Ambulatory protocol",
-          duration_mode: durationMode,
-          duration_days: durationMode === "relative_days" ? durationDays : null,
-          start_date: durationMode === "fixed_dates" && fixedStartDate ? fixedStartDate : null,
-          end_date: durationMode === "fixed_dates" && fixedEndDate ? fixedEndDate : null,
-          sampling_modes: samplingModes,
-          scheduling_config: {
-            minimum_interval_minutes: minimumIntervalMinutes,
-            weekday_mode: weekdayMode,
-            dnd_start: dndStart,
-            dnd_end: dndEnd,
-            allow_snooze: allowSnooze,
-          },
-          reminder_config: {
-            reminder_count: reminderCount,
-            reminder_delay_minutes: reminderDelayMinutes,
-          },
-          timezone_config: {
-            mode: timezoneMode,
-          },
-          event_config: {
-            event_name: eventName,
-            maximum_per_day: eventMaxPerDay,
-          },
-          is_enabled: true,
-          updated_at: new Date().toISOString(),
-        };
+      // The unified Ambulatory Assessment workspace owns all ambulatory
+      // protocol configuration. The Study Builder only records whether the
+      // study includes an ambulatory component, so returning here cannot
+      // overwrite the protocol configured in the unified builder.
 
-        let savedProtocolId = ambulatoryProtocolId;
-        if (savedProtocolId) {
-          const { error } = await supabase
-            .from("study_ambulatory_protocols")
-            .update(protocolPayload)
-            .eq("id", savedProtocolId)
-            .eq("owner_user_id", user.id);
-          if (error) throw error;
-        } else {
-          const { data, error } = await supabase
-            .from("study_ambulatory_protocols")
-            .insert(protocolPayload)
-            .select("id")
-            .single();
-          if (error || !data) throw error || new Error("Ambulatory protocol could not be saved.");
-          savedProtocolId = data.id;
-          setAmbulatoryProtocolId(data.id);
-        }
-
-        const { error: deleteWindowError } = await supabase
-          .from("study_ambulatory_windows")
-          .delete()
-          .eq("protocol_id", savedProtocolId)
-          .eq("owner_user_id", user.id);
-        if (deleteWindowError) throw deleteWindowError;
-
-        if (ambulatoryWindows.length > 0) {
-          const { error: windowError } = await supabase
-            .from("study_ambulatory_windows")
-            .insert(
-              ambulatoryWindows.map((window, index) => ({
-                protocol_id: savedProtocolId,
-                study_id: savedStudyId,
-                owner_user_id: user.id,
-                position: index + 1,
-                label: window.label.trim() || `Window ${index + 1}`,
-                sampling_type: window.sampling_type,
-                start_time:
-                  window.sampling_type === "random_window" ||
-                  window.sampling_type === "interval"
-                    ? window.start_time || null
-                    : null,
-                end_time:
-                  window.sampling_type === "random_window" ||
-                  window.sampling_type === "interval"
-                    ? window.end_time || null
-                    : null,
-                fixed_time:
-                  window.sampling_type === "fixed_time"
-                    ? window.fixed_time || null
-                    : null,
-                response_window_minutes: window.response_window_minutes,
-                config: {},
-              }))
-            );
-          if (windowError) throw windowError;
-        }
-      }
 
       setSaveMessage("Study draft saved to Supabase.");
+      return savedStudyId;
     } catch (error) {
       console.error("Saving study draft failed:", error);
       setStudyError(
         error instanceof Error ? error.message : "The study draft could not be saved."
       );
+      return null;
     } finally {
       setSavingStudy(false);
     }
   }
+
+
+  async function openUnifiedAmbulatoryBuilder() {
+    const savedStudyId = await saveStudyDraft();
+
+    if (!savedStudyId) {
+      return;
+    }
+
+    onStudyIdChange(savedStudyId);
+    changeScreen("ambulatory");
+  }
+
+  async function openFollowupManager() {
+    const savedStudyId = await saveStudyDraft();
+
+    if (!savedStudyId) {
+      return;
+    }
+
+    onStudyIdChange(savedStudyId);
+    changeScreen("followup");
+  }
+
 
   const componentCards: Array<{
     key: keyof StudyComponents;
@@ -3014,12 +3320,6 @@ function StudyBuilder({
                             questionnaire.current_version_id &&
                           measure.measurement_point === "baseline"
                       );
-                      const followupAdded = studyMeasures.some(
-                        (measure) =>
-                          measure.questionnaire_version_id ===
-                            questionnaire.current_version_id &&
-                          measure.measurement_point === "followup"
-                      );
 
                       return (
                         <div
@@ -3096,30 +3396,6 @@ function StudyBuilder({
                                 </button>
                               )}
 
-                              {components.followup && (
-                                <button
-                                  type="button"
-                                  disabled={
-                                    !questionnaire.current_version_id ||
-                                    followupAdded
-                                  }
-                                  onClick={() =>
-                                    addStudyMeasure(
-                                      questionnaire,
-                                      "followup"
-                                    )
-                                  }
-                                  className={`rounded-xl px-4 py-2.5 text-sm font-semibold ${
-                                    followupAdded
-                                      ? "border border-emerald-200 bg-emerald-50 text-emerald-700"
-                                      : "border border-slate-200 bg-white"
-                                  } disabled:cursor-not-allowed disabled:opacity-60`}
-                                >
-                                  {followupAdded
-                                    ? "✓ Follow-up added"
-                                    : "+ Add to follow-up"}
-                                </button>
-                              )}
                             </div>
                           </div>
                         </div>
@@ -3141,140 +3417,209 @@ function StudyBuilder({
           )}
 
           {currentStep.key === "ambulatory" && (
-            <div className="space-y-6">
-              <div className="rounded-2xl border border-cyan-100 bg-cyan-50/60 p-5">
-                <p className="font-medium text-cyan-950">Ambulatory is enabled for this study</p>
-                <p className="mt-2 text-sm leading-6 text-cyan-900/70">
-                  Disable it from Study Components and this entire step disappears from the workflow.
-                </p>
-              </div>
+            <div className="space-y-5">
+              <div
+                className={`rounded-2xl border p-5 ${
+                  ambulatoryProtocolId
+                    ? "border-emerald-200 bg-emerald-50/70"
+                    : "border-cyan-100 bg-cyan-50/60"
+                }`}
+              >
+                <div className="flex flex-col justify-between gap-4 sm:flex-row sm:items-start">
+                  <div>
+                    <div className="flex flex-wrap items-center gap-2">
+                      <p
+                        className={`font-medium ${
+                          ambulatoryProtocolId
+                            ? "text-emerald-950"
+                            : "text-cyan-950"
+                        }`}
+                      >
+                        {ambulatoryProtocolId
+                          ? "✓ Ambulatory assessment saved and connected"
+                          : "Ambulatory Assessment is enabled for this study"}
+                      </p>
 
-              <label className="block">
-                <span className="text-sm font-medium">Protocol name</span>
-                <input value={protocolName} onChange={(event) => setProtocolName(event.target.value)} className="mt-2 w-full rounded-xl border border-slate-200 px-4 py-3 text-sm" />
-              </label>
-
-              <div className="grid gap-4 sm:grid-cols-2">
-                <label>
-                  <span className="text-sm font-medium">Duration mode</span>
-                  <select value={durationMode} onChange={(event) => setDurationMode(event.target.value as typeof durationMode)} className="mt-2 w-full rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm">
-                    <option value="relative_days">Number of days from participant start</option>
-                    <option value="fixed_dates">Fixed calendar dates</option>
-                    <option value="participant_defined">Participant-defined / protocol-defined end</option>
-                  </select>
-                </label>
-
-                {durationMode === "relative_days" && (
-                  <label>
-                    <span className="text-sm font-medium">Number of days</span>
-                    <input type="number" min={1} max={730} value={durationDays} onChange={(event) => setDurationDays(Number(event.target.value))} className="mt-2 w-full rounded-xl border border-slate-200 px-4 py-3 text-sm" />
-                  </label>
-                )}
-              </div>
-
-              {durationMode === "fixed_dates" && (
-                <div className="grid gap-4 sm:grid-cols-2">
-                  <label><span className="text-sm font-medium">Start date</span><input type="date" value={fixedStartDate} onChange={(event) => setFixedStartDate(event.target.value)} className="mt-2 w-full rounded-xl border border-slate-200 px-4 py-3 text-sm" /></label>
-                  <label><span className="text-sm font-medium">End date</span><input type="date" value={fixedEndDate} onChange={(event) => setFixedEndDate(event.target.value)} className="mt-2 w-full rounded-xl border border-slate-200 px-4 py-3 text-sm" /></label>
-                </div>
-              )}
-
-              <div>
-                <p className="text-sm font-medium">Sampling modes</p>
-                <div className="mt-3 flex flex-wrap gap-2">
-                  {[
-                    ["random_window", "Random-time / stratified random"],
-                    ["fixed_time", "Fixed-time"],
-                    ["interval", "Interval-contingent"],
-                    ["event_contingent", "Event-contingent"],
-                    ["participant_initiated", "Participant-initiated"],
-                    ["context_triggered", "Context-triggered / future integration"],
-                  ].map(([value, label]) => (
-                    <button
-                      key={value}
-                      type="button"
-                      onClick={() => toggleSamplingMode(value)}
-                      className={`rounded-full border px-3 py-2 text-xs font-medium ${
-                        samplingModes.includes(value)
-                          ? "border-cyan-700 bg-cyan-50 text-cyan-900"
-                          : "border-slate-200 text-slate-500"
-                      }`}
-                    >
-                      {label}
-                    </button>
-                  ))}
-                </div>
-              </div>
-
-              <div>
-                <div className="flex flex-wrap items-center justify-between gap-3">
-                  <div><p className="font-medium">Prompt / event windows</p><p className="mt-1 text-sm text-slate-500">Combine fixed, random, interval and participant/event-triggered schedules.</p></div>
-                  <button type="button" onClick={addAmbulatoryWindow} className="rounded-xl border border-slate-200 px-4 py-2.5 text-sm font-semibold">+ Add window</button>
-                </div>
-
-                <div className="mt-4 space-y-4">
-                  {ambulatoryWindows.map((window) => (
-                    <div key={window.id} className="rounded-2xl border border-slate-200 p-5">
-                      <div className="grid gap-3 md:grid-cols-[1fr_220px_auto]">
-                        <input value={window.label} onChange={(event) => updateAmbulatoryWindow(window.id, { label: event.target.value })} className="rounded-xl border border-slate-200 px-3 py-2.5 text-sm" />
-                        <select value={window.sampling_type} onChange={(event) => updateAmbulatoryWindow(window.id, { sampling_type: event.target.value as AmbulatoryWindowDraft["sampling_type"] })} className="rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm">
-                          <option value="random_window">Random within window</option>
-                          <option value="fixed_time">Fixed time</option>
-                          <option value="interval">Interval window</option>
-                          <option value="event_contingent">Event-contingent</option>
-                          <option value="participant_initiated">Participant-initiated</option>
-                        </select>
-                        <button type="button" onClick={() => removeAmbulatoryWindow(window.id)} className="rounded-xl border border-red-200 px-3 py-2.5 text-xs font-semibold text-red-700">Remove</button>
-                      </div>
-
-                      {(window.sampling_type === "random_window" || window.sampling_type === "interval") && (
-                        <div className="mt-4 grid gap-3 sm:grid-cols-3">
-                          <label><span className="text-xs text-slate-500">Start</span><input type="time" value={window.start_time} onChange={(event) => updateAmbulatoryWindow(window.id, { start_time: event.target.value })} className="mt-1 w-full rounded-xl border border-slate-200 px-3 py-2.5 text-sm" /></label>
-                          <label><span className="text-xs text-slate-500">End</span><input type="time" value={window.end_time} onChange={(event) => updateAmbulatoryWindow(window.id, { end_time: event.target.value })} className="mt-1 w-full rounded-xl border border-slate-200 px-3 py-2.5 text-sm" /></label>
-                          <label><span className="text-xs text-slate-500">Response window (min)</span><input type="number" min={1} value={window.response_window_minutes} onChange={(event) => updateAmbulatoryWindow(window.id, { response_window_minutes: Number(event.target.value) })} className="mt-1 w-full rounded-xl border border-slate-200 px-3 py-2.5 text-sm" /></label>
-                        </div>
-                      )}
-
-                      {window.sampling_type === "fixed_time" && (
-                        <div className="mt-4 grid gap-3 sm:grid-cols-2">
-                          <label><span className="text-xs text-slate-500">Exact time</span><input type="time" value={window.fixed_time} onChange={(event) => updateAmbulatoryWindow(window.id, { fixed_time: event.target.value })} className="mt-1 w-full rounded-xl border border-slate-200 px-3 py-2.5 text-sm" /></label>
-                          <label><span className="text-xs text-slate-500">Response window (min)</span><input type="number" min={1} value={window.response_window_minutes} onChange={(event) => updateAmbulatoryWindow(window.id, { response_window_minutes: Number(event.target.value) })} className="mt-1 w-full rounded-xl border border-slate-200 px-3 py-2.5 text-sm" /></label>
-                        </div>
+                      {ambulatoryProtocolId && (
+                        <span className="rounded-full border border-emerald-200 bg-white px-2.5 py-1 text-[11px] font-semibold text-emerald-700">
+                          CONFIRMED
+                        </span>
                       )}
                     </div>
-                  ))}
+
+                    {ambulatoryProtocolSummary ? (
+                      <div className="mt-3 grid gap-2 text-sm text-emerald-900/80 sm:grid-cols-2 lg:grid-cols-4">
+                        <div>
+                          <span className="block text-xs font-medium text-emerald-700">
+                            Protocol
+                          </span>
+                          <span className="font-medium">
+                            {ambulatoryProtocolSummary.name}
+                          </span>
+                        </div>
+
+                        <div>
+                          <span className="block text-xs font-medium text-emerald-700">
+                            Duration
+                          </span>
+                          <span className="font-medium">
+                            {ambulatoryProtocolSummary.duration_days
+                              ? `${ambulatoryProtocolSummary.duration_days} days`
+                              : "Protocol-defined"}
+                          </span>
+                        </div>
+
+                        <div>
+                          <span className="block text-xs font-medium text-emerald-700">
+                            Blocks / schedules
+                          </span>
+                          <span className="font-medium">
+                            {ambulatoryProtocolSummary.schedule_count}
+                          </span>
+                        </div>
+
+                        <div>
+                          <span className="block text-xs font-medium text-emerald-700">
+                            Status
+                          </span>
+                          <span className="font-medium">
+                            {ambulatoryProtocolSummary.is_enabled
+                              ? "Active"
+                              : "Saved · disabled"}
+                          </span>
+                        </div>
+                      </div>
+                    ) : (
+                      <p className="mt-2 text-sm leading-6 text-cyan-900/75">
+                        The ambulatory component is selected, but no ambulatory
+                        protocol has been saved for this study yet.
+                      </p>
+                    )}
+
+                    {ambulatoryProtocolSummary?.updated_at && (
+                      <p className="mt-3 text-xs text-emerald-700/70">
+                        Last saved{" "}
+                        {new Date(
+                          ambulatoryProtocolSummary.updated_at
+                        ).toLocaleString()}
+                      </p>
+                    )}
+                  </div>
+
+                  <button
+                    type="button"
+                    onClick={() => void openUnifiedAmbulatoryBuilder()}
+                    disabled={savingStudy}
+                    className="shrink-0 rounded-xl bg-slate-950 px-5 py-3 text-sm font-semibold text-white disabled:opacity-50"
+                  >
+                    {savingStudy
+                      ? "Saving study..."
+                      : ambulatoryProtocolId
+                        ? "Edit ambulatory assessment"
+                        : "Save & configure ambulatory assessment"}
+                  </button>
                 </div>
               </div>
 
-              <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-                <label><span className="text-xs font-medium text-slate-500">Minimum prompt interval (min)</span><input type="number" min={0} value={minimumIntervalMinutes} onChange={(event) => setMinimumIntervalMinutes(Number(event.target.value))} className="mt-2 w-full rounded-xl border border-slate-200 px-3 py-2.5 text-sm" /></label>
-                <label><span className="text-xs font-medium text-slate-500">Reminders</span><input type="number" min={0} max={10} value={reminderCount} onChange={(event) => setReminderCount(Number(event.target.value))} className="mt-2 w-full rounded-xl border border-slate-200 px-3 py-2.5 text-sm" /></label>
-                <label><span className="text-xs font-medium text-slate-500">Reminder delay (min)</span><input type="number" min={1} value={reminderDelayMinutes} onChange={(event) => setReminderDelayMinutes(Number(event.target.value))} className="mt-2 w-full rounded-xl border border-slate-200 px-3 py-2.5 text-sm" /></label>
-                <label><span className="text-xs font-medium text-slate-500">Day schedule</span><select value={weekdayMode} onChange={(event) => setWeekdayMode(event.target.value)} className="mt-2 w-full rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm"><option value="all_days">All days</option><option value="weekdays">Weekdays only</option><option value="weekends">Weekends only</option><option value="custom">Custom by protocol</option></select></label>
-                <label><span className="text-xs font-medium text-slate-500">Time-zone handling</span><select value={timezoneMode} onChange={(event) => setTimezoneMode(event.target.value)} className="mt-2 w-full rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm"><option value="participant_local">Follow participant local time</option><option value="study_timezone">Lock to study timezone</option><option value="fixed_enrollment_timezone">Lock enrollment timezone</option></select></label>
-                <label className="flex items-center gap-3 rounded-xl border border-slate-200 px-4 py-3 sm:self-end"><input type="checkbox" checked={allowSnooze} onChange={(event) => setAllowSnooze(event.target.checked)} /><span className="text-sm">Allow participant snooze</span></label>
+              <div className="grid gap-4 lg:grid-cols-3">
+                {[
+                  [
+                    "Time contingent",
+                    "Fixed times, random windows and interval-contingent prompts with response windows and email reminders.",
+                  ],
+                  [
+                    "Event contingent",
+                    "Researcher-defined participant buttons such as Report craving, Report conflict or Report panic episode.",
+                  ],
+                  [
+                    "Nested branching",
+                    "Sliders, choices, numbers, activities and questionnaire-library blocks with recursively nested conditional questions.",
+                  ],
+                ].map(([title, description]) => (
+                  <div
+                    key={title}
+                    className="rounded-2xl border border-slate-200 bg-white p-5"
+                  >
+                    <p className="font-medium">{title}</p>
+                    <p className="mt-2 text-sm leading-6 text-slate-500">
+                      {description}
+                    </p>
+                  </div>
+                ))}
               </div>
 
-              <div className="grid gap-4 sm:grid-cols-2">
-                <label><span className="text-xs font-medium text-slate-500">Do-not-disturb starts</span><input type="time" value={dndStart} onChange={(event) => setDndStart(event.target.value)} className="mt-2 w-full rounded-xl border border-slate-200 px-3 py-2.5 text-sm" /></label>
-                <label><span className="text-xs font-medium text-slate-500">Do-not-disturb ends</span><input type="time" value={dndEnd} onChange={(event) => setDndEnd(event.target.value)} className="mt-2 w-full rounded-xl border border-slate-200 px-3 py-2.5 text-sm" /></label>
-              </div>
-
-              {(samplingModes.includes("event_contingent") || samplingModes.includes("participant_initiated")) && (
-                <div className="grid gap-4 rounded-2xl bg-slate-50 p-5 sm:grid-cols-2">
-                  <label><span className="text-sm font-medium">Defined event</span><input value={eventName} onChange={(event) => setEventName(event.target.value)} className="mt-2 w-full rounded-xl border border-slate-200 px-3 py-2.5 text-sm" /></label>
-                  <label><span className="text-sm font-medium">Maximum event entries / day</span><input type="number" min={1} value={eventMaxPerDay} onChange={(event) => setEventMaxPerDay(Number(event.target.value))} className="mt-2 w-full rounded-xl border border-slate-200 px-3 py-2.5 text-sm" /></label>
-                </div>
-              )}
+              <p className="text-xs leading-5 text-slate-400">
+                Important: participant links show the special longitudinal
+                Study Dashboard only after an active V3 ambulatory protocol
+                exists. Ordinary non-ambulatory study links remain unchanged.
+              </p>
             </div>
           )}
 
           {currentStep.key === "followup" && (
-            <div className="rounded-2xl bg-slate-50 p-5">
-              <p className="font-medium">Follow-up component enabled</p>
-              <p className="mt-2 text-sm leading-6 text-slate-500">
-                The study model now records that follow-up measurement is part of this protocol. Scheduling and questionnaire selection for follow-ups will be connected when study events and participant links are built.
-              </p>
+            <div
+              className={`rounded-2xl border p-5 ${
+                followupWaveSummary.count > 0
+                  ? "border-emerald-200 bg-emerald-50/70"
+                  : "border-cyan-100 bg-cyan-50/60"
+              }`}
+            >
+              <div className="flex flex-col justify-between gap-4 sm:flex-row sm:items-start">
+                <div>
+                  <div className="flex flex-wrap items-center gap-2">
+                    <p
+                      className={`font-medium ${
+                        followupWaveSummary.count > 0
+                          ? "text-emerald-950"
+                          : "text-cyan-950"
+                      }`}
+                    >
+                      {followupWaveSummary.count > 0
+                        ? "✓ Follow-up waves saved and connected"
+                        : "Follow-up component enabled"}
+                    </p>
+
+                    {followupWaveSummary.count > 0 && (
+                      <span className="rounded-full border border-emerald-200 bg-white px-2.5 py-1 text-[11px] font-semibold text-emerald-700">
+                        CONFIRMED
+                      </span>
+                    )}
+                  </div>
+
+                  {followupWaveSummary.count > 0 ? (
+                    <>
+                      <p className="mt-3 text-sm text-emerald-900/80">
+                        {followupWaveSummary.count} wave
+                        {followupWaveSummary.count === 1 ? "" : "s"} configured
+                        {" · "}
+                        {followupWaveSummary.active} active.
+                      </p>
+                      <p className="mt-1 text-xs leading-5 text-emerald-700/80">
+                        {followupWaveSummary.names.join(" · ")}
+                      </p>
+                    </>
+                  ) : (
+                    <p className="mt-2 max-w-2xl text-sm leading-6 text-cyan-900/75">
+                      Create one or more follow-up waves. Every wave can use
+                      different questionnaires, invitation timing, completion
+                      windows and email reminder schedules.
+                    </p>
+                  )}
+                </div>
+
+                <button
+                  type="button"
+                  onClick={() => void openFollowupManager()}
+                  disabled={savingStudy}
+                  className="shrink-0 rounded-xl bg-slate-950 px-5 py-3 text-sm font-semibold text-white disabled:opacity-50"
+                >
+                  {savingStudy
+                    ? "Saving study..."
+                    : followupWaveSummary.count > 0
+                      ? "Edit follow-up waves"
+                      : "Save & configure follow-ups"}
+                </button>
+              </div>
             </div>
           )}
 
@@ -3369,8 +3714,12 @@ function StudyBuilder({
 
 function QuestionnaireLibrary({
   changeScreen,
+  openCustomBuilderOnMount = false,
+  onCustomBuilderOpened,
 }: {
   changeScreen: (screen: Screen) => void;
+  openCustomBuilderOnMount?: boolean;
+  onCustomBuilderOpened?: () => void;
 }) {
   type Questionnaire = {
     id: string;
@@ -3412,7 +3761,6 @@ function QuestionnaireLibrary({
     response_scale_description: string | null;
     scoring_summary: string | null;
     score_multiplier: number;
-    scoring_method: string;
   };
 
   type ResponseOption = {
@@ -3528,6 +3876,7 @@ function QuestionnaireLibrary({
   const [references, setReferences] = useState<QuestionnaireReference[]>([]);
   const [detailLoading, setDetailLoading] = useState(false);
   const [copiedReferenceId, setCopiedReferenceId] = useState("");
+  const [currentUserId, setCurrentUserId] = useState("");
 
   const [builderOpen, setBuilderOpen] = useState(false);
   const [savingCustomQuestionnaire, setSavingCustomQuestionnaire] =
@@ -3622,6 +3971,8 @@ function QuestionnaireLibrary({
         return;
       }
 
+      setCurrentUserId(user.id);
+
       const { data, error } = await supabase
         .from("questionnaires")
         .select(
@@ -3663,7 +4014,7 @@ function QuestionnaireLibrary({
       supabase
         .from("questionnaire_versions")
         .select(
-          "id, questionnaire_id, version_label, participant_instructions, researcher_instructions, response_scale_description, scoring_summary, score_multiplier, scoring_method"
+          "id, questionnaire_id, version_label, participant_instructions, researcher_instructions, response_scale_description, scoring_summary, score_multiplier"
         )
         .eq("questionnaire_id", questionnaire.id)
         .eq("is_current", true)
@@ -3698,7 +4049,7 @@ function QuestionnaireLibrary({
     setResources((resourceResult.data || []) as QuestionnaireResource[]);
     setReferences((referenceResult.data || []) as QuestionnaireReference[]);
 
-    if (version && questionnaire.license_status !== "restricted") {
+    if (version) {
       const { data: itemData, error: itemError } = await supabase
         .from("questionnaire_items")
         .select(
@@ -3942,6 +4293,15 @@ function QuestionnaireLibrary({
     setSelectedQuestionnaire(null);
     setBuilderOpen(true);
   }
+
+  useEffect(() => {
+    if (!openCustomBuilderOnMount) {
+      return;
+    }
+
+    openCustomBuilder();
+    onCustomBuilderOpened?.();
+  }, [openCustomBuilderOnMount]);
 
   function itemTypeLabel(type: string) {
     return itemTypeDefinitions.find((item) => item.value === type)?.label || type;
@@ -4379,15 +4739,11 @@ function QuestionnaireLibrary({
 
   function resourceTypeLabel(type: string) {
     const labels: Record<string, string> = {
-      questionnaire: "Questionnaire source",
+      questionnaire: "Questionnaire",
       manual: "Manual / documentation",
       scoring_guide: "Scoring guide",
-      scoring_key: "Scoring key",
-      official_page: "Official source",
-      official_source: "Official source",
-      license: "Permission source",
-      permission_source: "Permission source",
-      translation: "Translation",
+      official_page: "Official page",
+      license: "Permission / licence",
       translations: "Translations",
       validation_paper: "Validation paper",
       citation_guide: "Citation guide",
@@ -4620,35 +4976,12 @@ function QuestionnaireLibrary({
   }
 
   if (selectedQuestionnaire) {
-    const unavailableText =
-      "Not currently available in the PsyLattice catalogue.";
     const manualResources = resources.filter(
       (resource) => resource.resource_type === "manual"
     );
     const questionnaireResources = resources.filter(
       (resource) => resource.resource_type === "questionnaire"
     );
-    const officialResources = resources.filter(
-      (resource) =>
-        resource.is_official ||
-        ["official_page", "official_source"].includes(resource.resource_type)
-    );
-    const resourceGroups = Array.from(
-      resources
-        .reduce<Map<string, QuestionnaireResource[]>>((groups, resource) => {
-          const existing = groups.get(resource.resource_type) || [];
-          groups.set(resource.resource_type, [...existing, resource]);
-          return groups;
-        }, new Map())
-        .entries()
-    );
-    const storedScoringMethod = selectedVersion?.scoring_method?.trim() || "";
-    const storedScoringMethodLabel =
-      storedScoringMethod === "legacy_guidance"
-        ? "Guidance only (legacy catalogue)"
-        : storedScoringMethod
-          ? storedScoringMethod.replaceAll("_", " ")
-          : unavailableText;
 
     return (
       <div className="space-y-5">
@@ -4708,6 +5041,10 @@ function QuestionnaireLibrary({
                   ? ` (${selectedQuestionnaire.acronym})`
                   : ""}
               </h2>
+
+              <p className="mt-4 text-sm leading-7 text-slate-600">
+                {selectedQuestionnaire.description}
+              </p>
             </div>
 
             <div className="flex flex-wrap gap-2">
@@ -4741,104 +5078,77 @@ function QuestionnaireLibrary({
           </Panel>
         ) : (
           <>
-            <Panel
-              title="Overview"
-              description="Core catalogue metadata for identifying and planning use of this instrument."
-            >
-              <p className="max-w-5xl text-sm leading-7 text-slate-600">
-                {selectedQuestionnaire.description || unavailableText}
-              </p>
+            <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+              <StatCard
+                label="Items"
+                value={String(selectedQuestionnaire.item_count)}
+                detail={
+                  selectedQuestionnaire.estimated_minutes
+                    ? `~${selectedQuestionnaire.estimated_minutes} min`
+                    : "Completion time not specified"
+                }
+              />
 
-              <div className="mt-6">
-                <p className="text-xs font-semibold uppercase tracking-[0.12em] text-slate-400">
-                  Constructs
-                </p>
-                {selectedQuestionnaire.constructs.length > 0 ? (
-                  <div className="mt-3 flex flex-wrap gap-2">
-                    {selectedQuestionnaire.constructs.map((construct) => (
-                      <Status key={construct} type="accent">
-                        {construct}
-                      </Status>
-                    ))}
-                  </div>
-                ) : (
-                  <p className="mt-2 text-sm text-slate-500">{unavailableText}</p>
-                )}
-              </div>
+              <StatCard
+                label="Administration"
+                value={selectedQuestionnaire.administration_mode || "Not specified"}
+                detail={selectedQuestionnaire.recall_period || "No recall period"}
+              />
 
-              <dl className="mt-6 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-                {[
-                  ["Category", selectedQuestionnaire.category],
-                  ["Intended population", selectedQuestionnaire.population],
-                  ["Items", String(selectedQuestionnaire.item_count)],
-                  [
-                    "Estimated completion time",
-                    selectedQuestionnaire.estimated_minutes
-                      ? `Approximately ${selectedQuestionnaire.estimated_minutes} minutes`
-                      : null,
-                  ],
-                  [
-                    "Available languages",
-                    selectedQuestionnaire.languages.length > 0
-                      ? selectedQuestionnaire.languages.join(", ")
-                      : null,
-                  ],
-                  ["Recall period", selectedQuestionnaire.recall_period],
-                  ["Administration mode", selectedQuestionnaire.administration_mode],
-                  ["Version", selectedVersion?.version_label],
-                ].map(([label, value]) => (
-                  <div
-                    key={label}
-                    className="rounded-2xl border border-slate-200 bg-slate-50/60 p-4"
-                  >
-                    <dt className="text-xs font-medium text-slate-400">{label}</dt>
-                    <dd className="mt-2 text-sm font-medium leading-6 text-slate-700">
-                      {value || unavailableText}
-                    </dd>
-                  </div>
-                ))}
-              </dl>
-            </Panel>
+              <StatCard
+                label="Languages"
+                value={String(selectedQuestionnaire.languages.length)}
+                detail={selectedQuestionnaire.languages.slice(0, 3).join(", ")}
+              />
+
+              <StatCard
+                label="Current version"
+                value={selectedVersion?.version_label || "—"}
+                detail="Version stored in PsyLattice"
+              />
+            </div>
 
             <div className="grid gap-5 xl:grid-cols-[1.05fr_.95fr]">
               <Panel
                 title="Administration"
-                description="Participant-facing directions and researcher protocol notes for this version."
+                description="Clear instructions for researchers and participants."
               >
                 <div className="space-y-5">
-                  <div className="grid gap-4 md:grid-cols-2">
-                    <div className="rounded-2xl border border-cyan-100 bg-cyan-50/70 p-5">
-                      <div className="flex items-center gap-2">
-                        <Status type="accent">Participant-facing</Status>
-                        <p className="text-xs font-semibold uppercase tracking-[0.12em] text-cyan-800">
-                          Instructions
-                        </p>
-                      </div>
-                      <p className="mt-4 whitespace-pre-wrap text-sm leading-7 text-cyan-950">
-                        {selectedVersion?.participant_instructions || unavailableText}
-                      </p>
-                    </div>
-
-                    <div className="rounded-2xl border border-indigo-100 bg-indigo-50/60 p-5">
-                      <div className="flex items-center gap-2">
-                        <Status>Researcher-facing</Status>
-                        <p className="text-xs font-semibold uppercase tracking-[0.12em] text-indigo-700">
-                          Protocol notes
-                        </p>
-                      </div>
-                      <p className="mt-4 whitespace-pre-wrap text-sm leading-7 text-indigo-950">
-                        {selectedVersion?.researcher_instructions || unavailableText}
-                      </p>
-                    </div>
+                  <div className="rounded-2xl bg-slate-50 p-5">
+                    <p className="text-xs font-semibold uppercase tracking-[0.12em] text-slate-400">
+                      Participant instructions
+                    </p>
+                    <p className="mt-3 text-sm leading-7 text-slate-700">
+                      {selectedVersion?.participant_instructions ||
+                        "Participant instructions have not been entered for this version."}
+                    </p>
                   </div>
 
                   <div className="rounded-2xl border border-slate-200 p-5">
                     <p className="text-xs font-semibold uppercase tracking-[0.12em] text-slate-400">
-                      Response-scale description
+                      Researcher instructions
                     </p>
                     <p className="mt-3 whitespace-pre-wrap text-sm leading-7 text-slate-700">
-                      {selectedVersion?.response_scale_description || unavailableText}
+                      {selectedVersion?.researcher_instructions ||
+                        "No additional researcher instructions have been stored."}
                     </p>
+                  </div>
+
+                  <div className="grid gap-4 md:grid-cols-2">
+                    <div className="rounded-xl border border-slate-200 p-4">
+                      <p className="text-xs text-slate-400">Response format</p>
+                      <p className="mt-2 text-sm leading-6 text-slate-700">
+                        {selectedVersion?.response_scale_description ||
+                          "Not specified"}
+                      </p>
+                    </div>
+
+                    <div className="rounded-xl border border-slate-200 p-4">
+                      <p className="text-xs text-slate-400">Population</p>
+                      <p className="mt-2 text-sm leading-6 text-slate-700">
+                        {selectedQuestionnaire.population || "Not specified"}
+                      </p>
+                    </div>
                   </div>
                 </div>
               </Panel>
@@ -4847,52 +5157,14 @@ function QuestionnaireLibrary({
                 title="Scoring"
                 description="Stored scoring guidance for the current questionnaire version."
               >
-                <div className="flex flex-col gap-3 rounded-2xl border border-slate-200 p-5 sm:flex-row sm:items-center sm:justify-between">
-                  <div>
-                    <p className="text-xs font-semibold uppercase tracking-[0.12em] text-slate-400">
-                      Stored scoring-method status
-                    </p>
-                    <p className="mt-2 text-sm font-semibold capitalize text-slate-800">
-                      {storedScoringMethodLabel}
-                    </p>
-                  </div>
-                  {storedScoringMethod && (
-                    <code className="w-fit rounded-lg bg-slate-100 px-2.5 py-1.5 text-xs font-semibold text-slate-500">
-                      {storedScoringMethod}
-                    </code>
-                  )}
-                </div>
-
-                <div className="mt-4 rounded-2xl border border-cyan-100 bg-cyan-50/60 p-5">
-                  <p className="text-xs font-semibold uppercase tracking-[0.12em] text-cyan-800">
-                    Scoring summary
-                  </p>
-                  <p className="mt-3 whitespace-pre-wrap text-sm leading-7 text-cyan-950">
-                    {selectedVersion?.scoring_summary || unavailableText}
+                <div className="rounded-2xl border border-cyan-100 bg-cyan-50/60 p-5">
+                  <p className="text-sm leading-7 text-cyan-950">
+                    {selectedVersion?.scoring_summary ||
+                      "A scoring summary has not yet been stored for this questionnaire."}
                   </p>
                 </div>
 
-                {selectedVersion && Number(selectedVersion.score_multiplier) !== 1 && (
-                  <div className="mt-4 flex items-center justify-between gap-4 rounded-xl border border-slate-200 px-4 py-3">
-                    <span className="text-sm font-medium text-slate-600">
-                      Stored score multiplier
-                    </span>
-                    <Status type="warning">
-                      ×{Number(selectedVersion.score_multiplier)}
-                    </Status>
-                  </div>
-                )}
-
-                {storedScoringMethod === "legacy_guidance" && (
-                  <div className="mt-4 rounded-2xl border border-blue-100 bg-blue-50/70 p-4">
-                    <p className="text-sm leading-6 text-blue-900">
-                      Scoring guidance is available for this instrument. Structured
-                      PsyLattice scoring validation is being prepared.
-                    </p>
-                  </div>
-                )}
-
-                <div className="mt-4 rounded-2xl bg-slate-50 p-5">
+                <div className="mt-5 rounded-2xl bg-slate-50 p-5">
                   <p className="font-medium">Interpretation boundary</p>
                   <p className="mt-2 text-sm leading-6 text-slate-500">
                     PsyLattice stores scoring guidance as research metadata. Researchers
@@ -4905,7 +5177,7 @@ function QuestionnaireLibrary({
             </div>
 
             <Panel
-              title="Items"
+              title="Questionnaire items"
               description="Item wording and response coding stored for the current version."
             >
               {selectedQuestionnaire.license_status === "restricted" ? (
@@ -4970,189 +5242,161 @@ function QuestionnaireLibrary({
                 </div>
               ) : (
                 <p className="text-sm text-slate-500">
-                  {unavailableText}
+                  No item-level content is stored for this questionnaire version yet.
                 </p>
               )}
             </Panel>
 
             <div className="grid gap-5 xl:grid-cols-[.9fr_1.1fr]">
               <Panel
-                title="Licensing & use"
-                description="Stored rights information only; verify the linked source and applicable terms before use."
+                title="Usage & licensing"
+                description="Check the documented usage status before deploying a measure."
               >
                 <div className="space-y-4">
-                  <div className="rounded-2xl border border-amber-200 bg-amber-50/70 p-5">
-                    <div className="flex flex-wrap items-center justify-between gap-3">
-                      <p className="text-xs font-semibold uppercase tracking-[0.12em] text-amber-800">
-                        Licence status
-                      </p>
-                      <Status
-                        type={licenceStatusType(selectedQuestionnaire.license_status)}
-                      >
-                        {licenceLabel(selectedQuestionnaire.license_status)}
-                      </Status>
-                    </div>
-                    <p className="mt-4 text-sm leading-7 text-amber-950">
-                      {selectedQuestionnaire.license_summary || unavailableText}
-                    </p>
+                  <div className="flex items-center justify-between gap-4 rounded-xl border border-slate-200 p-4">
+                    <span className="text-sm font-medium">Research use</span>
+                    <Status type="success">
+                      {selectedQuestionnaire.owner_user_id === currentUserId
+                        ? "Your workspace"
+                        : "Available"}
+                    </Status>
                   </div>
 
-                  <div className="grid gap-3">
-                    <div className="rounded-xl border border-slate-200 p-4">
-                      <p className="text-xs font-medium text-slate-400">
-                        Commercial use
-                      </p>
-                      <p className="mt-2 text-sm leading-6 text-slate-600">
-                        {selectedQuestionnaire.commercial_use_note || unavailableText}
-                      </p>
-                    </div>
-
-                    <div className="rounded-xl border border-slate-200 p-4">
-                      <p className="text-xs font-medium text-slate-400">
-                        Modification
-                      </p>
-                      <p className="mt-2 text-sm leading-6 text-slate-600">
-                        {selectedQuestionnaire.modification_note || unavailableText}
-                      </p>
-                    </div>
-
-                    <div className="rounded-xl border border-slate-200 p-4">
-                      <p className="text-xs font-medium text-slate-400">
-                        Redistribution
-                      </p>
-                      <p className="mt-2 text-sm leading-6 text-slate-600">
-                        {selectedQuestionnaire.redistribution_note || unavailableText}
-                      </p>
-                    </div>
+                  <div className="flex items-center justify-between gap-4 rounded-xl border border-slate-200 p-4">
+                    <span className="text-sm font-medium">Self workspace</span>
+                    <Status
+                      type={selectedQuestionnaire.self_available ? "success" : "neutral"}
+                    >
+                      {selectedQuestionnaire.self_available
+                        ? "Available"
+                        : "Not exposed"}
+                    </Status>
                   </div>
 
                   <div className="rounded-xl border border-slate-200 p-4">
                     <p className="text-xs font-medium text-slate-400">
-                      Licence source
+                      Licence status
                     </p>
-                    {selectedQuestionnaire.license_source_url ? (
-                      <a
-                        href={selectedQuestionnaire.license_source_url}
-                        target="_blank"
-                        rel="noreferrer"
-                        className="mt-3 inline-flex rounded-xl bg-slate-950 px-4 py-2.5 text-sm font-semibold text-white"
-                      >
-                        Open licence source ↗
-                      </a>
-                    ) : (
-                      <p className="mt-2 text-sm leading-6 text-slate-500">
-                        {unavailableText}
-                      </p>
-                    )}
+                    <p className="mt-2 text-sm font-semibold">
+                      {licenceLabel(selectedQuestionnaire.license_status)}
+                    </p>
+                    <p className="mt-2 text-sm leading-6 text-slate-500">
+                      {selectedQuestionnaire.license_summary ||
+                        "No licensing summary has been stored."}
+                    </p>
                   </div>
+
+                  <div className="rounded-xl border border-slate-200 p-4">
+                    <p className="text-xs font-medium text-slate-400">Commercial use</p>
+                    <p className="mt-2 text-sm leading-6 text-slate-600">
+                      {selectedQuestionnaire.commercial_use_note || "Not documented"}
+                    </p>
+                  </div>
+
+                  <div className="rounded-xl border border-slate-200 p-4">
+                    <p className="text-xs font-medium text-slate-400">Modification</p>
+                    <p className="mt-2 text-sm leading-6 text-slate-600">
+                      {selectedQuestionnaire.modification_note || "Not documented"}
+                    </p>
+                  </div>
+
+                  <div className="rounded-xl border border-slate-200 p-4">
+                    <p className="text-xs font-medium text-slate-400">Redistribution</p>
+                    <p className="mt-2 text-sm leading-6 text-slate-600">
+                      {selectedQuestionnaire.redistribution_note || "Not documented"}
+                    </p>
+                  </div>
+
+                  {selectedQuestionnaire.license_source_url && (
+                    <a
+                      href={selectedQuestionnaire.license_source_url}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="inline-flex rounded-xl bg-slate-950 px-4 py-2.5 text-sm font-semibold text-white"
+                    >
+                      Open licence source ↗
+                    </a>
+                  )}
                 </div>
               </Panel>
 
               <Panel
-                title="Resources"
-                description="Official sources, manuals, scoring guides, permissions, translations and supporting publications stored with this instrument."
+                title="Research resources"
+                description="Manuals, official questionnaires, scoring guides, translations and permission sources."
               >
                 {resources.length > 0 ? (
-                  <div className="space-y-6">
-                    {resourceGroups.map(([resourceType, groupedResources]) => (
-                      <section key={resourceType}>
-                        <div className="mb-3 flex items-center gap-3">
-                          <p className="text-xs font-semibold uppercase tracking-[0.12em] text-slate-500">
-                            {resourceTypeLabel(resourceType)}
-                          </p>
-                          <span className="h-px flex-1 bg-slate-100" />
-                        </div>
-
-                        <div className="space-y-3">
-                          {groupedResources.map((resource) => (
-                            <div
-                              key={resource.id}
-                              className="rounded-2xl border border-slate-200 p-4"
-                            >
-                              <div className="flex flex-col justify-between gap-4 sm:flex-row sm:items-start">
-                                <div className="min-w-0">
-                                  <div className="flex flex-wrap items-center gap-2">
-                                    <p className="text-sm font-semibold text-slate-900">
-                                      {resource.title}
-                                    </p>
-                                    {resource.is_official && (
-                                      <Status type="success">Official</Status>
-                                    )}
-                                  </div>
-
-                                  <dl className="mt-3 space-y-2 text-sm">
-                                    <div>
-                                      <dt className="text-xs font-medium text-slate-400">
-                                        Source
-                                      </dt>
-                                      <dd className="mt-1 text-slate-600">
-                                        {resource.source_name || unavailableText}
-                                      </dd>
-                                    </div>
-                                    <div>
-                                      <dt className="text-xs font-medium text-slate-400">
-                                        Access note
-                                      </dt>
-                                      <dd className="mt-1 leading-6 text-slate-600">
-                                        {resource.access_note || unavailableText}
-                                      </dd>
-                                    </div>
-                                  </dl>
-                                </div>
-
-                                <a
-                                  href={resource.url}
-                                  target="_blank"
-                                  rel="noreferrer"
-                                  className="shrink-0 rounded-xl border border-slate-200 px-4 py-2.5 text-xs font-semibold text-slate-700 hover:bg-slate-50"
-                                >
-                                  {resource.download_allowed
-                                    ? "Open resource / download ↗"
-                                    : "Open resource ↗"}
-                                </a>
-                              </div>
+                  <div className="space-y-3">
+                    {resources.map((resource) => (
+                      <div
+                        key={resource.id}
+                        className="rounded-2xl border border-slate-200 p-4"
+                      >
+                        <div className="flex flex-col justify-between gap-4 sm:flex-row sm:items-start">
+                          <div>
+                            <div className="flex flex-wrap gap-2">
+                              <Status type="accent">
+                                {resourceTypeLabel(resource.resource_type)}
+                              </Status>
+                              {resource.is_official && (
+                                <Status type="success">Official</Status>
+                              )}
                             </div>
-                          ))}
+
+                            <p className="mt-3 text-sm font-semibold">
+                              {resource.title}
+                            </p>
+
+                            {resource.source_name && (
+                              <p className="mt-1 text-xs text-slate-400">
+                                {resource.source_name}
+                              </p>
+                            )}
+
+                            {resource.access_note && (
+                              <p className="mt-2 text-sm leading-6 text-slate-500">
+                                {resource.access_note}
+                              </p>
+                            )}
+                          </div>
+
+                          <a
+                            href={resource.url}
+                            target="_blank"
+                            rel="noreferrer"
+                            className="shrink-0 rounded-xl border border-slate-200 px-4 py-2.5 text-xs font-semibold text-slate-700 hover:bg-slate-50"
+                          >
+                            {resource.download_allowed
+                              ? "Open / download ↗"
+                              : resource.resource_type === "manual"
+                                ? "View manual source ↗"
+                                : "Open source ↗"}
+                          </a>
                         </div>
-                      </section>
+                      </div>
                     ))}
                   </div>
                 ) : (
                   <div className="rounded-2xl bg-slate-50 p-5">
-                    <p className="text-sm leading-6 text-slate-500">
-                      {unavailableText}
+                    <p className="font-medium">No resources stored yet</p>
+                    <p className="mt-2 text-sm leading-6 text-slate-500">
+                      Add an official questionnaire page, manual, scoring guide,
+                      permission source or validation paper before deploying this measure.
                     </p>
                   </div>
                 )}
 
-                {(manualResources.length === 0 ||
-                  officialResources.length === 0 ||
-                  questionnaireResources.length === 0) && (
-                  <div className="mt-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
-                    {[
-                      ["Manual", manualResources.length],
-                      ["Official source", officialResources.length],
-                      ["Questionnaire source", questionnaireResources.length],
-                    ]
-                      .filter(([, resourceCount]) => resourceCount === 0)
-                      .map(([label]) => (
-                        <div
-                          key={label}
-                          className="rounded-xl border border-dashed border-slate-200 px-4 py-3"
-                        >
-                          <p className="text-xs font-medium text-slate-400">{label}</p>
-                          <p className="mt-1 text-sm leading-6 text-slate-500">
-                            {unavailableText}
-                          </p>
-                        </div>
-                      ))}
-                  </div>
+                {manualResources.length === 0 && (
+                  <p className="mt-4 text-xs leading-5 text-slate-400">
+                    No separate manual resource is currently stored. Some measures use an
+                    official FAQ, documentation page, original publication or publisher
+                    source instead of a standalone manual PDF.
+                  </p>
                 )}
               </Panel>
             </div>
 
             <Panel
-              title="References"
+              title="References & citation"
               description="Original sources, validation references and recommended citations stored with the measure."
             >
               {references.length > 0 ? (
@@ -5198,11 +5442,23 @@ function QuestionnaireLibrary({
                 </div>
               ) : (
                 <p className="text-sm text-slate-500">
-                  {unavailableText}
+                  No citation records are stored for this questionnaire yet.
                 </p>
               )}
             </Panel>
 
+            <Panel title="Psychometric evidence">
+              <div className="rounded-2xl bg-slate-50 p-5">
+                <p className="font-medium">Structured psychometrics are the next library layer</p>
+                <p className="mt-2 text-sm leading-6 text-slate-500">
+                  PsyLattice currently stores the questionnaire, instructions, scoring,
+                  resources, rights and references. Reliability, validity coefficients,
+                  norms and validation populations should be added as structured,
+                  source-linked records rather than invented or copied without context.
+                  Until then, use the linked original and validation sources above.
+                </p>
+              </div>
+            </Panel>
           </>
         )}
       </div>
@@ -5451,211 +5707,449 @@ function QuestionnaireLibrary({
    AMBULATORY PROTOCOL BUILDER
    ========================================================= */
 
-function AmbulatoryBuilder() {
-  type WindowDraft = {
+function AmbulatoryBuilder({
+  changeScreen,
+  preferredStudyId,
+  onStudyIdChange,
+}: {
+  changeScreen: (screen: Screen) => void;
+  preferredStudyId: string;
+  onStudyIdChange: (studyId: string) => void;
+}) {
+  type StudyOption = {
     id: string;
-    label: string;
-    type: "random_window" | "fixed_time" | "interval" | "event_contingent" | "participant_initiated";
-    start: string;
-    end: string;
-    fixed: string;
-    responseWindow: number;
+    title: string;
+    status: string;
+    components: Record<string, boolean>;
   };
 
-  const [durationMode, setDurationMode] = useState("relative_days");
-  const [duration, setDuration] = useState(14);
-  const [minimumInterval, setMinimumInterval] = useState(60);
-  const [reminders, setReminders] = useState(1);
-  const [reminderDelay, setReminderDelay] = useState(15);
-  const [timezoneMode, setTimezoneMode] = useState("participant_local");
-  const [allowSnooze, setAllowSnooze] = useState(false);
-  const [modes, setModes] = useState<string[]>(["random_window"]);
-  const [windows, setWindows] = useState<WindowDraft[]>([
-    {
-      id: "standalone-window-1",
-      label: "Morning",
-      type: "random_window",
-      start: "08:00",
-      end: "10:00",
-      fixed: "09:00",
-      responseWindow: 30,
-    },
-  ]);
+  const [studies, setStudies] = useState<StudyOption[]>([]);
+  const [selectedStudyId, setSelectedStudyId] = useState("");
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [errorMessage, setErrorMessage] = useState("");
+  const [successMessage, setSuccessMessage] = useState("");
 
-  const makeId = () => `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+  const [protocolName, setProtocolName] =
+    useState("Ambulatory protocol");
+  const [durationDays, setDurationDays] = useState(14);
+  const [participantFeedbackEnabled, setParticipantFeedbackEnabled] =
+    useState(false);
+  const [notificationsEnabled, setNotificationsEnabled] =
+    useState(true);
+  const [protocol, setProtocol] = useState<AmbulatoryScheduleDraft[]>(
+    defaultAmbulatoryProtocol()
+  );
+  const [questionnaires, setQuestionnaires] = useState<
+    AmbulatoryQuestionnaireOption[]
+  >([]);
 
-  function toggleMode(mode: string) {
-    setModes((previous) =>
-      previous.includes(mode)
-        ? previous.filter((item) => item !== mode)
-        : [...previous, mode]
+  const selectedStudy =
+    studies.find((study) => study.id === selectedStudyId) || null;
+
+  async function loadStudies() {
+    setLoading(true);
+    setErrorMessage("");
+
+    const supabase = createClient();
+
+    const {
+      data: { user },
+      error: userError,
+    } = await supabase.auth.getUser();
+
+    if (userError || !user) {
+      setErrorMessage("Your research studies could not be loaded.");
+      setLoading(false);
+      return;
+    }
+
+    const [studyResult, questionnaireResult] = await Promise.all([
+      supabase
+        .from("research_studies")
+        .select("id, title, status, components")
+        .eq("owner_user_id", user.id)
+        .order("updated_at", { ascending: false }),
+
+      supabase.rpc(
+        "psylattice_research_ambulatory_questionnaire_catalogue"
+      ),
+    ]);
+
+    if (studyResult.error) {
+      console.error(
+        "Could not load ambulatory studies:",
+        studyResult.error
+      );
+      setErrorMessage("Your research studies could not be loaded.");
+      setLoading(false);
+      return;
+    }
+
+    const rows = (studyResult.data || []) as StudyOption[];
+    setStudies(rows);
+
+    if (!questionnaireResult.error) {
+      setQuestionnaires(
+        (questionnaireResult.data || []) as AmbulatoryQuestionnaireOption[]
+      );
+    }
+
+    setSelectedStudyId((current) => {
+      if (rows.some((study) => study.id === current)) {
+        return current;
+      }
+
+      if (
+        preferredStudyId &&
+        rows.some((study) => study.id === preferredStudyId)
+      ) {
+        return preferredStudyId;
+      }
+
+      return rows[0]?.id || "";
+    });
+
+    setLoading(false);
+  }
+
+  async function loadProtocol(studyId: string) {
+    if (!studyId) {
+      return;
+    }
+
+    setLoading(true);
+    setErrorMessage("");
+    setSuccessMessage("");
+
+    const supabase = createClient();
+
+    const { data, error } = await supabase.rpc(
+      "psylattice_get_study_ambulatory_v3",
+      {
+        p_study_id: studyId,
+      }
+    );
+
+    if (error) {
+      console.error(
+        "Could not load research ambulatory protocol:",
+        error
+      );
+      setErrorMessage(
+        "The ambulatory protocol could not be loaded. Run the V3 ambulatory migration first."
+      );
+      setLoading(false);
+      return;
+    }
+
+    const row =
+      Array.isArray(data) && data.length > 0
+        ? data[0]
+        : null;
+
+    if (row) {
+      setProtocolName(row.protocol_name || "Ambulatory protocol");
+      setDurationDays(row.duration_days || 14);
+      setParticipantFeedbackEnabled(
+        Boolean(row.participant_feedback_enabled)
+      );
+      setNotificationsEnabled(
+        row.notifications_enabled !== false
+      );
+
+      const loaded =
+        Array.isArray(row.protocol) && row.protocol.length > 0
+          ? nestAmbulatoryProtocol(
+              row.protocol as AmbulatoryScheduleDraft[]
+            )
+          : defaultAmbulatoryProtocol();
+
+      setProtocol(loaded);
+    } else {
+      setProtocolName("Ambulatory protocol");
+      setDurationDays(14);
+      setParticipantFeedbackEnabled(false);
+      setNotificationsEnabled(true);
+      setProtocol(defaultAmbulatoryProtocol());
+    }
+
+    setLoading(false);
+  }
+
+  useEffect(() => {
+    void loadStudies();
+  }, []);
+
+  useEffect(() => {
+    if (selectedStudyId) {
+      onStudyIdChange(selectedStudyId);
+      void loadProtocol(selectedStudyId);
+    }
+  }, [selectedStudyId]);
+
+  async function saveProtocol() {
+    if (!selectedStudy || saving) {
+      return;
+    }
+
+    const validation =
+      validateAmbulatoryProtocol(protocol);
+
+    if (validation) {
+      setErrorMessage(validation);
+      return;
+    }
+
+    if (durationDays < 1 || durationDays > 730) {
+      setErrorMessage("Duration must be between 1 and 730 days.");
+      return;
+    }
+
+    setSaving(true);
+    setErrorMessage("");
+    setSuccessMessage("");
+
+    const supabase = createClient();
+
+    const { error } = await supabase.rpc(
+      "psylattice_save_study_ambulatory_v3",
+      {
+        p_study_id: selectedStudy.id,
+        p_name: protocolName.trim() || "Ambulatory protocol",
+        p_duration_days: durationDays,
+        p_protocol: serializeAmbulatoryProtocol(protocol),
+        p_participant_feedback_enabled:
+          participantFeedbackEnabled,
+        p_notifications_enabled: notificationsEnabled,
+      }
+    );
+
+    if (error) {
+      console.error(
+        "Could not save research ambulatory protocol:",
+        error
+      );
+      setErrorMessage(
+        error.message ||
+          "The ambulatory protocol could not be saved."
+      );
+      setSaving(false);
+      return;
+    }
+
+    setSuccessMessage(
+      `Ambulatory protocol saved for ${selectedStudy.title}. Participant study links will use the Study Dashboard only because this study now has an active ambulatory protocol.`
+    );
+
+    setSaving(false);
+    await loadProtocol(selectedStudy.id);
+  }
+
+  if (loading && studies.length === 0) {
+    return (
+      <Panel title="Ambulatory Assessment">
+        <p className="text-sm text-slate-500">
+          Loading ambulatory workspace...
+        </p>
+      </Panel>
     );
   }
 
-  function addWindow() {
-    setWindows((previous) => [
-      ...previous,
-      {
-        id: makeId(),
-        label: `Window ${previous.length + 1}`,
-        type: "random_window",
-        start: "12:00",
-        end: "14:00",
-        fixed: "13:00",
-        responseWindow: 30,
-      },
-    ]);
-  }
-
-  function updateWindow(id: string, patch: Partial<WindowDraft>) {
-    setWindows((previous) =>
-      previous.map((window) =>
-        window.id === id ? { ...window, ...patch } : window
-      )
+  if (studies.length === 0) {
+    return (
+      <Panel title="Ambulatory Assessment">
+        <p className="font-medium">Create a study first.</p>
+        <p className="mt-2 text-sm leading-6 text-slate-500">
+          Ambulatory protocols belong to a research study. Ordinary studies
+          that do not use Ambulatory Assessment continue using the existing
+          one-session participant flow.
+        </p>
+      </Panel>
     );
   }
 
   return (
     <div className="space-y-5">
-      <div className="rounded-2xl border border-cyan-100 bg-cyan-50/60 p-5">
-        <p className="font-medium text-cyan-950">Ambulatory Assessment is optional</p>
-        <p className="mt-2 text-sm leading-6 text-cyan-900/75">
-          Use this screen to design EMA/ESM schedules. In a real study, enable Ambulatory Assessment under Study Builder → Study Components; studies that do not need EMA simply skip it.
-        </p>
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <button
+          type="button"
+          onClick={() => changeScreen("builder")}
+          className="rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm font-semibold text-slate-700"
+        >
+          ← Back to Study Builder
+        </button>
+
+        {selectedStudy && (
+          <p className="text-sm text-slate-500">
+            Editing ambulatory protocol for{" "}
+            <span className="font-semibold text-slate-700">
+              {selectedStudy.title}
+            </span>
+          </p>
+        )}
       </div>
 
-      <div className="grid gap-5 xl:grid-cols-[1.15fr_.85fr]">
-        <Panel title="Protocol structure" description="Configure duration, sampling modes and timing constraints.">
-          <div className="space-y-5">
-            <label className="block">
-              <span className="text-sm font-medium">Protocol name</span>
-              <input defaultValue="Momentary assessment protocol" className="mt-2 w-full rounded-xl border border-slate-200 px-4 py-3 text-sm" />
-            </label>
+      {errorMessage && (
+        <div className="rounded-2xl border border-red-200 bg-red-50 px-5 py-4 text-sm text-red-700">
+          {errorMessage}
+        </div>
+      )}
 
-            <div className="grid gap-4 sm:grid-cols-2">
-              <label>
-                <span className="text-sm font-medium">Duration mode</span>
-                <select value={durationMode} onChange={(event) => setDurationMode(event.target.value)} className="mt-2 w-full rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm">
-                  <option value="relative_days">Days from participant start</option>
-                  <option value="fixed_dates">Fixed calendar dates</option>
-                  <option value="participant_defined">Participant/protocol-defined end</option>
-                </select>
-              </label>
+      {successMessage && (
+        <div className="rounded-2xl border border-emerald-200 bg-emerald-50 px-5 py-4 text-sm text-emerald-800">
+          {successMessage}
+        </div>
+      )}
 
-              {durationMode === "relative_days" && (
-                <label>
-                  <span className="text-sm font-medium">Duration (days)</span>
-                  <input type="number" min={1} max={730} value={duration} onChange={(event) => setDuration(Number(event.target.value))} className="mt-2 w-full rounded-xl border border-slate-200 px-4 py-3 text-sm" />
-                </label>
-              )}
-            </div>
+      <Panel
+        title="Ambulatory Assessment"
+        description="The Research workspace now uses the same nested, conditional ambulatory engine as Clinical."
+      >
+        <div className="grid gap-4 lg:grid-cols-[1fr_220px]">
+          <label>
+            <span className="text-sm font-medium">Study</span>
+            <select
+              value={selectedStudyId}
+              onChange={(event) =>
+                setSelectedStudyId(event.target.value)
+              }
+              className="mt-2 w-full rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm"
+            >
+              {studies.map((study) => (
+                <option key={study.id} value={study.id}>
+                  {study.title}
+                </option>
+              ))}
+            </select>
+          </label>
 
+          <label>
+            <span className="text-sm font-medium">
+              Duration (days)
+            </span>
+            <input
+              type="number"
+              min="1"
+              max="730"
+              value={durationDays}
+              onChange={(event) =>
+                setDurationDays(Number(event.target.value))
+              }
+              className="mt-2 w-full rounded-xl border border-slate-200 px-4 py-3 text-sm"
+            />
+          </label>
+        </div>
+
+        <label className="mt-4 block">
+          <span className="text-sm font-medium">
+            Protocol name
+          </span>
+          <input
+            value={protocolName}
+            onChange={(event) =>
+              setProtocolName(event.target.value)
+            }
+            className="mt-2 w-full rounded-xl border border-slate-200 px-4 py-3 text-sm"
+          />
+        </label>
+
+        <div className="mt-5 grid gap-3 md:grid-cols-2">
+          <label className="flex items-start gap-3 rounded-xl border border-slate-200 p-4">
+            <input
+              type="checkbox"
+              checked={notificationsEnabled}
+              onChange={(event) =>
+                setNotificationsEnabled(event.target.checked)
+              }
+              className="mt-1"
+            />
             <div>
-              <p className="text-sm font-medium">Sampling modes</p>
-              <div className="mt-3 flex flex-wrap gap-2">
-                {[
-                  ["random_window", "Random-time / stratified random"],
-                  ["fixed_time", "Fixed-time"],
-                  ["interval", "Interval-contingent"],
-                  ["event_contingent", "Event-contingent"],
-                  ["participant_initiated", "Participant-initiated"],
-                  ["context_triggered", "Context-triggered / future"],
-                  ["mixed", "Mixed protocol"],
-                ].map(([value, label]) => (
-                  <button key={value} type="button" onClick={() => toggleMode(value)} className={`rounded-full border px-3 py-2 text-xs font-medium ${modes.includes(value) ? "border-cyan-700 bg-cyan-50 text-cyan-900" : "border-slate-200 text-slate-500"}`}>
-                    {label}
-                  </button>
-                ))}
-              </div>
+              <p className="text-sm font-medium">
+                Enable study email reminders
+              </p>
+              <p className="mt-1 text-xs leading-5 text-slate-500">
+                Time-contingent schedules can create reminder emails after the participant supplies an email address and explicitly enables reminders.
+              </p>
             </div>
+          </label>
 
-            <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-              <label><span className="text-xs font-medium text-slate-500">Minimum interval (min)</span><input type="number" min={0} value={minimumInterval} onChange={(event) => setMinimumInterval(Number(event.target.value))} className="mt-2 w-full rounded-xl border border-slate-200 px-3 py-2.5 text-sm" /></label>
-              <label><span className="text-xs font-medium text-slate-500">Reminders</span><input type="number" min={0} max={10} value={reminders} onChange={(event) => setReminders(Number(event.target.value))} className="mt-2 w-full rounded-xl border border-slate-200 px-3 py-2.5 text-sm" /></label>
-              <label><span className="text-xs font-medium text-slate-500">Reminder delay</span><input type="number" min={1} value={reminderDelay} onChange={(event) => setReminderDelay(Number(event.target.value))} className="mt-2 w-full rounded-xl border border-slate-200 px-3 py-2.5 text-sm" /></label>
-              <label className="flex items-center gap-2 rounded-xl border border-slate-200 px-3 py-2.5 text-sm lg:self-end"><input type="checkbox" checked={allowSnooze} onChange={(event) => setAllowSnooze(event.target.checked)} />Allow snooze</label>
+          <label className="flex items-start gap-3 rounded-xl border border-slate-200 p-4">
+            <input
+              type="checkbox"
+              checked={participantFeedbackEnabled}
+              onChange={(event) =>
+                setParticipantFeedbackEnabled(event.target.checked)
+              }
+              className="mt-1"
+            />
+            <div>
+              <p className="text-sm font-medium">
+                Allow participant feedback summaries
+              </p>
+              <p className="mt-1 text-xs leading-5 text-slate-500">
+                Off by default. Study participants normally see adherence and
+                progress through the study, not psychological score feedback,
+                because feedback itself can influence subsequent responses.
+              </p>
             </div>
+          </label>
+        </div>
+      </Panel>
 
-            <label className="block">
-              <span className="text-sm font-medium">Time-zone handling</span>
-              <select value={timezoneMode} onChange={(event) => setTimezoneMode(event.target.value)} className="mt-2 w-full rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm">
-                <option value="participant_local">Follow participant local time</option>
-                <option value="study_timezone">Lock to study timezone</option>
-                <option value="enrollment_timezone">Lock enrollment timezone</option>
-              </select>
-            </label>
-          </div>
-        </Panel>
+      <AmbulatoryProtocolBuilder
+        protocol={protocol}
+        onChange={setProtocol}
+        questionnaires={questionnaires}
+        context="research"
+      />
 
-        <Panel title="Protocol controls">
-          <div className="space-y-5">
-            {[
-              ["Response windows", "Each signal can expire after a configurable response period."],
-              ["Do-not-disturb", "Study Builder stores quiet hours and sleep-window protection."],
-              ["Weekday/weekend schedules", "Protocols can distinguish all days, weekdays, weekends or custom days."],
-              ["Event limits", "Event-contingent entries can have per-day maxima and interval constraints."],
-              ["Travel / timezone", "The study can follow local time or remain locked to a protocol timezone."],
-              ["Prompt content", "EMA questions use the same universal item engine as ordinary questionnaires."],
-            ].map(([title, text]) => (
-              <div key={title} className="rounded-xl border border-slate-200 p-4">
-                <p className="text-sm font-medium">{title}</p>
-                <p className="mt-1 text-xs leading-5 text-slate-500">{text}</p>
-              </div>
-            ))}
-          </div>
-        </Panel>
+      <div className="flex flex-wrap gap-2">
+        <button
+          type="button"
+          disabled={saving || !selectedStudy}
+          onClick={() => void saveProtocol()}
+          className="rounded-xl bg-slate-950 px-5 py-3 text-sm font-semibold text-white disabled:opacity-50"
+        >
+          {saving ? "Saving..." : "Save ambulatory protocol"}
+        </button>
+
+        <button
+          type="button"
+          disabled={loading || !selectedStudy}
+          onClick={() => void loadProtocol(selectedStudyId)}
+          className="rounded-xl border border-slate-200 bg-white px-5 py-3 text-sm font-semibold text-slate-700 disabled:opacity-50"
+        >
+          Reload saved protocol
+        </button>
       </div>
 
-      <Panel title="Prompt / event windows" description="Mix different scheduling methods in one protocol.">
-        <div className="space-y-4">
-          {windows.map((window, index) => (
-            <div key={window.id} className="rounded-2xl border border-slate-200 p-5">
-              <div className="grid gap-3 md:grid-cols-[1fr_220px_auto]">
-                <input value={window.label} onChange={(event) => updateWindow(window.id, { label: event.target.value })} className="rounded-xl border border-slate-200 px-3 py-2.5 text-sm" />
-                <select value={window.type} onChange={(event) => updateWindow(window.id, { type: event.target.value as WindowDraft["type"] })} className="rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm">
-                  <option value="random_window">Random within window</option>
-                  <option value="fixed_time">Fixed time</option>
-                  <option value="interval">Interval window</option>
-                  <option value="event_contingent">Event-contingent</option>
-                  <option value="participant_initiated">Participant-initiated</option>
-                </select>
-                <button type="button" onClick={() => setWindows((previous) => previous.filter((item) => item.id !== window.id))} className="rounded-xl border border-red-200 px-3 py-2.5 text-xs font-semibold text-red-700">Remove</button>
-              </div>
+      <div className="grid gap-5 xl:grid-cols-3">
+        <Panel title="Participant experience">
+          <p className="text-sm leading-6 text-slate-500">
+            Only studies with this ambulatory component use the longitudinal
+            Study Dashboard. Studies without ambulatory assessment keep the
+            existing consent → demographics → questionnaires → completion flow.
+          </p>
+        </Panel>
 
-              {(window.type === "random_window" || window.type === "interval") && (
-                <div className="mt-4 grid gap-3 sm:grid-cols-3">
-                  <label><span className="text-xs text-slate-500">Start</span><input type="time" value={window.start} onChange={(event) => updateWindow(window.id, { start: event.target.value })} className="mt-1 w-full rounded-xl border border-slate-200 px-3 py-2.5 text-sm" /></label>
-                  <label><span className="text-xs text-slate-500">End</span><input type="time" value={window.end} onChange={(event) => updateWindow(window.id, { end: event.target.value })} className="mt-1 w-full rounded-xl border border-slate-200 px-3 py-2.5 text-sm" /></label>
-                  <label><span className="text-xs text-slate-500">Response window (min)</span><input type="number" min={1} value={window.responseWindow} onChange={(event) => updateWindow(window.id, { responseWindow: Number(event.target.value) })} className="mt-1 w-full rounded-xl border border-slate-200 px-3 py-2.5 text-sm" /></label>
-                </div>
-              )}
+        <Panel title="Research data structure">
+          <p className="text-sm leading-6 text-slate-500">
+            PsyLattice stores scheduled prompt instances, missed/completed
+            prompts, event-triggered check-ins, item-level responses and
+            timestamps separately so compliance and response latency can be
+            analysed rather than inferred.
+          </p>
+        </Panel>
 
-              {window.type === "fixed_time" && (
-                <div className="mt-4 grid gap-3 sm:grid-cols-2">
-                  <label><span className="text-xs text-slate-500">Exact time</span><input type="time" value={window.fixed} onChange={(event) => updateWindow(window.id, { fixed: event.target.value })} className="mt-1 w-full rounded-xl border border-slate-200 px-3 py-2.5 text-sm" /></label>
-                  <label><span className="text-xs text-slate-500">Response window (min)</span><input type="number" min={1} value={window.responseWindow} onChange={(event) => updateWindow(window.id, { responseWindow: Number(event.target.value) })} className="mt-1 w-full rounded-xl border border-slate-200 px-3 py-2.5 text-sm" /></label>
-                </div>
-              )}
-
-              {(window.type === "event_contingent" || window.type === "participant_initiated") && (
-                <p className="mt-4 rounded-xl bg-slate-50 p-4 text-xs leading-5 text-slate-500">This window is participant/event-triggered rather than scheduled at a clock time. The saved Study Builder protocol can define event name, maximum occurrences and minimum intervals.</p>
-              )}
-            </div>
-          ))}
-        </div>
-
-        <button type="button" onClick={addWindow} className="mt-5 rounded-xl border border-slate-200 px-4 py-2.5 text-sm font-semibold">+ Add prompt / event window</button>
-      </Panel>
-
-      <Panel title="Prompt questionnaire">
-        <div className="grid gap-5 lg:grid-cols-[1fr_auto] lg:items-center">
-          <div>
-            <p className="font-medium">Use the universal questionnaire engine for EMA content</p>
-            <p className="mt-2 max-w-3xl text-sm leading-6 text-slate-500">Momentary assessments can contain sliders, choices, matrices, open responses, media or other universal item types. Study-level attachment of a questionnaire/protocol is the next participant-flow stage.</p>
-          </div>
-          <button type="button" className="rounded-xl bg-slate-950 px-5 py-3 text-sm font-semibold text-white">Configure through Study Builder</button>
-        </div>
-      </Panel>
+        <Panel title="Research-ready outputs">
+          <p className="text-sm leading-6 text-slate-500">
+            Data Dashboard, Data Explorer and Export Data can use one row per
+            check-in, one row per item response or one participant-day. XLSX
+            exports can then be shaped by the researcher.
+          </p>
+        </Panel>
+      </div>
     </div>
   );
 }
@@ -6982,6 +7476,9 @@ type ResearchDatasetType =
   | "questionnaire_responses"
   | "questionnaire_scores"
   | "consent"
+  | "ambulatory_checkins"
+  | "ambulatory_responses"
+  | "ambulatory_participant_days"
   | "analysis_wide";
 
 type ResearchIdentityMode = "pseudonymous" | "anonymous";
@@ -7009,6 +7506,7 @@ type ResearchDataSession = {
   id: string;
   participant_id: string;
   phase: string;
+  followup_wave_id: string | null;
   status: string;
   is_test: boolean;
   started_at: string;
@@ -7056,6 +7554,7 @@ type ResearchDataMeasure = {
   questionnaire_id: string;
   questionnaire_version_id: string;
   measurement_point: string;
+  followup_wave_id: string | null;
   position: number;
   required: boolean;
 };
@@ -7111,10 +7610,60 @@ type ResearchDataQuestionnaireItem = {
   response_options: unknown;
 };
 
+type ResearchDataAmbulatoryPrompt = {
+  id: string;
+  participant_id: string;
+  schedule_key: string;
+  schedule_label: string;
+  trigger_type: string;
+  local_date: string;
+  occurrence_index: number;
+  scheduled_for: string | null;
+  expires_at: string | null;
+  status: string;
+  notification_sent_at: string | null;
+  opened_at: string | null;
+  completed_at: string | null;
+};
+
+type ResearchDataAmbulatoryCheckin = {
+  id: string;
+  participant_id: string;
+  prompt_instance_id: string | null;
+  schedule_key: string;
+  schedule_label: string;
+  trigger_type: string;
+  local_date: string;
+  occurrence_index: number;
+  trigger_source: string;
+  started_at: string;
+  completed_at: string | null;
+};
+
+type ResearchDataAmbulatoryResponse = {
+  id: string;
+  checkin_id: string;
+  participant_id: string;
+  item_key: string;
+  item_type: string;
+  prompt_snapshot: string;
+  response: unknown;
+  numeric_value: number | null;
+  text_value: string | null;
+  answered_at: string;
+};
+
+type ResearchDataFollowupWave = {
+  id: string;
+  name: string;
+  position: number;
+  status: string;
+};
+
 type ResearchDataExportLog = {
   id: string;
   dataset_type: string;
-  export_format: "csv" | "json";
+  export_format: "csv" | "json" | "xlsx";
   identity_mode: ResearchIdentityMode;
   include_test_data: boolean;
   include_direct_identifiers: boolean;
@@ -7135,6 +7684,10 @@ type ResearchDataBundle = {
   questionnaires: ResearchDataQuestionnaire[];
   questionnaireVersions: ResearchDataQuestionnaireVersion[];
   questionnaireItems: ResearchDataQuestionnaireItem[];
+  ambulatoryPrompts: ResearchDataAmbulatoryPrompt[];
+  ambulatoryCheckins: ResearchDataAmbulatoryCheckin[];
+  ambulatoryResponses: ResearchDataAmbulatoryResponse[];
+  followupWaves: ResearchDataFollowupWave[];
   exportLogs: ResearchDataExportLog[];
 };
 
@@ -7160,6 +7713,10 @@ const emptyResearchDataBundle: ResearchDataBundle = {
   questionnaires: [],
   questionnaireVersions: [],
   questionnaireItems: [],
+  ambulatoryPrompts: [],
+  ambulatoryCheckins: [],
+  ambulatoryResponses: [],
+  followupWaves: [],
   exportLogs: [],
 };
 
@@ -7169,6 +7726,9 @@ const researchDatasetLabels: Record<ResearchDatasetType, string> = {
   questionnaire_responses: "Questionnaire responses — long format",
   questionnaire_scores: "Questionnaire scores — long format",
   consent: "Consent records",
+  ambulatory_checkins: "Ambulatory check-ins — one row per check-in",
+  ambulatory_responses: "Ambulatory responses — one row per item response",
+  ambulatory_participant_days: "Ambulatory participant-days — one row per participant per day",
   analysis_wide: "Analysis dataset — one row per participant",
 };
 
@@ -7337,6 +7897,10 @@ function useResearchDataWorkspace() {
         measureResult,
         measureSessionResult,
         responseResult,
+        ambulatoryPromptResult,
+        ambulatoryCheckinResult,
+        ambulatoryResponseResult,
+        followupWaveResult,
         exportLogResult,
       ] = await Promise.all([
         supabase
@@ -7350,7 +7914,7 @@ function useResearchDataWorkspace() {
         supabase
           .from("participant_sessions")
           .select(
-            "id, participant_id, phase, status, is_test, started_at, last_seen_at, completed_at"
+            "id, participant_id, phase, followup_wave_id, status, is_test, started_at, last_seen_at, completed_at"
           )
           .eq("study_id", selectedStudyId)
           .order("started_at", { ascending: false }),
@@ -7382,7 +7946,7 @@ function useResearchDataWorkspace() {
         supabase
           .from("study_measures")
           .select(
-            "id, questionnaire_id, questionnaire_version_id, measurement_point, position, required"
+            "id, questionnaire_id, questionnaire_version_id, measurement_point, followup_wave_id, position, required"
           )
           .eq("study_id", selectedStudyId)
           .order("position", { ascending: true }),
@@ -7404,6 +7968,36 @@ function useResearchDataWorkspace() {
           .order("answered_at", { ascending: false }),
 
         supabase
+          .from("study_ambulatory_prompt_instances")
+          .select(
+            "id, participant_id, schedule_key, schedule_label, trigger_type, local_date, occurrence_index, scheduled_for, expires_at, status, notification_sent_at, opened_at, completed_at"
+          )
+          .eq("study_id", selectedStudyId)
+          .order("scheduled_for", { ascending: false }),
+
+        supabase
+          .from("study_ambulatory_checkins")
+          .select(
+            "id, participant_id, prompt_instance_id, schedule_key, schedule_label, trigger_type, local_date, occurrence_index, trigger_source, started_at, completed_at"
+          )
+          .eq("study_id", selectedStudyId)
+          .order("started_at", { ascending: false }),
+
+        supabase
+          .from("study_ambulatory_responses")
+          .select(
+            "id, checkin_id, participant_id, item_key, item_type, prompt_snapshot, response, numeric_value, text_value, answered_at"
+          )
+          .eq("study_id", selectedStudyId)
+          .order("answered_at", { ascending: false }),
+
+        supabase
+          .from("study_followup_waves")
+          .select("id, name, position, status")
+          .eq("study_id", selectedStudyId)
+          .order("position", { ascending: true }),
+
+        supabase
           .from("research_export_logs")
           .select(
             "id, dataset_type, export_format, identity_mode, include_test_data, include_direct_identifiers, row_count, metadata, created_at"
@@ -7422,6 +8016,10 @@ function useResearchDataWorkspace() {
         measureResult,
         measureSessionResult,
         responseResult,
+        ambulatoryPromptResult,
+        ambulatoryCheckinResult,
+        ambulatoryResponseResult,
+        followupWaveResult,
       ];
 
       const requiredError = requiredResults.find((result) => result.error);
@@ -7525,6 +8123,14 @@ function useResearchDataWorkspace() {
         questionnaires,
         questionnaireVersions,
         questionnaireItems,
+        ambulatoryPrompts:
+          (ambulatoryPromptResult.data || []) as ResearchDataAmbulatoryPrompt[],
+        ambulatoryCheckins:
+          (ambulatoryCheckinResult.data || []) as ResearchDataAmbulatoryCheckin[],
+        ambulatoryResponses:
+          (ambulatoryResponseResult.data || []) as ResearchDataAmbulatoryResponse[],
+        followupWaves:
+          (followupWaveResult.data || []) as ResearchDataFollowupWave[],
         exportLogs: exportLogResult.error
           ? []
           : ((exportLogResult.data || []) as ResearchDataExportLog[]),
@@ -7551,6 +8157,69 @@ function useResearchDataWorkspace() {
   };
 }
 
+function researchFollowupWaveForMeasure(
+  bundle: ResearchDataBundle,
+  measure: ResearchDataMeasure | undefined
+) {
+  if (!measure?.followup_wave_id) return null;
+
+  return (
+    bundle.followupWaves.find(
+      (wave) => wave.id === measure.followup_wave_id
+    ) || null
+  );
+}
+
+function researchMeasurePhaseDisplay(
+  bundle: ResearchDataBundle,
+  measure: ResearchDataMeasure
+) {
+  if (
+    measure.measurement_point !== "followup" ||
+    !measure.followup_wave_id
+  ) {
+    return measure.measurement_point;
+  }
+
+  const wave = researchFollowupWaveForMeasure(
+    bundle,
+    measure
+  );
+
+  return wave
+    ? `Follow-up ${wave.position}: ${wave.name}`
+    : "Follow-up";
+}
+
+function researchMeasurePhaseVariable(
+  bundle: ResearchDataBundle,
+  measure: ResearchDataMeasure
+) {
+  if (
+    measure.measurement_point !== "followup" ||
+    !measure.followup_wave_id
+  ) {
+    return researchSafeVariable(
+      measure.measurement_point
+    );
+  }
+
+  const wave = researchFollowupWaveForMeasure(
+    bundle,
+    measure
+  );
+
+  if (!wave) {
+    return `followup_${researchSafeVariable(
+      measure.followup_wave_id.slice(0, 8)
+    )}`;
+  }
+
+  return `followup_${wave.position}_${researchSafeVariable(
+    wave.name
+  )}`;
+}
+
 function researchQuestionnaireForMeasure(
   bundle: ResearchDataBundle,
   measure: ResearchDataMeasure | undefined
@@ -7562,6 +8231,192 @@ function researchQuestionnaireForMeasure(
       (questionnaire) => questionnaire.id === measure.questionnaire_id
     ) || null
   );
+}
+
+
+type ResearchParticipantSummaryQuestionnaireField = {
+  source: string;
+  label: string;
+  measureId: string;
+  itemId: string;
+  itemPosition: number;
+  responseType: string;
+  questionnaireName: string;
+  phaseLabel: string;
+  groupLabel: string;
+  prompt: string;
+};
+
+function researchParticipantSummaryQuestionnaireFields(
+  bundle: ResearchDataBundle
+): ResearchParticipantSummaryQuestionnaireField[] {
+  const measures = [...bundle.measures].sort((a, b) => {
+    const aWave =
+      a.measurement_point === "baseline"
+        ? 0
+        : researchFollowupWaveForMeasure(bundle, a)?.position ?? 999;
+    const bWave =
+      b.measurement_point === "baseline"
+        ? 0
+        : researchFollowupWaveForMeasure(bundle, b)?.position ?? 999;
+
+    if (aWave !== bWave) {
+      return aWave - bWave;
+    }
+
+    return a.position - b.position;
+  });
+
+  const questionnaireUseCount = new Map<string, number>();
+
+  for (const measure of measures) {
+    questionnaireUseCount.set(
+      measure.questionnaire_id,
+      (questionnaireUseCount.get(measure.questionnaire_id) || 0) + 1
+    );
+  }
+
+  const fields: ResearchParticipantSummaryQuestionnaireField[] = [];
+
+  for (const measure of measures) {
+    const questionnaire = researchQuestionnaireForMeasure(
+      bundle,
+      measure
+    );
+
+    if (!questionnaire) {
+      continue;
+    }
+
+    const phaseLabel = researchMeasurePhaseDisplay(
+      bundle,
+      measure
+    );
+
+    const repeatedQuestionnaire =
+      (questionnaireUseCount.get(questionnaire.id) || 0) > 1;
+
+    const followupWave =
+      researchFollowupWaveForMeasure(
+        bundle,
+        measure
+      );
+
+    // Baseline:
+    //   General Self-Efficacy Scale - 1
+    //
+    // Follow-up:
+    //   Follow-up 1 - General Self-Efficacy Scale - 1
+    //   Follow-up 2 - General Self-Efficacy Scale - 1
+    //
+    // This makes follow-up columns immediately identifiable even when the
+    // questionnaire is used only once in the whole study.
+    const labelPrefix =
+      measure.measurement_point === "followup"
+        ? `${
+            followupWave
+              ? `Follow-up ${followupWave.position}`
+              : "Follow-up"
+          } - ${questionnaire.name}`
+        : repeatedQuestionnaire
+          ? `${phaseLabel} - ${questionnaire.name}`
+          : questionnaire.name;
+
+    const questionnaireKey = researchSafeVariable(
+      questionnaire.acronym || questionnaire.name
+    );
+
+    const items = bundle.questionnaireItems
+      .filter(
+        (item) =>
+          item.version_id ===
+          measure.questionnaire_version_id
+      )
+      .sort((a, b) => a.position - b.position);
+
+    for (const item of items) {
+      fields.push({
+        source: `questionnaire_${researchMeasurePhaseVariable(
+          bundle,
+          measure
+        )}_${measure.position}_${questionnaireKey}_${item.position}`,
+        label: `${labelPrefix} - ${item.position}`,
+        measureId: measure.id,
+        itemId: item.id,
+        itemPosition: item.position,
+        responseType: item.response_type,
+        questionnaireName: questionnaire.name,
+        phaseLabel,
+        groupLabel: labelPrefix,
+        prompt: item.prompt,
+      });
+    }
+  }
+
+  return fields;
+}
+
+function researchParticipantSummaryResponseValue(
+  item: ResearchDataQuestionnaireItem,
+  response: ResearchDataResponse
+) {
+  const raw = response.response;
+
+  // For choice-based questions, prefer the human-readable option label in
+  // participant-summary exports while preserving raw/numeric values in the
+  // dedicated long-format response dataset.
+  if (Array.isArray(item.response_options)) {
+    const options = item.response_options as Array<
+      Record<string, unknown>
+    >;
+
+    const labelForValue = (value: unknown) => {
+      const option = options.find(
+        (candidate) =>
+          String(candidate.value ?? "") === String(value ?? "")
+      );
+
+      if (
+        option &&
+        typeof option.label === "string" &&
+        option.label.trim()
+      ) {
+        return option.label;
+      }
+
+      return value;
+    };
+
+    if (Array.isArray(raw)) {
+      return raw.map(labelForValue).join(", ");
+    }
+
+    if (
+      raw !== null &&
+      raw !== undefined &&
+      typeof raw !== "object"
+    ) {
+      return labelForValue(raw);
+    }
+  }
+
+  if (
+    response.text_value !== null &&
+    response.text_value !== undefined &&
+    response.text_value !== ""
+  ) {
+    return response.text_value;
+  }
+
+  if (raw !== null && raw !== undefined) {
+    return raw;
+  }
+
+  if (response.numeric_value !== null) {
+    return response.numeric_value;
+  }
+
+  return "";
 }
 
 function researchItemForResponse(
@@ -7652,6 +8507,9 @@ function researchBuildRows(
   });
 
   if (datasetType === "participant_summary") {
+    const questionnaireFields =
+      researchParticipantSummaryQuestionnaireFields(bundle);
+
     return participants.map((participant) => {
       const sessions = bundle.sessions.filter(
         (session) => session.participant_id === participant.id
@@ -7671,7 +8529,7 @@ function researchBuildRows(
         (response) => response.participant_id === participant.id
       );
 
-      return {
+      const row: ResearchTableRow = {
         ...participantBase(participant),
         participant_code:
           identityMode === "pseudonymous" && includeDirectIdentifiers
@@ -7680,9 +8538,43 @@ function researchBuildRows(
         consented: consent?.consented ?? false,
         session_count: sessions.length,
         completed_questionnaires: completedMeasures.length,
-        questionnaire_item_responses: responses.length,
-        demographic_responses: demographics.length,
       };
+
+      // Every configured questionnaire item becomes its own participant-level
+      // export field, even when this participant has no response yet.
+      for (const field of questionnaireFields) {
+        row[field.source] = "";
+      }
+
+      for (const response of responses) {
+        const field = questionnaireFields.find(
+          (candidate) =>
+            candidate.measureId === response.study_measure_id &&
+            candidate.itemId === response.item_id
+        );
+
+        if (!field) {
+          continue;
+        }
+
+        const item = bundle.questionnaireItems.find(
+          (candidate) => candidate.id === response.item_id
+        );
+
+        if (!item) {
+          continue;
+        }
+
+        row[field.source] =
+          researchParticipantSummaryResponseValue(
+            item,
+            response
+          );
+      }
+
+      row.demographic_responses = demographics.length;
+
+      return row;
     });
   }
 
@@ -7747,7 +8639,10 @@ function researchBuildRows(
           {
             participant: identityMap.get(participant.id) || "",
             is_test: participant.is_test,
-            phase: measure.measurement_point,
+            phase: researchMeasurePhaseDisplay(
+              bundle,
+              measure
+            ),
             questionnaire: questionnaire.name,
             acronym: questionnaire.acronym || "",
             item_key: item.item_key || `item_${item.position}`,
@@ -7800,7 +8695,10 @@ function researchBuildRows(
         rows.push({
           participant: identityMap.get(participant.id) || "",
           is_test: participant.is_test,
-          phase: measure.measurement_point,
+          phase: researchMeasurePhaseDisplay(
+            bundle,
+            measure
+          ),
           questionnaire: questionnaire.name,
           acronym: questionnaire.acronym || "",
           score_name: "",
@@ -7812,13 +8710,283 @@ function researchBuildRows(
           rows.push({
             participant: identityMap.get(participant.id) || "",
             is_test: participant.is_test,
-            phase: measure.measurement_point,
+            phase: researchMeasurePhaseDisplay(
+              bundle,
+              measure
+            ),
             questionnaire: questionnaire.name,
             acronym: questionnaire.acronym || "",
             score_name: scoreName,
             score_value: scoreValue,
             completed_at: session.completed_at || "",
           });
+        });
+      }
+    }
+
+    return rows;
+  }
+
+  if (datasetType === "ambulatory_checkins") {
+    return bundle.ambulatoryCheckins
+      .filter((checkin) =>
+        participantIds.has(checkin.participant_id)
+      )
+      .map((checkin) => {
+        const participant = researchParticipantForId(
+          bundle,
+          checkin.participant_id
+        );
+        const prompt = checkin.prompt_instance_id
+          ? bundle.ambulatoryPrompts.find(
+              (candidate) =>
+                candidate.id ===
+                checkin.prompt_instance_id
+            )
+          : null;
+        const responseCount =
+          bundle.ambulatoryResponses.filter(
+            (response) =>
+              response.checkin_id ===
+              checkin.id
+          ).length;
+
+        const latencyMinutes =
+          prompt?.scheduled_for &&
+          checkin.completed_at
+            ? Math.round(
+                ((new Date(
+                  checkin.completed_at
+                ).getTime() -
+                  new Date(
+                    prompt.scheduled_for
+                  ).getTime()) /
+                  60000) *
+                  10
+              ) / 10
+            : null;
+
+        return {
+          participant: participant
+            ? identityMap.get(
+                participant.id
+              ) || ""
+            : "",
+          local_date: checkin.local_date,
+          schedule_key:
+            checkin.schedule_key,
+          checkin:
+            checkin.schedule_label,
+          trigger_type:
+            checkin.trigger_type,
+          trigger_source:
+            checkin.trigger_source,
+          occurrence:
+            checkin.occurrence_index,
+          scheduled_for:
+            prompt?.scheduled_for || "",
+          opened_at:
+            prompt?.opened_at || "",
+          started_at:
+            checkin.started_at,
+          completed_at:
+            checkin.completed_at || "",
+          response_latency_minutes:
+            latencyMinutes ?? "",
+          item_responses: responseCount,
+          prompt_status:
+            prompt?.status || "event",
+          is_test:
+            participant?.is_test || false,
+        };
+      });
+  }
+
+  if (datasetType === "ambulatory_responses") {
+    return bundle.ambulatoryResponses
+      .filter((response) =>
+        participantIds.has(
+          response.participant_id
+        )
+      )
+      .map((response) => {
+        const participant =
+          researchParticipantForId(
+            bundle,
+            response.participant_id
+          );
+        const checkin =
+          bundle.ambulatoryCheckins.find(
+            (candidate) =>
+              candidate.id ===
+              response.checkin_id
+          );
+
+        return {
+          participant: participant
+            ? identityMap.get(
+                participant.id
+              ) || ""
+            : "",
+          local_date:
+            checkin?.local_date || "",
+          checkin:
+            checkin?.schedule_label || "",
+          trigger_type:
+            checkin?.trigger_type || "",
+          occurrence:
+            checkin?.occurrence_index || "",
+          item_key:
+            response.item_key,
+          item_type:
+            response.item_type,
+          prompt:
+            response.prompt_snapshot,
+          response:
+            researchValueText(
+              response.response
+            ),
+          numeric_value:
+            response.numeric_value ?? "",
+          text_value:
+            response.text_value ?? "",
+          answered_at:
+            response.answered_at,
+          is_test:
+            participant?.is_test || false,
+        };
+      });
+  }
+
+  if (
+    datasetType ===
+    "ambulatory_participant_days"
+  ) {
+    const rows: ResearchTableRow[] = [];
+
+    for (const participant of participants) {
+      const dates = Array.from(
+        new Set([
+          ...bundle.ambulatoryPrompts
+            .filter(
+              (prompt) =>
+                prompt.participant_id ===
+                participant.id
+            )
+            .map(
+              (prompt) =>
+                prompt.local_date
+            ),
+          ...bundle.ambulatoryCheckins
+            .filter(
+              (checkin) =>
+                checkin.participant_id ===
+                participant.id
+            )
+            .map(
+              (checkin) =>
+                checkin.local_date
+            ),
+        ])
+      ).sort();
+
+      for (const date of dates) {
+        const prompts =
+          bundle.ambulatoryPrompts.filter(
+            (prompt) =>
+              prompt.participant_id ===
+                participant.id &&
+              prompt.local_date === date
+          );
+
+        const scheduledCompleted =
+          prompts.filter(
+            (prompt) =>
+              prompt.status ===
+              "completed"
+          ).length;
+
+        const scheduledMissed =
+          prompts.filter(
+            (prompt) =>
+              prompt.status === "missed"
+          ).length;
+
+        const checkins =
+          bundle.ambulatoryCheckins.filter(
+            (checkin) =>
+              checkin.participant_id ===
+                participant.id &&
+              checkin.local_date === date &&
+              Boolean(
+                checkin.completed_at
+              )
+          );
+
+        const eventCheckins =
+          checkins.filter(
+            (checkin) =>
+              checkin.trigger_type ===
+                "event_contingent" ||
+              checkin.trigger_type ===
+                "participant_initiated"
+          ).length;
+
+        const numeric =
+          bundle.ambulatoryResponses
+            .filter(
+              (response) =>
+                checkins.some(
+                  (checkin) =>
+                    checkin.id ===
+                    response.checkin_id
+                ) &&
+                typeof response.numeric_value ===
+                  "number"
+            )
+            .map(
+              (response) =>
+                response.numeric_value as number
+            );
+
+        rows.push({
+          participant:
+            identityMap.get(
+              participant.id
+            ) || "",
+          local_date: date,
+          scheduled_prompts:
+            prompts.length,
+          scheduled_completed:
+            scheduledCompleted,
+          scheduled_missed:
+            scheduledMissed,
+          scheduled_compliance_percent:
+            prompts.length > 0
+              ? Math.round(
+                  (scheduledCompleted /
+                    prompts.length) *
+                    1000
+                ) / 10
+              : "",
+          total_completed_checkins:
+            checkins.length,
+          event_checkins:
+            eventCheckins,
+          mean_numeric_response:
+            numeric.length > 0
+              ? Math.round(
+                  (numeric.reduce(
+                    (sum, value) =>
+                      sum + value,
+                    0
+                  ) /
+                    numeric.length) *
+                    100
+                ) / 100
+              : "",
+          is_test:
+            participant.is_test,
         });
       }
     }
@@ -7857,8 +9025,12 @@ function researchBuildRows(
       });
   }
 
-  // analysis_wide — one row per participant with non-identifying
-  // demographics + questionnaire scores.
+  // analysis_wide — one row per participant with demographics +
+  // one column for every questionnaire ITEM response. Questionnaire selection
+  // in Export Data is grouped at the questionnaire/measurement-wave level.
+  const questionnaireFields =
+    researchParticipantSummaryQuestionnaireFields(bundle);
+
   return participants.map((participant) => {
     const row: ResearchTableRow = {
       ...participantBase(participant),
@@ -7886,38 +9058,40 @@ function researchBuildRows(
         : "";
     }
 
-    const participantMeasureSessions = bundle.measureSessions.filter(
-      (session) =>
-        session.participant_id === participant.id &&
-        session.status === "completed"
+    // Create all questionnaire item columns even when this participant has
+    // missing data, so the exported XLSX has a stable study-level structure.
+    for (const field of questionnaireFields) {
+      row[field.source] = "";
+    }
+
+    const participantResponses = bundle.responses.filter(
+      (response) => response.participant_id === participant.id
     );
 
-    for (const session of participantMeasureSessions) {
-      const measure = researchMeasureForId(bundle, session.study_measure_id);
-      const questionnaire = researchQuestionnaireForMeasure(
-        bundle,
-        measure || undefined
+    for (const response of participantResponses) {
+      const field = questionnaireFields.find(
+        (candidate) =>
+          candidate.measureId === response.study_measure_id &&
+          candidate.itemId === response.item_id
       );
 
-      if (!measure || !questionnaire) continue;
-
-      const questionnaireKey = researchSafeVariable(
-        questionnaire.acronym || questionnaire.name
-      );
-
-      const scores =
-        session.scores && typeof session.scores === "object"
-          ? Object.entries(session.scores)
-          : [];
-
-      for (const [scoreName, scoreValue] of scores) {
-        const scoreKey = researchSafeVariable(scoreName || "total");
-        row[
-          `${researchSafeVariable(
-            measure.measurement_point
-          )}_${questionnaireKey}_${scoreKey}`
-        ] = scoreValue;
+      if (!field) {
+        continue;
       }
+
+      const item = bundle.questionnaireItems.find(
+        (candidate) => candidate.id === response.item_id
+      );
+
+      if (!item) {
+        continue;
+      }
+
+      row[field.source] =
+        researchParticipantSummaryResponseValue(
+          item,
+          response
+        );
     }
 
     return row;
@@ -7948,6 +9122,9 @@ function researchBuildCodebook(
   ];
 
   if (datasetType === "participant_summary") {
+    const questionnaireFields =
+      researchParticipantSummaryQuestionnaireFields(bundle);
+
     return [
       ...common,
       {
@@ -7971,13 +9148,13 @@ function researchBuildCodebook(
         source: "study_measure_sessions",
         notes: "Number of completed questionnaire sessions.",
       },
-      {
-        variable: "questionnaire_item_responses",
-        label: "Stored questionnaire item responses",
-        type: "Integer",
+      ...questionnaireFields.map((field) => ({
+        variable: field.source,
+        label: field.label,
+        type: field.responseType,
         source: "research_responses",
-        notes: "Count of item-level responses.",
-      },
+        notes: `${field.phaseLabel} · ${field.questionnaireName} · Item ${field.itemPosition}: ${field.prompt}`,
+      })),
     ];
   }
 
@@ -8015,8 +9192,9 @@ function researchBuildCodebook(
 
       for (const item of items) {
         rows.push({
-          variable: `${researchSafeVariable(
-            measure.measurement_point
+          variable: `${researchMeasurePhaseVariable(
+            bundle,
+            measure
           )}_${researchSafeVariable(
             questionnaire.acronym || questionnaire.name
           )}_${researchSafeVariable(
@@ -8025,7 +9203,10 @@ function researchBuildCodebook(
           label: item.prompt,
           type: item.response_type,
           source: questionnaire.name,
-          notes: `${measure.measurement_point}${
+          notes: `${researchMeasurePhaseDisplay(
+            bundle,
+            measure
+          )}${
             item.subscale ? ` · Subscale: ${item.subscale}` : ""
           }${item.required ? " · Required" : ""}`,
         });
@@ -8054,8 +9235,9 @@ function researchBuildCodebook(
           : [];
 
       for (const score of scores) {
-        const variable = `${researchSafeVariable(
-          measure.measurement_point
+        const variable = `${researchMeasurePhaseVariable(
+          bundle,
+          measure
         )}_${researchSafeVariable(
           questionnaire.acronym || questionnaire.name
         )}_${researchSafeVariable(score)}`;
@@ -8068,12 +9250,81 @@ function researchBuildCodebook(
           label: `${questionnaire.name} — ${score}`,
           type: "Numeric / computed",
           source: questionnaire.name,
-          notes: `${measure.measurement_point} score stored by the participant runner.`,
+          notes: `${researchMeasurePhaseDisplay(
+            bundle,
+            measure
+          )} score stored by the participant runner.`,
         });
       }
     }
 
     return rows;
+  }
+
+  if (datasetType === "ambulatory_checkins") {
+    return [
+      ["participant", "Participant", "text", "participant", "Pseudonymous or export-scoped anonymous participant identifier."],
+      ["local_date", "Participant-local date", "date", "ambulatory check-in", ""],
+      ["checkin", "Check-in / event title", "text", "ambulatory check-in", ""],
+      ["trigger_type", "Trigger type", "text", "ambulatory check-in", "fixed_time, random_window, interval, event_contingent or participant_initiated."],
+      ["trigger_source", "Trigger source", "text", "ambulatory check-in", "Scheduled, participant, wearable/device/API in future integrations."],
+      ["occurrence", "Occurrence within day", "number", "ambulatory check-in", ""],
+      ["scheduled_for", "Scheduled timestamp", "datetime", "prompt instance", "Blank for participant/event-triggered check-ins."],
+      ["started_at", "Check-in started", "datetime", "ambulatory check-in", ""],
+      ["completed_at", "Check-in completed", "datetime", "ambulatory check-in", ""],
+      ["response_latency_minutes", "Scheduled-to-completion latency (minutes)", "number", "derived", "Available for scheduled prompts."],
+      ["item_responses", "Number of item responses", "number", "derived", ""],
+      ["prompt_status", "Prompt status", "text", "prompt instance", ""],
+    ].map(([variable, label, type, source, notes]) => ({
+      variable,
+      label,
+      type,
+      source,
+      notes,
+    }));
+  }
+
+  if (datasetType === "ambulatory_responses") {
+    return [
+      ["participant", "Participant", "text", "participant", ""],
+      ["local_date", "Participant-local date", "date", "ambulatory check-in", ""],
+      ["checkin", "Check-in / event title", "text", "ambulatory check-in", ""],
+      ["trigger_type", "Trigger type", "text", "ambulatory check-in", ""],
+      ["occurrence", "Occurrence within day", "number", "ambulatory check-in", ""],
+      ["item_key", "Protocol item key", "text", "ambulatory response", ""],
+      ["item_type", "Protocol item type", "text", "ambulatory response", ""],
+      ["prompt", "Prompt snapshot", "text", "ambulatory response", "The prompt shown when this response was saved."],
+      ["response", "Raw response", "mixed", "ambulatory response", "Arrays/objects are JSON encoded in flat exports."],
+      ["numeric_value", "Numeric helper", "number", "ambulatory response", "Filled when response is numeric."],
+      ["text_value", "Text helper", "text", "ambulatory response", "Filled when response is text."],
+      ["answered_at", "Answered at", "datetime", "ambulatory response", ""],
+    ].map(([variable, label, type, source, notes]) => ({
+      variable,
+      label,
+      type,
+      source,
+      notes,
+    }));
+  }
+
+  if (datasetType === "ambulatory_participant_days") {
+    return [
+      ["participant", "Participant", "text", "participant", ""],
+      ["local_date", "Participant-local date", "date", "ambulatory", ""],
+      ["scheduled_prompts", "Scheduled prompts", "number", "derived", ""],
+      ["scheduled_completed", "Scheduled prompts completed", "number", "derived", ""],
+      ["scheduled_missed", "Scheduled prompts missed", "number", "derived", ""],
+      ["scheduled_compliance_percent", "Scheduled prompt compliance (%)", "number", "derived", ""],
+      ["total_completed_checkins", "All completed check-ins", "number", "derived", ""],
+      ["event_checkins", "Event/participant-initiated check-ins", "number", "derived", ""],
+      ["mean_numeric_response", "Mean numeric ambulatory response", "number", "derived", "Descriptive only; interpretation depends on the protocol item scales included."],
+    ].map(([variable, label, type, source, notes]) => ({
+      variable,
+      label,
+      type,
+      source,
+      notes,
+    }));
   }
 
   if (datasetType === "consent") {
@@ -8138,11 +9389,17 @@ function researchBuildCodebook(
       });
     });
 
-  researchBuildCodebook(
-    bundle,
-    "questionnaire_scores",
-    includeDirectIdentifiers
-  ).forEach((score) => rows.push(score));
+  researchParticipantSummaryQuestionnaireFields(bundle).forEach(
+    (field) => {
+      rows.push({
+        variable: field.source,
+        label: field.label,
+        type: field.responseType,
+        source: "research_responses",
+        notes: `${field.phaseLabel} · ${field.questionnaireName} · Item ${field.itemPosition}: ${field.prompt}`,
+      });
+    }
+  );
 
   return rows;
 }
@@ -8150,6 +9407,166 @@ function researchBuildCodebook(
 /* =========================================================
    DATA DASHBOARD
    ========================================================= */
+
+function ResearchAmbulatoryDataPanel({
+  studyId,
+}: {
+  studyId: string;
+}) {
+  type Summary = {
+    participants: number;
+    scheduled_prompts: number;
+    completed_prompts: number;
+    missed_prompts: number;
+    scheduled_compliance_percent: number;
+    completed_checkins: number;
+    event_checkins: number;
+    median_response_latency_minutes: number;
+    days: number;
+  };
+
+  const [days, setDays] = useState<7 | 14 | 30>(14);
+  const [summary, setSummary] = useState<Summary | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [errorMessage, setErrorMessage] = useState("");
+
+  async function loadSummary() {
+    if (!studyId) {
+      return;
+    }
+
+    setLoading(true);
+    setErrorMessage("");
+
+    const supabase = createClient();
+
+    const { data, error } = await supabase.rpc(
+      "psylattice_research_ambulatory_summary",
+      {
+        p_study_id: studyId,
+        p_days: days,
+      }
+    );
+
+    if (error) {
+      console.error(
+        "Could not load ambulatory research summary:",
+        error
+      );
+      setErrorMessage(
+        "Ambulatory research summary could not be loaded."
+      );
+      setSummary(null);
+    } else {
+      setSummary((data || null) as Summary | null);
+    }
+
+    setLoading(false);
+  }
+
+  useEffect(() => {
+    void loadSummary();
+  }, [studyId, days]);
+
+  return (
+    <Panel
+      title="Ambulatory research data"
+      description="Research-ready compliance, prompt and event metrics from real V3 participant records."
+    >
+      <div className="mb-5 flex flex-wrap items-center justify-between gap-3">
+        <div className="flex rounded-xl border border-slate-200 bg-white p-1">
+          {([7, 14, 30] as const).map((value) => (
+            <button
+              key={value}
+              type="button"
+              onClick={() => setDays(value)}
+              className={`rounded-lg px-4 py-2 text-xs font-semibold ${
+                days === value
+                  ? "bg-slate-950 text-white"
+                  : "text-slate-500"
+              }`}
+            >
+              {value} days
+            </button>
+          ))}
+        </div>
+
+        <button
+          type="button"
+          disabled={loading}
+          onClick={() => void loadSummary()}
+          className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-slate-600 disabled:opacity-50"
+        >
+          Refresh
+        </button>
+      </div>
+
+      {errorMessage ? (
+        <p className="text-sm text-red-700">{errorMessage}</p>
+      ) : loading ? (
+        <p className="text-sm text-slate-500">
+          Loading ambulatory data...
+        </p>
+      ) : summary ? (
+        <>
+          <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+            <StatCard
+              label="Scheduled compliance"
+              value={`${summary.scheduled_compliance_percent || 0}%`}
+              detail={`${summary.completed_prompts || 0} of ${summary.scheduled_prompts || 0} prompts completed`}
+            />
+            <StatCard
+              label="Missed prompts"
+              value={String(summary.missed_prompts || 0)}
+              detail="Expired scheduled prompts"
+            />
+            <StatCard
+              label="Event reports"
+              value={String(summary.event_checkins || 0)}
+              detail="Event/participant-initiated check-ins"
+            />
+            <StatCard
+              label="Median response latency"
+              value={`${summary.median_response_latency_minutes || 0} min`}
+              detail="Scheduled prompt → completion"
+            />
+          </div>
+
+          <div className="mt-5 grid gap-4 lg:grid-cols-3">
+            {[
+              [
+                "Participant-level",
+                "Compliance, missed prompts, event counts, response latency, first/last activity and study-day progression.",
+              ],
+              [
+                "Participant-day",
+                "One row per participant per day: scheduled/completed/missed prompts, events and descriptive numeric summaries.",
+              ],
+              [
+                "Check-in / item level",
+                "Exact trigger type, schedule, timestamps, conditional visible responses and raw item-level data.",
+              ],
+            ].map(([title, description]) => (
+              <div
+                key={title}
+                className="rounded-xl border border-slate-200 bg-slate-50/50 p-4"
+              >
+                <p className="text-sm font-semibold">{title}</p>
+                <p className="mt-1 text-xs leading-5 text-slate-500">
+                  {description}
+                </p>
+              </div>
+            ))}
+          </div>
+        </>
+      ) : (
+        <p className="text-sm text-slate-500">
+          No ambulatory data is available yet.
+        </p>
+      )}
+    </Panel>
+  );
+}
 
 function DataDashboard({
   changeScreen,
@@ -8889,16 +10306,9 @@ function DataExplorer() {
       </Panel>
 
       {selectedStudy?.components?.ambulatory && (
-        <div className="rounded-2xl border border-amber-200 bg-amber-50 p-5">
-          <p className="font-medium text-amber-950">
-            Ambulatory data is not shown yet
-          </p>
-          <p className="mt-2 text-sm leading-6 text-amber-800">
-            Your study may contain an ambulatory component, but participant EMA
-            delivery and response storage are a later stage. PsyLattice does
-            not display fabricated ambulatory observations.
-          </p>
-        </div>
+        <ResearchAmbulatoryDataPanel
+          studyId={selectedStudy.id}
+        />
       )}
     </div>
   );
@@ -8922,7 +10332,18 @@ function ExportData() {
 
   const [datasetType, setDatasetType] =
     useState<ResearchDatasetType>("analysis_wide");
-  const [format, setFormat] = useState<"csv" | "json">("csv");
+  const [format, setFormat] =
+    useState<"csv" | "json" | "xlsx">("xlsx");
+  const [workbookTitle, setWorkbookTitle] = useState("PsyLattice research export");
+  const [dataSheetName, setDataSheetName] = useState("Data");
+  const [includeCodebookSheet, setIncludeCodebookSheet] = useState(true);
+  const [columnConfig, setColumnConfig] = useState<
+    Array<{
+      source: string;
+      label: string;
+      enabled: boolean;
+    }>
+  >([]);
   const [identityMode, setIdentityMode] =
     useState<ResearchIdentityMode>("pseudonymous");
   const [includeTestData, setIncludeTestData] = useState(false);
@@ -8952,6 +10373,271 @@ function ExportData() {
     datasetType,
     includeDirectIdentifiers
   );
+
+  const participantSummaryQuestionnaireLabelMap =
+    new Map(
+      researchParticipantSummaryQuestionnaireFields(bundle).map(
+        (field) => [field.source, field.label]
+      )
+    );
+
+  const questionnaireFieldsForExport =
+    researchParticipantSummaryQuestionnaireFields(bundle);
+
+  const questionnaireFieldSourceSet = new Set(
+    questionnaireFieldsForExport.map(
+      (field) => field.source
+    )
+  );
+
+  const questionnaireGroupsForExport = Array.from(
+    questionnaireFieldsForExport.reduce(
+      (groups, field) => {
+        const current = groups.get(field.measureId);
+
+        if (current) {
+          current.fields.push(field);
+        } else {
+          groups.set(field.measureId, {
+            measureId: field.measureId,
+            label: field.groupLabel,
+            fields: [field],
+          });
+        }
+
+        return groups;
+      },
+      new Map<
+        string,
+        {
+          measureId: string;
+          label: string;
+          fields: ResearchParticipantSummaryQuestionnaireField[];
+        }
+      >()
+    ).values()
+  );
+
+  const availableColumns = Array.from(
+    new Set(
+      previewRows.flatMap((row) =>
+        Object.keys(row)
+      )
+    )
+  );
+
+  useEffect(() => {
+    setColumnConfig((current) => {
+      const currentMap = new Map(
+        current.map((column) => [
+          column.source,
+          column,
+        ])
+      );
+
+      return availableColumns.map((source) => {
+        const existing = currentMap.get(source);
+
+        return (
+          existing || {
+            source,
+            label:
+              datasetType === "participant_summary" ||
+              datasetType === "analysis_wide"
+                ? participantSummaryQuestionnaireLabelMap.get(
+                    source
+                  ) || source
+                : source,
+            enabled: true,
+          }
+        );
+      });
+    });
+  }, [
+    selectedStudyId,
+    datasetType,
+    availableColumns.join("|"),
+  ]);
+
+  const selectedColumns =
+    columnConfig.filter(
+      (column) => column.enabled
+    );
+
+  const shapedRows = previewRows.map((row) => {
+    const shaped: ResearchTableRow = {};
+
+    for (const column of selectedColumns) {
+      shaped[column.label || column.source] =
+        row[column.source];
+    }
+
+    return shaped;
+  });
+
+  function updateColumn(
+    source: string,
+    patch: Partial<{
+      label: string;
+      enabled: boolean;
+    }>
+  ) {
+    setColumnConfig((current) =>
+      current.map((column) =>
+        column.source === source
+          ? {
+              ...column,
+              ...patch,
+            }
+          : column
+      )
+    );
+  }
+
+  function updateQuestionnaireGroup(
+    measureId: string,
+    enabled: boolean
+  ) {
+    const sources = new Set(
+      questionnaireFieldsForExport
+        .filter(
+          (field) =>
+            field.measureId === measureId
+        )
+        .map((field) => field.source)
+    );
+
+    setColumnConfig((current) =>
+      current.map((column) =>
+        sources.has(column.source)
+          ? {
+              ...column,
+              enabled,
+            }
+          : column
+      )
+    );
+  }
+
+  function moveColumn(
+    source: string,
+    direction: -1 | 1
+  ) {
+    setColumnConfig((current) => {
+      const index = current.findIndex(
+        (column) =>
+          column.source === source
+      );
+
+      const target = index + direction;
+
+      if (
+        index < 0 ||
+        target < 0 ||
+        target >= current.length
+      ) {
+        return current;
+      }
+
+      const next = [...current];
+
+      [next[index], next[target]] = [
+        next[target],
+        next[index],
+      ];
+
+      return next;
+    });
+  }
+
+  async function downloadXlsx(
+    rows: ResearchTableRow[]
+  ) {
+    if (!selectedStudy) {
+      return;
+    }
+
+    const codebookRows = codebook.map(
+      (variable) => ({
+        Variable: variable.variable,
+        Label: variable.label,
+        Type: variable.type,
+        Source: variable.source,
+        Notes: variable.notes,
+      })
+    );
+
+    const response = await fetch(
+      "/api/research/export-xlsx",
+      {
+        method: "POST",
+        headers: {
+          "Content-Type":
+            "application/json",
+        },
+        body: JSON.stringify({
+          workbookTitle:
+            workbookTitle.trim() ||
+            selectedStudy.title,
+          filename: `${researchFilename(
+            selectedStudy.title
+          )}-${researchSafeVariable(
+            datasetType
+          )}.xlsx`,
+          sheets: [
+            {
+              name:
+                dataSheetName.trim() ||
+                "Data",
+              rows,
+            },
+            ...(includeCodebookSheet
+              ? [
+                  {
+                    name: "Codebook",
+                    rows: codebookRows,
+                  },
+                ]
+              : []),
+          ],
+        }),
+      }
+    );
+
+    if (!response.ok) {
+      const payload =
+        await response
+          .json()
+          .catch(() => ({}));
+
+      throw new Error(
+        payload?.error ||
+          "XLSX export could not be generated."
+      );
+    }
+
+    const blob = await response.blob();
+    const url =
+      URL.createObjectURL(blob);
+    const link =
+      document.createElement("a");
+
+    link.href = url;
+    link.download = `${researchFilename(
+      selectedStudy.title
+    )}-${researchSafeVariable(
+      datasetType
+    )}.xlsx`;
+
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+
+    window.setTimeout(
+      () => URL.revokeObjectURL(url),
+      1000
+    );
+  }
 
   async function logExport(rowCount: number) {
     if (!selectedStudyId) return null;
@@ -9010,13 +10696,7 @@ function ExportData() {
       return;
     }
 
-    const rows = researchBuildRows(
-      bundle,
-      datasetType,
-      identityMode,
-      includeTestData,
-      includeDirectIdentifiers
-    );
+    const rows = shapedRows;
 
     if (rows.length === 0) {
       setExportError(
@@ -9035,36 +10715,57 @@ function ExportData() {
       selectedStudy.title
     )}-${researchSafeVariable(datasetType)}-${timestamp}`;
 
-    if (format === "csv") {
-      researchDownloadText(
-        `${baseName}.csv`,
-        researchRowsToCsv(rows),
-        "text/csv;charset=utf-8"
-      );
-    } else {
-      researchDownloadText(
-        `${baseName}.json`,
-        JSON.stringify(
-          {
-            metadata: {
-              platform: "PsyLattice",
-              study_id: selectedStudy.id,
-              study_title: selectedStudy.title,
-              dataset: datasetType,
-              dataset_label: researchDatasetLabels[datasetType],
-              identity_mode: identityMode,
-              include_test_data: includeTestData,
-              include_direct_identifiers: includeDirectIdentifiers,
-              generated_at: new Date().toISOString(),
+    try {
+      if (format === "csv") {
+        researchDownloadText(
+          `${baseName}.csv`,
+          researchRowsToCsv(rows),
+          "text/csv;charset=utf-8"
+        );
+      } else if (format === "json") {
+        researchDownloadText(
+          `${baseName}.json`,
+          JSON.stringify(
+            {
+              metadata: {
+                platform: "PsyLattice",
+                study_id: selectedStudy.id,
+                study_title: selectedStudy.title,
+                dataset: datasetType,
+                dataset_label:
+                  researchDatasetLabels[
+                    datasetType
+                  ],
+                identity_mode:
+                  identityMode,
+                include_test_data:
+                  includeTestData,
+                include_direct_identifiers:
+                  includeDirectIdentifiers,
+                columns:
+                  selectedColumns,
+                generated_at:
+                  new Date().toISOString(),
+              },
+              codebook,
+              data: rows,
             },
-            codebook,
-            data: rows,
-          },
-          null,
-          2
-        ),
-        "application/json;charset=utf-8"
+            null,
+            2
+          ),
+          "application/json;charset=utf-8"
+        );
+      } else {
+        await downloadXlsx(rows);
+      }
+    } catch (error) {
+      setExportError(
+        error instanceof Error
+          ? error.message
+          : "The export could not be generated."
       );
+      setExporting(false);
+      return;
     }
 
     const savedLog = await logExport(rows.length);
@@ -9156,7 +10857,7 @@ function ExportData() {
       <div className="grid gap-5 xl:grid-cols-[1.1fr_.9fr]">
         <Panel
           title="Create research export"
-          description="Generate a real CSV or JSON file from the selected study data."
+          description="Design the table shape and export real XLSX, CSV or JSON study data."
         >
           <div className="space-y-5">
             <label className="block">
@@ -9288,6 +10989,7 @@ function ExportData() {
 
               <div className="mt-3 flex flex-wrap gap-2">
                 {[
+                  ["xlsx", "XLSX"],
                   ["csv", "CSV"],
                   ["json", "JSON + codebook"],
                 ].map(([value, label]) => (
@@ -9295,7 +10997,7 @@ function ExportData() {
                     key={value}
                     type="button"
                     onClick={() =>
-                      setFormat(value as "csv" | "json")
+                      setFormat(value as "csv" | "json" | "xlsx")
                     }
                     className={`rounded-full border px-3 py-2 text-xs font-medium ${
                       format === value
@@ -9309,6 +11011,341 @@ function ExportData() {
               </div>
             </div>
 
+            <div className="rounded-2xl border border-cyan-100 bg-cyan-50/40 p-4">
+              <p className="text-sm font-semibold text-cyan-950">
+                Table designer
+              </p>
+              <p className="mt-1 text-xs leading-5 text-slate-500">
+                The Dataset selector above decides what each row represents.
+                Here you decide which fields become columns, their order and
+                the column titles used in the exported table.
+              </p>
+
+              {format === "xlsx" && (
+                <div className="mt-4 grid gap-3 md:grid-cols-2">
+                  <label>
+                    <span className="text-xs font-medium text-slate-500">
+                      Workbook title
+                    </span>
+                    <input
+                      value={workbookTitle}
+                      onChange={(event) =>
+                        setWorkbookTitle(
+                          event.target.value
+                        )
+                      }
+                      className="mt-2 w-full rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm"
+                    />
+                  </label>
+
+                  <label>
+                    <span className="text-xs font-medium text-slate-500">
+                      Data sheet title
+                    </span>
+                    <input
+                      value={dataSheetName}
+                      onChange={(event) =>
+                        setDataSheetName(
+                          event.target.value
+                        )
+                      }
+                      className="mt-2 w-full rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm"
+                    />
+                  </label>
+
+                  <label className="flex items-start gap-3 rounded-xl border border-slate-200 bg-white p-3 md:col-span-2">
+                    <input
+                      type="checkbox"
+                      checked={includeCodebookSheet}
+                      onChange={(event) =>
+                        setIncludeCodebookSheet(
+                          event.target.checked
+                        )
+                      }
+                      className="mt-1"
+                    />
+                    <div>
+                      <p className="text-xs font-semibold text-slate-700">
+                        Add Codebook worksheet
+                      </p>
+                      <p className="mt-1 text-xs text-slate-500">
+                        Adds variable labels, types, sources and notes as a
+                        second XLSX sheet.
+                      </p>
+                    </div>
+                  </label>
+                </div>
+              )}
+
+              <div className="mt-4 max-h-[420px] space-y-2 overflow-y-auto pr-1">
+                {datasetType === "analysis_wide" ? (
+                  <>
+                    {columnConfig
+                      .filter(
+                        (column) =>
+                          !questionnaireFieldSourceSet.has(
+                            column.source
+                          )
+                      )
+                      .map((column, index, visibleColumns) => (
+                        <div
+                          key={column.source}
+                          className="grid gap-2 rounded-xl border border-slate-200 bg-white p-3 md:grid-cols-[34px_1fr_1fr_auto] md:items-center"
+                        >
+                          <input
+                            type="checkbox"
+                            checked={column.enabled}
+                            onChange={(event) =>
+                              updateColumn(
+                                column.source,
+                                {
+                                  enabled:
+                                    event.target.checked,
+                                }
+                              )
+                            }
+                          />
+
+                          <code className="break-all text-xs text-slate-500">
+                            {column.source}
+                          </code>
+
+                          <input
+                            value={column.label}
+                            disabled={!column.enabled}
+                            onChange={(event) =>
+                              updateColumn(
+                                column.source,
+                                {
+                                  label:
+                                    event.target.value,
+                                }
+                              )
+                            }
+                            className="rounded-lg border border-slate-200 px-3 py-2 text-xs disabled:bg-slate-50"
+                          />
+
+                          <div className="flex gap-1">
+                            <button
+                              type="button"
+                              disabled={index === 0}
+                              onClick={() =>
+                                moveColumn(
+                                  column.source,
+                                  -1
+                                )
+                              }
+                              className="rounded-lg border border-slate-200 px-2 py-1 text-xs disabled:opacity-30"
+                            >
+                              ↑
+                            </button>
+                            <button
+                              type="button"
+                              disabled={
+                                index ===
+                                visibleColumns.length - 1
+                              }
+                              onClick={() =>
+                                moveColumn(
+                                  column.source,
+                                  1
+                                )
+                              }
+                              className="rounded-lg border border-slate-200 px-2 py-1 text-xs disabled:opacity-30"
+                            >
+                              ↓
+                            </button>
+                          </div>
+                        </div>
+                      ))}
+
+                    {questionnaireGroupsForExport.length > 0 && (
+                      <div className="pt-2">
+                        <div className="mb-2">
+                          <p className="text-xs font-semibold uppercase tracking-[0.14em] text-slate-400">
+                            Questionnaires
+                          </p>
+                          <p className="mt-1 text-xs leading-5 text-slate-500">
+                            Select one checkbox per questionnaire. In the
+                            exported file, that questionnaire expands into one
+                            column per item response.
+                          </p>
+                        </div>
+
+                        <div className="space-y-2">
+                          {questionnaireGroupsForExport.map(
+                            (group) => {
+                              const groupSources = new Set(
+                                group.fields.map(
+                                  (field) => field.source
+                                )
+                              );
+
+                              const groupColumns =
+                                columnConfig.filter(
+                                  (column) =>
+                                    groupSources.has(
+                                      column.source
+                                    )
+                                );
+
+                              const enabled =
+                                groupColumns.length > 0 &&
+                                groupColumns.every(
+                                  (column) =>
+                                    column.enabled
+                                );
+
+                              return (
+                                <label
+                                  key={group.measureId}
+                                  className={`flex cursor-pointer items-start gap-3 rounded-xl border p-4 ${
+                                    enabled
+                                      ? "border-cyan-200 bg-cyan-50/50"
+                                      : "border-slate-200 bg-white"
+                                  }`}
+                                >
+                                  <input
+                                    type="checkbox"
+                                    checked={enabled}
+                                    onChange={(event) =>
+                                      updateQuestionnaireGroup(
+                                        group.measureId,
+                                        event.target.checked
+                                      )
+                                    }
+                                    className="mt-1"
+                                  />
+
+                                  <div className="min-w-0">
+                                    <p className="text-sm font-semibold text-slate-800">
+                                      {group.label}
+                                    </p>
+                                    <p className="mt-1 text-xs leading-5 text-slate-500">
+                                      {group.fields.length} item
+                                      {group.fields.length === 1
+                                        ? ""
+                                        : "s"}
+                                      {" → "}
+                                      {group.fields.length} response column
+                                      {group.fields.length === 1
+                                        ? ""
+                                        : "s"}{" "}
+                                      in the exported file
+                                    </p>
+                                  </div>
+                                </label>
+                              );
+                            }
+                          )}
+                        </div>
+                      </div>
+                    )}
+                  </>
+                ) : (
+                  columnConfig.map((column, index) => (
+                    <div
+                      key={column.source}
+                      className="grid gap-2 rounded-xl border border-slate-200 bg-white p-3 md:grid-cols-[34px_1fr_1fr_auto] md:items-center"
+                    >
+                      <input
+                        type="checkbox"
+                        checked={column.enabled}
+                        onChange={(event) =>
+                          updateColumn(
+                            column.source,
+                            {
+                              enabled:
+                                event.target.checked,
+                            }
+                          )
+                        }
+                      />
+
+                      <code className="break-all text-xs text-slate-500">
+                        {column.source}
+                      </code>
+
+                      <input
+                        value={column.label}
+                        disabled={!column.enabled}
+                        onChange={(event) =>
+                          updateColumn(
+                            column.source,
+                            {
+                              label:
+                                event.target.value,
+                            }
+                          )
+                        }
+                        className="rounded-lg border border-slate-200 px-3 py-2 text-xs disabled:bg-slate-50"
+                      />
+
+                      <div className="flex gap-1">
+                        <button
+                          type="button"
+                          disabled={index === 0}
+                          onClick={() =>
+                            moveColumn(
+                              column.source,
+                              -1
+                            )
+                          }
+                          className="rounded-lg border border-slate-200 px-2 py-1 text-xs disabled:opacity-30"
+                        >
+                          ↑
+                        </button>
+                        <button
+                          type="button"
+                          disabled={
+                            index ===
+                            columnConfig.length - 1
+                          }
+                          onClick={() =>
+                            moveColumn(
+                              column.source,
+                              1
+                            )
+                          }
+                          className="rounded-lg border border-slate-200 px-2 py-1 text-xs disabled:opacity-30"
+                        >
+                          ↓
+                        </button>
+                      </div>
+                    </div>
+                  ))
+                )}
+              </div>
+
+              <p className="mt-3 text-xs text-slate-400">
+                {datasetType === "analysis_wide"
+                  ? `${questionnaireGroupsForExport.filter((group) => {
+                      const sources = new Set(
+                        group.fields.map(
+                          (field) => field.source
+                        )
+                      );
+
+                      const columns =
+                        columnConfig.filter(
+                          (column) =>
+                            sources.has(
+                              column.source
+                            )
+                        );
+
+                      return (
+                        columns.length > 0 &&
+                        columns.every(
+                          (column) =>
+                            column.enabled
+                        )
+                      );
+                    }).length} of ${questionnaireGroupsForExport.length} questionnaires selected · ${selectedColumns.length} exported columns`
+                  : `${selectedColumns.length} of ${availableColumns.length} columns selected.`}
+              </p>
+            </div>
+
             <div className="rounded-2xl bg-slate-50 p-4">
               <p className="text-xs text-slate-400">Current export</p>
               <p className="mt-1 font-medium">
@@ -9317,8 +11354,8 @@ function ExportData() {
               <p className="mt-1 text-xs text-slate-500">
                 {loading
                   ? "Calculating rows..."
-                  : `${previewRows.length} row${
-                      previewRows.length === 1 ? "" : "s"
+                  : `${shapedRows.length} row${
+                      shapedRows.length === 1 ? "" : "s"
                     } · ${codebook.length} codebook variable${
                       codebook.length === 1 ? "" : "s"
                     }`}
@@ -9353,8 +11390,8 @@ function ExportData() {
           <div className="space-y-5">
             {[
               [
-                "Analysis-wide dataset",
-                "One row per participant with configured demographics and stored questionnaire scores.",
+                "Analysis dataset — one row per participant",
+                "Choose questionnaires with one checkbox each. Every selected questionnaire expands into one exported column per item response, while baseline and follow-up waves remain clearly separated.",
               ],
               [
                 "Long-format questionnaire data",
@@ -9367,6 +11404,14 @@ function ExportData() {
               [
                 "Codebook",
                 "Generated from the exact study demographic questions and questionnaire versions selected for the study.",
+              ],
+              [
+                "Ambulatory datasets",
+                "Export one row per check-in, one row per item response or one participant-day with compliance and event counts.",
+              ],
+              [
+                "XLSX table designer",
+                "Choose the row unit through Dataset, then select, rename and reorder the exported columns. XLSX can include a separate codebook worksheet.",
               ],
               [
                 "TEST separation",
@@ -9618,6 +11663,16 @@ function TeamPermissions() {
 
 export default function ResearcherWorkspace() {
   const [screen, setScreen] = useState<Screen>("dashboard");
+  const [editingStudyId, setEditingStudyId] = useState("");
+  const [
+    openCustomQuestionnaireBuilder,
+    setOpenCustomQuestionnaireBuilder,
+  ] = useState(false);
+
+  function editStudy(studyId: string) {
+    setEditingStudyId(studyId);
+    setScreen("builder");
+  }
 
   const currentNavigation = navigation.find((item) => item.id === screen)!;
 
@@ -9627,16 +11682,57 @@ export default function ResearcherWorkspace() {
         return <Dashboard changeScreen={setScreen} />;
 
       case "studies":
-        return <Studies changeScreen={setScreen} />;
+        return (
+          <Studies
+            changeScreen={setScreen}
+            editStudy={editStudy}
+          />
+        );
 
       case "builder":
-        return <StudyBuilder changeScreen={setScreen} />;
+        return (
+          <StudyBuilder
+            key={editingStudyId || "new-study"}
+            changeScreen={setScreen}
+            initialStudyId={editingStudyId}
+            onStudyIdChange={setEditingStudyId}
+          />
+        );
 
       case "library":
-        return <QuestionnaireLibrary changeScreen={setScreen} />;
+        return (
+          <QuestionnaireLibrary
+            changeScreen={setScreen}
+            openCustomBuilderOnMount={
+              openCustomQuestionnaireBuilder
+            }
+            onCustomBuilderOpened={() =>
+              setOpenCustomQuestionnaireBuilder(false)
+            }
+          />
+        );
 
       case "ambulatory":
-        return <AmbulatoryBuilder />;
+        return (
+          <AmbulatoryBuilder
+            changeScreen={setScreen}
+            preferredStudyId={editingStudyId}
+            onStudyIdChange={setEditingStudyId}
+          />
+        );
+
+      case "followup":
+        return (
+          <FollowupManager
+            preferredStudyId={editingStudyId}
+            onStudyIdChange={setEditingStudyId}
+            onBack={() => setScreen("builder")}
+            onBuildQuestionnaire={() => {
+              setOpenCustomQuestionnaireBuilder(true);
+              setScreen("library");
+            }}
+          />
+        );
 
       case "participants":
         return <Participants />;
@@ -9675,6 +11771,8 @@ export default function ResearcherWorkspace() {
       "Search the research catalogue, review administration and scoring, open manuals and official resources, and verify questionnaire usage rights.",
     ambulatory:
       "Design repeated real-world EMA and ESM assessment protocols.",
+    followup:
+      "Build longitudinal follow-up waves and control participant email invitations and reminders.",
     participants:
       "Monitor enrolment, study progress and protocol compliance.",
     links:

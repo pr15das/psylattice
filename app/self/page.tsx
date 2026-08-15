@@ -5,6 +5,19 @@ import { useRouter } from "next/navigation";
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { createClient } from "@/lib/supabase/client";
 import PsyLatticeLogo from "@/components/PsyLatticeLogo";
+import {
+  AmbulatoryProtocolBuilder,
+  ambulatoryResponseAnswered,
+  ambulatoryVisibleItems,
+  cleanHiddenAmbulatoryResponses,
+  defaultAmbulatoryProtocol,
+  nestAmbulatoryProtocol,
+  serializeAmbulatoryProtocol,
+  validateAmbulatoryProtocol,
+  type AmbulatoryItemDraft,
+  type AmbulatoryScheduleDraft,
+  type AmbulatoryQuestionnaireOption,
+} from "@/components/AmbulatoryProtocolBuilder";
 
 
 type Screen =
@@ -1159,8 +1172,27 @@ function Dashboard({
   const monitoringSchedules =
     monitoringPlan?.protocol || [];
 
-  const completedToday = todayCheckins.length;
-  const totalToday = monitoringSchedules.length;
+  const scheduledMonitoringSchedules =
+    monitoringSchedules.filter(
+      (schedule: any) =>
+        schedule.trigger_type !== "event_contingent" &&
+        schedule.trigger_type !== "participant_initiated"
+    );
+
+  const eventMonitoringSchedules =
+    monitoringSchedules.filter(
+      (schedule: any) =>
+        schedule.trigger_type === "event_contingent" ||
+        schedule.trigger_type === "participant_initiated"
+    );
+
+  const completedToday = todayCheckins.filter(
+    (checkin: any) =>
+      checkin.trigger_type !== "event_contingent" &&
+      checkin.trigger_type !== "participant_initiated"
+  ).length;
+  const totalToday =
+    scheduledMonitoringSchedules.length;
   const remainingToday = Math.max(
     totalToday - completedToday,
     0
@@ -1514,9 +1546,10 @@ function Dashboard({
               Loading today's schedule...
             </p>
           ) : monitoringPlan &&
-            monitoringSchedules.length > 0 ? (
-            <div className="divide-y divide-slate-100">
-              {monitoringSchedules.map(
+            scheduledMonitoringSchedules.length > 0 ? (
+            <div>
+              <div className="divide-y divide-slate-100">
+              {scheduledMonitoringSchedules.map(
                 (schedule) => {
                   const completedEntry =
                     schedule.schedule_id
@@ -1581,6 +1614,46 @@ function Dashboard({
                   );
                 }
               )}
+              </div>
+
+              {eventMonitoringSchedules.length > 0 && (
+                <button
+                  type="button"
+                  onClick={() =>
+                    changeScreen("monitoring")
+                  }
+                  className="mt-5 w-full rounded-2xl border border-cyan-100 bg-cyan-50/50 p-4 text-left"
+                >
+                  <p className="text-sm font-semibold text-cyan-950">
+                    {eventMonitoringSchedules.length} event check-in
+                    {eventMonitoringSchedules.length === 1 ? "" : "s"} available
+                  </p>
+                  <p className="mt-1 text-xs leading-5 text-slate-500">
+                    Event-contingent check-ins are available when the defined
+                    event occurs and are not counted as missed daily prompts.
+                  </p>
+                </button>
+              )}
+            </div>
+          ) : monitoringPlan &&
+            eventMonitoringSchedules.length > 0 ? (
+            <div className="rounded-2xl border border-cyan-100 bg-cyan-50/50 p-5">
+              <p className="font-medium text-cyan-950">
+                Event-contingent monitoring is active
+              </p>
+              <p className="mt-2 text-sm leading-6 text-slate-500">
+                This protocol has no scheduled daily prompts. Open Daily
+                Monitoring whenever a defined event occurs.
+              </p>
+              <button
+                type="button"
+                onClick={() =>
+                  changeScreen("monitoring")
+                }
+                className="mt-4 rounded-xl bg-slate-950 px-4 py-2.5 text-sm font-semibold text-white"
+              >
+                Open event check-ins
+              </button>
             </div>
           ) : (
             <div className="rounded-2xl bg-slate-50 p-5">
@@ -4184,7 +4257,7 @@ function normaliseMonitoringTriggerForParent(
   };
 }
 
-function defaultMonitoringProtocol(): MonitoringProtocolScheduleDraft[] {
+function legacyDefaultAmbulatoryProtocol(): MonitoringProtocolScheduleDraft[] {
   const afternoonYesNo =
     newMonitoringItem("yes_no", 1);
 
@@ -6629,7 +6702,7 @@ type MonitoringV2Plan = {
   plan_name: string;
   duration_days: number;
   start_date: string;
-  protocol: MonitoringProtocolScheduleDraft[];
+  protocol: AmbulatoryScheduleDraft[];
 };
 
 type MonitoringV2Checkin = {
@@ -6637,6 +6710,9 @@ type MonitoringV2Checkin = {
   plan_id: string;
   schedule_id: string;
   schedule_label: string;
+  trigger_type?: string;
+  occurrence_index?: number;
+  trigger_source?: string;
   entry_date: string;
   completed_at: string;
   responses: Array<{ item_id: string; item_key: string; type: MonitoringBlockType; prompt: string; response: any }>;
@@ -6650,7 +6726,7 @@ type MonitoringV2Request = {
   name: string;
   duration_days: number;
   note: string | null;
-  protocol: MonitoringProtocolScheduleDraft[];
+  protocol: AmbulatoryScheduleDraft[];
   created_at: string;
 };
 
@@ -6674,9 +6750,9 @@ function Monitoring({
   changeScreen: (screen: Screen) => void;
   onPendingRequestCountChange?: (count: number) => void;
 }) {
-  const [questionnaires, setQuestionnaires] = useState<MonitoringQuestionnaireOption[]>([]);
+  const [questionnaires, setQuestionnaires] = useState<AmbulatoryQuestionnaireOption[]>([]);
   const [plan, setPlan] = useState<MonitoringV2Plan | null>(null);
-  const [protocol, setProtocol] = useState<MonitoringProtocolScheduleDraft[]>(defaultMonitoringProtocol());
+  const [protocol, setProtocol] = useState<AmbulatoryScheduleDraft[]>(defaultAmbulatoryProtocol());
   const [planName, setPlanName] = useState("My monitoring protocol");
   const [durationDays, setDurationDays] = useState(7);
   const [editingProtocol, setEditingProtocol] = useState(false);
@@ -6699,11 +6775,19 @@ function Monitoring({
   const [savingCheckin, setSavingCheckin] = useState(false);
   const [checkinMessage, setCheckinMessage] = useState("");
   const [completedQuestionnaires, setCompletedQuestionnaires] = useState<Record<string, { session_id: string; questionnaire_name: string }>>({});
+  const [emailReminderStatus, setEmailReminderStatus] = useState("");
+  const [emailRemindersEnabled, setEmailRemindersEnabled] = useState(false);
+  const [emailReminderAddress, setEmailReminderAddress] = useState("");
+  const [savingEmailReminders, setSavingEmailReminders] = useState(false);
+  const [embeddedQuestionnaires, setEmbeddedQuestionnaires] =
+    useState<Record<string, any>>({});
+  const [loadingEmbeddedQuestionnaireId, setLoadingEmbeddedQuestionnaireId] =
+    useState<string | null>(null);
 
   async function loadQuestionnaires() {
     const supabase = createClient();
-    const { data, error: catalogueError } = await supabase.rpc("psylattice_monitoring_questionnaire_catalogue");
-    if (!catalogueError) setQuestionnaires((data ?? []) as MonitoringQuestionnaireOption[]);
+    const { data, error: catalogueError } = await supabase.rpc("psylattice_my_monitoring_questionnaire_catalogue_v3");
+    if (!catalogueError) setQuestionnaires((data ?? []) as AmbulatoryQuestionnaireOption[]);
   }
 
   async function loadPlan() {
@@ -6719,11 +6803,11 @@ function Monitoring({
     if (row) {
       setPlanName(row.plan_name);
       setDurationDays(row.duration_days);
-      setProtocol(nestMonitoringProtocol(row.protocol || []));
+      setProtocol(nestAmbulatoryProtocol(row.protocol || []));
       setSelectedScheduleId((current) => current || row.protocol?.[0]?.schedule_id || "");
       setEditingProtocol(false);
     } else {
-      const fresh = defaultMonitoringProtocol();
+      const fresh = defaultAmbulatoryProtocol();
       setPlanName("My monitoring protocol");
       setDurationDays(7);
       setProtocol(fresh);
@@ -6731,6 +6815,10 @@ function Monitoring({
       setEditingProtocol(true);
     }
     setLoading(false);
+
+    if (row) {
+      void syncMyMonitoringNotifications();
+    }
   }
 
   async function loadRequests() {
@@ -6795,7 +6883,14 @@ function Monitoring({
   }
 
   useEffect(() => {
-    void Promise.all([loadQuestionnaires(), loadPlan(), loadRequests(), loadSharingConnections(), loadCheckins()]);
+    void Promise.all([
+      loadQuestionnaires(),
+      loadPlan(),
+      loadRequests(),
+      loadSharingConnections(),
+      loadCheckins(),
+      loadEmailReminderPreference(),
+    ]);
   }, []);
 
   useEffect(() => {
@@ -6823,6 +6918,821 @@ function Monitoring({
     try { sessionStorage.setItem(key, JSON.stringify(responses)); } catch {}
   }, [responses, activeSchedule?.schedule_id, plan?.plan_id]);
 
+  async function loadEmbeddedMonitoringQuestionnaire(
+    questionnaireId: string
+  ) {
+    if (
+      !questionnaireId ||
+      embeddedQuestionnaires[
+        questionnaireId
+      ] ||
+      loadingEmbeddedQuestionnaireId
+    ) {
+      return;
+    }
+
+    setLoadingEmbeddedQuestionnaireId(
+      questionnaireId
+    );
+    setCheckinMessage("");
+
+    const supabase = createClient();
+
+    const { data, error: questionnaireError } =
+      await supabase.rpc(
+        "psylattice_my_monitoring_questionnaire_v3",
+        {
+          p_questionnaire_id:
+            questionnaireId,
+        }
+      );
+
+    if (
+      questionnaireError ||
+      !data?.ok
+    ) {
+      console.error(
+        "Could not load monitoring questionnaire:",
+        questionnaireError
+      );
+      setCheckinMessage(
+        questionnaireError?.message ||
+          data?.error ||
+          "This questionnaire could not be loaded."
+      );
+      setLoadingEmbeddedQuestionnaireId(
+        null
+      );
+      return;
+    }
+
+    setEmbeddedQuestionnaires(
+      (current) => ({
+        ...current,
+        [questionnaireId]: data,
+      })
+    );
+
+    setLoadingEmbeddedQuestionnaireId(
+      null
+    );
+  }
+
+  function monitoringEmbeddedAnswerPresent(
+    value: any
+  ) {
+    if (
+      value === null ||
+      value === undefined ||
+      value === ""
+    ) {
+      return false;
+    }
+
+    if (Array.isArray(value)) {
+      return value.length > 0;
+    }
+
+    return true;
+  }
+
+  function updateEmbeddedQuestionnaireAnswer(
+    block: AmbulatoryItemDraft,
+    detail: any,
+    questionnaireItem: any,
+    answer: any
+  ) {
+    const current =
+      responses[block.key] &&
+      typeof responses[block.key] ===
+        "object"
+        ? responses[block.key]
+        : {
+            questionnaire_id:
+              block.config
+                .questionnaire_id,
+            questionnaire_name:
+              detail?.questionnaire
+                ?.name ||
+              block.config
+                .questionnaire_name ||
+              "Questionnaire",
+            answers: {},
+            completed: false,
+          };
+
+    const answers = {
+      ...(current.answers || {}),
+      [questionnaireItem.id]:
+        answer,
+    };
+
+    const requiredItems =
+      (detail?.items || []).filter(
+        (item: any) =>
+          item.required
+      );
+
+    const completed =
+      requiredItems.every(
+        (item: any) =>
+          monitoringEmbeddedAnswerPresent(
+            answers[item.id]
+          )
+      );
+
+    updateResponse(block, {
+      questionnaire_id:
+        block.config.questionnaire_id,
+      questionnaire_name:
+        detail?.questionnaire?.name ||
+        block.config
+          .questionnaire_name ||
+        "Questionnaire",
+      questionnaire_acronym:
+        detail?.questionnaire?.acronym ||
+        block.config
+          .questionnaire_acronym ||
+        "",
+      version_id:
+        detail?.version?.id || null,
+      answers,
+      completed,
+    });
+  }
+
+  function renderEmbeddedMonitoringQuestionnaire(
+    block: AmbulatoryItemDraft
+  ): ReactNode {
+    const questionnaireId =
+      String(
+        block.config
+          .questionnaire_id || ""
+      );
+
+    if (!questionnaireId) {
+      return (
+        <div className="mt-4 rounded-xl border border-red-200 bg-red-50 p-4">
+          <p className="text-sm font-medium text-red-800">
+            No questionnaire selected
+          </p>
+        </div>
+      );
+    }
+
+    const externalCompletion =
+      completedQuestionnaires[
+        questionnaireId
+      ];
+
+    const currentValue =
+      responses[block.key];
+
+    if (
+      externalCompletion &&
+      !currentValue
+    ) {
+      return (
+        <div className="mt-4 rounded-xl border border-emerald-100 bg-emerald-50 p-4">
+          <p className="font-medium text-emerald-900">
+            {block.config
+              .questionnaire_acronym ||
+              block.config
+                .questionnaire_name ||
+              "Questionnaire"}
+          </p>
+          <p className="mt-2 text-sm font-semibold text-emerald-700">
+            ✓ Completed today in Self-Assessments
+          </p>
+        </div>
+      );
+    }
+
+    const detail =
+      embeddedQuestionnaires[
+        questionnaireId
+      ];
+
+    if (!detail) {
+      return (
+        <div className="mt-4 rounded-xl border border-cyan-100 bg-cyan-50/60 p-4">
+          <p className="font-medium text-cyan-950">
+            {block.config
+              .questionnaire_acronym ||
+              block.config
+                .questionnaire_name ||
+              "Questionnaire"}
+          </p>
+
+          <p className="mt-1 text-xs leading-5 text-slate-500">
+            Complete the questionnaire directly inside this check-in. This also
+            allows a private questionnaire created by your connected clinician
+            in their Research workspace to be used only when it is explicitly
+            part of your monitoring protocol.
+          </p>
+
+          <button
+            type="button"
+            disabled={
+              loadingEmbeddedQuestionnaireId ===
+              questionnaireId
+            }
+            onClick={() =>
+              void loadEmbeddedMonitoringQuestionnaire(
+                questionnaireId
+              )
+            }
+            className="mt-3 rounded-xl bg-slate-950 px-4 py-2.5 text-sm font-semibold text-white disabled:opacity-50"
+          >
+            {loadingEmbeddedQuestionnaireId ===
+            questionnaireId
+              ? "Loading..."
+              : "Open questionnaire in check-in"}
+          </button>
+        </div>
+      );
+    }
+
+    const stored =
+      currentValue &&
+      typeof currentValue ===
+        "object"
+        ? currentValue
+        : {
+            answers: {},
+            completed: false,
+          };
+
+    const optionTypes = new Set([
+      "likert",
+      "frequency",
+      "intensity",
+      "yes_no",
+      "true_false",
+      "single_choice",
+      "dropdown",
+      "image_choice",
+      "numeric_rating",
+      "star_rating",
+    ]);
+
+    const multiTypes = new Set([
+      "multiple_choice",
+      "checklist",
+    ]);
+
+    const sliderTypes = new Set([
+      "slider",
+      "visual_analogue",
+    ]);
+
+    const numberTypes = new Set([
+      "number",
+      "numeric",
+      "integer",
+      "decimal",
+    ]);
+
+    return (
+      <div className="mt-4 rounded-2xl border border-cyan-100 bg-cyan-50/40 p-4">
+        <div>
+          <p className="font-semibold text-cyan-950">
+            {detail.questionnaire
+              ?.name ||
+              block.config
+                .questionnaire_name ||
+              "Questionnaire"}
+          </p>
+
+          {detail.version
+            ?.participant_instructions && (
+            <p className="mt-2 whitespace-pre-wrap text-xs leading-5 text-slate-600">
+              {
+                detail.version
+                  .participant_instructions
+              }
+            </p>
+          )}
+        </div>
+
+        <div className="mt-5 space-y-4">
+          {(detail.items || []).map(
+            (questionItem: any) => {
+              const answer =
+                stored.answers?.[
+                  questionItem.id
+                ];
+              const options =
+                Array.isArray(
+                  questionItem.response_options
+                )
+                  ? questionItem.response_options
+                  : [];
+
+              const responseType =
+                String(
+                  questionItem.response_type ||
+                    "single_choice"
+                );
+
+              return (
+                <div
+                  key={questionItem.id}
+                  className="rounded-xl border border-cyan-100 bg-white p-4"
+                >
+                  <div className="flex items-start justify-between gap-3">
+                    <p className="text-sm font-medium leading-6 text-slate-900">
+                      {
+                        questionItem.prompt
+                      }
+                    </p>
+
+                    {questionItem.required && (
+                      <span className="shrink-0 text-[10px] font-semibold uppercase text-cyan-700">
+                        Required
+                      </span>
+                    )}
+                  </div>
+
+                  {questionItem.help_text && (
+                    <p className="mt-1 text-xs leading-5 text-slate-400">
+                      {
+                        questionItem.help_text
+                      }
+                    </p>
+                  )}
+
+                  {optionTypes.has(
+                    responseType
+                  ) && (
+                    <div className="mt-3 grid gap-2 sm:grid-cols-2">
+                      {options.map(
+                        (
+                          option: any,
+                          optionIndex: number
+                        ) => {
+                          const optionValue =
+                            option?.value ??
+                            option?.label ??
+                            optionIndex;
+
+                          const optionLabel =
+                            option?.label ??
+                            String(
+                              optionValue
+                            );
+
+                          return (
+                            <button
+                              key={`${questionItem.id}-${optionIndex}`}
+                              type="button"
+                              onClick={() =>
+                                updateEmbeddedQuestionnaireAnswer(
+                                  block,
+                                  detail,
+                                  questionItem,
+                                  optionValue
+                                )
+                              }
+                              className={`rounded-xl border px-3 py-2.5 text-left text-xs ${
+                                String(
+                                  answer
+                                ) ===
+                                String(
+                                  optionValue
+                                )
+                                  ? "border-cyan-600 bg-cyan-50 font-semibold text-cyan-950"
+                                  : "border-slate-200 text-slate-600"
+                              }`}
+                            >
+                              {
+                                optionLabel
+                              }
+                            </button>
+                          );
+                        }
+                      )}
+                    </div>
+                  )}
+
+                  {multiTypes.has(
+                    responseType
+                  ) && (
+                    <div className="mt-3 grid gap-2 sm:grid-cols-2">
+                      {options.map(
+                        (
+                          option: any,
+                          optionIndex: number
+                        ) => {
+                          const optionValue =
+                            option?.value ??
+                            option?.label ??
+                            optionIndex;
+
+                          const optionLabel =
+                            option?.label ??
+                            String(
+                              optionValue
+                            );
+
+                          const selected =
+                            Array.isArray(
+                              answer
+                            ) &&
+                            answer.some(
+                              (
+                                entry: any
+                              ) =>
+                                String(
+                                  entry
+                                ) ===
+                                String(
+                                  optionValue
+                                )
+                            );
+
+                          return (
+                            <button
+                              key={`${questionItem.id}-${optionIndex}`}
+                              type="button"
+                              onClick={() => {
+                                const current =
+                                  Array.isArray(
+                                    answer
+                                  )
+                                    ? answer
+                                    : [];
+
+                                const next =
+                                  selected
+                                    ? current.filter(
+                                        (
+                                          entry: any
+                                        ) =>
+                                          String(
+                                            entry
+                                          ) !==
+                                          String(
+                                            optionValue
+                                          )
+                                      )
+                                    : [
+                                        ...current,
+                                        optionValue,
+                                      ];
+
+                                updateEmbeddedQuestionnaireAnswer(
+                                  block,
+                                  detail,
+                                  questionItem,
+                                  next
+                                );
+                              }}
+                              className={`rounded-xl border px-3 py-2.5 text-left text-xs ${
+                                selected
+                                  ? "border-cyan-600 bg-cyan-50 font-semibold text-cyan-950"
+                                  : "border-slate-200 text-slate-600"
+                              }`}
+                            >
+                              {selected
+                                ? "✓ "
+                                : ""}
+                              {
+                                optionLabel
+                              }
+                            </button>
+                          );
+                        }
+                      )}
+                    </div>
+                  )}
+
+                  {sliderTypes.has(
+                    responseType
+                  ) && (
+                    <div className="mt-4">
+                      <div className="flex justify-between text-xs text-slate-400">
+                        <span>
+                          {questionItem
+                            .response_config
+                            ?.min_label ??
+                            questionItem
+                              .response_config
+                              ?.min ??
+                            0}
+                        </span>
+
+                        <span className="font-semibold text-slate-700">
+                          {answer ??
+                            questionItem
+                              .response_config
+                              ?.min ??
+                            0}
+                        </span>
+
+                        <span>
+                          {questionItem
+                            .response_config
+                            ?.max_label ??
+                            questionItem
+                              .response_config
+                              ?.max ??
+                            10}
+                        </span>
+                      </div>
+
+                      <input
+                        type="range"
+                        min={
+                          questionItem
+                            .response_config
+                            ?.min ?? 0
+                        }
+                        max={
+                          questionItem
+                            .response_config
+                            ?.max ?? 10
+                        }
+                        step={
+                          questionItem
+                            .response_config
+                            ?.step ?? 1
+                        }
+                        value={
+                          answer ??
+                          questionItem
+                            .response_config
+                            ?.min ??
+                          0
+                        }
+                        onChange={(
+                          event
+                        ) =>
+                          updateEmbeddedQuestionnaireAnswer(
+                            block,
+                            detail,
+                            questionItem,
+                            Number(
+                              event.target
+                                .value
+                            )
+                          )
+                        }
+                        className="mt-3 w-full"
+                      />
+                    </div>
+                  )}
+
+                  {numberTypes.has(
+                    responseType
+                  ) && (
+                    <input
+                      type="number"
+                      value={answer ?? ""}
+                      min={
+                        questionItem
+                          .response_config
+                          ?.min
+                      }
+                      max={
+                        questionItem
+                          .response_config
+                          ?.max
+                      }
+                      step={
+                        questionItem
+                          .response_config
+                          ?.step || 1
+                      }
+                      onChange={(
+                        event
+                      ) =>
+                        updateEmbeddedQuestionnaireAnswer(
+                          block,
+                          detail,
+                          questionItem,
+                          event.target
+                            .value === ""
+                            ? ""
+                            : Number(
+                                event
+                                  .target
+                                  .value
+                              )
+                        )
+                      }
+                      className="mt-3 w-full rounded-xl border border-slate-200 px-3 py-2.5 text-sm"
+                    />
+                  )}
+
+                  {(responseType ===
+                    "long_text" ||
+                    responseType ===
+                      "textarea") && (
+                    <textarea
+                      value={answer ?? ""}
+                      onChange={(
+                        event
+                      ) =>
+                        updateEmbeddedQuestionnaireAnswer(
+                          block,
+                          detail,
+                          questionItem,
+                          event.target
+                            .value
+                        )
+                      }
+                      className="mt-3 min-h-24 w-full rounded-xl border border-slate-200 p-3 text-sm"
+                    />
+                  )}
+
+                  {(responseType ===
+                    "short_text" ||
+                    responseType ===
+                      "text") && (
+                    <input
+                      value={answer ?? ""}
+                      onChange={(
+                        event
+                      ) =>
+                        updateEmbeddedQuestionnaireAnswer(
+                          block,
+                          detail,
+                          questionItem,
+                          event.target
+                            .value
+                        )
+                      }
+                      className="mt-3 w-full rounded-xl border border-slate-200 px-3 py-2.5 text-sm"
+                    />
+                  )}
+
+                  {!optionTypes.has(
+                    responseType
+                  ) &&
+                    !multiTypes.has(
+                      responseType
+                    ) &&
+                    !sliderTypes.has(
+                      responseType
+                    ) &&
+                    !numberTypes.has(
+                      responseType
+                    ) &&
+                    responseType !==
+                      "long_text" &&
+                    responseType !==
+                      "textarea" &&
+                    responseType !==
+                      "short_text" &&
+                    responseType !==
+                      "text" && (
+                      <input
+                        value={answer ?? ""}
+                        onChange={(
+                          event
+                        ) =>
+                          updateEmbeddedQuestionnaireAnswer(
+                            block,
+                            detail,
+                            questionItem,
+                            event.target
+                              .value
+                          )
+                        }
+                        className="mt-3 w-full rounded-xl border border-slate-200 px-3 py-2.5 text-sm"
+                      />
+                    )}
+                </div>
+              );
+            }
+          )}
+        </div>
+
+        {stored.completed ? (
+          <p className="mt-4 text-sm font-semibold text-emerald-700">
+            ✓ Questionnaire complete
+          </p>
+        ) : (
+          <p className="mt-4 text-xs text-slate-500">
+            Complete every required questionnaire item before submitting the
+            check-in.
+          </p>
+        )}
+      </div>
+    );
+  }
+
+  function monitoringTimezoneName() {
+    try {
+      return (
+        Intl.DateTimeFormat()
+          .resolvedOptions()
+          .timeZone || ""
+      );
+    } catch {
+      return "";
+    }
+  }
+
+  async function syncMyMonitoringNotifications() {
+    const supabase = createClient();
+
+    const { error: syncError } =
+      await supabase.rpc(
+        "psylattice_sync_my_monitoring_notifications",
+        {
+          p_timezone_offset_minutes:
+            new Date().getTimezoneOffset(),
+          p_timezone_name:
+            monitoringTimezoneName(),
+          p_days_ahead: 14,
+        }
+      );
+
+    if (syncError) {
+      console.error(
+        "Could not sync monitoring notifications:",
+        syncError
+      );
+    }
+  }
+
+  async function loadEmailReminderPreference() {
+    const supabase = createClient();
+
+    const { data, error: preferenceError } =
+      await supabase.rpc(
+        "psylattice_my_email_reminder_preference"
+      );
+
+    if (preferenceError) {
+      console.error(
+        "Could not load email reminder preference:",
+        preferenceError
+      );
+      return;
+    }
+
+    setEmailRemindersEnabled(
+      Boolean(data?.enabled)
+    );
+    setEmailReminderAddress(
+      String(data?.email || "")
+    );
+  }
+
+  async function setEmailReminders(
+    enabled: boolean
+  ) {
+    if (savingEmailReminders) {
+      return;
+    }
+
+    setSavingEmailReminders(true);
+    setEmailReminderStatus("");
+
+    const supabase = createClient();
+
+    const { data, error: preferenceError } =
+      await supabase.rpc(
+        "psylattice_set_my_email_reminders",
+        {
+          p_enabled: enabled,
+        }
+      );
+
+    if (preferenceError || !data?.ok) {
+      console.error(
+        "Could not update email reminder preference:",
+        preferenceError
+      );
+      setEmailReminderStatus(
+        preferenceError?.message ||
+          "Email reminder settings could not be saved."
+      );
+      setSavingEmailReminders(false);
+      return;
+    }
+
+    setEmailRemindersEnabled(
+      Boolean(data.enabled)
+    );
+    setEmailReminderAddress(
+      String(data.email || "")
+    );
+
+    await syncMyMonitoringNotifications();
+
+    setEmailReminderStatus(
+      enabled
+        ? "Email reminders are enabled."
+        : "Email reminders are off."
+    );
+
+    setSavingEmailReminders(false);
+  }
+
   function validateProtocolDraft() {
     if (!planName.trim()) {
       return "Enter a protocol name.";
@@ -6835,7 +7745,7 @@ function Monitoring({
       return "Duration must be between 1 and 365 days.";
     }
 
-    return validateMonitoringEditorProtocol(
+    return validateAmbulatoryProtocol(
       protocol
     );
   }
@@ -6848,7 +7758,7 @@ function Monitoring({
     const supabase = createClient();
     const rpc = reviewingRequest ? "psylattice_accept_monitoring_request_v2" : "psylattice_save_my_monitoring_protocol_v2";
     const serialisedProtocol =
-      serializeMonitoringProtocol(protocol);
+      serializeAmbulatoryProtocol(protocol);
 
     const args = reviewingRequest
       ? {
@@ -6875,6 +7785,7 @@ function Monitoring({
     setEditingProtocol(false);
     setSaving(false);
     await Promise.all([loadPlan(), loadRequests(), loadCheckins()]);
+    await syncMyMonitoringNotifications();
   }
 
   function reviewRequest(request: MonitoringV2Request) {
@@ -6882,14 +7793,14 @@ function Monitoring({
     setPlanName(request.name);
     setDurationDays(request.duration_days);
     const nestedRequestProtocol =
-      nestMonitoringProtocol(
+      nestAmbulatoryProtocol(
         request.protocol || []
       );
 
     setProtocol(
       nestedRequestProtocol.length
         ? nestedRequestProtocol
-        : defaultMonitoringProtocol()
+        : defaultAmbulatoryProtocol()
     );
     setEditingProtocol(true);
     setError(""); setSuccess("");
@@ -6937,34 +7848,48 @@ function Monitoring({
     setUpdatingSharingId(null);
   }
 
-  function effectiveResponsesForSchedule(schedule: MonitoringProtocolScheduleDraft | null) {
+  function effectiveResponsesForSchedule(schedule: AmbulatoryScheduleDraft | null) {
     if (!schedule) return responses;
     const next = { ...responses };
     for (const item of schedule.items) {
       if (item.type === "questionnaire") {
         const id = item.config.questionnaire_id;
         const completed = id ? completedQuestionnaires[id] : null;
-        if (completed) next[item.key] = { completed: true, questionnaire_id: id, questionnaire_name: completed.questionnaire_name, assessment_session_id: completed.session_id };
+        if (completed && !next[item.key]) {
+          next[item.key] = {
+            completed: true,
+            questionnaire_id: id,
+            questionnaire_name: completed.questionnaire_name,
+            assessment_session_id: completed.session_id,
+          };
+        }
       }
     }
-    return cleanHiddenMonitoringResponses(schedule.items, next);
+    return cleanHiddenAmbulatoryResponses(schedule.items, next);
   }
 
   async function submitCheckin() {
     if (!plan || !activeSchedule?.schedule_id || savingCheckin) return;
     const effective = effectiveResponsesForSchedule(activeSchedule);
-    const visible = monitoringVisibleItems(activeSchedule.items, effective);
-    const missing = visible.find((item) => item.required && item.type !== "instruction" && !monitoringResponseAnswered(effective[item.key]));
+    const visible = ambulatoryVisibleItems(activeSchedule.items, effective);
+    const missing = visible.find((item) => item.required && item.type !== "instruction" && !ambulatoryResponseAnswered(effective[item.key]));
     if (missing) { setCheckinMessage(`Please complete: ${missing.prompt}`); return; }
     setSavingCheckin(true); setCheckinMessage("");
     const supabase = createClient();
     const payload = visible
-      .filter((item) => item.type !== "instruction" && item.item_id && monitoringResponseAnswered(effective[item.key]))
+      .filter((item) => item.type !== "instruction" && item.item_id && ambulatoryResponseAnswered(effective[item.key]))
       .map((item) => ({ item_id: item.item_id, response: effective[item.key] }));
-    const { error: submitError } = await supabase.rpc("psylattice_submit_monitoring_checkin_v2", {
+    const { error: submitError } = await supabase.rpc("psylattice_submit_monitoring_checkin_v3", {
       p_plan_id: plan.plan_id,
       p_schedule_id: activeSchedule.schedule_id,
       p_responses: payload,
+      p_occurrence_index:
+        activeSchedule.trigger_type === "event_contingent" ||
+        activeSchedule.trigger_type === "participant_initiated"
+          ? null
+          : 1,
+      p_timezone_offset_minutes:
+        new Date().getTimezoneOffset(),
     });
     if (submitError) {
       console.error("Check-in submit failed:", submitError);
@@ -6978,9 +7903,9 @@ function Monitoring({
     setSavingCheckin(false);
   }
 
-  function updateResponse(item: MonitoringProtocolItemDraft, value: any) {
+  function updateResponse(item: AmbulatoryItemDraft, value: any) {
     if (!activeSchedule) return;
-    setResponses((current) => cleanHiddenMonitoringResponses(activeSchedule.items, { ...current, [item.key]: value }));
+    setResponses((current) => cleanHiddenAmbulatoryResponses(activeSchedule.items, { ...current, [item.key]: value }));
     setCheckinMessage("");
   }
 
@@ -6995,19 +7920,36 @@ function Monitoring({
     ).padStart(2, "0"),
   ].join("-");
 
+  const scheduledSchedules =
+    plan?.protocol.filter(
+      (schedule) =>
+        schedule.trigger_type !== "event_contingent" &&
+        schedule.trigger_type !== "participant_initiated"
+    ) || [];
+
+  const eventSchedules =
+    plan?.protocol.filter(
+      (schedule) =>
+        schedule.trigger_type === "event_contingent" ||
+        schedule.trigger_type === "participant_initiated"
+    ) || [];
+
   const todayCompletedScheduleIds = new Set(
     checkins
       .filter(
         (checkin) =>
-          checkin.entry_date === today
+          checkin.entry_date === today &&
+          checkin.trigger_type !== "event_contingent" &&
+          checkin.trigger_type !== "participant_initiated"
       )
       .map(
         (checkin) =>
           checkin.schedule_id
       )
   );
+
   const effective = effectiveResponsesForSchedule(activeSchedule);
-  const visibleItems = activeSchedule ? monitoringVisibleItems(activeSchedule.items, effective) : [];
+  const visibleItems = activeSchedule ? ambulatoryVisibleItems(activeSchedule.items, effective) : [];
 
   if (loading) return <Panel title="Daily Monitoring"><p className="text-sm text-slate-500">Loading Monitoring Builder V2...</p></Panel>;
 
@@ -7044,7 +7986,7 @@ function Monitoring({
         )}
       </Panel>
 
-      <Panel title={reviewingRequest ? "Review clinician protocol" : plan ? "Your active monitoring protocol" : "Create your monitoring protocol"} description="Build different content for each check-in. Conditional questions may depend on any earlier block, including another conditional block.">
+      <Panel title={reviewingRequest ? "Review clinician protocol" : plan ? "Your active monitoring protocol" : "Create your monitoring protocol"} description="Build time-contingent and event-contingent check-ins. Nested conditional blocks, activities and questionnaire blocks are fully customisable.">
         <div className="grid gap-4 sm:grid-cols-[1fr_180px_auto] sm:items-end">
           <label><span className="text-xs font-medium text-slate-500">Protocol name</span><input value={planName} onChange={(event) => setPlanName(event.target.value)} disabled={!editingProtocol} className="mt-2 w-full rounded-xl border border-slate-200 px-3 py-2.5 text-sm disabled:bg-slate-50" /></label>
           <label><span className="text-xs font-medium text-slate-500">Duration (days)</span><input type="number" min="1" max="365" value={durationDays} onChange={(event) => setDurationDays(Number(event.target.value))} disabled={!editingProtocol} className="mt-2 w-full rounded-xl border border-slate-200 px-3 py-2.5 text-sm disabled:bg-slate-50" /></label>
@@ -7052,20 +7994,214 @@ function Monitoring({
         </div>
 
         {editingProtocol ? (
-          <div className="mt-6"><MonitoringProtocolBuilderV2 protocol={protocol} onChange={setProtocol} questionnaires={questionnaires} /><div className="mt-6 flex flex-wrap gap-2"><button type="button" disabled={saving} onClick={() => void saveProtocol()} className="rounded-xl bg-slate-950 px-5 py-3 text-sm font-semibold text-white disabled:opacity-50">{saving ? "Saving..." : reviewingRequest ? "Accept & use customised protocol" : plan ? "Save protocol" : "Start protocol"}</button>{(plan || reviewingRequest) && <button type="button" disabled={saving} onClick={() => { setEditingProtocol(false); setReviewingRequest(null); if (plan) { setPlanName(plan.plan_name); setDurationDays(plan.duration_days); setProtocol(nestMonitoringProtocol(plan.protocol)); } }} className="rounded-xl border border-slate-200 px-5 py-3 text-sm font-semibold text-slate-600">Cancel</button>}</div></div>
+          <div className="mt-6"><AmbulatoryProtocolBuilder
+            protocol={protocol}
+            onChange={setProtocol}
+            questionnaires={questionnaires}
+            context="self"
+          /><div className="mt-6 flex flex-wrap gap-2"><button type="button" disabled={saving} onClick={() => void saveProtocol()} className="rounded-xl bg-slate-950 px-5 py-3 text-sm font-semibold text-white disabled:opacity-50">{saving ? "Saving..." : reviewingRequest ? "Accept & use customised protocol" : plan ? "Save protocol" : "Start protocol"}</button>{(plan || reviewingRequest) && <button type="button" disabled={saving} onClick={() => { setEditingProtocol(false); setReviewingRequest(null); if (plan) { setPlanName(plan.plan_name); setDurationDays(plan.duration_days); setProtocol(nestAmbulatoryProtocol(plan.protocol)); } }} className="rounded-xl border border-slate-200 px-5 py-3 text-sm font-semibold text-slate-600">Cancel</button>}</div></div>
         ) : plan ? (
-          <div className="mt-5 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">{plan.protocol.map((schedule) => <div key={schedule.schedule_id || schedule.key} className="rounded-xl border border-slate-200 p-4"><p className="font-medium">{schedule.label}</p><p className="mt-1 text-xs text-slate-400">{schedule.start_time}–{schedule.end_time} · {schedule.items.length} blocks</p></div>)}</div>
+          <div className="mt-5 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">{plan.protocol.map((schedule) => <div key={schedule.schedule_id || schedule.key} className="rounded-xl border border-slate-200 p-4"><p className="font-medium">{schedule.label}</p><p className="mt-1 text-xs text-slate-400">
+              {(schedule.trigger_type === "event_contingent" ||
+                schedule.trigger_type === "participant_initiated")
+                ? `Available any time · ${schedule.event_title || schedule.label}`
+                : schedule.trigger_type === "fixed_time"
+                  ? `Fixed at ${schedule.fixed_time || schedule.start_time}`
+                  : `${schedule.start_time}–${schedule.end_time}`}
+              {" · "}
+              {schedule.items.length} blocks
+            </p></div>)}</div>
         ) : null}
 
         {plan && !reviewingRequest && <div className="mt-6 border-t border-slate-100 pt-5"><button type="button" onClick={() => void stopProtocol()} className="rounded-xl border border-red-200 bg-white px-4 py-2.5 text-sm font-semibold text-red-700">Stop monitoring protocol</button><p className="mt-2 text-xs text-slate-400">Stopping keeps your previous check-in history.</p></div>}
       </Panel>
 
+      <Panel
+        title="Email reminders"
+        description="Receive scheduled Daily Monitoring reminders at the email address connected to your PsyLattice account."
+      >
+        <div className="flex flex-col justify-between gap-4 sm:flex-row sm:items-center">
+          <div>
+            <p className="font-medium text-slate-800">
+              {emailRemindersEnabled
+                ? "Email reminders are on"
+                : "Email reminders are off"}
+            </p>
+
+            <p className="mt-1 max-w-2xl text-sm leading-6 text-slate-500">
+              {emailReminderAddress
+                ? `Scheduled check-in reminders will be sent to ${emailReminderAddress}.`
+                : "PsyLattice will use the email address connected to your account."}
+            </p>
+
+            {!plan ? (
+              <p className="mt-2 text-xs font-medium text-slate-500">
+                You can enable email reminders now. They will be used when you
+                start a monitoring protocol with scheduled check-ins.
+              </p>
+            ) : scheduledSchedules.length === 0 ? (
+              <p className="mt-2 text-xs font-medium text-amber-700">
+                Your current protocol contains only event-contingent check-ins.
+                Those remain available at any time and do not create scheduled
+                reminder emails.
+              </p>
+            ) : !scheduledSchedules.some(
+                (schedule) => schedule.notification_enabled !== false
+              ) ? (
+              <p className="mt-2 text-xs font-medium text-amber-700">
+                Your scheduled check-ins do not currently have reminder emails
+                enabled. In Customise protocol, turn on “Send an email reminder”
+                for the check-ins you want emailed.
+              </p>
+            ) : (
+              <p className="mt-2 text-xs text-slate-400">
+                Event-contingent check-ins remain available in Daily Monitoring
+                and are not sent as clock-based reminder emails.
+              </p>
+            )}
+
+            {emailReminderStatus && (
+              <p className="mt-2 text-xs font-semibold text-cyan-800">
+                {emailReminderStatus}
+              </p>
+            )}
+          </div>
+
+          <button
+            type="button"
+            disabled={savingEmailReminders}
+            onClick={() =>
+              void setEmailReminders(
+                !emailRemindersEnabled
+              )
+            }
+            className={`rounded-xl px-4 py-2.5 text-sm font-semibold disabled:opacity-50 ${
+              emailRemindersEnabled
+                ? "border border-slate-200 bg-white text-slate-700"
+                : "bg-slate-950 text-white"
+            }`}
+          >
+            {savingEmailReminders
+              ? "Saving..."
+              : emailRemindersEnabled
+                ? "Turn off email reminders"
+                : "Enable email reminders"}
+          </button>
+        </div>
+      </Panel>
+
       {plan && !editingProtocol && (
-        <Panel title="Today's flexible check-ins" description="Only questions whose conditions are currently satisfied are shown. If an earlier answer changes, answers from newly hidden branches are cleared automatically.">
-          <div className="flex flex-wrap gap-2">{plan.protocol.map((schedule) => <button key={schedule.schedule_id || schedule.key} type="button" onClick={() => setSelectedScheduleId(schedule.schedule_id || "")} className={`rounded-xl px-4 py-2.5 text-sm font-semibold ${activeSchedule?.schedule_id === schedule.schedule_id ? "bg-slate-950 text-white" : "border border-slate-200 bg-white text-slate-600"}`}>{todayCompletedScheduleIds.has(schedule.schedule_id || "") ? "✓ " : ""}{schedule.label}</button>)}</div>
+        <Panel
+          title="Today's monitoring"
+          description="Scheduled check-ins and event-contingent reports use the same flexible runner. Hidden conditional branches are cleared automatically if an earlier answer changes."
+        >
+          {scheduledSchedules.length > 0 && (
+            <div>
+              <p className="text-xs font-semibold uppercase tracking-[0.12em] text-slate-400">
+                Scheduled check-ins
+              </p>
+
+              <div className="mt-3 flex flex-wrap gap-2">
+                {scheduledSchedules.map((schedule) => (
+                  <button
+                    key={schedule.schedule_id || schedule.key}
+                    type="button"
+                    onClick={() => {
+                      setSelectedScheduleId(
+                        schedule.schedule_id || ""
+                      );
+                      setResponses({});
+                      setCheckinMessage("");
+                    }}
+                    className={`rounded-xl px-4 py-2.5 text-sm font-semibold ${
+                      activeSchedule?.schedule_id === schedule.schedule_id
+                        ? "bg-slate-950 text-white"
+                        : "border border-slate-200 bg-white text-slate-600"
+                    }`}
+                  >
+                    {todayCompletedScheduleIds.has(
+                      schedule.schedule_id || ""
+                    )
+                      ? "✓ "
+                      : ""}
+                    {schedule.label}
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {eventSchedules.length > 0 && (
+            <div className={scheduledSchedules.length > 0 ? "mt-6" : ""}>
+              <p className="text-xs font-semibold uppercase tracking-[0.12em] text-cyan-800">
+                Event check-ins · available any time
+              </p>
+
+              <div className="mt-3 grid gap-3 sm:grid-cols-2">
+                {eventSchedules.map((schedule) => {
+                  const todayCount = checkins.filter(
+                    (checkin) =>
+                      checkin.entry_date === today &&
+                      checkin.schedule_id === schedule.schedule_id
+                  ).length;
+
+                  return (
+                    <button
+                      key={schedule.schedule_id || schedule.key}
+                      type="button"
+                      onClick={() => {
+                        setSelectedScheduleId(
+                          schedule.schedule_id || ""
+                        );
+                        setResponses({});
+                        setCheckinMessage("");
+                      }}
+                      className={`rounded-2xl border p-4 text-left transition ${
+                        activeSchedule?.schedule_id === schedule.schedule_id
+                          ? "border-cyan-400 bg-cyan-50"
+                          : "border-cyan-100 bg-white hover:bg-cyan-50/50"
+                      }`}
+                    >
+                      <p className="font-semibold text-cyan-950">
+                        + {schedule.event_title || schedule.label}
+                      </p>
+
+                      <p className="mt-1 text-xs leading-5 text-slate-500">
+                        {schedule.event_description ||
+                          "Complete this whenever the event occurs."}
+                      </p>
+
+                      <p className="mt-2 text-[11px] text-slate-400">
+                        {todayCount} report{todayCount === 1 ? "" : "s"} today
+                        {" · "}
+                        up to {schedule.maximum_per_day || 8}/day
+                      </p>
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          )}
 
           {activeSchedule && <div className="mt-6 space-y-5">
-            <div className="rounded-xl bg-slate-50 p-4"><p className="font-medium">{activeSchedule.label}</p><p className="mt-1 text-xs text-slate-400">{activeSchedule.start_time}–{activeSchedule.end_time} · {visibleItems.length} visible blocks</p></div>
+            <div className="rounded-xl bg-slate-50 p-4">
+              <div className="flex flex-wrap items-center gap-2">
+                <p className="font-medium">{activeSchedule.label}</p>
+                <span className="rounded-full bg-white px-2.5 py-1 text-[10px] font-semibold uppercase text-slate-500">
+                  {(activeSchedule.trigger_type || "fixed_time").replaceAll("_", " ")}
+                </span>
+              </div>
+              <p className="mt-1 text-xs text-slate-400">
+                {(activeSchedule.trigger_type === "event_contingent" ||
+                  activeSchedule.trigger_type === "participant_initiated")
+                  ? "Available any time"
+                  : activeSchedule.trigger_type === "fixed_time"
+                    ? `Fixed at ${activeSchedule.fixed_time || activeSchedule.start_time}`
+                    : `${activeSchedule.start_time}–${activeSchedule.end_time}`}
+                {" · "}
+                {visibleItems.length} visible blocks
+              </p>
+            </div>
             {visibleItems.map((item) => {
               const value = effective[item.key];
               const options = (item.config.options || []) as string[];
@@ -7081,11 +8217,28 @@ function Monitoring({
                 {item.type === "short_text" && <input value={value ?? ""} onChange={(event) => updateResponse(item, event.target.value)} className="mt-4 w-full rounded-xl border border-slate-200 px-4 py-3 text-sm" />}
                 {item.type === "long_text" && <textarea value={value ?? ""} onChange={(event) => updateResponse(item, event.target.value)} className="mt-4 min-h-28 w-full rounded-xl border border-slate-200 p-4 text-sm" />}
                 {item.type === "activity" && <div className="mt-4 rounded-xl bg-slate-50 p-4"><p className="text-sm leading-6 text-slate-600">{item.config.instructions}</p><p className="mt-2 text-xs text-slate-400">Suggested duration: {item.config.durationMinutes || 2} minutes</p><button type="button" onClick={() => updateResponse(item, !value)} className={`mt-4 rounded-xl px-4 py-2.5 text-sm font-semibold ${value ? "bg-emerald-100 text-emerald-800" : "bg-slate-950 text-white"}`}>{value ? "✓ Completed" : "Mark activity complete"}</button></div>}
-                {item.type === "questionnaire" && (() => { const qid = item.config.questionnaire_id; const completed = qid ? completedQuestionnaires[qid] : null; return <div className="mt-4 rounded-xl border border-cyan-100 bg-cyan-50/60 p-4"><p className="font-medium text-cyan-950">{item.config.questionnaire_acronym || item.config.questionnaire_name || "Questionnaire"}</p><p className="mt-1 text-xs text-slate-500">This block references the real questionnaire in the PsyLattice library. Its standardized items are not edited inside the monitoring builder.</p>{completed ? <p className="mt-3 text-sm font-semibold text-emerald-700">✓ Completed today</p> : <button type="button" onClick={() => changeScreen("assessments")} className="mt-3 rounded-xl bg-slate-950 px-4 py-2.5 text-sm font-semibold text-white">Complete questionnaire</button>}</div>; })()}
+                {item.type === "questionnaire" &&
+                  renderEmbeddedMonitoringQuestionnaire(item)}
               </div>;
             })}
             {checkinMessage && <div className={`rounded-xl px-4 py-3 text-sm ${checkinMessage.includes("saved") ? "border border-emerald-200 bg-emerald-50 text-emerald-800" : "border border-amber-200 bg-amber-50 text-amber-800"}`}>{checkinMessage}</div>}
-            <button type="button" disabled={savingCheckin} onClick={() => void submitCheckin()} className="rounded-xl bg-slate-950 px-5 py-3 text-sm font-semibold text-white disabled:opacity-50">{savingCheckin ? "Saving..." : todayCompletedScheduleIds.has(activeSchedule.schedule_id || "") ? "Update today's check-in" : "Save check-in"}</button>
+            <button
+              type="button"
+              disabled={savingCheckin}
+              onClick={() => void submitCheckin()}
+              className="rounded-xl bg-slate-950 px-5 py-3 text-sm font-semibold text-white disabled:opacity-50"
+            >
+              {savingCheckin
+                ? "Saving..."
+                : activeSchedule.trigger_type === "event_contingent" ||
+                    activeSchedule.trigger_type === "participant_initiated"
+                  ? "Submit event check-in"
+                  : todayCompletedScheduleIds.has(
+                        activeSchedule.schedule_id || ""
+                      )
+                    ? "Update today's check-in"
+                    : "Save check-in"}
+            </button>
           </div>}
         </Panel>
       )}
@@ -8668,7 +9821,18 @@ function Progress() {
     buildDateRange(rangeDays);
 
   const schedulesPerDay =
-    monitoringPlan?.protocol.length || 0;
+    monitoringPlan?.protocol.filter(
+      (schedule: any) =>
+        schedule.trigger_type !== "event_contingent" &&
+        schedule.trigger_type !== "participant_initiated"
+    ).length || 0;
+
+  const eventScheduleCount =
+    monitoringPlan?.protocol.filter(
+      (schedule: any) =>
+        schedule.trigger_type === "event_contingent" ||
+        schedule.trigger_type === "participant_initiated"
+    ).length || 0;
 
   const monitoringRelevantDates =
     monitoringPlan
@@ -8685,8 +9849,22 @@ function Progress() {
     monitoringRelevantDates.length *
     schedulesPerDay;
 
+  const scheduledMonitoringCheckins =
+    monitoringCheckins.filter(
+      (checkin: any) =>
+        checkin.trigger_type !== "event_contingent" &&
+        checkin.trigger_type !== "participant_initiated"
+    );
+
+  const eventMonitoringCheckins =
+    monitoringCheckins.filter(
+      (checkin: any) =>
+        checkin.trigger_type === "event_contingent" ||
+        checkin.trigger_type === "participant_initiated"
+    );
+
   const monitoringCompleted =
-    monitoringCheckins.length;
+    scheduledMonitoringCheckins.length;
 
   const monitoringConsistency =
     monitoringExpected > 0
@@ -8830,6 +10008,20 @@ function Progress() {
             checkin.entry_date === date
         );
 
+      const scheduledCheckins =
+        checkins.filter(
+          (checkin: any) =>
+            checkin.trigger_type !== "event_contingent" &&
+            checkin.trigger_type !== "participant_initiated"
+        );
+
+      const eventCheckins =
+        checkins.filter(
+          (checkin: any) =>
+            checkin.trigger_type === "event_contingent" ||
+            checkin.trigger_type === "participant_initiated"
+        );
+
       const expected =
         monitoringPlan &&
         dateFallsWithinPlan(
@@ -8859,7 +10051,8 @@ function Progress() {
 
       return {
         date,
-        completed: checkins.length,
+        completed: scheduledCheckins.length,
+        eventCompleted: eventCheckins.length,
         expected,
         average: dayAverage,
         kind: dailyScore.kind,
@@ -9030,7 +10223,7 @@ function Progress() {
           }
           detail={
             monitoringPlan
-              ? `${schedulesPerDay} check-ins / day`
+              ? `${schedulesPerDay} scheduled / day · ${eventMonitoringCheckins.length} event reports in range`
               : "No active monitoring plan"
           }
         />
@@ -9227,7 +10420,12 @@ function Progress() {
                         <p className="text-sm text-slate-600">
                           {day.completed} /{" "}
                           {day.expected}{" "}
-                          check-ins
+                          scheduled check-ins
+                          {day.eventCompleted > 0
+                            ? ` · ${day.eventCompleted} event report${
+                                day.eventCompleted === 1 ? "" : "s"
+                              }`
+                            : ""}
                         </p>
                         <div className="mt-2 h-2 overflow-hidden rounded-full bg-slate-100">
                           <div

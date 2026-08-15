@@ -4,6 +4,14 @@ import Link from "next/link";
 import { useEffect, useState, type ReactNode } from "react";
 import PsyLatticeLogo from "@/components/PsyLatticeLogo";
 import { createClient } from "@/lib/supabase/client";
+import {
+  AmbulatoryProtocolBuilder,
+  defaultAmbulatoryProtocol,
+  serializeAmbulatoryProtocol,
+  validateAmbulatoryProtocol,
+  type AmbulatoryScheduleDraft,
+  type AmbulatoryQuestionnaireOption,
+} from "@/components/AmbulatoryProtocolBuilder";
 
 type Screen =
   | "dashboard"
@@ -6017,7 +6025,7 @@ type MonitoringV2RequestClinical = {
   name: string;
   duration_days: number;
   note: string | null;
-  protocol: MonitoringProtocolScheduleDraft[];
+  protocol: AmbulatoryScheduleDraft[];
   status: "pending" | "accepted" | "declined" | "cancelled";
   created_at: string;
   responded_at: string | null;
@@ -6030,11 +6038,14 @@ type MonitoringV2SharedFeed = {
   plan_name: string;
   duration_days: number;
   start_date: string;
-  protocol: MonitoringProtocolScheduleDraft[];
+  protocol: AmbulatoryScheduleDraft[];
   checkins: Array<{
     checkin_id: string;
     schedule_id: string;
     schedule_label: string;
+    trigger_type?: string;
+    occurrence_index?: number;
+    trigger_source?: string;
     entry_date: string;
     completed_at: string;
     responses: Array<{ item_id: string; item_key: string; type: MonitoringBlockType; prompt: string; response: any }>;
@@ -6055,7 +6066,7 @@ function Ambulatory({
   } = useClientSharingPermissions(client);
 
   const [questionnaires, setQuestionnaires] = useState<
-    MonitoringQuestionnaireOption[]
+    AmbulatoryQuestionnaireOption[]
   >([]);
 
   const [showProtocolBuilder, setShowProtocolBuilder] =
@@ -6067,8 +6078,8 @@ function Ambulatory({
     useState(7);
   const [note, setNote] = useState("");
   const [protocol, setProtocol] = useState<
-    MonitoringProtocolScheduleDraft[]
-  >(defaultMonitoringProtocol());
+    AmbulatoryScheduleDraft[]
+  >(defaultAmbulatoryProtocol());
 
   const [requests, setRequests] = useState<
     MonitoringV2RequestClinical[]
@@ -6184,7 +6195,7 @@ function Ambulatory({
     if (!error) {
       setQuestionnaires(
         (data ??
-          []) as MonitoringQuestionnaireOption[]
+          []) as AmbulatoryQuestionnaireOption[]
       );
     }
   }
@@ -6388,7 +6399,7 @@ function Ambulatory({
       return "Duration must be between 1 and 365 days.";
     }
 
-    return validateMonitoringEditorProtocol(
+    return validateAmbulatoryProtocol(
       protocol
     );
   }
@@ -6422,7 +6433,7 @@ function Ambulatory({
           p_duration_days: durationDays,
           p_note: note.trim() || null,
           p_protocol:
-            serializeMonitoringProtocol(
+            serializeAmbulatoryProtocol(
               protocol
             ),
         }
@@ -6643,7 +6654,18 @@ function Ambulatory({
     );
 
   const schedulesPerDay =
-    sharedFeed?.protocol.length || 0;
+    sharedFeed?.protocol.filter(
+      (schedule) =>
+        schedule.trigger_type !== "event_contingent" &&
+        schedule.trigger_type !== "participant_initiated"
+    ).length || 0;
+
+  const eventScheduleCount =
+    sharedFeed?.protocol.filter(
+      (schedule) =>
+        schedule.trigger_type === "event_contingent" ||
+        schedule.trigger_type === "participant_initiated"
+    ).length || 0;
 
   const relevantProgressDates =
     sharedFeed
@@ -6660,8 +6682,22 @@ function Ambulatory({
     relevantProgressDates.length *
     schedulesPerDay;
 
+  const scheduledCompletedCheckins =
+    sharedFeed?.checkins.filter(
+      (checkin) =>
+        checkin.trigger_type !== "event_contingent" &&
+        checkin.trigger_type !== "participant_initiated"
+    ) || [];
+
+  const eventCompletedCheckins =
+    sharedFeed?.checkins.filter(
+      (checkin) =>
+        checkin.trigger_type === "event_contingent" ||
+        checkin.trigger_type === "participant_initiated"
+    ) || [];
+
   const completedCheckins =
-    sharedFeed?.checkins.length || 0;
+    scheduledCompletedCheckins.length;
 
   const monitoringConsistency =
     expectedCheckins > 0
@@ -6839,6 +6875,20 @@ function Ambulatory({
               date
           );
 
+        const scheduledCheckins =
+          checkins.filter(
+            (checkin) =>
+              checkin.trigger_type !== "event_contingent" &&
+              checkin.trigger_type !== "participant_initiated"
+          );
+
+        const eventCheckins =
+          checkins.filter(
+            (checkin) =>
+              checkin.trigger_type === "event_contingent" ||
+              checkin.trigger_type === "participant_initiated"
+          );
+
         const expected =
           sharedFeed &&
           dateFallsWithinPlan(
@@ -6868,7 +6918,9 @@ function Ambulatory({
         return {
           date,
           completed:
-            checkins.length,
+            scheduledCheckins.length,
+          eventCompleted:
+            eventCheckins.length,
           expected,
           average,
           kind: dailyRatings.kind,
@@ -6987,12 +7039,11 @@ function Ambulatory({
             </p>
 
             <p className="mt-1 max-w-4xl text-sm leading-6 text-slate-500">
-              Create flexible EMA/ESM
-              check-ins with sliders,
-              branching, activities and
-              questionnaire-library blocks.
-              The builder stays collapsed
-              until you choose to open it.
+              Create time-contingent or event-contingent EMA/ESM
+              check-ins with sliders, nested branching, activities and
+              questionnaire-library blocks. Your Researcher-created
+              questionnaires also appear under My questionnaire. The builder
+              stays collapsed until you choose to open it.
             </p>
           </div>
 
@@ -7045,12 +7096,11 @@ function Ambulatory({
             </div>
 
             <div className="mt-6">
-              <MonitoringProtocolBuilderV2
+              <AmbulatoryProtocolBuilder
                 protocol={protocol}
                 onChange={setProtocol}
-                questionnaires={
-                  questionnaires
-                }
+                questionnaires={questionnaires}
+                context="clinical"
               />
             </div>
 
@@ -7412,11 +7462,13 @@ function Ambulatory({
                   />
 
                   <StatCard
-                    label="Days with ratings"
+                    label="Event reports"
                     value={String(
-                      progressDaysWithData.length
+                      eventCompletedCheckins.length
                     )}
-                    detail="Days containing numeric monitoring ratings"
+                    detail={`${eventScheduleCount} event-contingent check-in type${
+                      eventScheduleCount === 1 ? "" : "s"
+                    } configured`}
                   />
                 </div>
 
@@ -7470,14 +7522,12 @@ function Ambulatory({
 
                                 <div>
                                   <p className="text-xs text-slate-500">
-                                    {
-                                      day.completed
-                                    }{" "}
-                                    /{" "}
-                                    {
-                                      day.expected
-                                    }{" "}
-                                    check-ins
+                                    {day.completed} / {day.expected} scheduled
+                                    {day.eventCompleted > 0
+                                      ? ` · ${day.eventCompleted} event report${
+                                          day.eventCompleted === 1 ? "" : "s"
+                                        }`
+                                      : ""}
                                   </p>
 
                                   <div className="mt-2 h-2 overflow-hidden rounded-full bg-slate-100">
@@ -7648,21 +7698,37 @@ function Ambulatory({
                         }
                         className="rounded-xl border border-slate-200 p-4"
                       >
-                        <p className="font-medium">
-                          {
-                            schedule.label
-                          }
-                        </p>
+                        <div className="flex flex-wrap items-center gap-2">
+                          <p className="font-medium">
+                            {schedule.label}
+                          </p>
+
+                          <span className="rounded-full bg-cyan-50 px-2.5 py-1 text-[10px] font-semibold uppercase text-cyan-800">
+                            {(schedule.trigger_type || "fixed_time")
+                              .replaceAll("_", " ")}
+                          </span>
+                        </div>
 
                         <p className="mt-1 text-xs text-slate-400">
-                          {
-                            schedule.start_time
-                          }
-                          –
-                          {
-                            schedule.end_time
-                          }
+                          {(schedule.trigger_type === "event_contingent" ||
+                            schedule.trigger_type === "participant_initiated")
+                            ? `Available any time · ${
+                                schedule.event_title || schedule.label
+                              }`
+                            : schedule.trigger_type === "fixed_time"
+                              ? `Fixed at ${
+                                  schedule.fixed_time || schedule.start_time
+                                }`
+                              : `${schedule.start_time}–${schedule.end_time}`}
                         </p>
+
+                        {(schedule.trigger_type === "event_contingent" ||
+                          schedule.trigger_type === "participant_initiated") &&
+                          schedule.event_description && (
+                            <p className="mt-2 text-xs leading-5 text-slate-500">
+                              {schedule.event_description}
+                            </p>
+                          )}
 
                         <div className="mt-3 space-y-2">
                           {schedule.items.map(
@@ -7755,11 +7821,21 @@ function Ambulatory({
                       className="py-5 first:pt-0 last:pb-0"
                     >
                       <div className="flex flex-wrap items-center justify-between gap-3">
-                        <p className="font-semibold">
-                          {
-                            checkin.schedule_label
-                          }
-                        </p>
+                        <div className="flex flex-wrap items-center gap-2">
+                          <p className="font-semibold">
+                            {checkin.schedule_label}
+                          </p>
+
+                          {checkin.trigger_type && (
+                            <span className="rounded-full bg-slate-100 px-2.5 py-1 text-[10px] font-semibold uppercase text-slate-500">
+                              {checkin.trigger_type.replaceAll("_", " ")}
+                              {checkin.occurrence_index &&
+                              checkin.occurrence_index > 1
+                                ? ` · #${checkin.occurrence_index}`
+                                : ""}
+                            </span>
+                          )}
+                        </div>
 
                         <span className="text-xs text-slate-400">
                           {new Date(

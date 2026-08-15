@@ -3348,6 +3348,24 @@ type MonitoringVisibility = {
   conditions: MonitoringCondition[];
 };
 
+type MonitoringConditionalTrigger = {
+  operator:
+    | "gt"
+    | "lt"
+    | "equals"
+    | "between"
+    | "contains_any"
+    | "contains_all";
+  value?: string;
+  value2?: string;
+  values?: string[];
+};
+
+type MonitoringConditionalChild = {
+  trigger: MonitoringConditionalTrigger;
+  item: MonitoringProtocolItemDraft;
+};
+
 type MonitoringProtocolItemDraft = {
   item_id?: string;
   key: string;
@@ -3356,6 +3374,7 @@ type MonitoringProtocolItemDraft = {
   required: boolean;
   config: Record<string, any>;
   visibility: MonitoringVisibility;
+  conditionalChildren?: MonitoringConditionalChild[];
 };
 
 type MonitoringProtocolScheduleDraft = {
@@ -3378,43 +3397,116 @@ type MonitoringQuestionnaireOption = {
 };
 
 function monitoringDraftKey(prefix: string) {
-  return `${prefix}-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
+  return `${prefix}-${Date.now()}-${Math.random()
+    .toString(36)
+    .slice(2, 9)}`;
+}
+
+function monitoringCanHaveConditionalChildren(
+  type: MonitoringBlockType
+) {
+  return (
+    type === "slider" ||
+    type === "single_choice" ||
+    type === "multiple_choice" ||
+    type === "yes_no" ||
+    type === "number"
+  );
 }
 
 function newMonitoringItem(
   type: MonitoringBlockType,
   index: number
 ): MonitoringProtocolItemDraft {
-  const defaults: Record<MonitoringBlockType, { prompt: string; config: Record<string, any> }> = {
+  const defaults: Record<
+    MonitoringBlockType,
+    {
+      prompt: string;
+      config: Record<string, any>;
+    }
+  > = {
     slider: {
       prompt: "How would you rate this right now?",
-      config: { min: 0, max: 10, step: 1, minLabel: "Not at all", maxLabel: "Extremely" },
+      config: {
+        min: 0,
+        max: 10,
+        step: 1,
+        minLabel: "Not at all",
+        maxLabel: "Extremely",
+      },
     },
     single_choice: {
       prompt: "Choose the option that fits best.",
-      config: { options: ["Option 1", "Option 2", "Option 3"] },
+      config: {
+        options: ["Option 1", "Option 2", "Option 3"],
+      },
     },
     multiple_choice: {
       prompt: "Select all that apply.",
-      config: { options: ["Option 1", "Option 2", "Option 3"] },
+      config: {
+        options: ["Option 1", "Option 2", "Option 3"],
+      },
     },
-    yes_no: { prompt: "Is this true right now?", config: {} },
-    number: { prompt: "Enter a number.", config: { min: 0, max: 100, step: 1 } },
-    short_text: { prompt: "Write a short response.", config: {} },
-    long_text: { prompt: "Tell us more.", config: {} },
-    instruction: { prompt: "Read this before continuing.", config: {} },
+    yes_no: {
+      prompt: "Is this true right now?",
+      config: {},
+    },
+    number: {
+      prompt: "Enter a number.",
+      config: {
+        min: 0,
+        max: 100,
+        step: 1,
+      },
+    },
+    short_text: {
+      prompt: "Write a short response.",
+      config: {},
+    },
+    long_text: {
+      prompt: "Tell us more.",
+      config: {},
+    },
+    instruction: {
+      prompt: "Read this before continuing.",
+      config: {},
+    },
     activity: {
       prompt: "Complete this activity.",
-      config: { instructions: "Follow the activity instructions, then mark it complete.", durationMinutes: 2 },
+      config: {
+        instructions:
+          "Follow the activity instructions, then mark it complete.",
+        durationMinutes: 2,
+      },
     },
     questionnaire: {
       prompt: "Complete this questionnaire.",
-      config: { questionnaire_id: "", questionnaire_name: "", questionnaire_acronym: "" },
+      config: {
+        questionnaire_id: "",
+        questionnaire_name: "",
+        questionnaire_acronym: "",
+      },
     },
-    time_duration: { prompt: "How long?", config: { unit: "minutes", min: 0, max: 1440 } },
+    time_duration: {
+      prompt: "How long?",
+      config: {
+        unit: "minutes",
+        min: 0,
+        max: 1440,
+      },
+    },
     mood: {
       prompt: "Which mood best describes how you feel?",
-      config: { options: ["Calm", "Happy", "Sad", "Anxious", "Irritated", "Tired"] },
+      config: {
+        options: [
+          "Calm",
+          "Happy",
+          "Sad",
+          "Anxious",
+          "Irritated",
+          "Tired",
+        ],
+      },
     },
   };
 
@@ -3424,12 +3516,164 @@ function newMonitoringItem(
     prompt: defaults[type].prompt,
     required: type !== "instruction",
     config: defaults[type].config,
-    visibility: { mode: "always", logic: "AND", conditions: [] },
+    visibility: {
+      mode: "always",
+      logic: "AND",
+      conditions: [],
+    },
+    conditionalChildren: [],
+  };
+}
+
+function defaultMonitoringTrigger(
+  parent: MonitoringProtocolItemDraft
+): MonitoringConditionalTrigger {
+  if (
+    parent.type === "slider" ||
+    parent.type === "number"
+  ) {
+    const min = Number(parent.config.min ?? 0);
+    const max = Number(parent.config.max ?? 10);
+    const midpoint =
+      Number.isFinite(min) && Number.isFinite(max)
+        ? Math.round(((min + max) / 2) * 100) / 100
+        : 5;
+
+    return {
+      operator: "gt",
+      value: String(midpoint),
+    };
+  }
+
+  if (parent.type === "single_choice") {
+    return {
+      operator: "equals",
+      value:
+        (parent.config.options || [])[0] || "",
+    };
+  }
+
+  if (parent.type === "multiple_choice") {
+    const first =
+      (parent.config.options || [])[0] || "";
+
+    return {
+      operator: "contains_any",
+      values: first ? [first] : [],
+    };
+  }
+
+  return {
+    operator: "equals",
+    value: "Yes",
+  };
+}
+
+function normaliseMonitoringTriggerForParent(
+  parent: MonitoringProtocolItemDraft,
+  trigger: MonitoringConditionalTrigger
+): MonitoringConditionalTrigger {
+  if (
+    parent.type === "slider" ||
+    parent.type === "number"
+  ) {
+    const operator = [
+      "gt",
+      "lt",
+      "equals",
+      "between",
+    ].includes(trigger.operator)
+      ? trigger.operator
+      : "gt";
+
+    return {
+      operator: operator as
+        | "gt"
+        | "lt"
+        | "equals"
+        | "between",
+      value:
+        trigger.value ??
+        String(parent.config.min ?? 0),
+      value2:
+        operator === "between"
+          ? trigger.value2 ??
+            String(parent.config.max ?? 10)
+          : undefined,
+    };
+  }
+
+  if (parent.type === "single_choice") {
+    const options = (
+      parent.config.options || []
+    ) as string[];
+
+    return {
+      operator: "equals",
+      value: options.includes(
+        trigger.value || ""
+      )
+        ? trigger.value
+        : options[0] || "",
+    };
+  }
+
+  if (parent.type === "multiple_choice") {
+    const options = (
+      parent.config.options || []
+    ) as string[];
+
+    const selected = (
+      trigger.values || []
+    ).filter((value) =>
+      options.includes(value)
+    );
+
+    return {
+      operator:
+        trigger.operator === "contains_all"
+          ? "contains_all"
+          : "contains_any",
+      values:
+        selected.length > 0
+          ? selected
+          : options[0]
+            ? [options[0]]
+            : [],
+    };
+  }
+
+  return {
+    operator: "equals",
+    value:
+      trigger.value === "No"
+        ? "No"
+        : "Yes",
   };
 }
 
 function defaultMonitoringProtocol(): MonitoringProtocolScheduleDraft[] {
-  const protocol: MonitoringProtocolScheduleDraft[] = [
+  const afternoonYesNo =
+    newMonitoringItem("yes_no", 1);
+
+  afternoonYesNo.prompt =
+    "Has anything stressful happened since your last check-in?";
+
+  afternoonYesNo.conditionalChildren = [
+    {
+      trigger: {
+        operator: "equals",
+        value: "Yes",
+      },
+      item: {
+        ...newMonitoringItem("short_text", 2),
+        prompt: "What happened?",
+        required: false,
+      },
+    },
+  ];
+
+  return [
     {
       key: monitoringDraftKey("morning"),
       label: "Morning",
@@ -3438,18 +3682,35 @@ function defaultMonitoringProtocol(): MonitoringProtocolScheduleDraft[] {
       items: [
         {
           ...newMonitoringItem("slider", 0),
-          prompt: "How stressed do you feel right now?",
-          config: { min: 0, max: 10, step: 1, minLabel: "Not at all", maxLabel: "Extremely" },
+          prompt:
+            "How stressed do you feel right now?",
+          config: {
+            min: 0,
+            max: 10,
+            step: 1,
+            minLabel: "Not at all",
+            maxLabel: "Extremely",
+          },
         },
         {
-          ...newMonitoringItem("single_choice", 1),
-          prompt: "What are you doing right now?",
-          config: { options: ["Studying", "Working", "Resting", "Eating", "Exercising", "Socialising", "Travelling", "Other"] },
-        },
-        {
-          ...newMonitoringItem("long_text", 2),
-          prompt: "Anything important you want to note?",
-          required: false,
+          ...newMonitoringItem(
+            "single_choice",
+            1
+          ),
+          prompt:
+            "What are you doing right now?",
+          config: {
+            options: [
+              "Studying",
+              "Working",
+              "Resting",
+              "Eating",
+              "Exercising",
+              "Socialising",
+              "Travelling",
+              "Other",
+            ],
+          },
         },
       ],
     },
@@ -3461,23 +3722,17 @@ function defaultMonitoringProtocol(): MonitoringProtocolScheduleDraft[] {
       items: [
         {
           ...newMonitoringItem("slider", 0),
-          prompt: "How stressed do you feel right now?",
-          config: { min: 0, max: 10, step: 1, minLabel: "Not at all", maxLabel: "Extremely" },
-        },
-        {
-          ...newMonitoringItem("yes_no", 1),
-          prompt: "Has anything stressful happened since your last check-in?",
-        },
-        {
-          ...newMonitoringItem("short_text", 2),
-          prompt: "What happened?",
-          required: false,
-          visibility: {
-            mode: "conditional",
-            logic: "AND",
-            conditions: [{ sourceKey: "", operator: "equals", value: "Yes" }],
+          prompt:
+            "How stressed do you feel right now?",
+          config: {
+            min: 0,
+            max: 10,
+            step: 1,
+            minLabel: "Not at all",
+            maxLabel: "Extremely",
           },
         },
+        afternoonYesNo,
       ],
     },
     {
@@ -3488,141 +3743,778 @@ function defaultMonitoringProtocol(): MonitoringProtocolScheduleDraft[] {
       items: [
         {
           ...newMonitoringItem("mood", 0),
-          prompt: "Which mood best describes your evening?",
+          prompt:
+            "Which mood best describes your evening?",
         },
         {
           ...newMonitoringItem("long_text", 1),
-          prompt: "What stood out most about today?",
+          prompt:
+            "What stood out most about today?",
           required: false,
         },
       ],
     },
   ];
+}
 
-  for (const schedule of protocol) {
-    // Repair the default conditional source after stable keys are generated.
-    if (schedule.label === "Afternoon" && schedule.items[2]) {
-      schedule.items[2].visibility.conditions[0].sourceKey = schedule.items[1].key;
+function monitoringTriggerToVisibility(
+  parent: MonitoringProtocolItemDraft,
+  trigger: MonitoringConditionalTrigger
+): MonitoringVisibility {
+  const safe =
+    normaliseMonitoringTriggerForParent(
+      parent,
+      trigger
+    );
+
+  if (
+    parent.type === "slider" ||
+    parent.type === "number"
+  ) {
+    if (safe.operator === "between") {
+      return {
+        mode: "conditional",
+        logic: "AND",
+        conditions: [
+          {
+            sourceKey: parent.key,
+            operator: "gte",
+            value: String(safe.value ?? ""),
+          },
+          {
+            sourceKey: parent.key,
+            operator: "lte",
+            value: String(
+              safe.value2 ?? safe.value ?? ""
+            ),
+          },
+        ],
+      };
+    }
+
+    return {
+      mode: "conditional",
+      logic: "AND",
+      conditions: [
+        {
+          sourceKey: parent.key,
+          operator: safe.operator,
+          value: String(safe.value ?? ""),
+        },
+      ],
+    };
+  }
+
+  if (parent.type === "multiple_choice") {
+    const values = safe.values || [];
+
+    return {
+      mode: "conditional",
+      logic:
+        safe.operator === "contains_all"
+          ? "AND"
+          : "OR",
+      conditions: values.map((value) => ({
+        sourceKey: parent.key,
+        operator: "contains",
+        value,
+      })),
+    };
+  }
+
+  return {
+    mode: "conditional",
+    logic: "AND",
+    conditions: [
+      {
+        sourceKey: parent.key,
+        operator: "equals",
+        value: String(safe.value ?? ""),
+      },
+    ],
+  };
+}
+
+function monitoringVisibilityToTrigger(
+  parent: MonitoringProtocolItemDraft,
+  visibility: MonitoringVisibility
+): MonitoringConditionalTrigger {
+  if (
+    parent.type === "slider" ||
+    parent.type === "number"
+  ) {
+    const lower = visibility.conditions.find(
+      (condition) =>
+        condition.operator === "gte"
+    );
+    const upper = visibility.conditions.find(
+      (condition) =>
+        condition.operator === "lte"
+    );
+
+    if (lower && upper) {
+      return {
+        operator: "between",
+        value: lower.value,
+        value2: upper.value,
+      };
+    }
+
+    const first = visibility.conditions[0];
+
+    return normaliseMonitoringTriggerForParent(
+      parent,
+      {
+        operator: (
+          first?.operator === "gt" ||
+          first?.operator === "lt" ||
+          first?.operator === "equals"
+            ? first.operator
+            : "equals"
+        ) as "gt" | "lt" | "equals",
+        value: first?.value || "",
+      }
+    );
+  }
+
+  if (parent.type === "multiple_choice") {
+    return normaliseMonitoringTriggerForParent(
+      parent,
+      {
+        operator:
+          visibility.logic === "AND"
+            ? "contains_all"
+            : "contains_any",
+        values: visibility.conditions
+          .filter(
+            (condition) =>
+              condition.operator === "contains"
+          )
+          .map((condition) => condition.value),
+      }
+    );
+  }
+
+  return normaliseMonitoringTriggerForParent(
+    parent,
+    {
+      operator: "equals",
+      value:
+        visibility.conditions[0]?.value ||
+        (parent.type === "yes_no"
+          ? "Yes"
+          : ""),
+    }
+  );
+}
+
+function flattenMonitoringItems(
+  items: MonitoringProtocolItemDraft[]
+) {
+  const flat: MonitoringProtocolItemDraft[] =
+    [];
+
+  function visit(
+    item: MonitoringProtocolItemDraft,
+    visibility: MonitoringVisibility
+  ) {
+    const {
+      conditionalChildren: _children,
+      ...itemWithoutChildren
+    } = item;
+
+    flat.push({
+      ...itemWithoutChildren,
+      visibility,
+    });
+
+    for (const child of
+      item.conditionalChildren || []) {
+      visit(
+        child.item,
+        monitoringTriggerToVisibility(
+          item,
+          child.trigger
+        )
+      );
     }
   }
 
-  return protocol;
-}
-
-function monitoringOperators(type: MonitoringBlockType) {
-  if (type === "slider" || type === "number" || type === "time_duration") {
-    return [
-      ["equals", "Equals"],
-      ["not_equals", "Does not equal"],
-      ["gt", "Greater than"],
-      ["gte", "Greater than or equal"],
-      ["lt", "Less than"],
-      ["lte", "Less than or equal"],
-      ["answered", "Is answered"],
-      ["not_answered", "Is not answered"],
-    ];
-  }
-  if (type === "multiple_choice") {
-    return [
-      ["contains", "Contains"],
-      ["not_contains", "Does not contain"],
-      ["answered", "Is answered"],
-      ["not_answered", "Is not answered"],
-    ];
-  }
-  if (type === "short_text" || type === "long_text") {
-    return [
-      ["contains_text", "Contains text"],
-      ["answered", "Is answered"],
-      ["not_answered", "Is not answered"],
-    ];
-  }
-  return [
-    ["equals", "Is"],
-    ["not_equals", "Is not"],
-    ["answered", "Is answered"],
-    ["not_answered", "Is not answered"],
-  ];
-}
-
-function monitoringResponseAnswered(value: any) {
-  if (value === null || value === undefined || value === "") return false;
-  if (Array.isArray(value)) return value.length > 0;
-  if (typeof value === "object" && "completed" in value) return Boolean(value.completed);
-  return true;
-}
-
-function monitoringConditionMatches(condition: MonitoringCondition, sourceType: MonitoringBlockType, response: any) {
-  const answered = monitoringResponseAnswered(response);
-  if (condition.operator === "answered") return answered;
-  if (condition.operator === "not_answered") return !answered;
-  if (!answered) return false;
-
-  const target = condition.value;
-  if (["slider", "number", "time_duration"].includes(sourceType)) {
-    const left = Number(response);
-    const right = Number(target);
-    if (Number.isNaN(left) || Number.isNaN(right)) return false;
-    if (condition.operator === "gt") return left > right;
-    if (condition.operator === "gte") return left >= right;
-    if (condition.operator === "lt") return left < right;
-    if (condition.operator === "lte") return left <= right;
-    if (condition.operator === "not_equals") return left !== right;
-    return left === right;
-  }
-  if (sourceType === "multiple_choice") {
-    const values = Array.isArray(response) ? response.map(String) : [];
-    if (condition.operator === "not_contains") return !values.includes(target);
-    return values.includes(target);
-  }
-  if (condition.operator === "contains_text") {
-    return String(response).toLowerCase().includes(target.toLowerCase());
-  }
-  if (condition.operator === "not_equals") return String(response) !== target;
-  return String(response) === target;
-}
-
-function monitoringVisibleItems(items: MonitoringProtocolItemDraft[], responses: Record<string, any>) {
-  const byKey = new Map(items.map((item) => [item.key, item]));
-  return items.filter((item) => {
-    if (item.visibility?.mode !== "conditional") return true;
-    const conditions = item.visibility.conditions || [];
-    if (conditions.length === 0) return true;
-    const results = conditions.map((condition) => {
-      const source = byKey.get(condition.sourceKey);
-      if (!source) return false;
-      return monitoringConditionMatches(condition, source.type, responses[condition.sourceKey]);
+  for (const item of items) {
+    visit(item, {
+      mode: "always",
+      logic: "AND",
+      conditions: [],
     });
-    return item.visibility.logic === "OR" ? results.some(Boolean) : results.every(Boolean);
+  }
+
+  return flat;
+}
+
+function serializeMonitoringProtocol(
+  protocol: MonitoringProtocolScheduleDraft[]
+): MonitoringProtocolScheduleDraft[] {
+  return protocol.map((schedule) => ({
+    ...schedule,
+    items: flattenMonitoringItems(schedule.items),
+  }));
+}
+
+function nestMonitoringItems(
+  flatItems: MonitoringProtocolItemDraft[]
+) {
+  const roots: MonitoringProtocolItemDraft[] =
+    [];
+  const byKey = new Map<
+    string,
+    MonitoringProtocolItemDraft
+  >();
+
+  for (const raw of flatItems || []) {
+    const item: MonitoringProtocolItemDraft = {
+      ...raw,
+      visibility:
+        raw.visibility || {
+          mode: "always",
+          logic: "AND",
+          conditions: [],
+        },
+      conditionalChildren: [],
+    };
+
+    byKey.set(item.key, item);
+
+    const conditions =
+      item.visibility?.conditions || [];
+    const sourceKeys = Array.from(
+      new Set(
+        conditions
+          .map(
+            (condition) =>
+              condition.sourceKey
+          )
+          .filter(Boolean)
+      )
+    );
+
+    const parent =
+      item.visibility?.mode ===
+        "conditional" &&
+      sourceKeys.length === 1
+        ? byKey.get(sourceKeys[0])
+        : null;
+
+    if (
+      parent &&
+      monitoringCanHaveConditionalChildren(
+        parent.type
+      )
+    ) {
+      parent.conditionalChildren = [
+        ...(parent.conditionalChildren || []),
+        {
+          trigger:
+            monitoringVisibilityToTrigger(
+              parent,
+              item.visibility
+            ),
+          item,
+        },
+      ];
+    } else {
+      roots.push(item);
+    }
+  }
+
+  return roots;
+}
+
+function nestMonitoringProtocol(
+  protocol: MonitoringProtocolScheduleDraft[]
+): MonitoringProtocolScheduleDraft[] {
+  return (protocol || []).map((schedule) => ({
+    ...schedule,
+    items: nestMonitoringItems(
+      schedule.items || []
+    ),
+  }));
+}
+
+function countMonitoringTreeItems(
+  items: MonitoringProtocolItemDraft[]
+): number {
+  return items.reduce(
+    (total, item) =>
+      total +
+      1 +
+      countMonitoringTreeItems(
+        (item.conditionalChildren || []).map(
+          (child) => child.item
+        )
+      ),
+    0
+  );
+}
+
+function mapMonitoringTreeItem(
+  items: MonitoringProtocolItemDraft[],
+  targetKey: string,
+  updater: (
+    item: MonitoringProtocolItemDraft
+  ) => MonitoringProtocolItemDraft
+): MonitoringProtocolItemDraft[] {
+  return items.map((item) => {
+    if (item.key === targetKey) {
+      return updater(item);
+    }
+
+    return {
+      ...item,
+      conditionalChildren: (
+        item.conditionalChildren || []
+      ).map((child) => ({
+        ...child,
+        item: mapMonitoringTreeItem(
+          [child.item],
+          targetKey,
+          updater
+        )[0],
+      })),
+    };
   });
 }
 
-function cleanHiddenMonitoringResponses(items: MonitoringProtocolItemDraft[], incoming: Record<string, any>) {
-  let next = { ...incoming };
-  for (let pass = 0; pass < items.length + 1; pass += 1) {
-    const visible = new Set(monitoringVisibleItems(items, next).map((item) => item.key));
+function findMonitoringTreeItem(
+  items: MonitoringProtocolItemDraft[],
+  targetKey: string
+): MonitoringProtocolItemDraft | null {
+  for (const item of items) {
+    if (item.key === targetKey) {
+      return item;
+    }
+
+    const nested = findMonitoringTreeItem(
+      (item.conditionalChildren || []).map(
+        (child) => child.item
+      ),
+      targetKey
+    );
+
+    if (nested) {
+      return nested;
+    }
+  }
+
+  return null;
+}
+
+function monitoringConditionMatches(
+  condition: MonitoringCondition,
+  sourceType: MonitoringBlockType,
+  response: any
+) {
+  const answered =
+    monitoringResponseAnswered(response);
+
+  if (condition.operator === "answered") {
+    return answered;
+  }
+
+  if (
+    condition.operator === "not_answered"
+  ) {
+    return !answered;
+  }
+
+  if (!answered) {
+    return false;
+  }
+
+  const target = condition.value;
+
+  if (
+    sourceType === "slider" ||
+    sourceType === "number" ||
+    sourceType === "time_duration"
+  ) {
+    const left = Number(response);
+    const right = Number(target);
+
+    if (
+      Number.isNaN(left) ||
+      Number.isNaN(right)
+    ) {
+      return false;
+    }
+
+    if (condition.operator === "gt") {
+      return left > right;
+    }
+
+    if (condition.operator === "gte") {
+      return left >= right;
+    }
+
+    if (condition.operator === "lt") {
+      return left < right;
+    }
+
+    if (condition.operator === "lte") {
+      return left <= right;
+    }
+
+    if (
+      condition.operator === "not_equals"
+    ) {
+      return left !== right;
+    }
+
+    return left === right;
+  }
+
+  if (sourceType === "multiple_choice") {
+    const values = Array.isArray(response)
+      ? response.map(String)
+      : [];
+
+    if (
+      condition.operator ===
+      "not_contains"
+    ) {
+      return !values.includes(target);
+    }
+
+    return values.includes(target);
+  }
+
+  if (
+    condition.operator ===
+    "contains_text"
+  ) {
+    return String(response)
+      .toLowerCase()
+      .includes(target.toLowerCase());
+  }
+
+  if (
+    condition.operator === "not_equals"
+  ) {
+    return String(response) !== target;
+  }
+
+  return String(response) === target;
+}
+
+function monitoringResponseAnswered(value: any) {
+  if (
+    value === null ||
+    value === undefined ||
+    value === ""
+  ) {
+    return false;
+  }
+
+  if (Array.isArray(value)) {
+    return value.length > 0;
+  }
+
+  if (
+    typeof value === "object" &&
+    "completed" in value
+  ) {
+    return Boolean(value.completed);
+  }
+
+  return true;
+}
+
+function monitoringVisibleItems(
+  items: MonitoringProtocolItemDraft[],
+  responses: Record<string, any>
+) {
+  const byKey = new Map(
+    items.map((item) => [item.key, item])
+  );
+
+  return items.filter((item) => {
+    if (
+      item.visibility?.mode !==
+      "conditional"
+    ) {
+      return true;
+    }
+
+    const conditions =
+      item.visibility.conditions || [];
+
+    if (conditions.length === 0) {
+      return true;
+    }
+
+    const results = conditions.map(
+      (condition) => {
+        const source = byKey.get(
+          condition.sourceKey
+        );
+
+        if (!source) {
+          return false;
+        }
+
+        return monitoringConditionMatches(
+          condition,
+          source.type,
+          responses[condition.sourceKey]
+        );
+      }
+    );
+
+    return item.visibility.logic === "OR"
+      ? results.some(Boolean)
+      : results.every(Boolean);
+  });
+}
+
+function cleanHiddenMonitoringResponses(
+  items: MonitoringProtocolItemDraft[],
+  incoming: Record<string, any>
+) {
+  let next = {
+    ...incoming,
+  };
+
+  for (
+    let pass = 0;
+    pass < items.length + 1;
+    pass += 1
+  ) {
+    const visible = new Set(
+      monitoringVisibleItems(
+        items,
+        next
+      ).map((item) => item.key)
+    );
+
     let changed = false;
+
     for (const key of Object.keys(next)) {
       if (!visible.has(key)) {
         delete next[key];
         changed = true;
       }
     }
-    if (!changed) break;
+
+    if (!changed) {
+      break;
+    }
   }
+
   return next;
 }
 
 function monitoringResponseText(value: any) {
-  if (value === null || value === undefined || value === "") return "—";
-  if (Array.isArray(value)) return value.join(", ") || "—";
+  if (
+    value === null ||
+    value === undefined ||
+    value === ""
+  ) {
+    return "—";
+  }
+
+  if (Array.isArray(value)) {
+    return value.join(", ") || "—";
+  }
+
   if (typeof value === "object") {
-    if (value.completed && value.questionnaire_name) return `Completed ${value.questionnaire_name}`;
-    if (value.completed) return "Completed";
+    if (
+      value.completed &&
+      value.questionnaire_name
+    ) {
+      return `Completed ${value.questionnaire_name}`;
+    }
+
+    if (value.completed) {
+      return "Completed";
+    }
+
     return JSON.stringify(value);
   }
-  if (typeof value === "boolean") return value ? "Completed" : "Not completed";
+
+  if (typeof value === "boolean") {
+    return value
+      ? "Completed"
+      : "Not completed";
+  }
+
   return String(value);
+}
+
+function validateMonitoringEditorProtocol(
+  protocol: MonitoringProtocolScheduleDraft[]
+) {
+  if (
+    !protocol.length ||
+    protocol.length > 12
+  ) {
+    return "Choose between 1 and 12 daily check-ins.";
+  }
+
+  function validateItems(
+    items: MonitoringProtocolItemDraft[],
+    scheduleLabel: string
+  ): string {
+    for (const item of items) {
+      if (!item.prompt.trim()) {
+        return "Every block needs a prompt or title.";
+      }
+
+      if (
+        item.type === "questionnaire" &&
+        !item.config.questionnaire_id
+      ) {
+        return "Choose a questionnaire for every questionnaire block.";
+      }
+
+      if (
+        (item.conditionalChildren || [])
+          .length > 0 &&
+        !monitoringCanHaveConditionalChildren(
+          item.type
+        )
+      ) {
+        return `"${item.prompt}" cannot contain conditional blocks.`;
+      }
+
+      for (const child of
+        item.conditionalChildren || []) {
+        const trigger =
+          normaliseMonitoringTriggerForParent(
+            item,
+            child.trigger
+          );
+
+        if (
+          item.type === "slider" ||
+          item.type === "number"
+        ) {
+          const first = Number(
+            trigger.value
+          );
+
+          if (!Number.isFinite(first)) {
+            return `Choose a valid conditional value under "${item.prompt}".`;
+          }
+
+          if (
+            trigger.operator ===
+            "between"
+          ) {
+            const second = Number(
+              trigger.value2
+            );
+
+            if (
+              !Number.isFinite(second) ||
+              first > second
+            ) {
+              return `Choose a valid conditional range under "${item.prompt}".`;
+            }
+          }
+        }
+
+        if (
+          item.type ===
+          "single_choice"
+        ) {
+          const options =
+            (item.config.options ||
+              []) as string[];
+
+          if (
+            !trigger.value ||
+            !options.includes(
+              trigger.value
+            )
+          ) {
+            return `Choose which response opens the conditional block under "${item.prompt}".`;
+          }
+        }
+
+        if (
+          item.type ===
+          "multiple_choice"
+        ) {
+          const options =
+            (item.config.options ||
+              []) as string[];
+          const values =
+            trigger.values || [];
+
+          if (
+            values.length === 0 ||
+            values.some(
+              (value) =>
+                !options.includes(value)
+            )
+          ) {
+            return `Choose the linked multiple-choice response(s) under "${item.prompt}".`;
+          }
+        }
+
+        const nestedError =
+          validateItems(
+            [child.item],
+            scheduleLabel
+          );
+
+        if (nestedError) {
+          return nestedError;
+        }
+      }
+    }
+
+    return "";
+  }
+
+  for (const schedule of protocol) {
+    if (!schedule.label.trim()) {
+      return "Every check-in needs a name.";
+    }
+
+    if (
+      !schedule.start_time ||
+      !schedule.end_time ||
+      schedule.start_time >=
+        schedule.end_time
+    ) {
+      return `Check the time window for ${
+        schedule.label || "a check-in"
+      }.`;
+    }
+
+    if (!schedule.items.length) {
+      return `${schedule.label} needs at least one block.`;
+    }
+
+    if (
+      countMonitoringTreeItems(
+        schedule.items
+      ) > 50
+    ) {
+      return `${schedule.label} can contain up to 50 total blocks, including nested conditional blocks.`;
+    }
+
+    const itemError = validateItems(
+      schedule.items,
+      schedule.label
+    );
+
+    if (itemError) {
+      return itemError;
+    }
+  }
+
+  return "";
 }
 
 function MonitoringProtocolBuilderV2({
@@ -3631,10 +4523,14 @@ function MonitoringProtocolBuilderV2({
   questionnaires,
 }: {
   protocol: MonitoringProtocolScheduleDraft[];
-  onChange: (protocol: MonitoringProtocolScheduleDraft[]) => void;
+  onChange: (
+    protocol: MonitoringProtocolScheduleDraft[]
+  ) => void;
   questionnaires: MonitoringQuestionnaireOption[];
 }) {
-  const blockTypes: Array<[MonitoringBlockType, string]> = [
+  const blockTypes: Array<
+    [MonitoringBlockType, string]
+  > = [
     ["slider", "Slider / rating"],
     ["single_choice", "Single choice"],
     ["multiple_choice", "Multiple choice"],
@@ -3645,360 +4541,1553 @@ function MonitoringProtocolBuilderV2({
     ["mood", "Mood / emotion"],
     ["time_duration", "Time / duration"],
     ["activity", "Activity"],
-    ["questionnaire", "Questionnaire library"],
-    ["instruction", "Instruction / information"],
+    [
+      "questionnaire",
+      "Questionnaire library",
+    ],
+    [
+      "instruction",
+      "Instruction / information",
+    ],
   ];
 
-  function updateSchedule(index: number, patch: Partial<MonitoringProtocolScheduleDraft>) {
-    onChange(protocol.map((schedule, i) => (i === index ? { ...schedule, ...patch } : schedule)));
+  function updateSchedule(
+    index: number,
+    patch: Partial<MonitoringProtocolScheduleDraft>
+  ) {
+    onChange(
+      protocol.map((schedule, i) =>
+        i === index
+          ? {
+              ...schedule,
+              ...patch,
+            }
+          : schedule
+      )
+    );
   }
 
   function addSchedule() {
-    if (protocol.length >= 12) return;
+    if (protocol.length >= 12) {
+      return;
+    }
+
     onChange([
       ...protocol,
       {
-        key: monitoringDraftKey(`checkin-${protocol.length + 1}`),
-        label: `Check-in ${protocol.length + 1}`,
+        key: monitoringDraftKey(
+          `checkin-${protocol.length + 1}`
+        ),
+        label: `Check-in ${
+          protocol.length + 1
+        }`,
         start_time: "12:00",
         end_time: "13:00",
-        items: [newMonitoringItem("slider", 0)],
+        items: [
+          newMonitoringItem("slider", 0),
+        ],
       },
     ]);
   }
 
   function removeSchedule(index: number) {
-    if (protocol.length <= 1) return;
-    onChange(protocol.filter((_, i) => i !== index));
+    if (protocol.length <= 1) {
+      return;
+    }
+
+    onChange(
+      protocol.filter(
+        (_, i) => i !== index
+      )
+    );
   }
 
-  function updateItem(scheduleIndex: number, itemIndex: number, patch: Partial<MonitoringProtocolItemDraft>) {
-    const schedule = protocol[scheduleIndex];
-    const items = schedule.items.map((item, i) => (i === itemIndex ? { ...item, ...patch } : item));
-    updateSchedule(scheduleIndex, { items });
+  function updateItemByKey(
+    scheduleIndex: number,
+    itemKey: string,
+    patch:
+      | Partial<MonitoringProtocolItemDraft>
+      | ((
+          item: MonitoringProtocolItemDraft
+        ) => MonitoringProtocolItemDraft)
+  ) {
+    const schedule =
+      protocol[scheduleIndex];
+
+    const items = mapMonitoringTreeItem(
+      schedule.items,
+      itemKey,
+      (item) =>
+        typeof patch === "function"
+          ? patch(item)
+          : {
+              ...item,
+              ...patch,
+            }
+    );
+
+    updateSchedule(scheduleIndex, {
+      items,
+    });
   }
 
-  function addItem(scheduleIndex: number, type: MonitoringBlockType) {
-    const schedule = protocol[scheduleIndex];
-    if (schedule.items.length >= 50) return;
-    updateSchedule(scheduleIndex, { items: [...schedule.items, newMonitoringItem(type, schedule.items.length)] });
+  function updateItemConfig(
+    scheduleIndex: number,
+    itemKey: string,
+    nextConfig: Record<string, any>
+  ) {
+    updateItemByKey(
+      scheduleIndex,
+      itemKey,
+      (item) => {
+        const updated = {
+          ...item,
+          config: nextConfig,
+        };
+
+        if (
+          !monitoringCanHaveConditionalChildren(
+            updated.type
+          )
+        ) {
+          return updated;
+        }
+
+        return {
+          ...updated,
+          conditionalChildren: (
+            updated.conditionalChildren || []
+          ).map((child) => ({
+            ...child,
+            trigger:
+              normaliseMonitoringTriggerForParent(
+                updated,
+                child.trigger
+              ),
+          })),
+        };
+      }
+    );
   }
 
-  function removeItem(scheduleIndex: number, itemIndex: number) {
-    const schedule = protocol[scheduleIndex];
-    if (schedule.items.length <= 1) return;
-    const removedKey = schedule.items[itemIndex].key;
-    const items = schedule.items
-      .filter((_, i) => i !== itemIndex)
-      .map((item) => ({
-        ...item,
-        visibility: {
-          ...item.visibility,
-          conditions: item.visibility.conditions.filter((condition) => condition.sourceKey !== removedKey),
-        },
-      }));
-    updateSchedule(scheduleIndex, { items });
+  function changeItemType(
+    scheduleIndex: number,
+    itemKey: string,
+    type: MonitoringBlockType
+  ) {
+    const schedule =
+      protocol[scheduleIndex];
+
+    const current =
+      findMonitoringTreeItem(
+        schedule.items,
+        itemKey
+      );
+
+    if (!current) {
+      return;
+    }
+
+    if (
+      (current.conditionalChildren || [])
+        .length > 0 &&
+      !monitoringCanHaveConditionalChildren(
+        type
+      )
+    ) {
+      const confirmed = window.confirm(
+        "This block contains nested conditional blocks. Changing it to this response type will remove those conditional blocks. Continue?"
+      );
+
+      if (!confirmed) {
+        return;
+      }
+    }
+
+    const fresh = newMonitoringItem(
+      type,
+      countMonitoringTreeItems(
+        schedule.items
+      )
+    );
+
+    updateItemByKey(
+      scheduleIndex,
+      itemKey,
+      (item) => {
+        const keepChildren =
+          monitoringCanHaveConditionalChildren(
+            type
+          );
+
+        const updated: MonitoringProtocolItemDraft =
+          {
+            ...item,
+            type,
+            prompt: fresh.prompt,
+            config: fresh.config,
+            required: fresh.required,
+            conditionalChildren:
+              keepChildren
+                ? item.conditionalChildren ||
+                  []
+                : [],
+          };
+
+        if (!keepChildren) {
+          return updated;
+        }
+
+        return {
+          ...updated,
+          conditionalChildren: (
+            updated.conditionalChildren || []
+          ).map((child) => ({
+            ...child,
+            trigger:
+              normaliseMonitoringTriggerForParent(
+                updated,
+                defaultMonitoringTrigger(
+                  updated
+                )
+              ),
+          })),
+        };
+      }
+    );
   }
 
-  function moveItem(scheduleIndex: number, itemIndex: number, direction: -1 | 1) {
-    const schedule = protocol[scheduleIndex];
-    const target = itemIndex + direction;
-    if (target < 0 || target >= schedule.items.length) return;
-    const items = [...schedule.items];
-    [items[itemIndex], items[target]] = [items[target], items[itemIndex]];
-    // Remove conditions that would become forward references after reordering.
-    const positions = new Map(items.map((item, i) => [item.key, i]));
-    const safeItems = items.map((item, i) => ({
-      ...item,
-      visibility: {
-        ...item.visibility,
-        conditions: item.visibility.conditions.filter((condition) => (positions.get(condition.sourceKey) ?? 999) < i),
-      },
-    }));
-    updateSchedule(scheduleIndex, { items: safeItems });
+  function addRootItem(
+    scheduleIndex: number,
+    type: MonitoringBlockType
+  ) {
+    const schedule =
+      protocol[scheduleIndex];
+
+    if (
+      countMonitoringTreeItems(
+        schedule.items
+      ) >= 50
+    ) {
+      return;
+    }
+
+    updateSchedule(scheduleIndex, {
+      items: [
+        ...schedule.items,
+        newMonitoringItem(
+          type,
+          countMonitoringTreeItems(
+            schedule.items
+          )
+        ),
+      ],
+    });
+  }
+
+  function addConditionalChild(
+    scheduleIndex: number,
+    parentKey: string
+  ) {
+    const schedule =
+      protocol[scheduleIndex];
+
+    if (
+      countMonitoringTreeItems(
+        schedule.items
+      ) >= 50
+    ) {
+      return;
+    }
+
+    updateItemByKey(
+      scheduleIndex,
+      parentKey,
+      (parent) => {
+        if (
+          !monitoringCanHaveConditionalChildren(
+            parent.type
+          )
+        ) {
+          return parent;
+        }
+
+        return {
+          ...parent,
+          conditionalChildren: [
+            ...(parent.conditionalChildren ||
+              []),
+            {
+              trigger:
+                defaultMonitoringTrigger(
+                  parent
+                ),
+              item: newMonitoringItem(
+                "short_text",
+                countMonitoringTreeItems(
+                  schedule.items
+                )
+              ),
+            },
+          ],
+        };
+      }
+    );
+  }
+
+  function removeRootItem(
+    scheduleIndex: number,
+    itemIndex: number
+  ) {
+    const schedule =
+      protocol[scheduleIndex];
+
+    if (schedule.items.length <= 1) {
+      return;
+    }
+
+    updateSchedule(scheduleIndex, {
+      items: schedule.items.filter(
+        (_, index) =>
+          index !== itemIndex
+      ),
+    });
+  }
+
+  function removeConditionalChild(
+    scheduleIndex: number,
+    parentKey: string,
+    childKey: string
+  ) {
+    updateItemByKey(
+      scheduleIndex,
+      parentKey,
+      (parent) => ({
+        ...parent,
+        conditionalChildren: (
+          parent.conditionalChildren || []
+        ).filter(
+          (child) =>
+            child.item.key !== childKey
+        ),
+      })
+    );
+  }
+
+  function moveRootItem(
+    scheduleIndex: number,
+    itemIndex: number,
+    direction: -1 | 1
+  ) {
+    const schedule =
+      protocol[scheduleIndex];
+    const target =
+      itemIndex + direction;
+
+    if (
+      target < 0 ||
+      target >= schedule.items.length
+    ) {
+      return;
+    }
+
+    const items = [
+      ...schedule.items,
+    ];
+
+    [
+      items[itemIndex],
+      items[target],
+    ] = [
+      items[target],
+      items[itemIndex],
+    ];
+
+    updateSchedule(scheduleIndex, {
+      items,
+    });
+  }
+
+  function moveConditionalChild(
+    scheduleIndex: number,
+    parentKey: string,
+    childIndex: number,
+    direction: -1 | 1
+  ) {
+    updateItemByKey(
+      scheduleIndex,
+      parentKey,
+      (parent) => {
+        const children = [
+          ...(parent.conditionalChildren ||
+            []),
+        ];
+        const target =
+          childIndex + direction;
+
+        if (
+          target < 0 ||
+          target >= children.length
+        ) {
+          return parent;
+        }
+
+        [
+          children[childIndex],
+          children[target],
+        ] = [
+          children[target],
+          children[childIndex],
+        ];
+
+        return {
+          ...parent,
+          conditionalChildren: children,
+        };
+      }
+    );
+  }
+
+  function updateChildTrigger(
+    scheduleIndex: number,
+    parentKey: string,
+    childKey: string,
+    trigger: MonitoringConditionalTrigger
+  ) {
+    updateItemByKey(
+      scheduleIndex,
+      parentKey,
+      (parent) => ({
+        ...parent,
+        conditionalChildren: (
+          parent.conditionalChildren || []
+        ).map((child) =>
+          child.item.key === childKey
+            ? {
+                ...child,
+                trigger:
+                  normaliseMonitoringTriggerForParent(
+                    parent,
+                    trigger
+                  ),
+              }
+            : child
+        ),
+      })
+    );
+  }
+
+  function renderConditionalTrigger(
+    scheduleIndex: number,
+    parent: MonitoringProtocolItemDraft,
+    child: MonitoringConditionalChild
+  ) {
+    const trigger =
+      normaliseMonitoringTriggerForParent(
+        parent,
+        child.trigger
+      );
+
+    if (
+      parent.type === "slider" ||
+      parent.type === "number"
+    ) {
+      return (
+        <div className="grid gap-3 lg:grid-cols-[210px_1fr] lg:items-end">
+          <label>
+            <span className="text-xs font-medium text-cyan-950">
+              Show this nested block when
+            </span>
+
+            <select
+              value={trigger.operator}
+              onChange={(event) =>
+                updateChildTrigger(
+                  scheduleIndex,
+                  parent.key,
+                  child.item.key,
+                  {
+                    ...trigger,
+                    operator:
+                      event.target.value as
+                        | "gt"
+                        | "lt"
+                        | "equals"
+                        | "between",
+                  }
+                )
+              }
+              className="mt-2 w-full rounded-xl border border-cyan-200 bg-white px-3 py-2.5 text-sm"
+            >
+              <option value="gt">
+                Response is above
+              </option>
+              <option value="lt">
+                Response is below
+              </option>
+              <option value="equals">
+                Response equals
+              </option>
+              <option value="between">
+                Response is within a range
+              </option>
+            </select>
+          </label>
+
+          <div className="grid gap-3 sm:grid-cols-2">
+            <label>
+              <span className="text-xs font-medium text-cyan-950">
+                {trigger.operator ===
+                "between"
+                  ? "From"
+                  : "Value"}
+              </span>
+
+              <input
+                type="number"
+                min={parent.config.min}
+                max={parent.config.max}
+                step={
+                  parent.config.step ?? 1
+                }
+                value={trigger.value ?? ""}
+                onChange={(event) =>
+                  updateChildTrigger(
+                    scheduleIndex,
+                    parent.key,
+                    child.item.key,
+                    {
+                      ...trigger,
+                      value:
+                        event.target.value,
+                    }
+                  )
+                }
+                className="mt-2 w-full rounded-xl border border-cyan-200 bg-white px-3 py-2.5 text-sm"
+              />
+            </label>
+
+            {trigger.operator ===
+              "between" && (
+              <label>
+                <span className="text-xs font-medium text-cyan-950">
+                  To
+                </span>
+
+                <input
+                  type="number"
+                  min={parent.config.min}
+                  max={parent.config.max}
+                  step={
+                    parent.config.step ?? 1
+                  }
+                  value={
+                    trigger.value2 ?? ""
+                  }
+                  onChange={(event) =>
+                    updateChildTrigger(
+                      scheduleIndex,
+                      parent.key,
+                      child.item.key,
+                      {
+                        ...trigger,
+                        value2:
+                          event.target.value,
+                      }
+                    )
+                  }
+                  className="mt-2 w-full rounded-xl border border-cyan-200 bg-white px-3 py-2.5 text-sm"
+                />
+              </label>
+            )}
+          </div>
+        </div>
+      );
+    }
+
+    if (
+      parent.type ===
+      "single_choice"
+    ) {
+      const options =
+        (parent.config.options ||
+          []) as string[];
+
+      return (
+        <label className="block">
+          <span className="text-xs font-medium text-cyan-950">
+            Show this nested block when the participant chooses
+          </span>
+
+          <select
+            value={trigger.value || ""}
+            onChange={(event) =>
+              updateChildTrigger(
+                scheduleIndex,
+                parent.key,
+                child.item.key,
+                {
+                  operator: "equals",
+                  value:
+                    event.target.value,
+                }
+              )
+            }
+            className="mt-2 w-full rounded-xl border border-cyan-200 bg-white px-3 py-2.5 text-sm"
+          >
+            <option value="">
+              Choose linked response…
+            </option>
+
+            {options.map((option) => (
+              <option
+                key={option}
+                value={option}
+              >
+                {option}
+              </option>
+            ))}
+          </select>
+        </label>
+      );
+    }
+
+    if (parent.type === "yes_no") {
+      return (
+        <label className="block">
+          <span className="text-xs font-medium text-cyan-950">
+            Show this nested block when the participant chooses
+          </span>
+
+          <select
+            value={trigger.value || "Yes"}
+            onChange={(event) =>
+              updateChildTrigger(
+                scheduleIndex,
+                parent.key,
+                child.item.key,
+                {
+                  operator: "equals",
+                  value:
+                    event.target.value,
+                }
+              )
+            }
+            className="mt-2 w-full rounded-xl border border-cyan-200 bg-white px-3 py-2.5 text-sm"
+          >
+            <option value="Yes">
+              Yes
+            </option>
+            <option value="No">
+              No
+            </option>
+          </select>
+        </label>
+      );
+    }
+
+    if (
+      parent.type ===
+      "multiple_choice"
+    ) {
+      const options =
+        (parent.config.options ||
+          []) as string[];
+      const selected =
+        trigger.values || [];
+
+      return (
+        <div>
+          <div className="flex flex-wrap items-end justify-between gap-3">
+            <div>
+              <p className="text-xs font-medium text-cyan-950">
+                Show this nested block when the participant selects
+              </p>
+
+              <p className="mt-1 text-xs text-slate-500">
+                Choose one or more linked responses.
+              </p>
+            </div>
+
+            <select
+              value={trigger.operator}
+              onChange={(event) =>
+                updateChildTrigger(
+                  scheduleIndex,
+                  parent.key,
+                  child.item.key,
+                  {
+                    ...trigger,
+                    operator:
+                      event.target.value as
+                        | "contains_any"
+                        | "contains_all",
+                  }
+                )
+              }
+              className="rounded-xl border border-cyan-200 bg-white px-3 py-2 text-xs font-semibold"
+            >
+              <option value="contains_any">
+                Any selected response
+              </option>
+              <option value="contains_all">
+                All selected responses
+              </option>
+            </select>
+          </div>
+
+          <div className="mt-3 flex flex-wrap gap-2">
+            {options.map((option) => {
+              const checked =
+                selected.includes(option);
+
+              return (
+                <label
+                  key={option}
+                  className={`flex cursor-pointer items-center gap-2 rounded-xl border px-3 py-2 text-xs font-medium ${
+                    checked
+                      ? "border-cyan-300 bg-cyan-100 text-cyan-950"
+                      : "border-slate-200 bg-white text-slate-600"
+                  }`}
+                >
+                  <input
+                    type="checkbox"
+                    checked={checked}
+                    onChange={(event) => {
+                      const values =
+                        event.target
+                          .checked
+                          ? [
+                              ...selected,
+                              option,
+                            ]
+                          : selected.filter(
+                              (value) =>
+                                value !==
+                                option
+                            );
+
+                      updateChildTrigger(
+                        scheduleIndex,
+                        parent.key,
+                        child.item.key,
+                        {
+                          ...trigger,
+                          values,
+                        }
+                      );
+                    }}
+                  />
+
+                  {option}
+                </label>
+              );
+            })}
+          </div>
+        </div>
+      );
+    }
+
+    return null;
+  }
+
+  function renderItem(
+    scheduleIndex: number,
+    item: MonitoringProtocolItemDraft,
+    displayPath: string,
+    siblingIndex: number,
+    siblingCount: number,
+    parent: MonitoringProtocolItemDraft | null,
+    childEdge: MonitoringConditionalChild | null
+  ): ReactNode {
+    const nested =
+      parent !== null;
+
+    return (
+      <div
+        key={item.key}
+        className={`rounded-2xl border p-4 ${
+          nested
+            ? "border-cyan-200 bg-white"
+            : "border-slate-200 bg-slate-50/40"
+        }`}
+      >
+        {parent && childEdge && (
+          <div className="mb-4 rounded-xl border border-cyan-100 bg-cyan-50/70 p-4">
+            <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+              <div>
+                <p className="text-[10px] font-semibold uppercase tracking-[0.12em] text-cyan-800">
+                  Conditional block
+                </p>
+
+                <p className="mt-1 text-xs text-slate-600">
+                  This entire block appears only from the response to:
+                  {" "}
+                  <span className="font-semibold text-slate-800">
+                    {parent.prompt}
+                  </span>
+                </p>
+              </div>
+            </div>
+
+            {renderConditionalTrigger(
+              scheduleIndex,
+              parent,
+              childEdge
+            )}
+          </div>
+        )}
+
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div className="flex flex-wrap items-center gap-2">
+            <select
+              value={item.type}
+              onChange={(event) =>
+                changeItemType(
+                  scheduleIndex,
+                  item.key,
+                  event.target
+                    .value as MonitoringBlockType
+                )
+              }
+              className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs font-semibold"
+            >
+              {blockTypes.map(
+                ([value, label]) => (
+                  <option
+                    key={value}
+                    value={value}
+                  >
+                    {label}
+                  </option>
+                )
+              )}
+            </select>
+
+            <span className="text-xs text-slate-400">
+              {nested
+                ? `Conditional ${displayPath}`
+                : `Block ${displayPath}`}
+            </span>
+          </div>
+
+          <div className="flex gap-2">
+            <button
+              type="button"
+              disabled={siblingIndex === 0}
+              onClick={() => {
+                if (parent) {
+                  moveConditionalChild(
+                    scheduleIndex,
+                    parent.key,
+                    siblingIndex,
+                    -1
+                  );
+                } else {
+                  moveRootItem(
+                    scheduleIndex,
+                    siblingIndex,
+                    -1
+                  );
+                }
+              }}
+              className="rounded-lg border border-slate-200 bg-white px-2.5 py-1.5 text-xs disabled:opacity-30"
+            >
+              ↑
+            </button>
+
+            <button
+              type="button"
+              disabled={
+                siblingIndex ===
+                siblingCount - 1
+              }
+              onClick={() => {
+                if (parent) {
+                  moveConditionalChild(
+                    scheduleIndex,
+                    parent.key,
+                    siblingIndex,
+                    1
+                  );
+                } else {
+                  moveRootItem(
+                    scheduleIndex,
+                    siblingIndex,
+                    1
+                  );
+                }
+              }}
+              className="rounded-lg border border-slate-200 bg-white px-2.5 py-1.5 text-xs disabled:opacity-30"
+            >
+              ↓
+            </button>
+
+            <button
+              type="button"
+              disabled={
+                !parent &&
+                protocol[
+                  scheduleIndex
+                ].items.length <= 1
+              }
+              onClick={() => {
+                if (parent) {
+                  removeConditionalChild(
+                    scheduleIndex,
+                    parent.key,
+                    item.key
+                  );
+                } else {
+                  removeRootItem(
+                    scheduleIndex,
+                    siblingIndex
+                  );
+                }
+              }}
+              className="rounded-lg border border-red-200 bg-white px-2.5 py-1.5 text-xs font-semibold text-red-700 disabled:opacity-30"
+            >
+              Remove
+            </button>
+          </div>
+        </div>
+
+        <label className="mt-4 block">
+          <span className="text-xs font-medium text-slate-500">
+            Prompt / title
+          </span>
+
+          <input
+            value={item.prompt}
+            onChange={(event) =>
+              updateItemByKey(
+                scheduleIndex,
+                item.key,
+                {
+                  prompt:
+                    event.target.value,
+                }
+              )
+            }
+            className="mt-2 w-full rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm outline-none focus:border-cyan-700"
+          />
+        </label>
+
+        {(item.type ===
+          "single_choice" ||
+          item.type ===
+            "multiple_choice" ||
+          item.type === "mood") && (
+          <label className="mt-4 block">
+            <span className="text-xs font-medium text-slate-500">
+              Options (one per line)
+            </span>
+
+            <textarea
+              value={(
+                item.config.options || []
+              ).join("\n")}
+              onChange={(event) =>
+                updateItemConfig(
+                  scheduleIndex,
+                  item.key,
+                  {
+                    ...item.config,
+                    options:
+                      event.target.value
+                        .split("\n")
+                        .map((value) =>
+                          value.trim()
+                        )
+                        .filter(Boolean),
+                  }
+                )
+              }
+              className="mt-2 min-h-24 w-full rounded-xl border border-slate-200 bg-white p-3 text-sm outline-none focus:border-cyan-700"
+            />
+          </label>
+        )}
+
+        {item.type === "slider" && (
+          <div className="mt-4 grid gap-3 sm:grid-cols-3 lg:grid-cols-5">
+            {[
+              ["min", "Minimum"],
+              ["max", "Maximum"],
+              ["step", "Step"],
+            ].map(([key, label]) => (
+              <label key={key}>
+                <span className="text-xs font-medium text-slate-500">
+                  {label}
+                </span>
+
+                <input
+                  type="number"
+                  value={
+                    item.config[key] ?? ""
+                  }
+                  onChange={(event) =>
+                    updateItemConfig(
+                      scheduleIndex,
+                      item.key,
+                      {
+                        ...item.config,
+                        [key]: Number(
+                          event.target.value
+                        ),
+                      }
+                    )
+                  }
+                  className="mt-2 w-full rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm"
+                />
+              </label>
+            ))}
+
+            <label>
+              <span className="text-xs font-medium text-slate-500">
+                Low label
+              </span>
+
+              <input
+                value={
+                  item.config.minLabel || ""
+                }
+                onChange={(event) =>
+                  updateItemConfig(
+                    scheduleIndex,
+                    item.key,
+                    {
+                      ...item.config,
+                      minLabel:
+                        event.target.value,
+                    }
+                  )
+                }
+                className="mt-2 w-full rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm"
+              />
+            </label>
+
+            <label>
+              <span className="text-xs font-medium text-slate-500">
+                High label
+              </span>
+
+              <input
+                value={
+                  item.config.maxLabel || ""
+                }
+                onChange={(event) =>
+                  updateItemConfig(
+                    scheduleIndex,
+                    item.key,
+                    {
+                      ...item.config,
+                      maxLabel:
+                        event.target.value,
+                    }
+                  )
+                }
+                className="mt-2 w-full rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm"
+              />
+            </label>
+          </div>
+        )}
+
+        {(item.type === "number" ||
+          item.type ===
+            "time_duration") && (
+          <div className="mt-4 grid gap-3 sm:grid-cols-3">
+            <label>
+              <span className="text-xs font-medium text-slate-500">
+                Minimum
+              </span>
+
+              <input
+                type="number"
+                value={
+                  item.config.min ?? ""
+                }
+                onChange={(event) =>
+                  updateItemConfig(
+                    scheduleIndex,
+                    item.key,
+                    {
+                      ...item.config,
+                      min: Number(
+                        event.target.value
+                      ),
+                    }
+                  )
+                }
+                className="mt-2 w-full rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm"
+              />
+            </label>
+
+            <label>
+              <span className="text-xs font-medium text-slate-500">
+                Maximum
+              </span>
+
+              <input
+                type="number"
+                value={
+                  item.config.max ?? ""
+                }
+                onChange={(event) =>
+                  updateItemConfig(
+                    scheduleIndex,
+                    item.key,
+                    {
+                      ...item.config,
+                      max: Number(
+                        event.target.value
+                      ),
+                    }
+                  )
+                }
+                className="mt-2 w-full rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm"
+              />
+            </label>
+
+            {item.type ===
+            "time_duration" ? (
+              <label>
+                <span className="text-xs font-medium text-slate-500">
+                  Unit
+                </span>
+
+                <select
+                  value={
+                    item.config.unit ||
+                    "minutes"
+                  }
+                  onChange={(event) =>
+                    updateItemConfig(
+                      scheduleIndex,
+                      item.key,
+                      {
+                        ...item.config,
+                        unit:
+                          event.target
+                            .value,
+                      }
+                    )
+                  }
+                  className="mt-2 w-full rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm"
+                >
+                  <option value="minutes">
+                    Minutes
+                  </option>
+                  <option value="hours">
+                    Hours
+                  </option>
+                  <option value="seconds">
+                    Seconds
+                  </option>
+                </select>
+              </label>
+            ) : (
+              <label>
+                <span className="text-xs font-medium text-slate-500">
+                  Step
+                </span>
+
+                <input
+                  type="number"
+                  value={
+                    item.config.step ?? 1
+                  }
+                  onChange={(event) =>
+                    updateItemConfig(
+                      scheduleIndex,
+                      item.key,
+                      {
+                        ...item.config,
+                        step: Number(
+                          event.target.value
+                        ),
+                      }
+                    )
+                  }
+                  className="mt-2 w-full rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm"
+                />
+              </label>
+            )}
+          </div>
+        )}
+
+        {item.type === "activity" && (
+          <div className="mt-4 grid gap-3 sm:grid-cols-[1fr_180px]">
+            <label>
+              <span className="text-xs font-medium text-slate-500">
+                Activity instructions
+              </span>
+
+              <textarea
+                value={
+                  item.config
+                    .instructions || ""
+                }
+                onChange={(event) =>
+                  updateItemConfig(
+                    scheduleIndex,
+                    item.key,
+                    {
+                      ...item.config,
+                      instructions:
+                        event.target.value,
+                    }
+                  )
+                }
+                className="mt-2 min-h-20 w-full rounded-xl border border-slate-200 bg-white p-3 text-sm"
+              />
+            </label>
+
+            <label>
+              <span className="text-xs font-medium text-slate-500">
+                Minutes
+              </span>
+
+              <input
+                type="number"
+                min="1"
+                value={
+                  item.config
+                    .durationMinutes ?? 2
+                }
+                onChange={(event) =>
+                  updateItemConfig(
+                    scheduleIndex,
+                    item.key,
+                    {
+                      ...item.config,
+                      durationMinutes:
+                        Number(
+                          event.target.value
+                        ),
+                    }
+                  )
+                }
+                className="mt-2 w-full rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm"
+              />
+            </label>
+          </div>
+        )}
+
+        {item.type ===
+          "questionnaire" && (
+          <label className="mt-4 block">
+            <span className="text-xs font-medium text-slate-500">
+              Questionnaire from library
+            </span>
+
+            <select
+              value={
+                item.config
+                  .questionnaire_id || ""
+              }
+              onChange={(event) => {
+                const selected =
+                  questionnaires.find(
+                    (questionnaire) =>
+                      questionnaire.questionnaire_id ===
+                      event.target.value
+                  );
+
+                updateItemConfig(
+                  scheduleIndex,
+                  item.key,
+                  {
+                    ...item.config,
+                    questionnaire_id:
+                      event.target.value,
+                    questionnaire_name:
+                      selected?.questionnaire_name ||
+                      "",
+                    questionnaire_acronym:
+                      selected?.questionnaire_acronym ||
+                      "",
+                  }
+                );
+              }}
+              className="mt-2 w-full rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm"
+            >
+              <option value="">
+                Choose questionnaire…
+              </option>
+
+              {questionnaires.map(
+                (questionnaire) => (
+                  <option
+                    key={
+                      questionnaire.questionnaire_id
+                    }
+                    value={
+                      questionnaire.questionnaire_id
+                    }
+                  >
+                    {questionnaire.questionnaire_acronym
+                      ? `${questionnaire.questionnaire_acronym} — ${questionnaire.questionnaire_name}`
+                      : questionnaire.questionnaire_name}
+                  </option>
+                )
+              )}
+            </select>
+          </label>
+        )}
+
+        <div className="mt-5 flex flex-wrap items-center gap-5 border-t border-slate-200 pt-4">
+          {item.type !==
+            "instruction" && (
+            <label className="flex items-center gap-2 text-xs font-medium text-slate-600">
+              <input
+                type="checkbox"
+                checked={item.required}
+                onChange={(event) =>
+                  updateItemByKey(
+                    scheduleIndex,
+                    item.key,
+                    {
+                      required:
+                        event.target
+                          .checked,
+                    }
+                  )
+                }
+              />
+
+              Required when shown
+            </label>
+          )}
+        </div>
+
+        {monitoringCanHaveConditionalChildren(
+          item.type
+        ) && (
+          <div className="mt-5 rounded-xl border border-dashed border-cyan-200 bg-cyan-50/30 p-4">
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <div>
+                <p className="text-xs font-semibold text-cyan-950">
+                  Conditional follow-up blocks
+                </p>
+
+                <p className="mt-1 text-xs leading-5 text-slate-500">
+                  Add a complete new block inside this response. It will appear only when the response rule you choose is met.
+                </p>
+              </div>
+
+              <button
+                type="button"
+                disabled={
+                  countMonitoringTreeItems(
+                    protocol[
+                      scheduleIndex
+                    ].items
+                  ) >= 50
+                }
+                onClick={() =>
+                  addConditionalChild(
+                    scheduleIndex,
+                    item.key
+                  )
+                }
+                className="rounded-xl border border-cyan-200 bg-white px-4 py-2.5 text-xs font-semibold text-cyan-900 transition hover:bg-cyan-50 disabled:opacity-40"
+              >
+                + Add conditional block
+              </button>
+            </div>
+          </div>
+        )}
+
+        {(item.conditionalChildren || [])
+          .length > 0 && (
+          <div className="mt-5 border-l-2 border-cyan-200 pl-4">
+            <div className="mb-3">
+              <p className="text-xs font-semibold uppercase tracking-[0.1em] text-cyan-800">
+                Nested under {item.prompt}
+              </p>
+
+              <p className="mt-1 text-xs text-slate-500">
+                Each nested block has its own response trigger and can itself contain further conditional blocks.
+              </p>
+            </div>
+
+            <div className="space-y-4">
+              {(
+                item.conditionalChildren ||
+                []
+              ).map(
+                (child, childIndex) =>
+                  renderItem(
+                    scheduleIndex,
+                    child.item,
+                    `${displayPath}.${
+                      childIndex + 1
+                    }`,
+                    childIndex,
+                    (
+                      item.conditionalChildren ||
+                      []
+                    ).length,
+                    item,
+                    child
+                  )
+              )}
+            </div>
+          </div>
+        )}
+      </div>
+    );
   }
 
   return (
     <div className="space-y-5">
-      {protocol.map((schedule, scheduleIndex) => (
-        <section key={schedule.key} className="rounded-2xl border border-slate-200 bg-white p-5">
-          <div className="flex flex-col justify-between gap-4 lg:flex-row lg:items-end">
-            <div className="grid flex-1 gap-3 md:grid-cols-[1fr_160px_160px]">
-              <label>
-                <span className="text-xs font-medium text-slate-500">Check-in name</span>
-                <input
-                  value={schedule.label}
-                  onChange={(event) => updateSchedule(scheduleIndex, { label: event.target.value })}
-                  className="mt-2 w-full rounded-xl border border-slate-200 px-3 py-2.5 text-sm outline-none focus:border-cyan-700"
-                />
-              </label>
-              <label>
-                <span className="text-xs font-medium text-slate-500">From</span>
-                <input
-                  type="time"
-                  value={schedule.start_time}
-                  onChange={(event) => updateSchedule(scheduleIndex, { start_time: event.target.value })}
-                  className="mt-2 w-full rounded-xl border border-slate-200 px-3 py-2.5 text-sm outline-none focus:border-cyan-700"
-                />
-              </label>
-              <label>
-                <span className="text-xs font-medium text-slate-500">Until</span>
-                <input
-                  type="time"
-                  value={schedule.end_time}
-                  onChange={(event) => updateSchedule(scheduleIndex, { end_time: event.target.value })}
-                  className="mt-2 w-full rounded-xl border border-slate-200 px-3 py-2.5 text-sm outline-none focus:border-cyan-700"
-                />
-              </label>
+      {protocol.map(
+        (schedule, scheduleIndex) => (
+          <section
+            key={schedule.key}
+            className="rounded-2xl border border-slate-200 bg-white p-5"
+          >
+            <div className="flex flex-col justify-between gap-4 lg:flex-row lg:items-end">
+              <div className="grid flex-1 gap-3 md:grid-cols-[1fr_160px_160px]">
+                <label>
+                  <span className="text-xs font-medium text-slate-500">
+                    Check-in name
+                  </span>
+
+                  <input
+                    value={schedule.label}
+                    onChange={(event) =>
+                      updateSchedule(
+                        scheduleIndex,
+                        {
+                          label:
+                            event.target
+                              .value,
+                        }
+                      )
+                    }
+                    className="mt-2 w-full rounded-xl border border-slate-200 px-3 py-2.5 text-sm outline-none focus:border-cyan-700"
+                  />
+                </label>
+
+                <label>
+                  <span className="text-xs font-medium text-slate-500">
+                    From
+                  </span>
+
+                  <input
+                    type="time"
+                    value={
+                      schedule.start_time
+                    }
+                    onChange={(event) =>
+                      updateSchedule(
+                        scheduleIndex,
+                        {
+                          start_time:
+                            event.target
+                              .value,
+                        }
+                      )
+                    }
+                    className="mt-2 w-full rounded-xl border border-slate-200 px-3 py-2.5 text-sm outline-none focus:border-cyan-700"
+                  />
+                </label>
+
+                <label>
+                  <span className="text-xs font-medium text-slate-500">
+                    Until
+                  </span>
+
+                  <input
+                    type="time"
+                    value={schedule.end_time}
+                    onChange={(event) =>
+                      updateSchedule(
+                        scheduleIndex,
+                        {
+                          end_time:
+                            event.target
+                              .value,
+                        }
+                      )
+                    }
+                    className="mt-2 w-full rounded-xl border border-slate-200 px-3 py-2.5 text-sm outline-none focus:border-cyan-700"
+                  />
+                </label>
+              </div>
+
+              <button
+                type="button"
+                disabled={
+                  protocol.length <= 1
+                }
+                onClick={() =>
+                  removeSchedule(
+                    scheduleIndex
+                  )
+                }
+                className="rounded-xl border border-red-200 bg-white px-3 py-2.5 text-xs font-semibold text-red-700 disabled:opacity-30"
+              >
+                Remove check-in
+              </button>
             </div>
-            <button
-              type="button"
-              disabled={protocol.length <= 1}
-              onClick={() => removeSchedule(scheduleIndex)}
-              className="rounded-xl border border-red-200 bg-white px-3 py-2.5 text-xs font-semibold text-red-700 disabled:opacity-30"
-            >
-              Remove check-in
-            </button>
-          </div>
 
-          <div className="mt-6 space-y-4">
-            {schedule.items.map((item, itemIndex) => {
-              const previousItems = schedule.items.slice(0, itemIndex);
-              const visibility = item.visibility || { mode: "always", logic: "AND", conditions: [] };
-              return (
-                <div key={item.key} className="rounded-2xl border border-slate-200 bg-slate-50/40 p-4">
-                  <div className="flex flex-wrap items-center justify-between gap-3">
-                    <div className="flex flex-wrap items-center gap-2">
-                      <select
-                        value={item.type}
-                        onChange={(event) => {
-                          const type = event.target.value as MonitoringBlockType;
-                          const fresh = newMonitoringItem(type, itemIndex);
-                          updateItem(scheduleIndex, itemIndex, {
-                            type,
-                            prompt: fresh.prompt,
-                            config: fresh.config,
-                            required: fresh.required,
-                          });
-                        }}
-                        className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs font-semibold"
-                      >
-                        {blockTypes.map(([value, label]) => <option key={value} value={value}>{label}</option>)}
-                      </select>
-                      <span className="text-xs text-slate-400">Block {itemIndex + 1}</span>
-                    </div>
-                    <div className="flex gap-2">
-                      <button type="button" disabled={itemIndex === 0} onClick={() => moveItem(scheduleIndex, itemIndex, -1)} className="rounded-lg border border-slate-200 bg-white px-2.5 py-1.5 text-xs disabled:opacity-30">↑</button>
-                      <button type="button" disabled={itemIndex === schedule.items.length - 1} onClick={() => moveItem(scheduleIndex, itemIndex, 1)} className="rounded-lg border border-slate-200 bg-white px-2.5 py-1.5 text-xs disabled:opacity-30">↓</button>
-                      <button type="button" disabled={schedule.items.length <= 1} onClick={() => removeItem(scheduleIndex, itemIndex)} className="rounded-lg border border-red-200 bg-white px-2.5 py-1.5 text-xs font-semibold text-red-700 disabled:opacity-30">Remove</button>
-                    </div>
-                  </div>
+            <div className="mt-6 space-y-4">
+              {schedule.items.map(
+                (item, itemIndex) =>
+                  renderItem(
+                    scheduleIndex,
+                    item,
+                    String(itemIndex + 1),
+                    itemIndex,
+                    schedule.items.length,
+                    null,
+                    null
+                  )
+              )}
+            </div>
 
-                  <label className="mt-4 block">
-                    <span className="text-xs font-medium text-slate-500">Prompt / title</span>
-                    <input
-                      value={item.prompt}
-                      onChange={(event) => updateItem(scheduleIndex, itemIndex, { prompt: event.target.value })}
-                      className="mt-2 w-full rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm outline-none focus:border-cyan-700"
-                    />
-                  </label>
+            <div className="mt-5 flex flex-wrap items-center gap-2 border-t border-slate-100 pt-4">
+              <span className="text-xs font-medium text-slate-500">
+                Add block:
+              </span>
 
-                  {(item.type === "single_choice" || item.type === "multiple_choice" || item.type === "mood") && (
-                    <label className="mt-4 block">
-                      <span className="text-xs font-medium text-slate-500">Options (one per line)</span>
-                      <textarea
-                        value={(item.config.options || []).join("\n")}
-                        onChange={(event) => updateItem(scheduleIndex, itemIndex, { config: { ...item.config, options: event.target.value.split("\n").map((value) => value.trim()).filter(Boolean) } })}
-                        className="mt-2 min-h-24 w-full rounded-xl border border-slate-200 bg-white p-3 text-sm outline-none focus:border-cyan-700"
-                      />
-                    </label>
-                  )}
+              {blockTypes.map(
+                ([value, label]) => (
+                  <button
+                    key={value}
+                    type="button"
+                    disabled={
+                      countMonitoringTreeItems(
+                        schedule.items
+                      ) >= 50
+                    }
+                    onClick={() =>
+                      addRootItem(
+                        scheduleIndex,
+                        value
+                      )
+                    }
+                    className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-slate-600 hover:border-cyan-200 hover:bg-cyan-50 disabled:opacity-40"
+                  >
+                    + {label}
+                  </button>
+                )
+              )}
+            </div>
+          </section>
+        )
+      )}
 
-                  {item.type === "slider" && (
-                    <div className="mt-4 grid gap-3 sm:grid-cols-3 lg:grid-cols-5">
-                      {[["min", "Minimum"], ["max", "Maximum"], ["step", "Step"]].map(([key, label]) => (
-                        <label key={key}>
-                          <span className="text-xs font-medium text-slate-500">{label}</span>
-                          <input type="number" value={item.config[key] ?? ""} onChange={(event) => updateItem(scheduleIndex, itemIndex, { config: { ...item.config, [key]: Number(event.target.value) } })} className="mt-2 w-full rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm" />
-                        </label>
-                      ))}
-                      <label>
-                        <span className="text-xs font-medium text-slate-500">Low label</span>
-                        <input value={item.config.minLabel || ""} onChange={(event) => updateItem(scheduleIndex, itemIndex, { config: { ...item.config, minLabel: event.target.value } })} className="mt-2 w-full rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm" />
-                      </label>
-                      <label>
-                        <span className="text-xs font-medium text-slate-500">High label</span>
-                        <input value={item.config.maxLabel || ""} onChange={(event) => updateItem(scheduleIndex, itemIndex, { config: { ...item.config, maxLabel: event.target.value } })} className="mt-2 w-full rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm" />
-                      </label>
-                    </div>
-                  )}
-
-                  {(item.type === "number" || item.type === "time_duration") && (
-                    <div className="mt-4 grid gap-3 sm:grid-cols-3">
-                      <label><span className="text-xs font-medium text-slate-500">Minimum</span><input type="number" value={item.config.min ?? ""} onChange={(event) => updateItem(scheduleIndex, itemIndex, { config: { ...item.config, min: Number(event.target.value) } })} className="mt-2 w-full rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm" /></label>
-                      <label><span className="text-xs font-medium text-slate-500">Maximum</span><input type="number" value={item.config.max ?? ""} onChange={(event) => updateItem(scheduleIndex, itemIndex, { config: { ...item.config, max: Number(event.target.value) } })} className="mt-2 w-full rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm" /></label>
-                      {item.type === "time_duration" ? (
-                        <label><span className="text-xs font-medium text-slate-500">Unit</span><select value={item.config.unit || "minutes"} onChange={(event) => updateItem(scheduleIndex, itemIndex, { config: { ...item.config, unit: event.target.value } })} className="mt-2 w-full rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm"><option value="minutes">Minutes</option><option value="hours">Hours</option><option value="seconds">Seconds</option></select></label>
-                      ) : (
-                        <label><span className="text-xs font-medium text-slate-500">Step</span><input type="number" value={item.config.step ?? 1} onChange={(event) => updateItem(scheduleIndex, itemIndex, { config: { ...item.config, step: Number(event.target.value) } })} className="mt-2 w-full rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm" /></label>
-                      )}
-                    </div>
-                  )}
-
-                  {item.type === "activity" && (
-                    <div className="mt-4 grid gap-3 sm:grid-cols-[1fr_180px]">
-                      <label><span className="text-xs font-medium text-slate-500">Activity instructions</span><textarea value={item.config.instructions || ""} onChange={(event) => updateItem(scheduleIndex, itemIndex, { config: { ...item.config, instructions: event.target.value } })} className="mt-2 min-h-20 w-full rounded-xl border border-slate-200 bg-white p-3 text-sm" /></label>
-                      <label><span className="text-xs font-medium text-slate-500">Minutes</span><input type="number" min="1" value={item.config.durationMinutes ?? 2} onChange={(event) => updateItem(scheduleIndex, itemIndex, { config: { ...item.config, durationMinutes: Number(event.target.value) } })} className="mt-2 w-full rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm" /></label>
-                    </div>
-                  )}
-
-                  {item.type === "questionnaire" && (
-                    <label className="mt-4 block">
-                      <span className="text-xs font-medium text-slate-500">Questionnaire from library</span>
-                      <select
-                        value={item.config.questionnaire_id || ""}
-                        onChange={(event) => {
-                          const selected = questionnaires.find((questionnaire) => questionnaire.questionnaire_id === event.target.value);
-                          updateItem(scheduleIndex, itemIndex, {
-                            config: {
-                              ...item.config,
-                              questionnaire_id: event.target.value,
-                              questionnaire_name: selected?.questionnaire_name || "",
-                              questionnaire_acronym: selected?.questionnaire_acronym || "",
-                            },
-                          });
-                        }}
-                        className="mt-2 w-full rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm"
-                      >
-                        <option value="">Choose questionnaire…</option>
-                        {questionnaires.map((questionnaire) => (
-                          <option key={questionnaire.questionnaire_id} value={questionnaire.questionnaire_id}>
-                            {questionnaire.questionnaire_acronym ? `${questionnaire.questionnaire_acronym} — ${questionnaire.questionnaire_name}` : questionnaire.questionnaire_name}
-                          </option>
-                        ))}
-                      </select>
-                    </label>
-                  )}
-
-                  <div className="mt-5 flex flex-wrap items-center gap-5 border-t border-slate-200 pt-4">
-                    {item.type !== "instruction" && (
-                      <label className="flex items-center gap-2 text-xs font-medium text-slate-600">
-                        <input type="checkbox" checked={item.required} onChange={(event) => updateItem(scheduleIndex, itemIndex, { required: event.target.checked })} />
-                        Required
-                      </label>
-                    )}
-                    <label className="flex items-center gap-2 text-xs font-medium text-slate-600">
-                      <input
-                        type="checkbox"
-                        checked={visibility.mode === "conditional"}
-                        disabled={previousItems.length === 0}
-                        onChange={(event) => updateItem(scheduleIndex, itemIndex, {
-                          visibility: event.target.checked
-                            ? { mode: "conditional", logic: "AND", conditions: previousItems[0] ? [{ sourceKey: previousItems[0].key, operator: "equals", value: previousItems[0].type === "yes_no" ? "Yes" : "" }] : [] }
-                            : { mode: "always", logic: "AND", conditions: [] },
-                        })}
-                      />
-                      Show only when condition is met
-                    </label>
-                  </div>
-
-                  {visibility.mode === "conditional" && (
-                    <div className="mt-4 rounded-xl border border-cyan-100 bg-cyan-50/50 p-4">
-                      <div className="flex flex-wrap items-center justify-between gap-3">
-                        <p className="text-xs font-semibold uppercase tracking-[0.1em] text-cyan-900">Conditional branching</p>
-                        <select
-                          value={visibility.logic}
-                          onChange={(event) => updateItem(scheduleIndex, itemIndex, { visibility: { ...visibility, logic: event.target.value as "AND" | "OR" } })}
-                          className="rounded-lg border border-cyan-200 bg-white px-3 py-2 text-xs font-semibold text-cyan-900"
-                        >
-                          <option value="AND">All conditions (AND)</option>
-                          <option value="OR">Any condition (OR)</option>
-                        </select>
-                      </div>
-
-                      <div className="mt-3 space-y-3">
-                        {visibility.conditions.map((condition, conditionIndex) => {
-                          const source = previousItems.find((previous) => previous.key === condition.sourceKey) || previousItems[0];
-                          const operators = monitoringOperators(source?.type || "single_choice");
-                          return (
-                            <div key={conditionIndex} className="grid gap-2 lg:grid-cols-[1.2fr_.8fr_1fr_auto]">
-                              <select
-                                value={condition.sourceKey}
-                                onChange={(event) => {
-                                  const nextSource = previousItems.find((previous) => previous.key === event.target.value);
-                                  const next = visibility.conditions.map((current, i) => i === conditionIndex ? { sourceKey: event.target.value, operator: monitoringOperators(nextSource?.type || "single_choice")[0][0], value: nextSource?.type === "yes_no" ? "Yes" : "" } : current);
-                                  updateItem(scheduleIndex, itemIndex, { visibility: { ...visibility, conditions: next } });
-                                }}
-                                className="rounded-lg border border-cyan-200 bg-white px-3 py-2 text-xs"
-                              >
-                                {previousItems.map((previous) => <option key={previous.key} value={previous.key}>{previous.prompt}</option>)}
-                              </select>
-                              <select
-                                value={condition.operator}
-                                onChange={(event) => {
-                                  const next = visibility.conditions.map((current, i) => i === conditionIndex ? { ...current, operator: event.target.value } : current);
-                                  updateItem(scheduleIndex, itemIndex, { visibility: { ...visibility, conditions: next } });
-                                }}
-                                className="rounded-lg border border-cyan-200 bg-white px-3 py-2 text-xs"
-                              >
-                                {operators.map(([value, label]) => <option key={value} value={value}>{label}</option>)}
-                              </select>
-                              {condition.operator === "answered" || condition.operator === "not_answered" ? (
-                                <div className="rounded-lg border border-cyan-100 bg-white px-3 py-2 text-xs text-slate-400">No comparison value</div>
-                              ) : source?.type === "yes_no" ? (
-                                <select value={condition.value} onChange={(event) => {
-                                  const next = visibility.conditions.map((current, i) => i === conditionIndex ? { ...current, value: event.target.value } : current);
-                                  updateItem(scheduleIndex, itemIndex, { visibility: { ...visibility, conditions: next } });
-                                }} className="rounded-lg border border-cyan-200 bg-white px-3 py-2 text-xs"><option value="Yes">Yes</option><option value="No">No</option></select>
-                              ) : (source?.type === "single_choice" || source?.type === "mood" || source?.type === "multiple_choice") ? (
-                                <select value={condition.value} onChange={(event) => {
-                                  const next = visibility.conditions.map((current, i) => i === conditionIndex ? { ...current, value: event.target.value } : current);
-                                  updateItem(scheduleIndex, itemIndex, { visibility: { ...visibility, conditions: next } });
-                                }} className="rounded-lg border border-cyan-200 bg-white px-3 py-2 text-xs"><option value="">Choose value…</option>{(source.config.options || []).map((option: string) => <option key={option} value={option}>{option}</option>)}</select>
-                              ) : (
-                                <input value={condition.value} onChange={(event) => {
-                                  const next = visibility.conditions.map((current, i) => i === conditionIndex ? { ...current, value: event.target.value } : current);
-                                  updateItem(scheduleIndex, itemIndex, { visibility: { ...visibility, conditions: next } });
-                                }} placeholder="Value" className="rounded-lg border border-cyan-200 bg-white px-3 py-2 text-xs" />
-                              )}
-                              <button type="button" onClick={() => {
-                                const next = visibility.conditions.filter((_, i) => i !== conditionIndex);
-                                updateItem(scheduleIndex, itemIndex, { visibility: next.length ? { ...visibility, conditions: next } : { mode: "always", logic: "AND", conditions: [] } });
-                              }} className="rounded-lg border border-red-200 bg-white px-3 py-2 text-xs font-semibold text-red-700">Remove</button>
-                            </div>
-                          );
-                        })}
-                      </div>
-
-                      <button
-                        type="button"
-                        disabled={previousItems.length === 0}
-                        onClick={() => {
-                          const source = previousItems[0];
-                          if (!source) return;
-                          updateItem(scheduleIndex, itemIndex, { visibility: { ...visibility, conditions: [...visibility.conditions, { sourceKey: source.key, operator: monitoringOperators(source.type)[0][0], value: source.type === "yes_no" ? "Yes" : "" }] } });
-                        }}
-                        className="mt-3 rounded-lg border border-cyan-200 bg-white px-3 py-2 text-xs font-semibold text-cyan-900 disabled:opacity-40"
-                      >
-                        + Add condition
-                      </button>
-                    </div>
-                  )}
-                </div>
-              );
-            })}
-          </div>
-
-          <div className="mt-5 flex flex-wrap items-center gap-2 border-t border-slate-100 pt-4">
-            <span className="text-xs font-medium text-slate-500">Add block:</span>
-            {blockTypes.map(([value, label]) => (
-              <button key={value} type="button" onClick={() => addItem(scheduleIndex, value)} className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-slate-600 hover:border-cyan-200 hover:bg-cyan-50">+ {label}</button>
-            ))}
-          </div>
-        </section>
-      ))}
-
-      <button type="button" disabled={protocol.length >= 12} onClick={addSchedule} className="rounded-xl border border-cyan-200 bg-cyan-50 px-4 py-2.5 text-sm font-semibold text-cyan-900 disabled:opacity-40">+ Add another daily check-in</button>
+      <button
+        type="button"
+        disabled={protocol.length >= 12}
+        onClick={addSchedule}
+        className="rounded-xl border border-cyan-200 bg-cyan-50 px-4 py-2.5 text-sm font-semibold text-cyan-900 disabled:opacity-40"
+      >
+        + Add another daily check-in
+      </button>
     </div>
   );
 }
@@ -4092,7 +6181,7 @@ function Monitoring({ changeScreen }: { changeScreen: (screen: Screen) => void }
     if (row) {
       setPlanName(row.plan_name);
       setDurationDays(row.duration_days);
-      setProtocol(row.protocol || []);
+      setProtocol(nestMonitoringProtocol(row.protocol || []));
       setSelectedScheduleId((current) => current || row.protocol?.[0]?.schedule_id || "");
       setEditingProtocol(false);
     } else {
@@ -4180,20 +6269,20 @@ function Monitoring({ changeScreen }: { changeScreen: (screen: Screen) => void }
   }, [responses, activeSchedule?.schedule_id, plan?.plan_id]);
 
   function validateProtocolDraft() {
-    if (!planName.trim()) return "Enter a protocol name.";
-    if (durationDays < 1 || durationDays > 365) return "Duration must be between 1 and 365 days.";
-    if (!protocol.length || protocol.length > 12) return "Choose between 1 and 12 daily check-ins.";
-    for (const schedule of protocol) {
-      if (!schedule.label.trim()) return "Every check-in needs a name.";
-      if (!schedule.start_time || !schedule.end_time || schedule.start_time >= schedule.end_time) return `Check the time window for ${schedule.label || "a check-in"}.`;
-      if (!schedule.items.length) return `${schedule.label} needs at least one block.`;
-      for (const item of schedule.items) {
-        if (!item.prompt.trim()) return "Every block needs a prompt or title.";
-        if (item.type === "questionnaire" && !item.config.questionnaire_id) return "Choose a questionnaire for every questionnaire block.";
-        if (item.visibility.mode === "conditional" && !item.visibility.conditions.length) return "Conditional blocks need at least one condition.";
-      }
+    if (!planName.trim()) {
+      return "Enter a protocol name.";
     }
-    return "";
+
+    if (
+      durationDays < 1 ||
+      durationDays > 365
+    ) {
+      return "Duration must be between 1 and 365 days.";
+    }
+
+    return validateMonitoringEditorProtocol(
+      protocol
+    );
   }
 
   async function saveProtocol() {
@@ -4203,9 +6292,22 @@ function Monitoring({ changeScreen }: { changeScreen: (screen: Screen) => void }
     setSaving(true); setError(""); setSuccess("");
     const supabase = createClient();
     const rpc = reviewingRequest ? "psylattice_accept_monitoring_request_v2" : "psylattice_save_my_monitoring_protocol_v2";
+    const serialisedProtocol =
+      serializeMonitoringProtocol(protocol);
+
     const args = reviewingRequest
-      ? { p_request_id: reviewingRequest.request_id, p_name: planName.trim(), p_duration_days: durationDays, p_protocol: protocol }
-      : { p_plan_id: plan?.plan_id || null, p_name: planName.trim(), p_duration_days: durationDays, p_protocol: protocol };
+      ? {
+          p_request_id: reviewingRequest.request_id,
+          p_name: planName.trim(),
+          p_duration_days: durationDays,
+          p_protocol: serialisedProtocol,
+        }
+      : {
+          p_plan_id: plan?.plan_id || null,
+          p_name: planName.trim(),
+          p_duration_days: durationDays,
+          p_protocol: serialisedProtocol,
+        };
     const { error: saveError } = await supabase.rpc(rpc, args);
     if (saveError) {
       console.error("Monitoring V2 save failed:", saveError);
@@ -4224,7 +6326,16 @@ function Monitoring({ changeScreen }: { changeScreen: (screen: Screen) => void }
     setReviewingRequest(request);
     setPlanName(request.name);
     setDurationDays(request.duration_days);
-    setProtocol(request.protocol || defaultMonitoringProtocol());
+    const nestedRequestProtocol =
+      nestMonitoringProtocol(
+        request.protocol || []
+      );
+
+    setProtocol(
+      nestedRequestProtocol.length
+        ? nestedRequestProtocol
+        : defaultMonitoringProtocol()
+    );
     setEditingProtocol(true);
     setError(""); setSuccess("");
   }
@@ -4366,7 +6477,7 @@ function Monitoring({ changeScreen }: { changeScreen: (screen: Screen) => void }
         </div>
 
         {editingProtocol ? (
-          <div className="mt-6"><MonitoringProtocolBuilderV2 protocol={protocol} onChange={setProtocol} questionnaires={questionnaires} /><div className="mt-6 flex flex-wrap gap-2"><button type="button" disabled={saving} onClick={() => void saveProtocol()} className="rounded-xl bg-slate-950 px-5 py-3 text-sm font-semibold text-white disabled:opacity-50">{saving ? "Saving..." : reviewingRequest ? "Accept & use customised protocol" : plan ? "Save protocol" : "Start protocol"}</button>{(plan || reviewingRequest) && <button type="button" disabled={saving} onClick={() => { setEditingProtocol(false); setReviewingRequest(null); if (plan) { setPlanName(plan.plan_name); setDurationDays(plan.duration_days); setProtocol(plan.protocol); } }} className="rounded-xl border border-slate-200 px-5 py-3 text-sm font-semibold text-slate-600">Cancel</button>}</div></div>
+          <div className="mt-6"><MonitoringProtocolBuilderV2 protocol={protocol} onChange={setProtocol} questionnaires={questionnaires} /><div className="mt-6 flex flex-wrap gap-2"><button type="button" disabled={saving} onClick={() => void saveProtocol()} className="rounded-xl bg-slate-950 px-5 py-3 text-sm font-semibold text-white disabled:opacity-50">{saving ? "Saving..." : reviewingRequest ? "Accept & use customised protocol" : plan ? "Save protocol" : "Start protocol"}</button>{(plan || reviewingRequest) && <button type="button" disabled={saving} onClick={() => { setEditingProtocol(false); setReviewingRequest(null); if (plan) { setPlanName(plan.plan_name); setDurationDays(plan.duration_days); setProtocol(nestMonitoringProtocol(plan.protocol)); } }} className="rounded-xl border border-slate-200 px-5 py-3 text-sm font-semibold text-slate-600">Cancel</button>}</div></div>
         ) : plan ? (
           <div className="mt-5 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">{plan.protocol.map((schedule) => <div key={schedule.schedule_id || schedule.key} className="rounded-xl border border-slate-200 p-4"><p className="font-medium">{schedule.label}</p><p className="mt-1 text-xs text-slate-400">{schedule.start_time}–{schedule.end_time} · {schedule.items.length} blocks</p></div>)}</div>
         ) : null}

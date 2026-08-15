@@ -644,30 +644,45 @@ function Dashboard({
 }: {
   changeScreen: (screen: Screen) => void;
 }) {
-  type DashboardPlan = {
-    id: string;
-    name: string;
-    duration_days: number;
-    prompts_per_day: number;
-    start_date: string;
-    status: string;
+  type DashboardV2Item = {
+    item_id?: string;
+    key: string;
+    type: string;
+    prompt: string;
+    config: Record<string, any>;
   };
 
-  type DashboardSchedule = {
-    id: string;
+  type DashboardV2Schedule = {
+    schedule_id?: string;
+    key: string;
     label: string;
     start_time: string;
     end_time: string;
-    sort_order: number;
+    items: DashboardV2Item[];
   };
 
-  type DashboardEntry = {
-    id: string;
+  type DashboardV2Plan = {
+    plan_id: string;
+    plan_name: string;
+    duration_days: number;
+    start_date: string;
+    protocol: DashboardV2Schedule[];
+  };
+
+  type DashboardV2Checkin = {
+    checkin_id: string;
+    plan_id: string;
     schedule_id: string;
-    stress: number;
-    activity: string | null;
-    note: string | null;
-    created_at: string;
+    schedule_label: string;
+    entry_date: string;
+    completed_at: string;
+    responses: Array<{
+      item_id: string;
+      item_key: string;
+      type: string;
+      prompt: string;
+      response: any;
+    }>;
   };
 
   type DashboardRegulationPlan = {
@@ -694,13 +709,11 @@ function Dashboard({
 
   const [loadingMonitoring, setLoadingMonitoring] = useState(true);
   const [monitoringError, setMonitoringError] = useState("");
-  const [monitoringPlan, setMonitoringPlan] = useState<DashboardPlan | null>(
-    null
-  );
-  const [monitoringSchedules, setMonitoringSchedules] = useState<
-    DashboardSchedule[]
+  const [monitoringPlan, setMonitoringPlan] =
+    useState<DashboardV2Plan | null>(null);
+  const [todayCheckins, setTodayCheckins] = useState<
+    DashboardV2Checkin[]
   >([]);
-  const [todayEntries, setTodayEntries] = useState<DashboardEntry[]>([]);
 
   const [loadingRegulation, setLoadingRegulation] = useState(true);
   const [regulationError, setRegulationError] = useState("");
@@ -709,113 +722,249 @@ function Dashboard({
   const [regulationActivities, setRegulationActivities] = useState<
     DashboardRegulationActivity[]
   >([]);
-  const [todayRegulationCompletions, setTodayRegulationCompletions] = useState<
-    DashboardRegulationCompletion[]
-  >([]);
+  const [todayRegulationCompletions, setTodayRegulationCompletions] =
+    useState<DashboardRegulationCompletion[]>([]);
 
-  function getLocalDateString() {
-    const now = new Date();
-
+  function getLocalDateString(date = new Date()) {
     return [
-      now.getFullYear(),
-      String(now.getMonth() + 1).padStart(2, "0"),
-      String(now.getDate()).padStart(2, "0"),
+      date.getFullYear(),
+      String(date.getMonth() + 1).padStart(2, "0"),
+      String(date.getDate()).padStart(2, "0"),
     ].join("-");
   }
 
-  useEffect(() => {
-    async function loadDashboardMonitoring() {
-      setLoadingMonitoring(true);
-      setMonitoringError("");
-
-      const supabase = createClient();
-
-      const {
-        data: { user },
-        error: userError,
-      } = await supabase.auth.getUser();
-
-      if (userError || !user) {
-        setMonitoringError("Your monitoring data could not be loaded.");
-        setLoadingMonitoring(false);
-        return;
+  function buildItemConfigMap(plan: DashboardV2Plan | null) {
+    const map = new Map<
+      string,
+      {
+        type: string;
+        prompt: string;
+        config: Record<string, any>;
       }
+    >();
 
-      const { data: planData, error: planError } = await supabase
-        .from("monitoring_plans")
-        .select(
-          "id, name, duration_days, prompts_per_day, start_date, status"
-        )
-        .eq("user_id", user.id)
-        .eq("status", "active")
-        .is("ended_at", null)
-        .order("created_at", { ascending: false })
-        .limit(1)
-        .maybeSingle();
-
-      if (planError) {
-        console.error("Could not load dashboard monitoring plan:", planError);
-        setMonitoringError("Your monitoring data could not be loaded.");
-        setLoadingMonitoring(false);
-        return;
+    for (const schedule of plan?.protocol || []) {
+      for (const item of schedule.items || []) {
+        map.set(item.key, {
+          type: item.type,
+          prompt: item.prompt,
+          config: item.config || {},
+        });
       }
-
-      if (!planData) {
-        setMonitoringPlan(null);
-        setMonitoringSchedules([]);
-        setTodayEntries([]);
-        setLoadingMonitoring(false);
-        return;
-      }
-
-      const typedPlan = planData as DashboardPlan;
-      setMonitoringPlan(typedPlan);
-
-      const [scheduleResult, entryResult] = await Promise.all([
-        supabase
-          .from("monitoring_schedules")
-          .select("id, label, start_time, end_time, sort_order")
-          .eq("plan_id", typedPlan.id)
-          .eq("user_id", user.id)
-          .eq("is_active", true)
-          .order("sort_order", { ascending: true }),
-        supabase
-          .from("monitoring_entries")
-          .select("id, schedule_id, stress, activity, note, created_at")
-          .eq("plan_id", typedPlan.id)
-          .eq("user_id", user.id)
-          .eq("entry_date", getLocalDateString())
-          .order("created_at", { ascending: true }),
-      ]);
-
-      if (scheduleResult.error) {
-        console.error(
-          "Could not load dashboard schedules:",
-          scheduleResult.error
-        );
-        setMonitoringError("Your monitoring schedule could not be loaded.");
-        setLoadingMonitoring(false);
-        return;
-      }
-
-      if (entryResult.error) {
-        console.error(
-          "Could not load dashboard entries:",
-          entryResult.error
-        );
-        setMonitoringError("Today's check-ins could not be loaded.");
-        setLoadingMonitoring(false);
-        return;
-      }
-
-      setMonitoringSchedules(
-        (scheduleResult.data || []) as DashboardSchedule[]
-      );
-      setTodayEntries((entryResult.data || []) as DashboardEntry[]);
-      setLoadingMonitoring(false);
     }
 
-    void loadDashboardMonitoring();
+    return map;
+  }
+
+  function normaliseRatingToTen(
+    response: any,
+    config: Record<string, any>
+  ) {
+    const value = Number(response);
+
+    if (!Number.isFinite(value)) {
+      return null;
+    }
+
+    const min = Number(config.min);
+    const max = Number(config.max);
+
+    if (
+      Number.isFinite(min) &&
+      Number.isFinite(max) &&
+      max > min
+    ) {
+      const normalised =
+        ((value - min) / (max - min)) * 10;
+
+      return Math.max(
+        0,
+        Math.min(10, normalised)
+      );
+    }
+
+    return value >= 0 && value <= 10
+      ? value
+      : null;
+  }
+
+  function ratingSeries(
+    checkins: DashboardV2Checkin[],
+    plan: DashboardV2Plan | null
+  ) {
+    const itemMap = buildItemConfigMap(plan);
+    const stressValues: number[] = [];
+    const sliderValues: number[] = [];
+
+    for (const checkin of checkins) {
+      for (const response of checkin.responses || []) {
+        const item = itemMap.get(response.item_key);
+
+        if (!item) {
+          continue;
+        }
+
+        const numeric = normaliseRatingToTen(
+          response.response,
+          item.config
+        );
+
+        if (numeric === null) {
+          continue;
+        }
+
+        if (
+          item.type === "slider" ||
+          item.type === "number"
+        ) {
+          if (
+            item.prompt
+              .toLowerCase()
+              .includes("stress")
+          ) {
+            stressValues.push(numeric);
+          }
+        }
+
+        if (item.type === "slider") {
+          sliderValues.push(numeric);
+        }
+      }
+    }
+
+    if (stressValues.length > 0) {
+      return {
+        kind: "stress" as const,
+        values: stressValues,
+      };
+    }
+
+    if (sliderValues.length > 0) {
+      return {
+        kind: "rating" as const,
+        values: sliderValues,
+      };
+    }
+
+    return {
+      kind: "none" as const,
+      values: [] as number[],
+    };
+  }
+
+  async function loadDashboardMonitoring(
+    showLoading = true
+  ) {
+    if (showLoading) {
+      setLoadingMonitoring(true);
+    }
+
+    setMonitoringError("");
+
+    const supabase = createClient();
+
+    const [planResult, checkinResult] =
+      await Promise.all([
+        supabase.rpc(
+          "psylattice_my_monitoring_protocol_v2"
+        ),
+        supabase.rpc(
+          "psylattice_my_monitoring_checkins_v2",
+          {
+            p_days: 2,
+          }
+        ),
+      ]);
+
+    if (planResult.error) {
+      console.error(
+        "Could not load V2 dashboard monitoring plan:",
+        planResult.error
+      );
+      setMonitoringError(
+        "Your monitoring plan could not be loaded."
+      );
+      setMonitoringPlan(null);
+      setTodayCheckins([]);
+      setLoadingMonitoring(false);
+      return;
+    }
+
+    if (checkinResult.error) {
+      console.error(
+        "Could not load V2 dashboard check-ins:",
+        checkinResult.error
+      );
+      setMonitoringError(
+        "Your completed check-ins could not be loaded."
+      );
+      setTodayCheckins([]);
+      setLoadingMonitoring(false);
+      return;
+    }
+
+    const row =
+      Array.isArray(planResult.data) &&
+      planResult.data.length > 0
+        ? (planResult.data[0] as DashboardV2Plan)
+        : null;
+
+    setMonitoringPlan(row);
+
+    if (!row) {
+      setTodayCheckins([]);
+      setLoadingMonitoring(false);
+      return;
+    }
+
+    const today = getLocalDateString();
+
+    setTodayCheckins(
+      (
+        (checkinResult.data ??
+          []) as DashboardV2Checkin[]
+      ).filter(
+        (checkin) =>
+          checkin.plan_id === row.plan_id &&
+          checkin.entry_date === today
+      )
+    );
+
+    setLoadingMonitoring(false);
+  }
+
+  useEffect(() => {
+    void loadDashboardMonitoring(true);
+
+    function refreshMonitoring() {
+      void loadDashboardMonitoring(false);
+    }
+
+    function refreshWhenVisible() {
+      if (document.visibilityState === "visible") {
+        void loadDashboardMonitoring(false);
+      }
+    }
+
+    window.addEventListener(
+      "focus",
+      refreshMonitoring
+    );
+    document.addEventListener(
+      "visibilitychange",
+      refreshWhenVisible
+    );
+
+    return () => {
+      window.removeEventListener(
+        "focus",
+        refreshMonitoring
+      );
+      document.removeEventListener(
+        "visibilitychange",
+        refreshWhenVisible
+      );
+    };
   }, []);
 
   useEffect(() => {
@@ -831,23 +980,35 @@ function Dashboard({
       } = await supabase.auth.getUser();
 
       if (userError || !user) {
-        setRegulationError("Your self-regulation data could not be loaded.");
+        setRegulationError(
+          "Your self-regulation data could not be loaded."
+        );
         setLoadingRegulation(false);
         return;
       }
 
-      const { data: planData, error: planError } = await supabase
-        .from("regulation_plans")
-        .select("id, name, duration_days, start_date, status")
-        .eq("user_id", user.id)
-        .eq("status", "active")
-        .order("created_at", { ascending: false })
-        .limit(1)
-        .maybeSingle();
+      const { data: planData, error: planError } =
+        await supabase
+          .from("regulation_plans")
+          .select(
+            "id, name, duration_days, start_date, status"
+          )
+          .eq("user_id", user.id)
+          .eq("status", "active")
+          .order("created_at", {
+            ascending: false,
+          })
+          .limit(1)
+          .maybeSingle();
 
       if (planError) {
-        console.error("Could not load dashboard regulation plan:", planError);
-        setRegulationError("Your self-regulation data could not be loaded.");
+        console.error(
+          "Could not load dashboard regulation plan:",
+          planError
+        );
+        setRegulationError(
+          "Your self-regulation data could not be loaded."
+        );
         setLoadingRegulation(false);
         return;
       }
@@ -860,32 +1021,48 @@ function Dashboard({
         return;
       }
 
-      const typedPlan = planData as DashboardRegulationPlan;
+      const typedPlan =
+        planData as DashboardRegulationPlan;
+
       setRegulationPlan(typedPlan);
 
-      const [activityResult, completionResult] = await Promise.all([
-        supabase
-          .from("regulation_activities")
-          .select("id, name, target_per_day, sort_order")
-          .eq("plan_id", typedPlan.id)
-          .eq("user_id", user.id)
-          .eq("is_active", true)
-          .order("sort_order", { ascending: true }),
-        supabase
-          .from("regulation_completions")
-          .select("id, activity_id, occurrence, completed_at")
-          .eq("plan_id", typedPlan.id)
-          .eq("user_id", user.id)
-          .eq("completion_date", getLocalDateString())
-          .order("completed_at", { ascending: true }),
-      ]);
+      const [activityResult, completionResult] =
+        await Promise.all([
+          supabase
+            .from("regulation_activities")
+            .select(
+              "id, name, target_per_day, sort_order"
+            )
+            .eq("plan_id", typedPlan.id)
+            .eq("user_id", user.id)
+            .eq("is_active", true)
+            .order("sort_order", {
+              ascending: true,
+            }),
+          supabase
+            .from("regulation_completions")
+            .select(
+              "id, activity_id, occurrence, completed_at"
+            )
+            .eq("plan_id", typedPlan.id)
+            .eq("user_id", user.id)
+            .eq(
+              "completion_date",
+              getLocalDateString()
+            )
+            .order("completed_at", {
+              ascending: true,
+            }),
+        ]);
 
       if (activityResult.error) {
         console.error(
           "Could not load dashboard regulation activities:",
           activityResult.error
         );
-        setRegulationError("Your self-regulation activities could not be loaded.");
+        setRegulationError(
+          "Your self-regulation activities could not be loaded."
+        );
         setLoadingRegulation(false);
         return;
       }
@@ -895,16 +1072,20 @@ function Dashboard({
           "Could not load dashboard regulation completions:",
           completionResult.error
         );
-        setRegulationError("Today's self-regulation progress could not be loaded.");
+        setRegulationError(
+          "Today's self-regulation progress could not be loaded."
+        );
         setLoadingRegulation(false);
         return;
       }
 
       setRegulationActivities(
-        (activityResult.data || []) as DashboardRegulationActivity[]
+        (activityResult.data ||
+          []) as DashboardRegulationActivity[]
       );
       setTodayRegulationCompletions(
-        (completionResult.data || []) as DashboardRegulationCompletion[]
+        (completionResult.data ||
+          []) as DashboardRegulationCompletion[]
       );
       setLoadingRegulation(false);
     }
@@ -912,96 +1093,175 @@ function Dashboard({
     void loadDashboardRegulation();
   }, []);
 
-  const completedToday = todayEntries.length;
-  const totalToday = monitoringSchedules.length;
-  const remainingToday = Math.max(totalToday - completedToday, 0);
+  const monitoringSchedules =
+    monitoringPlan?.protocol || [];
 
-  const averageStress =
-    completedToday > 0
+  const completedToday = todayCheckins.length;
+  const totalToday = monitoringSchedules.length;
+  const remainingToday = Math.max(
+    totalToday - completedToday,
+    0
+  );
+
+  const rating = ratingSeries(
+    todayCheckins,
+    monitoringPlan
+  );
+
+  const averageRating =
+    rating.values.length > 0
       ? (
-          todayEntries.reduce((sum, entry) => sum + entry.stress, 0) /
-          completedToday
+          rating.values.reduce(
+            (sum, value) => sum + value,
+            0
+          ) / rating.values.length
         ).toFixed(1)
       : null;
 
+  const lowestRating =
+    rating.values.length > 0
+      ? Math.min(...rating.values).toFixed(1)
+      : null;
+
+  const highestRating =
+    rating.values.length > 0
+      ? Math.max(...rating.values).toFixed(1)
+      : null;
+
+  const ratingLabel =
+    rating.kind === "stress"
+      ? "Current stress"
+      : "Average rating";
+
+  const ratingDetail =
+    rating.kind === "stress"
+      ? "Average of today's stress responses"
+      : rating.kind === "rating"
+        ? "Average of today's slider responses"
+        : "No rating response saved yet";
+
   const completionPercentage =
-    totalToday > 0 ? Math.round((completedToday / totalToday) * 100) : 0;
+    totalToday > 0
+      ? Math.round(
+          (completedToday / totalToday) * 100
+        )
+      : 0;
 
   const planDay = (() => {
     if (!monitoringPlan?.start_date) {
       return null;
     }
 
-    const start = new Date(`${monitoringPlan.start_date}T00:00:00`);
+    const start = new Date(
+      `${monitoringPlan.start_date}T00:00:00`
+    );
     const now = new Date();
-    const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+    const today = new Date(
+      now.getFullYear(),
+      now.getMonth(),
+      now.getDate()
+    );
     const difference = Math.floor(
-      (today.getTime() - start.getTime()) / (1000 * 60 * 60 * 24)
+      (today.getTime() - start.getTime()) /
+        (1000 * 60 * 60 * 24)
     );
 
-    return Math.max(1, difference + 1);
+    return Math.min(
+      monitoringPlan.duration_days,
+      Math.max(1, difference + 1)
+    );
   })();
 
-  function entryForSchedule(scheduleId: string) {
-    return todayEntries.find((entry) => entry.schedule_id === scheduleId);
+  function checkinForSchedule(
+    scheduleId: string
+  ) {
+    return todayCheckins.find(
+      (checkin) =>
+        checkin.schedule_id === scheduleId
+    );
   }
 
-  function formatEntryTime(createdAt: string) {
-    return new Date(createdAt).toLocaleTimeString([], {
+  function formatEntryTime(completedAt: string) {
+    return new Date(
+      completedAt
+    ).toLocaleTimeString([], {
       hour: "2-digit",
       minute: "2-digit",
     });
   }
-
-  const stressValues = todayEntries.map((entry) => entry.stress);
-  const lowestStress = stressValues.length > 0 ? Math.min(...stressValues) : null;
-  const highestStress =
-    stressValues.length > 0 ? Math.max(...stressValues) : null;
 
   const regulationPlanDay = (() => {
     if (!regulationPlan?.start_date) {
       return null;
     }
 
-    const start = new Date(`${regulationPlan.start_date}T00:00:00`);
+    const start = new Date(
+      `${regulationPlan.start_date}T00:00:00`
+    );
     const now = new Date();
-    const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+    const today = new Date(
+      now.getFullYear(),
+      now.getMonth(),
+      now.getDate()
+    );
     const difference = Math.floor(
-      (today.getTime() - start.getTime()) / (1000 * 60 * 60 * 24)
+      (today.getTime() - start.getTime()) /
+        (1000 * 60 * 60 * 24)
     );
 
     return Math.max(1, difference + 1);
   })();
 
-  const regulationTargetToday = regulationActivities.reduce(
-    (sum, activity) => sum + activity.target_per_day,
-    0
-  );
-  const regulationCompletedToday = todayRegulationCompletions.length;
+  const regulationTargetToday =
+    regulationActivities.reduce(
+      (sum, activity) =>
+        sum + activity.target_per_day,
+      0
+    );
+  const regulationCompletedToday =
+    todayRegulationCompletions.length;
   const regulationCompletionPercentage =
     regulationTargetToday > 0
       ? Math.min(
           100,
           Math.round(
-            (regulationCompletedToday / regulationTargetToday) * 100
+            (regulationCompletedToday /
+              regulationTargetToday) *
+              100
           )
         )
       : 0;
 
-return (
+  return (
     <div className="space-y-5">
-
       {monitoringError && (
         <div className="rounded-2xl border border-red-200 bg-red-50 px-5 py-4">
-          <p className="text-sm text-red-700">{monitoringError}</p>
+          <p className="text-sm text-red-700">
+            {monitoringError}
+          </p>
         </div>
       )}
 
       {regulationError && (
         <div className="rounded-2xl border border-red-200 bg-red-50 px-5 py-4">
-          <p className="text-sm text-red-700">{regulationError}</p>
+          <p className="text-sm text-red-700">
+            {regulationError}
+          </p>
         </div>
       )}
+
+      <div className="flex justify-end">
+        <button
+          type="button"
+          disabled={loadingMonitoring}
+          onClick={() =>
+            void loadDashboardMonitoring(true)
+          }
+          className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-slate-600 transition hover:bg-slate-50 disabled:opacity-50"
+        >
+          Refresh dashboard
+        </button>
+      </div>
 
       <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
         <StatCard
@@ -1017,7 +1277,8 @@ return (
             loadingMonitoring
               ? "Loading monitoring"
               : monitoringPlan
-                ? remainingToday === 0 && totalToday > 0
+                ? remainingToday === 0 &&
+                  totalToday > 0
                   ? "All scheduled check-ins completed"
                   : `${remainingToday} remaining today`
                 : "Create a monitoring plan"
@@ -1025,15 +1286,15 @@ return (
         />
 
         <StatCard
-          label="Current stress"
+          label={ratingLabel}
           value={
             loadingMonitoring
               ? "..."
-              : averageStress
-                ? `${averageStress} / 10`
+              : averageRating
+                ? `${averageRating} / 10`
                 : "No data"
           }
-          detail="Average of today's check-ins"
+          detail={ratingDetail}
         />
 
         <StatCard
@@ -1049,7 +1310,7 @@ return (
           }
           detail={
             monitoringPlan
-              ? `${monitoringPlan.duration_days}-day plan · ${monitoringPlan.prompts_per_day}/day`
+              ? `${monitoringPlan.duration_days}-day plan · ${totalToday}/day`
               : "No active monitoring plan"
           }
         />
@@ -1063,67 +1324,107 @@ return (
                 ? `${completionPercentage}%`
                 : "—"
           }
-          detail={monitoringPlan ? monitoringPlan.name : "Monitoring not started"}
+          detail={
+            monitoringPlan
+              ? monitoringPlan.plan_name
+              : "Monitoring not started"
+          }
         />
       </div>
 
       <div className="grid gap-5 xl:grid-cols-[1.15fr_.85fr]">
         <Panel
           title="Today"
-          description="Your scheduled monitoring check-ins for today."
+          description="Your V2 monitoring check-ins for today."
         >
           {loadingMonitoring ? (
-            <p className="text-sm text-slate-500">Loading today's schedule...</p>
-          ) : monitoringPlan && monitoringSchedules.length > 0 ? (
+            <p className="text-sm text-slate-500">
+              Loading today's schedule...
+            </p>
+          ) : monitoringPlan &&
+            monitoringSchedules.length > 0 ? (
             <div className="divide-y divide-slate-100">
-              {monitoringSchedules.map((schedule) => {
-                const completedEntry = entryForSchedule(schedule.id);
+              {monitoringSchedules.map(
+                (schedule) => {
+                  const completedEntry =
+                    schedule.schedule_id
+                      ? checkinForSchedule(
+                          schedule.schedule_id
+                        )
+                      : undefined;
 
-                return (
-                  <div
-                    key={schedule.id}
-                    className="flex items-center justify-between gap-5 py-4 first:pt-0 last:pb-0"
-                  >
-                    <div className="flex items-center gap-3">
-                      <Icon>{completedEntry ? "✓" : "○"}</Icon>
-
-                      <div>
-                        <p className="font-medium">{schedule.label}</p>
-                        <p className="mt-1 text-sm text-slate-500">
+                  return (
+                    <div
+                      key={
+                        schedule.schedule_id ||
+                        schedule.key
+                      }
+                      className="flex items-center justify-between gap-5 py-4 first:pt-0 last:pb-0"
+                    >
+                      <div className="flex items-center gap-3">
+                        <Icon>
                           {completedEntry
-                            ? `Completed at ${formatEntryTime(completedEntry.created_at)}`
-                            : `${schedule.start_time.slice(0, 5)}–${schedule.end_time.slice(0, 5)}`}
-                        </p>
-                      </div>
-                    </div>
+                            ? "✓"
+                            : "○"}
+                        </Icon>
 
-                    {completedEntry ? (
-                      <span className="rounded-full bg-emerald-50 px-3 py-1 text-xs font-medium text-emerald-700">
-                        Done
-                      </span>
-                    ) : (
-                      <button
-                        type="button"
-                        onClick={() => changeScreen("monitoring")}
-                        className="rounded-xl bg-slate-950 px-4 py-2 text-xs font-semibold text-white"
-                      >
-                        Check in
-                      </button>
-                    )}
-                  </div>
-                );
-              })}
+                        <div>
+                          <p className="font-medium">
+                            {schedule.label}
+                          </p>
+                          <p className="mt-1 text-sm text-slate-500">
+                            {completedEntry
+                              ? `Completed at ${formatEntryTime(
+                                  completedEntry.completed_at
+                                )}`
+                              : `${schedule.start_time.slice(
+                                  0,
+                                  5
+                                )}–${schedule.end_time.slice(
+                                  0,
+                                  5
+                                )}`}
+                          </p>
+                        </div>
+                      </div>
+
+                      {completedEntry ? (
+                        <span className="rounded-full bg-emerald-50 px-3 py-1 text-xs font-medium text-emerald-700">
+                          Done
+                        </span>
+                      ) : (
+                        <button
+                          type="button"
+                          onClick={() =>
+                            changeScreen(
+                              "monitoring"
+                            )
+                          }
+                          className="rounded-xl bg-slate-950 px-4 py-2 text-xs font-semibold text-white"
+                        >
+                          Check in
+                        </button>
+                      )}
+                    </div>
+                  );
+                }
+              )}
             </div>
           ) : (
             <div className="rounded-2xl bg-slate-50 p-5">
-              <p className="font-medium">No active monitoring plan</p>
+              <p className="font-medium">
+                No active monitoring plan
+              </p>
               <p className="mt-2 text-sm leading-6 text-slate-500">
-                Create a Daily Monitoring plan to schedule check-ins and see
-                your real monitoring data here.
+                Create a Daily Monitoring plan to
+                schedule check-ins and see your
+                monitoring data here.
               </p>
               <button
                 type="button"
-                onClick={() => changeScreen("monitoring")}
+                onClick={() =>
+                  changeScreen("monitoring")
+                }
                 className="mt-4 rounded-xl bg-slate-950 px-4 py-2.5 text-sm font-semibold text-white"
               >
                 Set up monitoring
@@ -1132,7 +1433,9 @@ return (
           )}
         </Panel>
 
-        <DashboardAssessmentSummary changeScreen={changeScreen} />
+        <DashboardAssessmentSummary
+          changeScreen={changeScreen}
+        />
       </div>
 
       <div className="grid gap-5 xl:grid-cols-2">
@@ -1141,17 +1444,23 @@ return (
             <Icon dark>AI</Icon>
 
             <div>
-              <p className="font-medium">Not sure what to assess?</p>
+              <p className="font-medium">
+                Not sure what to assess?
+              </p>
 
               <p className="mt-2 text-sm leading-6 text-slate-500">
-                Describe what you have been experiencing. The AI Guide can help
-                you explore an appropriate self-assessment or monitoring
+                Describe what you have been
+                experiencing. The AI Guide can help
+                you explore an appropriate
+                self-assessment or monitoring
                 approach.
               </p>
 
               <button
                 type="button"
-                onClick={() => changeScreen("ai")}
+                onClick={() =>
+                  changeScreen("ai")
+                }
                 className="mt-4 rounded-xl bg-slate-950 px-4 py-2.5 text-sm font-semibold text-white"
               >
                 Open AI Guide
@@ -1162,38 +1471,49 @@ return (
 
         <Panel title="Your self-regulation plan">
           {loadingRegulation ? (
-            <p className="text-sm text-slate-500">Loading your plan...</p>
+            <p className="text-sm text-slate-500">
+              Loading your plan...
+            </p>
           ) : regulationPlan ? (
             <>
               <div className="flex flex-wrap items-center justify-between gap-3">
                 <div>
-                  <p className="font-medium">{regulationPlan.name}</p>
+                  <p className="font-medium">
+                    {regulationPlan.name}
+                  </p>
                   <p className="mt-1 text-sm text-slate-500">
                     {regulationPlanDay
                       ? `Day ${Math.min(
                           regulationPlanDay,
                           regulationPlan.duration_days
-                        )} of ${regulationPlan.duration_days}`
+                        )} of ${
+                          regulationPlan.duration_days
+                        }`
                       : `${regulationPlan.duration_days}-day plan`}
                   </p>
                 </div>
 
                 <span className="rounded-full bg-cyan-50 px-3 py-1 text-xs font-medium text-cyan-800">
-                  {regulationCompletedToday} / {regulationTargetToday} today
+                  {regulationCompletedToday} /{" "}
+                  {regulationTargetToday} today
                 </span>
               </div>
 
               <div className="mt-5">
                 <ProgressBar
                   label="Today's completion"
-                  value={regulationCompletionPercentage}
+                  value={
+                    regulationCompletionPercentage
+                  }
                   text={`${regulationCompletionPercentage}%`}
                 />
               </div>
 
               <button
                 type="button"
-                onClick={() => changeScreen("regulation")}
+                onClick={() =>
+                  changeScreen("regulation")
+                }
                 className="mt-5 flex items-center gap-2 text-sm font-semibold"
               >
                 Open plan
@@ -1202,14 +1522,19 @@ return (
             </>
           ) : (
             <>
-              <p className="font-medium">No active self-regulation plan</p>
+              <p className="font-medium">
+                No active self-regulation plan
+              </p>
               <p className="mt-1 text-sm leading-6 text-slate-500">
-                Create a personal plan with activities and daily targets.
+                Create a personal plan with
+                activities and daily targets.
               </p>
 
               <button
                 type="button"
-                onClick={() => changeScreen("regulation")}
+                onClick={() =>
+                  changeScreen("regulation")
+                }
                 className="mt-5 flex items-center gap-2 text-sm font-semibold"
               >
                 Create a plan
@@ -1222,25 +1547,44 @@ return (
 
       <Panel title="Recent monitoring pattern">
         {loadingMonitoring ? (
-          <p className="text-sm text-slate-500">Loading today's data...</p>
-        ) : todayEntries.length >= 2 && lowestStress !== null && highestStress !== null ? (
+          <p className="text-sm text-slate-500">
+            Loading today's data...
+          </p>
+        ) : todayCheckins.length >= 1 &&
+          lowestRating !== null &&
+          highestRating !== null &&
+          averageRating !== null ? (
           <div className="rounded-2xl border border-cyan-100 bg-cyan-50/60 p-5">
             <div className="flex items-start gap-4">
               <Icon>↗</Icon>
 
               <div>
-                <p className="font-medium">Today's monitoring summary</p>
+                <p className="font-medium">
+                  Today's monitoring summary
+                </p>
+
                 <p className="mt-2 max-w-3xl text-sm leading-6 text-slate-600">
-                  Across {todayEntries.length} completed check-ins today, your
-                  stress ratings ranged from {lowestStress}/10 to {highestStress}/10,
-                  with an average of {averageStress}/10. This is a descriptive
-                  summary of your entries, not evidence of cause or a clinical
-                  conclusion.
+                  Across {todayCheckins.length} completed
+                  check-in
+                  {todayCheckins.length === 1
+                    ? ""
+                    : "s"}{" "}
+                  today, your{" "}
+                  {rating.kind === "stress"
+                    ? "stress"
+                    : "slider"}{" "}
+                  ratings ranged from {lowestRating}/10
+                  to {highestRating}/10, with an
+                  average of {averageRating}/10. These
+                  values are calculated from the V2
+                  responses you actually submitted.
                 </p>
 
                 <button
                   type="button"
-                  onClick={() => changeScreen("monitoring")}
+                  onClick={() =>
+                    changeScreen("monitoring")
+                  }
                   className="mt-4 text-sm font-semibold text-cyan-900"
                 >
                   Review today's check-ins
@@ -1248,12 +1592,28 @@ return (
               </div>
             </div>
           </div>
+        ) : todayCheckins.length > 0 ? (
+          <div className="rounded-2xl bg-slate-50 p-5">
+            <p className="font-medium">
+              Check-in saved
+            </p>
+            <p className="mt-2 text-sm leading-6 text-slate-500">
+              {todayCheckins.length} check-in
+              {todayCheckins.length === 1 ? "" : "s"}{" "}
+              completed today. There is no numeric
+              slider/rating response available for a
+              score summary yet, but completion is now
+              reflected on the dashboard.
+            </p>
+          </div>
         ) : (
           <div className="rounded-2xl bg-slate-50 p-5">
-            <p className="font-medium">Not enough monitoring data yet</p>
+            <p className="font-medium">
+              No monitoring data yet today
+            </p>
             <p className="mt-2 text-sm leading-6 text-slate-500">
-              Complete at least two check-ins today and PsyLattice will show a
-              simple descriptive summary here.
+              Complete a check-in and the dashboard will
+              update from the V2 monitoring records.
             </p>
           </div>
         )}
@@ -6429,8 +6789,28 @@ function Monitoring({ changeScreen }: { changeScreen: (screen: Screen) => void }
     setCheckinMessage("");
   }
 
-  const today = new Date().toISOString().slice(0, 10);
-  const todayCompletedScheduleIds = new Set(checkins.filter((checkin) => checkin.entry_date === today).map((checkin) => checkin.schedule_id));
+  const nowForMonitoringDate = new Date();
+  const today = [
+    nowForMonitoringDate.getFullYear(),
+    String(
+      nowForMonitoringDate.getMonth() + 1
+    ).padStart(2, "0"),
+    String(
+      nowForMonitoringDate.getDate()
+    ).padStart(2, "0"),
+  ].join("-");
+
+  const todayCompletedScheduleIds = new Set(
+    checkins
+      .filter(
+        (checkin) =>
+          checkin.entry_date === today
+      )
+      .map(
+        (checkin) =>
+          checkin.schedule_id
+      )
+  );
   const effective = effectiveResponsesForSchedule(activeSchedule);
   const visibleItems = activeSchedule ? monitoringVisibleItems(activeSchedule.items, effective) : [];
 
@@ -7522,20 +7902,45 @@ function Regulation() {
    ========================================================= */
 
 function Progress() {
-  type ProgressMonitoringPlan = {
-    id: string;
-    name: string;
-    duration_days: number;
-    prompts_per_day: number;
-    start_date: string;
-    status: string;
+  type ProgressV2Item = {
+    item_id?: string;
+    key: string;
+    type: string;
+    prompt: string;
+    config: Record<string, any>;
   };
 
-  type ProgressMonitoringEntry = {
-    id: string;
+  type ProgressV2Schedule = {
+    schedule_id?: string;
+    key: string;
+    label: string;
+    start_time: string;
+    end_time: string;
+    items: ProgressV2Item[];
+  };
+
+  type ProgressMonitoringPlan = {
+    plan_id: string;
+    plan_name: string;
+    duration_days: number;
+    start_date: string;
+    protocol: ProgressV2Schedule[];
+  };
+
+  type ProgressMonitoringCheckin = {
+    checkin_id: string;
+    plan_id: string;
+    schedule_id: string;
+    schedule_label: string;
     entry_date: string;
-    stress: number;
-    created_at: string;
+    completed_at: string;
+    responses: Array<{
+      item_id: string;
+      item_key: string;
+      type: string;
+      prompt: string;
+      response: any;
+    }>;
   };
 
   type ProgressRegulationPlan = {
@@ -7559,35 +7964,55 @@ function Progress() {
     completed_at: string;
   };
 
-  const [rangeDays, setRangeDays] = useState<7 | 14 | 30>(7);
+  const [rangeDays, setRangeDays] =
+    useState<7 | 14 | 30>(7);
   const [loading, setLoading] = useState(true);
-  const [progressError, setProgressError] = useState("");
+  const [progressError, setProgressError] =
+    useState("");
 
   const [monitoringPlan, setMonitoringPlan] =
-    useState<ProgressMonitoringPlan | null>(null);
-  const [monitoringEntries, setMonitoringEntries] = useState<
-    ProgressMonitoringEntry[]
-  >([]);
+    useState<ProgressMonitoringPlan | null>(
+      null
+    );
+  const [
+    monitoringCheckins,
+    setMonitoringCheckins,
+  ] = useState<ProgressMonitoringCheckin[]>(
+    []
+  );
 
   const [regulationPlan, setRegulationPlan] =
-    useState<ProgressRegulationPlan | null>(null);
-  const [regulationActivities, setRegulationActivities] = useState<
-    ProgressRegulationActivity[]
-  >([]);
-  const [regulationCompletions, setRegulationCompletions] = useState<
+    useState<ProgressRegulationPlan | null>(
+      null
+    );
+  const [
+    regulationActivities,
+    setRegulationActivities,
+  ] = useState<ProgressRegulationActivity[]>(
+    []
+  );
+  const [
+    regulationCompletions,
+    setRegulationCompletions,
+  ] = useState<
     ProgressRegulationCompletion[]
   >([]);
 
   function toLocalDateString(date: Date) {
     return [
       date.getFullYear(),
-      String(date.getMonth() + 1).padStart(2, "0"),
+      String(date.getMonth() + 1).padStart(
+        2,
+        "0"
+      ),
       String(date.getDate()).padStart(2, "0"),
     ].join("-");
   }
 
   function parseLocalDate(dateString: string) {
-    return new Date(`${dateString}T00:00:00`);
+    return new Date(
+      `${dateString}T00:00:00`
+    );
   }
 
   function addDays(date: Date, amount: number) {
@@ -7604,14 +8029,26 @@ function Progress() {
       today.getDate()
     );
 
-    return Array.from({ length: days }, (_, index) => {
-      const daysAgo = days - 1 - index;
-      return toLocalDateString(addDays(localToday, -daysAgo));
-    });
+    return Array.from(
+      {
+        length: days,
+      },
+      (_, index) => {
+        const daysAgo =
+          days - 1 - index;
+        return toLocalDateString(
+          addDays(localToday, -daysAgo)
+        );
+      }
+    );
   }
 
-  function formatHistoryDate(dateString: string) {
-    return parseLocalDate(dateString).toLocaleDateString([], {
+  function formatHistoryDate(
+    dateString: string
+  ) {
+    return parseLocalDate(
+      dateString
+    ).toLocaleDateString([], {
       day: "2-digit",
       month: "short",
     });
@@ -7624,245 +8061,516 @@ function Progress() {
   ) {
     const date = parseLocalDate(dateString);
     const start = parseLocalDate(startDate);
-    const end = addDays(start, durationDays - 1);
+    const end = addDays(
+      start,
+      durationDays - 1
+    );
 
     return date >= start && date <= end;
   }
 
-  useEffect(() => {
-    async function loadProgress() {
+  function itemConfigMap(
+    plan: ProgressMonitoringPlan | null
+  ) {
+    const map = new Map<
+      string,
+      {
+        type: string;
+        prompt: string;
+        config: Record<string, any>;
+      }
+    >();
+
+    for (const schedule of
+      plan?.protocol || []) {
+      for (const item of
+        schedule.items || []) {
+        map.set(item.key, {
+          type: item.type,
+          prompt: item.prompt,
+          config: item.config || {},
+        });
+      }
+    }
+
+    return map;
+  }
+
+  function normaliseToTen(
+    response: any,
+    config: Record<string, any>
+  ) {
+    const value = Number(response);
+
+    if (!Number.isFinite(value)) {
+      return null;
+    }
+
+    const min = Number(config.min);
+    const max = Number(config.max);
+
+    if (
+      Number.isFinite(min) &&
+      Number.isFinite(max) &&
+      max > min
+    ) {
+      return Math.max(
+        0,
+        Math.min(
+          10,
+          ((value - min) /
+            (max - min)) *
+            10
+        )
+      );
+    }
+
+    return value >= 0 && value <= 10
+      ? value
+      : null;
+  }
+
+  function scoreSeries(
+    checkins: ProgressMonitoringCheckin[],
+    plan: ProgressMonitoringPlan | null
+  ) {
+    const map = itemConfigMap(plan);
+    const stressValues: number[] = [];
+    const sliderValues: number[] = [];
+
+    for (const checkin of checkins) {
+      for (const response of
+        checkin.responses || []) {
+        const item = map.get(
+          response.item_key
+        );
+
+        if (!item) {
+          continue;
+        }
+
+        const value = normaliseToTen(
+          response.response,
+          item.config
+        );
+
+        if (value === null) {
+          continue;
+        }
+
+        if (
+          (item.type === "slider" ||
+            item.type === "number") &&
+          item.prompt
+            .toLowerCase()
+            .includes("stress")
+        ) {
+          stressValues.push(value);
+        }
+
+        if (item.type === "slider") {
+          sliderValues.push(value);
+        }
+      }
+    }
+
+    if (stressValues.length > 0) {
+      return {
+        kind: "stress" as const,
+        values: stressValues,
+      };
+    }
+
+    if (sliderValues.length > 0) {
+      return {
+        kind: "rating" as const,
+        values: sliderValues,
+      };
+    }
+
+    return {
+      kind: "none" as const,
+      values: [] as number[],
+    };
+  }
+
+  async function loadProgress(
+    showLoading = true
+  ) {
+    if (showLoading) {
       setLoading(true);
-      setProgressError("");
+    }
 
-      const supabase = createClient();
+    setProgressError("");
 
-      const {
-        data: { user },
-        error: userError,
-      } = await supabase.auth.getUser();
+    const supabase = createClient();
 
-      if (userError || !user) {
-        setProgressError("Your progress data could not be loaded.");
-        setLoading(false);
-        return;
-      }
+    const {
+      data: { user },
+      error: userError,
+    } = await supabase.auth.getUser();
 
-      const dates = buildDateRange(rangeDays);
-      const rangeStart = dates[0];
-      const rangeEnd = dates[dates.length - 1];
+    if (userError || !user) {
+      setProgressError(
+        "Your progress data could not be loaded."
+      );
+      setLoading(false);
+      return;
+    }
 
-      const [monitoringPlanResult, regulationPlanResult] = await Promise.all([
-        supabase
-          .from("monitoring_plans")
-          .select(
-            "id, name, duration_days, prompts_per_day, start_date, status"
-          )
-          .eq("user_id", user.id)
-          .eq("status", "active")
-        .is("ended_at", null)
-          .order("created_at", { ascending: false })
-          .limit(1)
-          .maybeSingle(),
+    const dates = buildDateRange(rangeDays);
+    const rangeStart = dates[0];
+    const rangeEnd =
+      dates[dates.length - 1];
 
-        supabase
-          .from("regulation_plans")
-          .select("id, name, duration_days, start_date, status")
-          .eq("user_id", user.id)
-          .eq("status", "active")
-          .order("created_at", { ascending: false })
-          .limit(1)
-          .maybeSingle(),
-      ]);
+    const [
+      monitoringPlanResult,
+      monitoringCheckinsResult,
+      regulationPlanResult,
+    ] = await Promise.all([
+      supabase.rpc(
+        "psylattice_my_monitoring_protocol_v2"
+      ),
+      supabase.rpc(
+        "psylattice_my_monitoring_checkins_v2",
+        {
+          p_days: rangeDays,
+        }
+      ),
+      supabase
+        .from("regulation_plans")
+        .select(
+          "id, name, duration_days, start_date, status"
+        )
+        .eq("user_id", user.id)
+        .eq("status", "active")
+        .order("created_at", {
+          ascending: false,
+        })
+        .limit(1)
+        .maybeSingle(),
+    ]);
 
-      if (monitoringPlanResult.error) {
-        console.error(
-          "Could not load progress monitoring plan:",
-          monitoringPlanResult.error
-        );
-        setProgressError("Your monitoring progress could not be loaded.");
-        setLoading(false);
-        return;
-      }
+    if (monitoringPlanResult.error) {
+      console.error(
+        "Could not load V2 progress monitoring plan:",
+        monitoringPlanResult.error
+      );
+      setProgressError(
+        "Your monitoring progress could not be loaded."
+      );
+      setLoading(false);
+      return;
+    }
 
-      if (regulationPlanResult.error) {
-        console.error(
-          "Could not load progress regulation plan:",
-          regulationPlanResult.error
-        );
-        setProgressError("Your self-regulation progress could not be loaded.");
-        setLoading(false);
-        return;
-      }
+    if (monitoringCheckinsResult.error) {
+      console.error(
+        "Could not load V2 progress check-ins:",
+        monitoringCheckinsResult.error
+      );
+      setProgressError(
+        "Your monitoring history could not be loaded."
+      );
+      setLoading(false);
+      return;
+    }
 
-      const typedMonitoringPlan = monitoringPlanResult.data
-        ? (monitoringPlanResult.data as ProgressMonitoringPlan)
+    if (regulationPlanResult.error) {
+      console.error(
+        "Could not load progress regulation plan:",
+        regulationPlanResult.error
+      );
+      setProgressError(
+        "Your self-regulation progress could not be loaded."
+      );
+      setLoading(false);
+      return;
+    }
+
+    const typedMonitoringPlan =
+      Array.isArray(
+        monitoringPlanResult.data
+      ) &&
+      monitoringPlanResult.data.length > 0
+        ? (monitoringPlanResult.data[0] as ProgressMonitoringPlan)
         : null;
 
-      const typedRegulationPlan = regulationPlanResult.data
+    const typedRegulationPlan =
+      regulationPlanResult.data
         ? (regulationPlanResult.data as ProgressRegulationPlan)
         : null;
 
-      setMonitoringPlan(typedMonitoringPlan);
-      setRegulationPlan(typedRegulationPlan);
+    setMonitoringPlan(
+      typedMonitoringPlan
+    );
+    setRegulationPlan(
+      typedRegulationPlan
+    );
 
-      const monitoringPromise = typedMonitoringPlan
-        ? supabase
-            .from("monitoring_entries")
-            .select("id, entry_date, stress, created_at")
-            .eq("user_id", user.id)
-            .eq("plan_id", typedMonitoringPlan.id)
-            .gte("entry_date", rangeStart)
-            .lte("entry_date", rangeEnd)
-            .order("entry_date", { ascending: true })
-            .order("created_at", { ascending: true })
-        : Promise.resolve({ data: [], error: null });
+    setMonitoringCheckins(
+      (
+        (monitoringCheckinsResult.data ??
+          []) as ProgressMonitoringCheckin[]
+      ).filter(
+        (checkin) =>
+          (!typedMonitoringPlan ||
+            checkin.plan_id ===
+              typedMonitoringPlan.plan_id) &&
+          checkin.entry_date >= rangeStart &&
+          checkin.entry_date <= rangeEnd
+      )
+    );
 
-      const regulationActivitiesPromise = typedRegulationPlan
+    const regulationActivitiesPromise =
+      typedRegulationPlan
         ? supabase
-            .from("regulation_activities")
-            .select("id, target_per_day")
-            .eq("user_id", user.id)
-            .eq("plan_id", typedRegulationPlan.id)
+            .from(
+              "regulation_activities"
+            )
+            .select(
+              "id, target_per_day"
+            )
+            .eq(
+              "user_id",
+              user.id
+            )
+            .eq(
+              "plan_id",
+              typedRegulationPlan.id
+            )
             .eq("is_active", true)
-        : Promise.resolve({ data: [], error: null });
+        : Promise.resolve({
+            data: [],
+            error: null,
+          });
 
-      const regulationCompletionsPromise = typedRegulationPlan
+    const regulationCompletionsPromise =
+      typedRegulationPlan
         ? supabase
-            .from("regulation_completions")
+            .from(
+              "regulation_completions"
+            )
             .select(
               "id, activity_id, completion_date, occurrence, completed_at"
             )
-            .eq("user_id", user.id)
-            .eq("plan_id", typedRegulationPlan.id)
-            .gte("completion_date", rangeStart)
-            .lte("completion_date", rangeEnd)
-            .order("completion_date", { ascending: true })
-            .order("completed_at", { ascending: true })
-        : Promise.resolve({ data: [], error: null });
+            .eq(
+              "user_id",
+              user.id
+            )
+            .eq(
+              "plan_id",
+              typedRegulationPlan.id
+            )
+            .gte(
+              "completion_date",
+              rangeStart
+            )
+            .lte(
+              "completion_date",
+              rangeEnd
+            )
+            .order(
+              "completion_date",
+              {
+                ascending: true,
+              }
+            )
+            .order("completed_at", {
+              ascending: true,
+            })
+        : Promise.resolve({
+            data: [],
+            error: null,
+          });
 
-      const [
-        monitoringEntriesResult,
-        regulationActivitiesResult,
-        regulationCompletionsResult,
-      ] = await Promise.all([
-        monitoringPromise,
-        regulationActivitiesPromise,
-        regulationCompletionsPromise,
-      ]);
+    const [
+      regulationActivitiesResult,
+      regulationCompletionsResult,
+    ] = await Promise.all([
+      regulationActivitiesPromise,
+      regulationCompletionsPromise,
+    ]);
 
-      if (monitoringEntriesResult.error) {
-        console.error(
-          "Could not load monitoring progress entries:",
-          monitoringEntriesResult.error
-        );
-        setProgressError("Your monitoring history could not be loaded.");
-        setLoading(false);
-        return;
-      }
-
-      if (regulationActivitiesResult.error) {
-        console.error(
-          "Could not load regulation progress activities:",
-          regulationActivitiesResult.error
-        );
-        setProgressError("Your self-regulation activities could not be loaded.");
-        setLoading(false);
-        return;
-      }
-
-      if (regulationCompletionsResult.error) {
-        console.error(
-          "Could not load regulation progress completions:",
-          regulationCompletionsResult.error
-        );
-        setProgressError("Your self-regulation history could not be loaded.");
-        setLoading(false);
-        return;
-      }
-
-      setMonitoringEntries(
-        (monitoringEntriesResult.data || []) as ProgressMonitoringEntry[]
+    if (
+      regulationActivitiesResult.error
+    ) {
+      console.error(
+        "Could not load regulation progress activities:",
+        regulationActivitiesResult.error
       );
-
-      setRegulationActivities(
-        (regulationActivitiesResult.data || []) as ProgressRegulationActivity[]
+      setProgressError(
+        "Your self-regulation activities could not be loaded."
       );
-
-      setRegulationCompletions(
-        (regulationCompletionsResult.data ||
-          []) as ProgressRegulationCompletion[]
-      );
-
       setLoading(false);
+      return;
     }
 
-    void loadProgress();
-    // Data is reloaded when the selected history range changes.
+    if (
+      regulationCompletionsResult.error
+    ) {
+      console.error(
+        "Could not load regulation progress completions:",
+        regulationCompletionsResult.error
+      );
+      setProgressError(
+        "Your self-regulation history could not be loaded."
+      );
+      setLoading(false);
+      return;
+    }
+
+    setRegulationActivities(
+      (regulationActivitiesResult.data ||
+        []) as ProgressRegulationActivity[]
+    );
+    setRegulationCompletions(
+      (regulationCompletionsResult.data ||
+        []) as ProgressRegulationCompletion[]
+    );
+
+    setLoading(false);
+  }
+
+  useEffect(() => {
+    void loadProgress(true);
+
+    function refreshProgress() {
+      void loadProgress(false);
+    }
+
+    function refreshWhenVisible() {
+      if (
+        document.visibilityState ===
+        "visible"
+      ) {
+        void loadProgress(false);
+      }
+    }
+
+    window.addEventListener(
+      "focus",
+      refreshProgress
+    );
+    document.addEventListener(
+      "visibilitychange",
+      refreshWhenVisible
+    );
+
+    return () => {
+      window.removeEventListener(
+        "focus",
+        refreshProgress
+      );
+      document.removeEventListener(
+        "visibilitychange",
+        refreshWhenVisible
+      );
+    };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [rangeDays]);
 
-  const selectedDates = buildDateRange(rangeDays);
+  const selectedDates =
+    buildDateRange(rangeDays);
 
-  const monitoringRelevantDates = monitoringPlan
-    ? selectedDates.filter((date) =>
-        dateFallsWithinPlan(
-          date,
-          monitoringPlan.start_date,
-          monitoringPlan.duration_days
+  const schedulesPerDay =
+    monitoringPlan?.protocol.length || 0;
+
+  const monitoringRelevantDates =
+    monitoringPlan
+      ? selectedDates.filter((date) =>
+          dateFallsWithinPlan(
+            date,
+            monitoringPlan.start_date,
+            monitoringPlan.duration_days
+          )
         )
-      )
-    : [];
+      : [];
 
   const monitoringExpected =
-    monitoringRelevantDates.length * (monitoringPlan?.prompts_per_day || 0);
+    monitoringRelevantDates.length *
+    schedulesPerDay;
 
-  const monitoringCompleted = monitoringEntries.length;
+  const monitoringCompleted =
+    monitoringCheckins.length;
 
   const monitoringConsistency =
     monitoringExpected > 0
       ? Math.min(
           100,
-          Math.round((monitoringCompleted / monitoringExpected) * 100)
+          Math.round(
+            (monitoringCompleted /
+              monitoringExpected) *
+              100
+          )
         )
       : 0;
 
-  const averageStress =
-    monitoringEntries.length > 0
+  const overallScore = scoreSeries(
+    monitoringCheckins,
+    monitoringPlan
+  );
+
+  const averageScore =
+    overallScore.values.length > 0
       ? (
-          monitoringEntries.reduce((sum, entry) => sum + entry.stress, 0) /
-          monitoringEntries.length
+          overallScore.values.reduce(
+            (sum, value) =>
+              sum + value,
+            0
+          ) /
+          overallScore.values.length
         ).toFixed(1)
       : null;
 
-  const stressProgressValue = averageStress
-    ? Math.min(100, Math.round(Number(averageStress) * 10))
-    : 0;
-
-  const regulationTargetPerDay = regulationActivities.reduce(
-    (sum, activity) => sum + activity.target_per_day,
-    0
-  );
-
-  const regulationRelevantDates = regulationPlan
-    ? selectedDates.filter((date) =>
-        dateFallsWithinPlan(
-          date,
-          regulationPlan.start_date,
-          regulationPlan.duration_days
+  const scoreProgressValue =
+    averageScore !== null
+      ? Math.min(
+          100,
+          Math.round(
+            Number(averageScore) * 10
+          )
         )
-      )
-    : [];
+      : 0;
+
+  const scoreLabel =
+    overallScore.kind === "stress"
+      ? "Average stress"
+      : "Average rating";
+
+  const regulationTargetPerDay =
+    regulationActivities.reduce(
+      (sum, activity) =>
+        sum + activity.target_per_day,
+      0
+    );
+
+  const regulationRelevantDates =
+    regulationPlan
+      ? selectedDates.filter((date) =>
+          dateFallsWithinPlan(
+            date,
+            regulationPlan.start_date,
+            regulationPlan.duration_days
+          )
+        )
+      : [];
 
   const regulationExpected =
-    regulationRelevantDates.length * regulationTargetPerDay;
+    regulationRelevantDates.length *
+    regulationTargetPerDay;
 
-  const regulationCompleted = regulationCompletions.length;
+  const regulationCompleted =
+    regulationCompletions.length;
 
   const regulationConsistency =
     regulationExpected > 0
       ? Math.min(
           100,
-          Math.round((regulationCompleted / regulationExpected) * 100)
+          Math.round(
+            (regulationCompleted /
+              regulationExpected) *
+              100
+          )
         )
       : 0;
 
@@ -7871,12 +8579,18 @@ function Progress() {
       return null;
     }
 
-    const start = parseLocalDate(monitoringPlan.start_date);
-    const todayString = toLocalDateString(new Date());
-    const today = parseLocalDate(todayString);
+    const start = parseLocalDate(
+      monitoringPlan.start_date
+    );
+    const todayString =
+      toLocalDateString(new Date());
+    const today =
+      parseLocalDate(todayString);
 
     const difference = Math.floor(
-      (today.getTime() - start.getTime()) / (1000 * 60 * 60 * 24)
+      (today.getTime() -
+        start.getTime()) /
+        (1000 * 60 * 60 * 24)
     );
 
     return Math.min(
@@ -7890,12 +8604,18 @@ function Progress() {
       return null;
     }
 
-    const start = parseLocalDate(regulationPlan.start_date);
-    const todayString = toLocalDateString(new Date());
-    const today = parseLocalDate(todayString);
+    const start = parseLocalDate(
+      regulationPlan.start_date
+    );
+    const todayString =
+      toLocalDateString(new Date());
+    const today =
+      parseLocalDate(todayString);
 
     const difference = Math.floor(
-      (today.getTime() - start.getTime()) / (1000 * 60 * 60 * 24)
+      (today.getTime() -
+        start.getTime()) /
+        (1000 * 60 * 60 * 24)
     );
 
     return Math.min(
@@ -7904,12 +8624,16 @@ function Progress() {
     );
   })();
 
-  const monitoringHistory = [...selectedDates]
+  const monitoringHistory = [
+    ...selectedDates,
+  ]
     .reverse()
     .map((date) => {
-      const entries = monitoringEntries.filter(
-        (entry) => entry.entry_date === date
-      );
+      const checkins =
+        monitoringCheckins.filter(
+          (checkin) =>
+            checkin.entry_date === date
+        );
 
       const expected =
         monitoringPlan &&
@@ -7918,32 +8642,51 @@ function Progress() {
           monitoringPlan.start_date,
           monitoringPlan.duration_days
         )
-          ? monitoringPlan.prompts_per_day
+          ? schedulesPerDay
           : 0;
 
+      const dailyScore = scoreSeries(
+        checkins,
+        monitoringPlan
+      );
+
       const dayAverage =
-        entries.length > 0
+        dailyScore.values.length > 0
           ? (
-              entries.reduce((sum, entry) => sum + entry.stress, 0) /
-              entries.length
+              dailyScore.values.reduce(
+                (sum, value) =>
+                  sum + value,
+                0
+              ) /
+              dailyScore.values.length
             ).toFixed(1)
           : null;
 
       return {
         date,
-        completed: entries.length,
+        completed: checkins.length,
         expected,
         average: dayAverage,
+        kind: dailyScore.kind,
       };
     })
-    .filter((day) => day.expected > 0 || day.completed > 0);
+    .filter(
+      (day) =>
+        day.expected > 0 ||
+        day.completed > 0
+    );
 
-  const regulationHistory = [...selectedDates]
+  const regulationHistory = [
+    ...selectedDates,
+  ]
     .reverse()
     .map((date) => {
-      const completions = regulationCompletions.filter(
-        (completion) => completion.completion_date === date
-      );
+      const completions =
+        regulationCompletions.filter(
+          (completion) =>
+            completion.completion_date ===
+            date
+        );
 
       const expected =
         regulationPlan &&
@@ -7961,66 +8704,94 @@ function Progress() {
         expected,
       };
     })
-    .filter((day) => day.expected > 0 || day.completed > 0);
+    .filter(
+      (day) =>
+        day.expected > 0 ||
+        day.completed > 0
+    );
 
-  const monitoringDaysWithData = monitoringHistory.filter(
-    (day) => day.average !== null
-  );
+  const monitoringDaysWithData =
+    monitoringHistory.filter(
+      (day) => day.average !== null
+    );
 
-  const highestStressDay =
+  const highestScoreDay =
     monitoringDaysWithData.length > 0
-      ? monitoringDaysWithData.reduce((highest, day) =>
-          Number(day.average) > Number(highest.average) ? day : highest
+      ? monitoringDaysWithData.reduce(
+          (highest, day) =>
+            Number(day.average) >
+            Number(highest.average)
+              ? day
+              : highest
         )
       : null;
 
-  const lowestStressDay =
+  const lowestScoreDay =
     monitoringDaysWithData.length > 0
-      ? monitoringDaysWithData.reduce((lowest, day) =>
-          Number(day.average) < Number(lowest.average) ? day : lowest
+      ? monitoringDaysWithData.reduce(
+          (lowest, day) =>
+            Number(day.average) <
+            Number(lowest.average)
+              ? day
+              : lowest
         )
       : null;
 
   return (
     <div className="space-y-5">
-      {/* RANGE */}
-
       <div className="flex flex-wrap items-center justify-between gap-4">
         <div>
           <p className="text-xs font-semibold uppercase tracking-[0.14em] text-cyan-700">
             Real progress
           </p>
           <p className="mt-1 text-sm text-slate-500">
-            Calculated from your saved Daily Monitoring and Self-Regulation
-            records.
+            Calculated from your Monitoring V2
+            check-ins and Self-Regulation records.
           </p>
         </div>
 
-        <div className="flex rounded-xl border border-slate-200 bg-white p-1">
-          {([7, 14, 30] as const).map((days) => (
-            <button
-              key={days}
-              type="button"
-              onClick={() => setRangeDays(days)}
-              className={`rounded-lg px-4 py-2 text-xs font-semibold transition ${
-                rangeDays === days
-                  ? "bg-slate-950 text-white"
-                  : "text-slate-500 hover:bg-slate-50 hover:text-slate-900"
-              }`}
-            >
-              {days} days
-            </button>
-          ))}
+        <div className="flex flex-wrap items-center gap-2">
+          <button
+            type="button"
+            disabled={loading}
+            onClick={() =>
+              void loadProgress(true)
+            }
+            className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-slate-600 transition hover:bg-slate-50 disabled:opacity-50"
+          >
+            Refresh progress
+          </button>
+
+          <div className="flex rounded-xl border border-slate-200 bg-white p-1">
+            {([7, 14, 30] as const).map(
+              (days) => (
+                <button
+                  key={days}
+                  type="button"
+                  onClick={() =>
+                    setRangeDays(days)
+                  }
+                  className={`rounded-lg px-4 py-2 text-xs font-semibold transition ${
+                    rangeDays === days
+                      ? "bg-slate-950 text-white"
+                      : "text-slate-500 hover:bg-slate-50 hover:text-slate-900"
+                  }`}
+                >
+                  {days} days
+                </button>
+              )
+            )}
+          </div>
         </div>
       </div>
 
       {progressError && (
         <div className="rounded-2xl border border-red-200 bg-red-50 px-5 py-4">
-          <p className="text-sm text-red-700">{progressError}</p>
+          <p className="text-sm text-red-700">
+            {progressError}
+          </p>
         </div>
       )}
-
-      {/* SUMMARY */}
 
       <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
         <StatCard
@@ -8036,15 +8807,21 @@ function Progress() {
         />
 
         <StatCard
-          label="Average stress"
+          label={scoreLabel}
           value={
             loading
               ? "..."
-              : averageStress
-                ? `${averageStress} / 10`
+              : averageScore
+                ? `${averageScore} / 10`
                 : "No data"
           }
-          detail="Across saved check-ins"
+          detail={
+            overallScore.kind === "stress"
+              ? "Across saved V2 stress responses"
+              : overallScore.kind === "rating"
+                ? "Across saved V2 slider responses"
+                : "No numeric slider response in this range"
+          }
         />
 
         <StatCard
@@ -8058,7 +8835,7 @@ function Progress() {
           }
           detail={
             monitoringPlan
-              ? `${monitoringPlan.prompts_per_day} check-ins / day`
+              ? `${schedulesPerDay} check-ins / day`
               : "No active monitoring plan"
           }
         />
@@ -8080,14 +8857,12 @@ function Progress() {
         />
       </div>
 
-      {/* PLAN PROGRESS */}
-
       <div className="grid gap-5 xl:grid-cols-2">
         <Panel
           title="Monitoring progress"
           description={
             monitoringPlan
-              ? monitoringPlan.name
+              ? monitoringPlan.plan_name
               : "Daily Monitoring has not been started."
           }
         >
@@ -8099,14 +8874,22 @@ function Progress() {
             <div className="space-y-6">
               <ProgressBar
                 label="Check-in consistency"
-                value={monitoringConsistency}
+                value={
+                  monitoringConsistency
+                }
                 text={`${monitoringCompleted} / ${monitoringExpected}`}
               />
 
               <ProgressBar
-                label="Average stress"
-                value={stressProgressValue}
-                text={averageStress ? `${averageStress} / 10` : "No data"}
+                label={scoreLabel}
+                value={
+                  scoreProgressValue
+                }
+                text={
+                  averageScore
+                    ? `${averageScore} / 10`
+                    : "No rating data"
+                }
               />
 
               <div className="rounded-2xl bg-slate-50 p-4">
@@ -8123,14 +8906,15 @@ function Progress() {
                   </div>
 
                   <span className="rounded-full bg-cyan-50 px-3 py-1 text-xs font-medium text-cyan-800">
-                    {monitoringPlan.prompts_per_day} / day
+                    {schedulesPerDay} / day
                   </span>
                 </div>
               </div>
             </div>
           ) : (
             <p className="text-sm leading-6 text-slate-500">
-              Create a Daily Monitoring plan and complete check-ins to see
+              Create a Daily Monitoring plan
+              and complete check-ins to see
               monitoring progress here.
             </p>
           )}
@@ -8152,7 +8936,9 @@ function Progress() {
             <div className="space-y-6">
               <ProgressBar
                 label="Activity consistency"
-                value={regulationConsistency}
+                value={
+                  regulationConsistency
+                }
                 text={`${regulationCompleted} / ${regulationExpected}`}
               />
 
@@ -8163,7 +8949,8 @@ function Progress() {
                     ? Math.min(
                         100,
                         Math.round(
-                          (regulationPlanDay / regulationPlan.duration_days) *
+                          (regulationPlanDay /
+                            regulationPlan.duration_days) *
                             100
                         )
                       )
@@ -8183,7 +8970,8 @@ function Progress() {
                       Daily activity target
                     </p>
                     <p className="mt-1 text-sm text-slate-500">
-                      Across your active self-regulation activities.
+                      Across your active
+                      self-regulation activities.
                     </p>
                   </div>
 
@@ -8195,66 +8983,90 @@ function Progress() {
             </div>
           ) : (
             <p className="text-sm leading-6 text-slate-500">
-              Create a Self-Regulation plan and complete activities to see
+              Create a Self-Regulation plan
+              and complete activities to see
               regulation progress here.
             </p>
           )}
         </Panel>
       </div>
 
-      {/* HISTORY */}
-
       <div className="grid gap-5 xl:grid-cols-2">
         <Panel
           title="Monitoring history"
-          description={`Daily check-in completion and average stress for the last ${rangeDays} days.`}
+          description={`Daily V2 check-in completion and available rating summaries for the last ${rangeDays} days.`}
         >
           {loading ? (
-            <p className="text-sm text-slate-500">Loading history...</p>
-          ) : monitoringHistory.length > 0 ? (
+            <p className="text-sm text-slate-500">
+              Loading history...
+            </p>
+          ) : monitoringHistory.length >
+            0 ? (
             <div className="divide-y divide-slate-100">
-              {monitoringHistory.map((day) => {
-                const percentage =
-                  day.expected > 0
-                    ? Math.min(
-                        100,
-                        Math.round((day.completed / day.expected) * 100)
-                      )
-                    : 0;
+              {monitoringHistory.map(
+                (day) => {
+                  const percentage =
+                    day.expected > 0
+                      ? Math.min(
+                          100,
+                          Math.round(
+                            (day.completed /
+                              day.expected) *
+                              100
+                          )
+                        )
+                      : 0;
 
-                return (
-                  <div
-                    key={day.date}
-                    className="grid gap-3 py-4 first:pt-0 last:pb-0 sm:grid-cols-[90px_1fr_auto] sm:items-center"
-                  >
-                    <p className="text-sm font-medium">
-                      {formatHistoryDate(day.date)}
-                    </p>
-
-                    <div>
-                      <p className="text-sm text-slate-600">
-                        {day.completed} / {day.expected} check-ins
+                  return (
+                    <div
+                      key={day.date}
+                      className="grid gap-3 py-4 first:pt-0 last:pb-0 sm:grid-cols-[90px_1fr_auto] sm:items-center"
+                    >
+                      <p className="text-sm font-medium">
+                        {formatHistoryDate(
+                          day.date
+                        )}
                       </p>
-                      <div className="mt-2 h-2 overflow-hidden rounded-full bg-slate-100">
-                        <div
-                          className="h-full rounded-full bg-cyan-700"
-                          style={{ width: `${percentage}%` }}
-                        />
-                      </div>
-                    </div>
 
-                    <span className="text-xs font-medium text-slate-500">
-                      {day.average
-                        ? `Avg ${day.average} / 10`
-                        : "No stress data"}
-                    </span>
-                  </div>
-                );
-              })}
+                      <div>
+                        <p className="text-sm text-slate-600">
+                          {day.completed} /{" "}
+                          {day.expected}{" "}
+                          check-ins
+                        </p>
+                        <div className="mt-2 h-2 overflow-hidden rounded-full bg-slate-100">
+                          <div
+                            className="h-full rounded-full bg-cyan-700"
+                            style={{
+                              width: `${percentage}%`,
+                            }}
+                          />
+                        </div>
+                      </div>
+
+                      <span className="text-xs font-medium text-slate-500">
+                        {day.average
+                          ? `${
+                              day.kind ===
+                              "stress"
+                                ? "Stress"
+                                : "Avg"
+                            } ${
+                              day.average
+                            } / 10`
+                          : day.completed > 0
+                            ? "Completed"
+                            : "No rating data"}
+                      </span>
+                    </div>
+                  );
+                }
+              )}
             </div>
           ) : (
             <p className="text-sm leading-6 text-slate-500">
-              No monitoring records are available in this range yet.
+              No monitoring records are
+              available in this range yet.
             </p>
           )}
         </Panel>
@@ -8264,92 +9076,147 @@ function Progress() {
           description={`Daily activity completion for the last ${rangeDays} days.`}
         >
           {loading ? (
-            <p className="text-sm text-slate-500">Loading history...</p>
-          ) : regulationHistory.length > 0 ? (
+            <p className="text-sm text-slate-500">
+              Loading history...
+            </p>
+          ) : regulationHistory.length >
+            0 ? (
             <div className="divide-y divide-slate-100">
-              {regulationHistory.map((day) => {
-                const percentage =
-                  day.expected > 0
-                    ? Math.min(
-                        100,
-                        Math.round((day.completed / day.expected) * 100)
-                      )
-                    : 0;
+              {regulationHistory.map(
+                (day) => {
+                  const percentage =
+                    day.expected > 0
+                      ? Math.min(
+                          100,
+                          Math.round(
+                            (day.completed /
+                              day.expected) *
+                              100
+                          )
+                        )
+                      : 0;
 
-                return (
-                  <div
-                    key={day.date}
-                    className="grid gap-3 py-4 first:pt-0 last:pb-0 sm:grid-cols-[90px_1fr_auto] sm:items-center"
-                  >
-                    <p className="text-sm font-medium">
-                      {formatHistoryDate(day.date)}
-                    </p>
-
-                    <div>
-                      <p className="text-sm text-slate-600">
-                        {day.completed} / {day.expected} activities
+                  return (
+                    <div
+                      key={day.date}
+                      className="grid gap-3 py-4 first:pt-0 last:pb-0 sm:grid-cols-[90px_1fr_auto] sm:items-center"
+                    >
+                      <p className="text-sm font-medium">
+                        {formatHistoryDate(
+                          day.date
+                        )}
                       </p>
-                      <div className="mt-2 h-2 overflow-hidden rounded-full bg-slate-100">
-                        <div
-                          className="h-full rounded-full bg-cyan-700"
-                          style={{ width: `${percentage}%` }}
-                        />
-                      </div>
-                    </div>
 
-                    <span className="text-xs font-medium text-slate-500">
-                      {percentage}%
-                    </span>
-                  </div>
-                );
-              })}
+                      <div>
+                        <p className="text-sm text-slate-600">
+                          {day.completed} /{" "}
+                          {day.expected}{" "}
+                          activities
+                        </p>
+                        <div className="mt-2 h-2 overflow-hidden rounded-full bg-slate-100">
+                          <div
+                            className="h-full rounded-full bg-cyan-700"
+                            style={{
+                              width: `${percentage}%`,
+                            }}
+                          />
+                        </div>
+                      </div>
+
+                      <span className="text-xs font-medium text-slate-500">
+                        {percentage}%
+                      </span>
+                    </div>
+                  );
+                }
+              )}
             </div>
           ) : (
             <p className="text-sm leading-6 text-slate-500">
-              No self-regulation records are available in this range yet.
+              No self-regulation records are
+              available in this range yet.
             </p>
           )}
         </Panel>
       </div>
 
-      {/* DESCRIPTIVE SUMMARY */}
-
       <Panel title="Patterns to inspect">
         {!loading &&
-        highestStressDay &&
-        lowestStressDay &&
-        monitoringDaysWithData.length >= 2 ? (
+        highestScoreDay &&
+        lowestScoreDay &&
+        monitoringDaysWithData.length >=
+          2 ? (
           <div className="rounded-2xl border border-cyan-100 bg-cyan-50/60 p-5">
             <div className="flex items-start gap-4">
               <Icon>↗</Icon>
 
               <div>
-                <p className="font-medium">Descriptive monitoring summary</p>
+                <p className="font-medium">
+                  Descriptive monitoring summary
+                </p>
                 <p className="mt-2 max-w-3xl text-sm leading-6 text-slate-600">
-                  Within this {rangeDays}-day view, the highest daily average
-                  stress recorded was {highestStressDay.average}/10 on{" "}
-                  {formatHistoryDate(highestStressDay.date)}, while the lowest
-                  was {lowestStressDay.average}/10 on{" "}
-                  {formatHistoryDate(lowestStressDay.date)}. These values
-                  describe your saved check-ins only and do not establish cause
-                  or provide a clinical conclusion.
+                  Within this {rangeDays}-day
+                  view, the highest daily average{" "}
+                  {overallScore.kind ===
+                  "stress"
+                    ? "stress "
+                    : "slider rating "}
+                  recorded was{" "}
+                  {highestScoreDay.average}/10
+                  on{" "}
+                  {formatHistoryDate(
+                    highestScoreDay.date
+                  )}
+                  , while the lowest was{" "}
+                  {lowestScoreDay.average}/10
+                  on{" "}
+                  {formatHistoryDate(
+                    lowestScoreDay.date
+                  )}
+                  . These values are calculated
+                  from the Monitoring V2
+                  responses saved in your
+                  account.
                 </p>
               </div>
             </div>
           </div>
+        ) : monitoringCompleted > 0 ? (
+          <div className="rounded-2xl bg-slate-50 p-5">
+            <p className="font-medium">
+              Check-in progress is being recorded
+            </p>
+            <p className="mt-2 text-sm leading-6 text-slate-500">
+              You have {monitoringCompleted} V2
+              check-in
+              {monitoringCompleted === 1
+                ? ""
+                : "s"}{" "}
+              in this range. Complete check-ins
+              on at least two days with numeric
+              slider responses to see a
+              descriptive rating comparison.
+            </p>
+          </div>
         ) : (
           <div className="rounded-2xl bg-slate-50 p-5">
-            <p className="font-medium">More data is needed</p>
+            <p className="font-medium">
+              More data is needed
+            </p>
             <p className="mt-2 text-sm leading-6 text-slate-500">
-              Complete monitoring check-ins on at least two different days to
-              see a simple descriptive comparison here.
+              Complete Daily Monitoring
+              check-ins and your Progress tab
+              will update from the same V2
+              records.
             </p>
           </div>
         )}
 
         <p className="mt-4 text-xs leading-5 text-slate-400">
-          Progress summaries are based on the records stored in your PsyLattice
-          account. They are intended for personal reflection and do not provide
+          Progress summaries are based on the
+          records stored in your PsyLattice
+          account. They are intended for
+          personal reflection and do not provide
           diagnosis or establish causation.
         </p>
       </Panel>

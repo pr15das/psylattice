@@ -201,161 +201,229 @@ function PersonAvatar({
    ========================================================= */
 
 function Dashboard({
-  changeScreen,
+  onOpenClient,
 }: {
-  changeScreen: (screen: Screen) => void;
+  onOpenClient: (client: ConnectedClient) => void;
 }) {
+  const [clients, setClients] = useState<ConnectedClient[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [dashboardError, setDashboardError] = useState("");
+
+  async function loadDashboard() {
+    setLoading(true);
+    setDashboardError("");
+
+    const supabase = createClient();
+
+    const { data, error } = await supabase.rpc(
+      "psylattice_my_connected_clients"
+    );
+
+    if (error) {
+      console.error(
+        "Could not load Clinical dashboard:",
+        error
+      );
+
+      setDashboardError(
+        "Your connected caseload could not be loaded."
+      );
+      setClients([]);
+      setLoading(false);
+      return;
+    }
+
+    setClients((data ?? []) as ConnectedClient[]);
+    setLoading(false);
+  }
+
+  useEffect(() => {
+    void loadDashboard();
+
+    function refreshOnFocus() {
+      void loadDashboard();
+    }
+
+    function refreshWhenVisible() {
+      if (document.visibilityState === "visible") {
+        void loadDashboard();
+      }
+    }
+
+    window.addEventListener("focus", refreshOnFocus);
+    document.addEventListener(
+      "visibilitychange",
+      refreshWhenVisible
+    );
+
+    return () => {
+      window.removeEventListener(
+        "focus",
+        refreshOnFocus
+      );
+      document.removeEventListener(
+        "visibilitychange",
+        refreshWhenVisible
+      );
+    };
+  }, []);
+
   return (
     <div className="space-y-5">
+      {dashboardError && (
+        <div className="rounded-2xl border border-red-200 bg-red-50 px-5 py-4 text-sm text-red-700">
+          {dashboardError}
+        </div>
+      )}
+
       <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
-        <StatCard label="Assigned clients" value="24" detail="3 need review" />
-        <StatCard label="Today's sessions" value="5" detail="Next at 14:30" />
-        <StatCard label="New results" value="7" detail="Since yesterday" />
-        <StatCard label="Follow-ups" value="4" detail="Due this week" />
+        <StatCard
+          label="Connected clients"
+          value={loading ? "..." : String(clients.length)}
+          detail="Active PsyLattice connections"
+        />
+
+        <StatCard
+          label="Assessment data"
+          value="Live"
+          detail="When the client authorises sharing"
+        />
+
+        <StatCard
+          label="Daily monitoring"
+          value="Live"
+          detail="V2 check-ins and responses"
+        />
+
+        <StatCard
+          label="Privacy"
+          value="Client controlled"
+          detail="Every data category remains permission-gated"
+        />
       </div>
 
       <div className="grid gap-5 xl:grid-cols-[1.15fr_.85fr]">
         <Panel
-          title="Needs your review"
-          description="Recent information requiring professional attention."
+          title="Connected caseload"
+          description="These are the real clients currently connected to your Clinical workspace."
         >
-          <div className="divide-y divide-slate-100">
-            <div className="flex items-center justify-between gap-5 py-4 first:pt-0">
-              <div className="flex items-center gap-3">
-                <PersonAvatar initials="MS" />
-
-                <div>
-                  <p className="text-sm font-medium">Maya S.</p>
-                  <p className="mt-1 text-xs text-slate-400">
-                    New stress assessment + 3 days of ambulatory data
-                  </p>
-                </div>
-              </div>
-
-              <Status type="warning">Review</Status>
-            </div>
-
-            <div className="flex items-center justify-between gap-5 py-4">
-              <div className="flex items-center gap-3">
-                <PersonAvatar initials="AK" />
-
-                <div>
-                  <p className="text-sm font-medium">Arjun K.</p>
-                  <p className="mt-1 text-xs text-slate-400">
-                    Follow-up task due today
-                  </p>
-                </div>
-              </div>
-
-              <Status>Due</Status>
-            </div>
-
-            <div className="flex items-center justify-between gap-5 py-4 pb-0">
-              <div className="flex items-center gap-3">
-                <PersonAvatar initials="LP" />
-
-                <div>
-                  <p className="text-sm font-medium">Lina P.</p>
-                  <p className="mt-1 text-xs text-slate-400">
-                    Wearable-data permission changed
-                  </p>
-                </div>
-              </div>
-
-              <Status type="accent">Update</Status>
-            </div>
-          </div>
-
-          <button
-            type="button"
-            onClick={() => changeScreen("clients")}
-            className="mt-5 flex items-center gap-2 text-sm font-semibold"
-          >
-            View connected clients
-            <ArrowIcon />
-          </button>
-        </Panel>
-
-        <Panel title="Today">
-          <div className="divide-y divide-slate-100">
-            {[
-              ["10:00", "Arjun K.", "Follow-up", "Complete"],
-              ["14:30", "Maya S.", "Initial consultation", "Upcoming"],
-              ["16:00", "Lina P.", "Online session", "Upcoming"],
-            ].map(([time, name, type, status]) => (
-              <div
-                key={`${time}-${name}`}
-                className="grid grid-cols-[60px_1fr_auto] gap-3 py-4 first:pt-0 last:pb-0"
-              >
-                <p className="text-sm font-semibold">{time}</p>
-
-                <div>
-                  <p className="text-sm font-medium">{name}</p>
-                  <p className="mt-1 text-xs text-slate-400">{type}</p>
-                </div>
-
-                <Status type={status === "Complete" ? "success" : "neutral"}>
-                  {status}
-                </Status>
-              </div>
-            ))}
-          </div>
-        </Panel>
-      </div>
-
-      <div className="grid gap-5 xl:grid-cols-2">
-        <Panel title="Recent incoming information">
-          <div className="space-y-5">
-            {[
-              [
-                "13:14",
-                "Maya S.",
-                "Momentary stress 8 / 10 while studying",
-                "EMA",
-              ],
-              [
-                "12:42",
-                "Lina P.",
-                "Wearable sharing preference changed",
-                "Consent",
-              ],
-              [
-                "11:50",
-                "Arjun K.",
-                "Follow-up questionnaire completed",
-                "Assessment",
-              ],
-            ].map(([time, person, text, type]) => (
-              <div key={`${time}-${person}`} className="flex gap-4">
-                <div className="w-12 shrink-0 text-xs text-slate-400">
-                  {time}
-                </div>
-
-                <div>
-                  <div className="flex flex-wrap items-center gap-2">
-                    <p className="text-sm font-medium">{person}</p>
-                    <Status>{type}</Status>
-                  </div>
-
-                  <p className="mt-1 text-sm text-slate-500">{text}</p>
-                </div>
-              </div>
-            ))}
-          </div>
-        </Panel>
-
-        <Panel title="Clinical workspace principle">
-          <div className="rounded-2xl border border-cyan-100 bg-cyan-50/60 p-5">
-            <p className="font-medium">Data supports professional judgment.</p>
-
-            <p className="mt-2 text-sm leading-6 text-slate-600">
-              PsyLattice organises assessments, ambulatory information and
-              authorised physiological context. It does not independently
-              diagnose a disorder or select treatment.
+          {loading ? (
+            <p className="text-sm text-slate-500">
+              Loading connected clients...
             </p>
+          ) : clients.length === 0 ? (
+            <div className="rounded-2xl bg-slate-50 p-5">
+              <p className="font-medium text-slate-800">
+                No connected clients yet
+              </p>
+
+              <p className="mt-2 text-sm leading-6 text-slate-500">
+                Add a client from the Clients tab. Once the Self user accepts,
+                they will appear here.
+              </p>
+            </div>
+          ) : (
+            <div className="divide-y divide-slate-100">
+              {clients.slice(0, 8).map((client) => {
+                const initials =
+                  client.client_name
+                    .trim()
+                    .split(/\s+/)
+                    .filter(Boolean)
+                    .slice(0, 2)
+                    .map((part) => part.charAt(0))
+                    .join("")
+                    .toUpperCase() || "PL";
+
+                return (
+                  <div
+                    key={client.connection_id}
+                    className="flex flex-col justify-between gap-4 py-4 first:pt-0 last:pb-0 sm:flex-row sm:items-center"
+                  >
+                    <div className="flex items-center gap-3">
+                      <PersonAvatar initials={initials} />
+
+                      <div>
+                        <p className="text-sm font-semibold text-slate-900">
+                          {client.client_name}
+                        </p>
+
+                        <p className="mt-1 text-xs text-slate-400">
+                          Connected{" "}
+                          {new Date(
+                            client.connected_at
+                          ).toLocaleDateString()}
+                        </p>
+                      </div>
+                    </div>
+
+                    <button
+                      type="button"
+                      onClick={() => onOpenClient(client)}
+                      className="rounded-xl border border-cyan-200 bg-cyan-50 px-4 py-2.5 text-xs font-semibold text-cyan-900 transition hover:bg-cyan-100"
+                    >
+                      Open live client view
+                    </button>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </Panel>
+
+        <Panel
+          title="Where to monitor client data"
+          description="The Clinical workspace now separates quick overview from detailed review."
+        >
+          <div className="space-y-4">
+            {[
+              [
+                "Client Overview",
+                "Live snapshot of the selected client's authorised assessment and monitoring data.",
+              ],
+              [
+                "Assessments",
+                "Full completed assessment history, scores and clinician assignments.",
+              ],
+              [
+                "Ambulatory Monitoring",
+                "The actual accepted monitoring protocol plus recent check-ins and block-level responses.",
+              ],
+              [
+                "Progress Timeline",
+                "Combined chronological view of shared assessments and monitoring events.",
+              ],
+            ].map(([title, description]) => (
+              <div
+                key={title}
+                className="rounded-xl border border-slate-200 bg-slate-50/50 p-4"
+              >
+                <p className="text-sm font-semibold text-slate-800">
+                  {title}
+                </p>
+
+                <p className="mt-1 text-xs leading-5 text-slate-500">
+                  {description}
+                </p>
+              </div>
+            ))}
           </div>
         </Panel>
       </div>
+
+      <Panel title="Clinical data principle">
+        <div className="rounded-2xl border border-cyan-100 bg-cyan-50/60 p-5">
+          <p className="font-medium text-cyan-950">
+            Only authorised client data is shown.
+          </p>
+
+          <p className="mt-2 max-w-4xl text-sm leading-6 text-slate-600">
+            Assessment and monitoring data is requested through the secure,
+            permission-gated Supabase functions already used by the Clinical
+            workspace. A connection alone does not provide data access.
+          </p>
+        </div>
+      </Panel>
     </div>
   );
 }
@@ -526,6 +594,185 @@ function useClientSharingPermissions(
     refreshPermissions: () => loadPermissions(true),
   };
 }
+
+function ClinicalClientSelector({
+  client,
+  onSelect,
+}: {
+  client: ConnectedClient | null;
+  onSelect: (client: ConnectedClient | null) => void;
+}) {
+  const [clients, setClients] = useState<ConnectedClient[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [errorMessage, setErrorMessage] = useState("");
+
+  async function loadClients(showLoading = true) {
+    if (showLoading) {
+      setLoading(true);
+    }
+
+    setErrorMessage("");
+
+    const supabase = createClient();
+
+    const { data, error } = await supabase.rpc(
+      "psylattice_my_connected_clients"
+    );
+
+    if (error) {
+      console.error(
+        "Could not load client selector:",
+        error
+      );
+      setErrorMessage(
+        "Connected clients could not be loaded."
+      );
+      setLoading(false);
+      return;
+    }
+
+    const rows = (data ?? []) as ConnectedClient[];
+    setClients(rows);
+
+    if (
+      client &&
+      !rows.some(
+        (row) =>
+          row.connection_id ===
+          client.connection_id
+      )
+    ) {
+      onSelect(null);
+    }
+
+    setLoading(false);
+  }
+
+  useEffect(() => {
+    void loadClients(true);
+
+    function refreshOnFocus() {
+      void loadClients(false);
+    }
+
+    function refreshWhenVisible() {
+      if (document.visibilityState === "visible") {
+        void loadClients(false);
+      }
+    }
+
+    window.addEventListener("focus", refreshOnFocus);
+    document.addEventListener(
+      "visibilitychange",
+      refreshWhenVisible
+    );
+
+    return () => {
+      window.removeEventListener(
+        "focus",
+        refreshOnFocus
+      );
+      document.removeEventListener(
+        "visibilitychange",
+        refreshWhenVisible
+      );
+    };
+  }, [client?.connection_id]);
+
+  const selectedId =
+    client?.connection_id || "";
+
+  return (
+    <div className="mb-6 rounded-2xl border border-cyan-200 bg-cyan-50/60 p-4">
+      <div className="flex flex-col justify-between gap-4 lg:flex-row lg:items-center">
+        <div>
+          <p className="text-xs font-semibold uppercase tracking-[0.14em] text-cyan-800">
+            Client context
+          </p>
+
+          <p className="mt-1 text-sm font-semibold text-slate-950">
+            {client
+              ? `Viewing ${client.client_name}`
+              : "Choose the client whose data you want to view"}
+          </p>
+
+          <p className="mt-1 text-xs leading-5 text-slate-500">
+            This selector is available on every client-specific Clinical tab.
+            Changing it keeps you on the current tab and loads that client's
+            authorised information.
+          </p>
+        </div>
+
+        <div className="flex min-w-0 flex-col gap-2 sm:flex-row sm:items-center">
+          <select
+            value={selectedId}
+            disabled={loading}
+            onChange={(event) => {
+              const next =
+                clients.find(
+                  (row) =>
+                    row.connection_id ===
+                    event.target.value
+                ) || null;
+
+              onSelect(next);
+            }}
+            className="min-w-[260px] rounded-xl border border-cyan-200 bg-white px-4 py-3 text-sm font-semibold text-slate-700 outline-none focus:border-cyan-700"
+          >
+            <option value="">
+              {loading
+                ? "Loading clients..."
+                : "Select a client…"}
+            </option>
+
+            {clients.map((row) => (
+              <option
+                key={row.connection_id}
+                value={row.connection_id}
+              >
+                {row.client_name}
+              </option>
+            ))}
+          </select>
+
+          <button
+            type="button"
+            disabled={loading}
+            onClick={() => void loadClients(true)}
+            className="rounded-xl border border-cyan-200 bg-white px-3 py-3 text-xs font-semibold text-cyan-900 transition hover:bg-cyan-50 disabled:opacity-50"
+          >
+            Refresh
+          </button>
+        </div>
+      </div>
+
+      {client && (
+        <div className="mt-3 flex flex-wrap gap-x-4 gap-y-1 border-t border-cyan-100 pt-3 text-xs text-slate-500">
+          <span>
+            Connected{" "}
+            {new Date(
+              client.connected_at
+            ).toLocaleDateString()}
+          </span>
+
+          <span>
+            Connection{" "}
+            {client.connection_id
+              .slice(-6)
+              .toUpperCase()}
+          </span>
+        </div>
+      )}
+
+      {errorMessage && (
+        <p className="mt-3 text-xs font-medium text-red-700">
+          {errorMessage}
+        </p>
+      )}
+    </div>
+  );
+}
+
 
 function ConnectedClients({
   onOpenClient,
@@ -1258,7 +1505,45 @@ function ClientOverview({
   client: ConnectedClient | null;
   onRemoveClient: (client: ConnectedClient) => Promise<boolean>;
 }) {
+  type OverviewAssessment = {
+    session_id: string;
+    questionnaire_id: string;
+    questionnaire_name: string;
+    questionnaire_acronym: string | null;
+    scores: Record<string, number> | null;
+    completed_at: string;
+  };
+
+  type OverviewMonitoringFeed = {
+    plan_id: string;
+    plan_name: string;
+    duration_days: number;
+    start_date: string;
+    protocol: MonitoringProtocolScheduleDraft[];
+    checkins: Array<{
+      checkin_id: string;
+      schedule_id: string;
+      schedule_label: string;
+      entry_date: string;
+      completed_at: string;
+      responses: Array<{
+        item_id: string;
+        item_key: string;
+        type: MonitoringBlockType;
+        prompt: string;
+        response: any;
+      }>;
+    }>;
+  };
+
   const [removingClient, setRemovingClient] = useState(false);
+  const [overviewAssessments, setOverviewAssessments] = useState<
+    OverviewAssessment[]
+  >([]);
+  const [overviewMonitoring, setOverviewMonitoring] =
+    useState<OverviewMonitoringFeed | null>(null);
+  const [loadingClientData, setLoadingClientData] = useState(false);
+  const [clientDataError, setClientDataError] = useState("");
 
   const {
     permissions,
@@ -1268,25 +1553,145 @@ function ClientOverview({
     refreshPermissions,
   } = useClientSharingPermissions(client);
 
+  async function loadClientData() {
+    if (!client || !permissions) {
+      setOverviewAssessments([]);
+      setOverviewMonitoring(null);
+      return;
+    }
+
+    setLoadingClientData(true);
+    setClientDataError("");
+
+    const supabase = createClient();
+
+    const assessmentPromise =
+      permissions.share_assessments
+        ? supabase.rpc(
+            "psylattice_connected_client_assessments_v2",
+            {
+              p_connection_id: client.connection_id,
+            }
+          )
+        : Promise.resolve({
+            data: [],
+            error: null,
+          });
+
+    const monitoringPromise =
+      permissions.share_monitoring
+        ? supabase.rpc(
+            "psylattice_connected_client_monitoring_v2",
+            {
+              p_connection_id: client.connection_id,
+              p_days: 14,
+            }
+          )
+        : Promise.resolve({
+            data: [],
+            error: null,
+          });
+
+    const [assessmentResult, monitoringResult] =
+      await Promise.all([
+        assessmentPromise,
+        monitoringPromise,
+      ]);
+
+    if (assessmentResult.error) {
+      console.error(
+        "Could not load overview assessments:",
+        assessmentResult.error
+      );
+      setClientDataError(
+        "Some authorised client data could not be loaded."
+      );
+      setOverviewAssessments([]);
+    } else {
+      setOverviewAssessments(
+        (assessmentResult.data ?? []) as OverviewAssessment[]
+      );
+    }
+
+    if (monitoringResult.error) {
+      console.error(
+        "Could not load overview monitoring:",
+        monitoringResult.error
+      );
+      setClientDataError(
+        "Some authorised client data could not be loaded."
+      );
+      setOverviewMonitoring(null);
+    } else {
+      const row =
+        Array.isArray(monitoringResult.data) &&
+        monitoringResult.data.length > 0
+          ? (monitoringResult.data[0] as OverviewMonitoringFeed)
+          : null;
+
+      setOverviewMonitoring(row);
+    }
+
+    setLoadingClientData(false);
+  }
+
+  useEffect(() => {
+    if (!loadingPermissions) {
+      void loadClientData();
+    }
+
+    function refreshOnFocus() {
+      if (!loadingPermissions) {
+        void loadClientData();
+      }
+    }
+
+    function refreshWhenVisible() {
+      if (
+        document.visibilityState === "visible" &&
+        !loadingPermissions
+      ) {
+        void loadClientData();
+      }
+    }
+
+    window.addEventListener(
+      "focus",
+      refreshOnFocus
+    );
+    document.addEventListener(
+      "visibilitychange",
+      refreshWhenVisible
+    );
+
+    return () => {
+      window.removeEventListener(
+        "focus",
+        refreshOnFocus
+      );
+      document.removeEventListener(
+        "visibilitychange",
+        refreshWhenVisible
+      );
+    };
+  }, [
+    client?.connection_id,
+    loadingPermissions,
+    permissions?.share_assessments,
+    permissions?.share_monitoring,
+  ]);
+
   if (!client) {
     return (
       <div className="rounded-2xl border border-slate-200 bg-white p-8 text-center">
         <p className="text-lg font-semibold text-slate-950">
-          Select a client first
+          Select a client above
         </p>
 
         <p className="mx-auto mt-2 max-w-lg text-sm leading-6 text-slate-500">
-          Open a connected client from the Clients page to view their
-          professional workspace.
+          Choose a connected client using the Client context selector. Their
+          authorised assessment and monitoring data will load here.
         </p>
-
-        <button
-          type="button"
-          onClick={() => changeScreen("clients")}
-          className="mt-5 rounded-xl bg-slate-950 px-5 py-3 text-sm font-semibold text-white"
-        >
-          View clients
-        </button>
       </div>
     );
   }
@@ -1307,20 +1712,43 @@ function ClientOverview({
       ).length
     : 0;
 
+  const latestAssessment =
+    overviewAssessments.length > 0
+      ? overviewAssessments[0]
+      : null;
+
+  const recentCheckins =
+    overviewMonitoring?.checkins || [];
+
+  const latestCheckin =
+    recentCheckins.length > 0
+      ? recentCheckins[0]
+      : null;
+
+  function scorePills(
+    assessment: OverviewAssessment
+  ) {
+    return Object.entries(
+      assessment.scores || {}
+    )
+      .filter(([, value]) => typeof value === "number")
+      .slice(0, 4);
+  }
+
   async function removeCurrentClient() {
-    if (!client || removingClient) {
+    if (removingClient || !client) {
       return;
     }
 
-    setRemovingClient(true);
+    const currentClient = client;
 
-    const removed = await onRemoveClient(client);
+    setRemovingClient(true);
+    const removed = await onRemoveClient(currentClient);
+    setRemovingClient(false);
 
     if (removed) {
       changeScreen("clients");
     }
-
-    setRemovingClient(false);
   }
 
   return (
@@ -1330,21 +1758,29 @@ function ClientOverview({
           <PersonAvatar initials={initials} large />
 
           <div>
-            <h2 className="text-xl font-semibold text-slate-950">
+            <p className="text-xs font-medium uppercase tracking-[0.12em] text-slate-400">
+              Live client overview
+            </p>
+
+            <h2 className="mt-1 text-xl font-semibold text-slate-950">
               {client.client_name}
             </h2>
 
             <p className="mt-1 text-sm text-slate-500">
               Connected{" "}
-              {new Date(client.connected_at).toLocaleDateString()}
+              {new Date(
+                client.connected_at
+              ).toLocaleDateString()}
               {" · "}
               Connection{" "}
-              {client.connection_id.slice(-6).toUpperCase()}
+              {client.connection_id
+                .slice(-6)
+                .toUpperCase()}
             </p>
 
             {permissionsSyncedAt && (
               <p className="mt-1 text-xs text-slate-400">
-                Access synced{" "}
+                Permissions synced{" "}
                 {new Date(
                   permissionsSyncedAt
                 ).toLocaleTimeString()}
@@ -1358,20 +1794,23 @@ function ClientOverview({
 
           <button
             type="button"
-            disabled={loadingPermissions}
-            onClick={() => void refreshPermissions()}
+            disabled={loadingPermissions || loadingClientData}
+            onClick={() => {
+              void refreshPermissions();
+              void loadClientData();
+            }}
             className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-slate-600 transition hover:bg-slate-50 disabled:opacity-50"
           >
-            {loadingPermissions
+            {loadingPermissions || loadingClientData
               ? "Refreshing..."
-              : "Refresh access"}
+              : "Refresh client data"}
           </button>
 
           <button
             type="button"
             disabled={removingClient}
             onClick={() => void removeCurrentClient()}
-            className="rounded-xl border border-red-200 bg-white px-3 py-2 text-xs font-semibold text-red-700 transition hover:bg-red-50 disabled:cursor-not-allowed disabled:opacity-50"
+            className="rounded-xl border border-red-200 bg-white px-3 py-2 text-xs font-semibold text-red-700 transition hover:bg-red-50 disabled:opacity-50"
           >
             {removingClient
               ? "Removing..."
@@ -1380,202 +1819,302 @@ function ClientOverview({
         </div>
       </div>
 
-      <div className="rounded-2xl border border-cyan-200 bg-cyan-50/60 p-5">
-        <div className="flex items-start gap-4">
-          <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-white font-semibold text-cyan-800">
-            <CheckIcon />
-          </div>
-
-          <div>
-            <p className="font-semibold text-cyan-950">
-              Clinician connection active
-            </p>
-
-            <p className="mt-2 max-w-3xl text-sm leading-6 text-slate-600">
-              This client has accepted your connection request. Acceptance
-              does not automatically provide access to their assessments,
-              monitoring, wearable information or other personal data.
-            </p>
-          </div>
+      {(permissionsError || clientDataError) && (
+        <div className="rounded-2xl border border-red-200 bg-red-50 px-5 py-4 text-sm text-red-700">
+          {permissionsError || clientDataError}
         </div>
+      )}
+
+      <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+        <StatCard
+          label="Shared assessments"
+          value={
+            loadingClientData
+              ? "..."
+              : permissions?.share_assessments
+                ? String(overviewAssessments.length)
+                : "Private"
+          }
+          detail={
+            permissions?.share_assessments
+              ? "Completed authorised records"
+              : "Client has not shared assessment results"
+          }
+        />
+
+        <StatCard
+          label="Monitoring check-ins"
+          value={
+            loadingClientData
+              ? "..."
+              : permissions?.share_monitoring
+                ? String(recentCheckins.length)
+                : "Private"
+          }
+          detail="Past 14 days"
+        />
+
+        <StatCard
+          label="Latest monitoring"
+          value={
+            loadingClientData
+              ? "..."
+              : latestCheckin
+                ? new Date(
+                    latestCheckin.completed_at
+                  ).toLocaleDateString([], {
+                    day: "2-digit",
+                    month: "short",
+                  })
+                : permissions?.share_monitoring
+                  ? "None"
+                  : "Private"
+          }
+          detail={
+            latestCheckin
+              ? latestCheckin.schedule_label
+              : "Most recent completed check-in"
+          }
+        />
+
+        <StatCard
+          label="Authorised categories"
+          value={
+            loadingPermissions
+              ? "..."
+              : `${sharedPermissionCount} / 5`
+          }
+          detail="Controlled by the client"
+        />
       </div>
 
-      <Panel
-        title="Client-authorised information"
-        description="A summary of the categories this client currently allows you to access."
-      >
-        {loadingPermissions ? (
-          <div className="rounded-2xl bg-slate-50 px-5 py-8 text-center">
-            <p className="text-sm font-medium text-slate-600">
-              Loading sharing permissions...
-            </p>
-          </div>
-        ) : permissionsError ? (
-          <div className="rounded-2xl border border-red-200 bg-red-50 px-5 py-4">
-            <p className="text-sm text-red-700">
-              {permissionsError}
-            </p>
-          </div>
-        ) : permissions ? (
-          <div className="space-y-5">
-            <div className="flex flex-col justify-between gap-4 rounded-2xl border border-slate-200 bg-slate-50/60 p-5 sm:flex-row sm:items-center">
-              <div>
-                <p className="text-sm font-semibold text-slate-950">
-                  {sharedPermissionCount} of 5 categories shared
-                </p>
-
-                <p className="mt-1 text-xs leading-5 text-slate-500">
-                  The client controls these permissions from
-                  Self → Privacy & Sharing.
-                </p>
-              </div>
-
-              <Status
-                type={
-                  sharedPermissionCount > 0
-                    ? "success"
-                    : "neutral"
-                }
-              >
-                {sharedPermissionCount > 0
-                  ? "Authorised access"
-                  : "Nothing shared"}
-              </Status>
+      <div className="grid gap-5 xl:grid-cols-2">
+        <Panel
+          title="Latest assessment data"
+          description="Real completed assessments returned only when the client shares assessment results."
+        >
+          {!permissions?.share_assessments ? (
+            <div className="rounded-2xl bg-slate-50 p-5">
+              <p className="font-medium text-slate-800">
+                Assessment data is private
+              </p>
+              <p className="mt-2 text-sm leading-6 text-slate-500">
+                This client has not enabled Self-assessment result sharing.
+              </p>
             </div>
-
-            <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-              {clientPermissionDefinitions.map(
-                (definition) => {
-                  const shared =
-                    permissions[definition.key];
-
-                  return (
-                    <div
-                      key={definition.key}
-                      className={`rounded-xl border p-4 ${
-                        shared
-                          ? "border-emerald-100 bg-emerald-50/60"
-                          : "border-slate-200 bg-slate-50"
-                      }`}
-                    >
-                      <div className="flex items-center justify-between gap-3">
-                        <p className="text-sm font-medium text-slate-800">
-                          {definition.title}
+          ) : loadingClientData ? (
+            <p className="text-sm text-slate-500">
+              Loading assessments...
+            </p>
+          ) : overviewAssessments.length === 0 ? (
+            <div className="rounded-2xl bg-slate-50 p-5">
+              <p className="font-medium text-slate-800">
+                No completed assessments yet
+              </p>
+            </div>
+          ) : (
+            <div className="divide-y divide-slate-100">
+              {overviewAssessments
+                .slice(0, 3)
+                .map((assessment) => (
+                  <div
+                    key={assessment.session_id}
+                    className="py-4 first:pt-0 last:pb-0"
+                  >
+                    <div className="flex flex-wrap items-center justify-between gap-3">
+                      <div>
+                        <p className="text-sm font-semibold text-slate-900">
+                          {assessment.questionnaire_acronym ||
+                            assessment.questionnaire_name}
                         </p>
-
-                        <span
-                          className={`text-sm font-semibold ${
-                            shared
-                              ? "text-emerald-700"
-                              : "text-slate-400"
-                          }`}
-                        >
-                          {shared ? "✓" : "—"}
-                        </span>
+                        <p className="mt-1 text-xs text-slate-400">
+                          {assessment.questionnaire_name}
+                          {" · "}
+                          {new Date(
+                            assessment.completed_at
+                          ).toLocaleString()}
+                        </p>
                       </div>
-                    </div>
-                  );
-                }
-              )}
-            </div>
 
-            <div className="rounded-xl border border-slate-200 bg-white p-4">
-              <div className="flex items-center justify-between gap-4">
+                      <Status type="success">
+                        Shared
+                      </Status>
+                    </div>
+
+                    {scorePills(assessment).length > 0 && (
+                      <div className="mt-3 flex flex-wrap gap-2">
+                        {scorePills(assessment).map(
+                          ([label, value]) => (
+                            <span
+                              key={label}
+                              className="rounded-full border border-cyan-100 bg-cyan-50 px-3 py-1 text-xs font-medium text-cyan-900"
+                            >
+                              {label}: {value}
+                            </span>
+                          )
+                        )}
+                      </div>
+                    )}
+                  </div>
+                ))}
+            </div>
+          )}
+
+          <button
+            type="button"
+            onClick={() => changeScreen("assessments")}
+            className="mt-5 inline-flex items-center gap-2 text-sm font-semibold text-cyan-900"
+          >
+            Open full assessment view
+            <ArrowIcon />
+          </button>
+        </Panel>
+
+        <Panel
+          title="Latest monitoring data"
+          description="Real V2 check-ins and block responses from the selected client."
+        >
+          {!permissions?.share_monitoring ? (
+            <div className="rounded-2xl bg-slate-50 p-5">
+              <p className="font-medium text-slate-800">
+                Monitoring data is private
+              </p>
+              <p className="mt-2 text-sm leading-6 text-slate-500">
+                This client has not enabled Daily monitoring sharing.
+              </p>
+            </div>
+          ) : loadingClientData ? (
+            <p className="text-sm text-slate-500">
+              Loading monitoring data...
+            </p>
+          ) : !latestCheckin ? (
+            <div className="rounded-2xl bg-slate-50 p-5">
+              <p className="font-medium text-slate-800">
+                No shared check-ins yet
+              </p>
+            </div>
+          ) : (
+            <div>
+              <div className="flex flex-wrap items-center justify-between gap-3">
                 <div>
-                  <p className="text-sm font-medium text-slate-800">
-                    Luna AI conversations
+                  <p className="font-semibold text-slate-900">
+                    {latestCheckin.schedule_label}
                   </p>
 
-                  <p className="mt-1 text-xs leading-5 text-slate-400">
-                    Private conversation history is not included
-                    in clinician sharing permissions.
+                  <p className="mt-1 text-xs text-slate-400">
+                    {new Date(
+                      latestCheckin.completed_at
+                    ).toLocaleString()}
                   </p>
                 </div>
 
-                <Status type="accent">Private</Status>
+                <Status type="success">
+                  Latest check-in
+                </Status>
+              </div>
+
+              <div className="mt-4 grid gap-3">
+                {latestCheckin.responses
+                  .slice(0, 5)
+                  .map((response) => (
+                    <div
+                      key={response.item_id}
+                      className="rounded-xl bg-slate-50 p-4"
+                    >
+                      <p className="text-xs text-slate-400">
+                        {response.prompt}
+                      </p>
+
+                      <p className="mt-2 text-sm font-medium text-slate-700">
+                        {monitoringResponseText(
+                          response.response
+                        )}
+                      </p>
+                    </div>
+                  ))}
               </div>
             </div>
-
-            <button
-              type="button"
-              onClick={() => changeScreen("permissions")}
-              className="inline-flex items-center gap-2 rounded-xl border border-cyan-200 bg-white px-4 py-2.5 text-sm font-semibold text-cyan-900 transition hover:bg-cyan-50"
-            >
-              View consent & data access
-              <ArrowIcon />
-            </button>
-          </div>
-        ) : (
-          <div className="rounded-2xl border border-dashed border-slate-300 bg-slate-50/60 p-8 text-center">
-            <p className="font-semibold text-slate-800">
-              No permission record available
-            </p>
-
-            <p className="mx-auto mt-2 max-w-xl text-sm leading-6 text-slate-500">
-              No client-authorised sharing record was returned
-              for this active connection.
-            </p>
-          </div>
-        )}
-      </Panel>
-
-      <Panel title="Professional actions">
-        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-          <button
-            type="button"
-            disabled={
-              loadingPermissions ||
-              !permissions?.share_assessments
-            }
-            onClick={() => changeScreen("assessments")}
-            className={`rounded-xl border p-4 text-left transition ${
-              permissions?.share_assessments
-                ? "border-cyan-200 bg-cyan-50/50 hover:bg-cyan-50"
-                : "border-slate-200 bg-slate-50 opacity-60"
-            }`}
-          >
-            <p className="text-sm font-semibold text-slate-700">
-              Review shared assessments
-            </p>
-
-            <p className="mt-1 text-xs leading-5 text-slate-400">
-              {loadingPermissions
-                ? "Checking client permission..."
-                : permissions?.share_assessments
-                  ? "Open this client's authorised completed assessment results."
-                  : "Assessment results are not currently shared by this client."}
-            </p>
-          </button>
+          )}
 
           <button
             type="button"
             onClick={() => changeScreen("ambulatory")}
-            className="rounded-xl border border-cyan-200 bg-cyan-50/50 p-4 text-left transition hover:bg-cyan-50"
+            className="mt-5 inline-flex items-center gap-2 text-sm font-semibold text-cyan-900"
           >
-            <p className="text-sm font-semibold text-slate-700">
-              Daily monitoring
-            </p>
-
-            <p className="mt-1 text-xs leading-5 text-slate-400">
-              Suggest a monitoring protocol. Shared entries
-              remain permission-controlled by the client.
-            </p>
+            Open full monitoring feed
+            <ArrowIcon />
           </button>
+        </Panel>
+      </div>
 
-          <button
-            type="button"
-            disabled
-            className="rounded-xl border border-slate-200 bg-slate-50 p-4 text-left opacity-60"
-          >
-            <p className="text-sm font-semibold text-slate-700">
-              Add professional note
-            </p>
+      <Panel
+        title="Client-authorised information"
+        description="The client decides which categories this Clinical workspace may access."
+      >
+        {loadingPermissions ? (
+          <p className="text-sm text-slate-500">
+            Loading permissions...
+          </p>
+        ) : permissions ? (
+          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+            {clientPermissionDefinitions.map(
+              (definition) => {
+                const shared =
+                  permissions[definition.key];
 
-            <p className="mt-1 text-xs leading-5 text-slate-400">
-              Client-specific professional records will be connected next.
-            </p>
-          </button>
-        </div>
+                return (
+                  <div
+                    key={definition.key}
+                    className={`rounded-xl border p-4 ${
+                      shared
+                        ? "border-emerald-100 bg-emerald-50/60"
+                        : "border-slate-200 bg-slate-50"
+                    }`}
+                  >
+                    <p className="text-sm font-medium text-slate-800">
+                      {definition.title}
+                    </p>
+
+                    <p
+                      className={`mt-2 text-xs font-semibold ${
+                        shared
+                          ? "text-emerald-700"
+                          : "text-slate-400"
+                      }`}
+                    >
+                      {shared
+                        ? "Shared"
+                        : "Not shared"}
+                    </p>
+                  </div>
+                );
+              }
+            )}
+
+            <div className="rounded-xl border border-slate-200 bg-white p-4">
+              <p className="text-sm font-medium text-slate-800">
+                Luna AI conversations
+              </p>
+
+              <p className="mt-2 text-xs font-semibold text-slate-500">
+                Private
+              </p>
+            </div>
+          </div>
+        ) : (
+          <p className="text-sm text-slate-500">
+            No permission record is available.
+          </p>
+        )}
+
+        <button
+          type="button"
+          onClick={() => changeScreen("permissions")}
+          className="mt-5 inline-flex items-center gap-2 text-sm font-semibold text-cyan-900"
+        >
+          Open consent & data access
+          <ArrowIcon />
+        </button>
       </Panel>
     </div>
   );
@@ -1585,13 +2124,35 @@ function ClientOverview({
    ASSESSMENTS
    ========================================================= */
 
+type ClinicianAssessmentResponseOption = {
+  label: string;
+  value: number;
+};
+
+type ClinicianAssessmentResponse = {
+  item_id: string;
+  position: number;
+  prompt: string;
+  subscale: string | null;
+  response_type: string;
+  response_value: number;
+  response_label: string | null;
+  response_options: ClinicianAssessmentResponseOption[];
+  reverse_scored: boolean;
+  required: boolean;
+};
+
 type ClinicianAssessmentRecord = {
   session_id: string;
   questionnaire_id: string;
   questionnaire_name: string;
   questionnaire_acronym: string | null;
+  version_label: string | null;
   scores: Record<string, number> | null;
   completed_at: string;
+  assignment_id: string | null;
+  assigned_by_clinician: boolean;
+  responses: ClinicianAssessmentResponse[];
 };
 
 type AssignmentQuestionnaire = {
@@ -1635,6 +2196,8 @@ function Assessments({
   const [loadingAssessments, setLoadingAssessments] =
     useState(false);
   const [assessmentError, setAssessmentError] = useState("");
+  const [expandedAssessmentIds, setExpandedAssessmentIds] =
+    useState<Set<string>>(new Set());
 
   const [assignmentCatalogue, setAssignmentCatalogue] =
     useState<AssignmentQuestionnaire[]>([]);
@@ -1729,68 +2292,116 @@ function Assessments({
     void loadAssignmentTools();
   }, [client?.connection_id]);
 
-  useEffect(() => {
-    let active = true;
+  async function loadSharedAssessments(
+    showLoading = true
+  ) {
+    setAssessmentError("");
 
-    async function loadSharedAssessments() {
-      setAssessmentError("");
-
-      if (
-        !client ||
-        loadingPermissions ||
-        !permissions ||
-        !permissions.share_assessments
-      ) {
-        setAssessments([]);
-        setLoadingAssessments(false);
-        return;
-      }
-
-      setLoadingAssessments(true);
-
-      const supabase = createClient();
-
-      const { data, error } = await supabase.rpc(
-        "psylattice_connected_client_assessments",
-        {
-          p_connection_id: client.connection_id,
-        }
-      );
-
-      if (!active) {
-        return;
-      }
-
-      if (error) {
-        console.error(
-          "Could not load shared client assessments:",
-          error
-        );
-
-        setAssessmentError(
-          "This client's shared assessments could not be loaded."
-        );
-        setAssessments([]);
-        setLoadingAssessments(false);
-        return;
-      }
-
-      setAssessments(
-        (data ?? []) as ClinicianAssessmentRecord[]
-      );
+    if (
+      !client ||
+      loadingPermissions ||
+      !permissions ||
+      !permissions.share_assessments
+    ) {
+      setAssessments([]);
       setLoadingAssessments(false);
+      return;
     }
 
-    void loadSharedAssessments();
+    if (showLoading) {
+      setLoadingAssessments(true);
+    }
+
+    const supabase = createClient();
+
+    const { data, error } = await supabase.rpc(
+      "psylattice_connected_client_assessments_v2",
+      {
+        p_connection_id: client.connection_id,
+      }
+    );
+
+    if (error) {
+      console.error(
+        "Could not load shared client assessments:",
+        error
+      );
+
+      setAssessmentError(
+        "This client's shared assessments could not be loaded."
+      );
+      setAssessments([]);
+      setLoadingAssessments(false);
+      return;
+    }
+
+    setAssessments(
+      (data ?? []) as ClinicianAssessmentRecord[]
+    );
+    setLoadingAssessments(false);
+  }
+
+  useEffect(() => {
+    if (!loadingPermissions) {
+      void loadSharedAssessments(true);
+    }
+
+    function refreshOnFocus() {
+      if (!loadingPermissions) {
+        void loadSharedAssessments(false);
+      }
+    }
+
+    function refreshWhenVisible() {
+      if (
+        document.visibilityState === "visible" &&
+        !loadingPermissions
+      ) {
+        void loadSharedAssessments(false);
+      }
+    }
+
+    window.addEventListener(
+      "focus",
+      refreshOnFocus
+    );
+    document.addEventListener(
+      "visibilitychange",
+      refreshWhenVisible
+    );
 
     return () => {
-      active = false;
+      window.removeEventListener(
+        "focus",
+        refreshOnFocus
+      );
+      document.removeEventListener(
+        "visibilitychange",
+        refreshWhenVisible
+      );
     };
   }, [
     client?.connection_id,
     loadingPermissions,
     permissions?.share_assessments,
   ]);
+
+  function toggleAssessmentResponses(
+    sessionId: string
+  ) {
+    setExpandedAssessmentIds((current) => {
+      const next = new Set(current);
+
+      if (next.has(sessionId)) {
+        next.delete(sessionId);
+      } else {
+        next.add(sessionId);
+      }
+
+      return next;
+    });
+  }
+
 
   async function assignAssessment() {
     if (
@@ -2232,11 +2843,17 @@ function Assessments({
 
         <button
           type="button"
-          disabled={loadingAssignmentTools}
-          onClick={() => void loadAssignmentTools()}
+          disabled={
+            loadingAssignmentTools ||
+            loadingAssessments
+          }
+          onClick={() => {
+            void loadAssignmentTools();
+            void loadSharedAssessments(true);
+          }}
           className="mt-5 text-xs font-semibold text-cyan-900 disabled:opacity-50"
         >
-          Refresh assignment status
+          Refresh assignment status & results
         </button>
       </Panel>
 
@@ -2295,6 +2912,21 @@ function Assessments({
             </div>
           )}
 
+          <div className="flex justify-end">
+            <button
+              type="button"
+              disabled={loadingAssessments}
+              onClick={() =>
+                void loadSharedAssessments(true)
+              }
+              className="rounded-xl border border-cyan-200 bg-white px-3 py-2 text-xs font-semibold text-cyan-900 transition hover:bg-cyan-50 disabled:opacity-50"
+            >
+              {loadingAssessments
+                ? "Refreshing results..."
+                : "Refresh assessment results"}
+            </button>
+          </div>
+
           <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
             <StatCard
               label="Completed assessments"
@@ -2337,7 +2969,7 @@ function Assessments({
 
           <Panel
             title="Shared assessment history"
-            description="Completed Self assessments returned through the client's active assessment-sharing permission."
+            description="Completed questionnaires, saved scale scores and every item response the client has authorised you to see."
           >
             {loadingAssessments ? (
               <div className="rounded-2xl bg-slate-50 px-5 py-8 text-center">
@@ -2348,17 +2980,18 @@ function Assessments({
             ) : assessments.length === 0 ? (
               <div className="rounded-2xl border border-dashed border-slate-300 bg-slate-50/60 px-6 py-10 text-center">
                 <p className="font-semibold text-slate-800">
-                  No completed assessments yet
+                  No completed assessment result loaded
                 </p>
 
                 <p className="mx-auto mt-2 max-w-xl text-sm leading-6 text-slate-500">
-                  Assessment sharing is enabled, but no
-                  completed assessment result is currently
-                  available.
+                  Assessment sharing is enabled. If the client has just
+                  completed an assigned questionnaire, use
+                  “Refresh assessment results” above. The page also refreshes
+                  automatically when this browser tab regains focus.
                 </p>
               </div>
             ) : (
-              <div className="divide-y divide-slate-100">
+              <div className="space-y-4">
                 {assessments.map((assessment) => {
                   const scoreEntries =
                     assessment.scores
@@ -2366,20 +2999,27 @@ function Assessments({
                           assessment.scores
                         ).filter(
                           ([, value]) =>
-                            typeof value ===
-                            "number"
+                            typeof value === "number"
                         )
                       : [];
+
+                  const responses =
+                    assessment.responses || [];
+
+                  const expanded =
+                    expandedAssessmentIds.has(
+                      assessment.session_id
+                    );
 
                   return (
                     <div
                       key={assessment.session_id}
-                      className="py-5 first:pt-0 last:pb-0"
+                      className="rounded-2xl border border-slate-200 bg-white p-5"
                     >
-                      <div className="flex flex-col justify-between gap-4 sm:flex-row sm:items-start">
+                      <div className="flex flex-col justify-between gap-4 lg:flex-row lg:items-start">
                         <div>
                           <div className="flex flex-wrap items-center gap-2">
-                            <p className="font-semibold text-slate-950">
+                            <p className="text-base font-semibold text-slate-950">
                               {
                                 assessment.questionnaire_name
                               }
@@ -2392,6 +3032,12 @@ function Assessments({
                                 }
                               </Status>
                             )}
+
+                            {assessment.assigned_by_clinician && (
+                              <Status type="success">
+                                Clinician assigned
+                              </Status>
+                            )}
                           </div>
 
                           <p className="mt-2 text-xs text-slate-400">
@@ -2399,39 +3045,183 @@ function Assessments({
                             {new Date(
                               assessment.completed_at
                             ).toLocaleString()}
+                            {assessment.version_label
+                              ? ` · Version ${assessment.version_label}`
+                              : ""}
                           </p>
                         </div>
 
-                        <Status type="success">
-                          Client shared
-                        </Status>
+                        <div className="flex flex-wrap items-center gap-2">
+                          <Status type="success">
+                            Client shared
+                          </Status>
+
+                          <button
+                            type="button"
+                            onClick={() =>
+                              toggleAssessmentResponses(
+                                assessment.session_id
+                              )
+                            }
+                            className="rounded-xl border border-cyan-200 bg-cyan-50 px-3 py-2 text-xs font-semibold text-cyan-900 transition hover:bg-cyan-100"
+                          >
+                            {expanded
+                              ? "Hide responses"
+                              : `View all ${responses.length} responses`}
+                          </button>
+                        </div>
                       </div>
 
-                      {scoreEntries.length > 0 ? (
-                        <div className="mt-4 flex flex-wrap gap-2">
-                          {scoreEntries.map(
-                            ([label, value]) => (
-                              <span
-                                key={label}
-                                className="rounded-full border border-cyan-100 bg-cyan-50/60 px-3 py-1.5 text-xs font-medium text-cyan-900"
-                              >
-                                {label}: {value}
-                              </span>
-                            )
+                      <div className="mt-5">
+                        <p className="text-xs font-semibold uppercase tracking-[0.1em] text-slate-400">
+                          Scale scores
+                        </p>
+
+                        {scoreEntries.length > 0 ? (
+                          <div className="mt-3 flex flex-wrap gap-2">
+                            {scoreEntries.map(
+                              ([label, value]) => (
+                                <span
+                                  key={label}
+                                  className="rounded-full border border-cyan-100 bg-cyan-50/60 px-3 py-1.5 text-xs font-semibold text-cyan-900"
+                                >
+                                  {label}: {value}
+                                </span>
+                              )
+                            )}
+                          </div>
+                        ) : (
+                          <p className="mt-2 text-sm text-slate-500">
+                            No scored summary is stored for this session.
+                          </p>
+                        )}
+                      </div>
+
+                      {expanded && (
+                        <div className="mt-6 border-t border-slate-100 pt-5">
+                          <div className="mb-4">
+                            <p className="text-sm font-semibold text-slate-900">
+                              Client item responses
+                            </p>
+
+                            <p className="mt-1 text-xs leading-5 text-slate-500">
+                              The selected response is highlighted within the
+                              response scale saved for each questionnaire item.
+                            </p>
+                          </div>
+
+                          {responses.length === 0 ? (
+                            <div className="rounded-xl bg-slate-50 p-4">
+                              <p className="text-sm text-slate-500">
+                                This completed session has no saved item-level
+                                responses available.
+                              </p>
+                            </div>
+                          ) : (
+                            <div className="space-y-4">
+                              {responses.map(
+                                (response) => {
+                                  const options =
+                                    Array.isArray(
+                                      response.response_options
+                                    )
+                                      ? response.response_options
+                                      : [];
+
+                                  return (
+                                    <div
+                                      key={response.item_id}
+                                      className="rounded-2xl border border-slate-200 bg-slate-50/40 p-4"
+                                    >
+                                      <div className="flex items-start gap-3">
+                                        <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-white text-xs font-semibold text-slate-500 shadow-sm">
+                                          {response.position}
+                                        </span>
+
+                                        <div className="min-w-0 flex-1">
+                                          <p className="text-sm font-medium leading-6 text-slate-900">
+                                            {response.prompt}
+                                          </p>
+
+                                          {response.subscale && (
+                                            <p className="mt-1 text-xs text-slate-400">
+                                              Scale: {response.subscale}
+                                            </p>
+                                          )}
+
+                                          {options.length > 0 ? (
+                                            <div className="mt-4 flex flex-wrap gap-2">
+                                              {options.map(
+                                                (option) => {
+                                                  const selected =
+                                                    Number(option.value) ===
+                                                    Number(
+                                                      response.response_value
+                                                    );
+
+                                                  return (
+                                                    <div
+                                                      key={`${response.item_id}-${option.value}`}
+                                                      className={`rounded-xl border px-3 py-2 text-xs ${
+                                                        selected
+                                                          ? "border-cyan-400 bg-cyan-100 font-semibold text-cyan-950 ring-1 ring-cyan-200"
+                                                          : "border-slate-200 bg-white text-slate-500"
+                                                      }`}
+                                                    >
+                                                      <span>
+                                                        {option.label}
+                                                      </span>
+
+                                                      <span className="ml-2 text-[10px] opacity-70">
+                                                        {option.value}
+                                                      </span>
+
+                                                      {selected && (
+                                                        <span className="ml-2">
+                                                          ✓ Client response
+                                                        </span>
+                                                      )}
+                                                    </div>
+                                                  );
+                                                }
+                                              )}
+                                            </div>
+                                          ) : (
+                                            <div className="mt-3 rounded-xl border border-cyan-100 bg-cyan-50 px-3 py-2">
+                                              <p className="text-sm font-semibold text-cyan-950">
+                                                {response.response_label ||
+                                                  response.response_value}
+                                              </p>
+                                            </div>
+                                          )}
+
+                                          <p className="mt-3 text-xs text-slate-400">
+                                            Recorded response:{" "}
+                                            <span className="font-medium text-slate-600">
+                                              {response.response_label
+                                                ? `${response.response_label} (${response.response_value})`
+                                                : response.response_value}
+                                            </span>
+                                            {response.reverse_scored
+                                              ? " · Reverse-scored item"
+                                              : ""}
+                                          </p>
+                                        </div>
+                                      </div>
+                                    </div>
+                                  );
+                                }
+                              )}
+                            </div>
                           )}
                         </div>
-                      ) : (
-                        <p className="mt-4 text-sm text-slate-500">
-                          No scored summary is stored for this
-                          completed session.
-                        </p>
                       )}
 
-                      <p className="mt-4 max-w-4xl text-xs leading-5 text-slate-400">
-                        Questionnaire scores are displayed as
-                        recorded results. Clinical meaning
-                        requires professional interpretation
-                        and appropriate context.
+                      <p className="mt-5 text-xs leading-5 text-slate-400">
+                        Responses and scale scores are displayed as stored by
+                        PsyLattice. Interpretation should consider the
+                        questionnaire manual, scoring rules and clinical
+                        context.
                       </p>
                     </div>
                   );
@@ -5440,68 +6230,61 @@ function Ambulatory({ client, changeScreen }: { client: ConnectedClient | null; 
    WEARABLES
    ========================================================= */
 
-function Wearables() {
-  return (
-    <div className="space-y-5">
-      <div className="rounded-2xl border border-cyan-100 bg-cyan-50/60 p-5">
-        <p className="font-medium">Physiological information is contextual.</p>
+function Wearables({
+  client,
+}: {
+  client: ConnectedClient | null;
+}) {
+  const {
+    permissions,
+    loadingPermissions,
+  } = useClientSharingPermissions(client);
 
-        <p className="mt-2 max-w-4xl text-sm leading-6 text-slate-600">
-          PsyLattice displays only signals explicitly authorised by the
-          client. Wearable information supplements self-report data and does
-          not independently establish a psychological diagnosis.
+  if (!client) {
+    return (
+      <div className="rounded-2xl border border-slate-200 bg-white p-8 text-center">
+        <p className="text-lg font-semibold">
+          Select a client above
+        </p>
+        <p className="mt-2 text-sm text-slate-500">
+          Wearable access is evaluated separately for each connected client.
         </p>
       </div>
+    );
+  }
 
-      <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
-        <StatCard label="Sleep" value="6h 18m" detail="7-day average" />
-        <StatCard label="Activity" value="7,420" detail="Average steps" />
-        <StatCard label="Resting HR" value="64 bpm" detail="Daily summary" />
-        <StatCard label="HRV" value="Not shared" detail="Permission off" />
-      </div>
-
-      <div className="grid gap-5 xl:grid-cols-2">
-        <Panel title="Data coverage">
-          <div className="space-y-6">
-            <ProgressBar label="Sleep" value={92} text="92% coverage" />
-            <ProgressBar label="Activity" value={96} text="96% coverage" />
-            <ProgressBar
-              label="Resting heart rate"
-              value={74}
-              text="74% coverage"
-            />
+  return (
+    <div className="space-y-5">
+      <Panel
+        title={`${client.client_name} · Wearables & physiology`}
+        description="Wearable information is shown only when it is both authorised and connected to a real data source."
+      >
+        {loadingPermissions ? (
+          <p className="text-sm text-slate-500">
+            Checking permission...
+          </p>
+        ) : !permissions?.share_wearables ? (
+          <div className="rounded-2xl border border-dashed border-slate-300 bg-slate-50 p-6 text-center">
+            <p className="font-semibold text-slate-800">
+              Wearable summaries are not shared
+            </p>
+            <p className="mt-2 text-sm text-slate-500">
+              The client has not authorised wearable-summary access.
+            </p>
           </div>
-        </Panel>
-
-        <Panel title="Current permissions">
-          <div className="divide-y divide-slate-100">
-            {[
-              ["Sleep", "Duration and timing summaries", "Authorised"],
-              ["Activity", "Daily movement summaries", "Authorised"],
-              ["Resting HR", "Daily summary only", "Authorised"],
-              ["HRV", "Not shared by client", "Unavailable"],
-            ].map(([name, description, status]) => (
-              <div
-                key={name}
-                className="flex items-center justify-between gap-5 py-4 first:pt-0 last:pb-0"
-              >
-                <div>
-                  <p className="text-sm font-medium">{name}</p>
-                  <p className="mt-1 text-xs text-slate-400">
-                    {description}
-                  </p>
-                </div>
-
-                <Status
-                  type={status === "Authorised" ? "success" : "neutral"}
-                >
-                  {status}
-                </Status>
-              </div>
-            ))}
+        ) : (
+          <div className="rounded-2xl border border-cyan-100 bg-cyan-50/60 p-5">
+            <p className="font-semibold text-cyan-950">
+              Permission granted — live wearable connector not configured yet
+            </p>
+            <p className="mt-2 text-sm leading-6 text-slate-600">
+              No fabricated sleep, heart-rate, HRV or activity values are shown.
+              Real readings will appear here only after PsyLattice is connected
+              to an actual wearable data source.
+            </p>
           </div>
-        </Panel>
-      </div>
+        )}
+      </Panel>
     </div>
   );
 }
@@ -5510,90 +6293,228 @@ function Wearables() {
    TIMELINE
    ========================================================= */
 
-function Timeline() {
-  const events = [
-    {
-      date: "09 Aug",
-      title: "New stress assessment",
-      detail: "Score 21 · professional review pending",
-      type: "Assessment",
-    },
-    {
-      date: "08 Aug",
-      title: "Elevated EMA reports",
-      detail: "Three high stress reports during academic activity",
-      type: "Ambulatory",
-    },
-    {
-      date: "02 Aug",
-      title: "Follow-up note",
-      detail: "Monitoring continued for another two weeks",
-      type: "Clinical",
-    },
-    {
-      date: "26 Jul",
-      title: "Previous stress assessment",
-      detail: "Score 25 · reviewed",
-      type: "Assessment",
-    },
-    {
-      date: "24 Jul",
-      title: "Ambulatory protocol started",
-      detail: "Four prompts per day",
-      type: "Monitoring",
-    },
-  ];
+function Timeline({
+  client,
+}: {
+  client: ConnectedClient | null;
+}) {
+  type TimelineEvent = {
+    id: string;
+    occurred_at: string;
+    title: string;
+    detail: string;
+    type: "Assessment" | "Monitoring";
+  };
+
+  const {
+    permissions,
+    loadingPermissions,
+  } = useClientSharingPermissions(client);
+
+  const [events, setEvents] = useState<TimelineEvent[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [timelineError, setTimelineError] = useState("");
+
+  useEffect(() => {
+    async function loadTimeline() {
+      if (!client || !permissions) {
+        setEvents([]);
+        return;
+      }
+
+      setLoading(true);
+      setTimelineError("");
+
+      const supabase = createClient();
+
+      const assessmentPromise =
+        permissions.share_assessments
+          ? supabase.rpc(
+              "psylattice_connected_client_assessments_v2",
+              {
+                p_connection_id: client.connection_id,
+              }
+            )
+          : Promise.resolve({
+              data: [],
+              error: null,
+            });
+
+      const monitoringPromise =
+        permissions.share_monitoring
+          ? supabase.rpc(
+              "psylattice_connected_client_monitoring_v2",
+              {
+                p_connection_id: client.connection_id,
+                p_days: 30,
+              }
+            )
+          : Promise.resolve({
+              data: [],
+              error: null,
+            });
+
+      const [assessmentResult, monitoringResult] =
+        await Promise.all([
+          assessmentPromise,
+          monitoringPromise,
+        ]);
+
+      if (
+        assessmentResult.error ||
+        monitoringResult.error
+      ) {
+        console.error(
+          "Could not load client timeline:",
+          assessmentResult.error ||
+            monitoringResult.error
+        );
+
+        setTimelineError(
+          "Some timeline data could not be loaded."
+        );
+      }
+
+      const nextEvents: TimelineEvent[] = [];
+
+      for (const assessment of
+        (assessmentResult.data ?? []) as Array<{
+          session_id: string;
+          questionnaire_name: string;
+          questionnaire_acronym: string | null;
+          completed_at: string;
+        }>) {
+        nextEvents.push({
+          id: `assessment-${assessment.session_id}`,
+          occurred_at: assessment.completed_at,
+          title:
+            assessment.questionnaire_acronym ||
+            assessment.questionnaire_name,
+          detail: "Completed assessment",
+          type: "Assessment",
+        });
+      }
+
+      const feed =
+        Array.isArray(monitoringResult.data) &&
+        monitoringResult.data.length > 0
+          ? monitoringResult.data[0]
+          : null;
+
+      for (const checkin of
+        (feed?.checkins || []) as Array<{
+          checkin_id: string;
+          schedule_label: string;
+          completed_at: string;
+          responses: Array<any>;
+        }>) {
+        nextEvents.push({
+          id: `monitoring-${checkin.checkin_id}`,
+          occurred_at: checkin.completed_at,
+          title: checkin.schedule_label,
+          detail: `${checkin.responses.length} submitted response${
+            checkin.responses.length === 1 ? "" : "s"
+          }`,
+          type: "Monitoring",
+        });
+      }
+
+      nextEvents.sort(
+        (a, b) =>
+          new Date(b.occurred_at).getTime() -
+          new Date(a.occurred_at).getTime()
+      );
+
+      setEvents(nextEvents);
+      setLoading(false);
+    }
+
+    if (!loadingPermissions) {
+      void loadTimeline();
+    }
+  }, [
+    client?.connection_id,
+    loadingPermissions,
+    permissions?.share_assessments,
+    permissions?.share_monitoring,
+  ]);
+
+  if (!client) {
+    return (
+      <div className="rounded-2xl border border-slate-200 bg-white p-8 text-center">
+        <p className="text-lg font-semibold">
+          Select a client above
+        </p>
+        <p className="mt-2 text-sm text-slate-500">
+          The combined progress timeline will load for the selected client.
+        </p>
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-5">
-      <Panel title="Longitudinal record">
-        <div className="space-y-0">
-          {events.map((event, index) => (
-            <div key={`${event.date}-${event.title}`} className="flex gap-4">
-              <div className="flex flex-col items-center">
-                <div className="mt-1 h-3 w-3 rounded-full bg-cyan-700" />
+      {timelineError && (
+        <div className="rounded-2xl border border-red-200 bg-red-50 px-5 py-4 text-sm text-red-700">
+          {timelineError}
+        </div>
+      )}
 
-                {index < events.length - 1 && (
-                  <div className="h-20 w-px bg-slate-200" />
-                )}
-              </div>
+      <Panel
+        title={`${client.client_name} · Progress timeline`}
+        description="Chronological authorised assessment and Monitoring V2 events."
+      >
+        {loading || loadingPermissions ? (
+          <p className="text-sm text-slate-500">
+            Loading timeline...
+          </p>
+        ) : events.length === 0 ? (
+          <div className="rounded-2xl bg-slate-50 p-5">
+            <p className="font-medium text-slate-800">
+              No shared timeline events yet
+            </p>
+            <p className="mt-2 text-sm leading-6 text-slate-500">
+              Assessment and monitoring events appear here only when the
+              corresponding sharing permissions are enabled.
+            </p>
+          </div>
+        ) : (
+          <div className="divide-y divide-slate-100">
+            {events.slice(0, 50).map((event) => (
+              <div
+                key={event.id}
+                className="flex flex-col justify-between gap-3 py-4 first:pt-0 last:pb-0 sm:flex-row sm:items-center"
+              >
+                <div>
+                  <div className="flex flex-wrap items-center gap-2">
+                    <p className="text-sm font-semibold text-slate-900">
+                      {event.title}
+                    </p>
+                    <Status
+                      type={
+                        event.type === "Assessment"
+                          ? "accent"
+                          : "success"
+                      }
+                    >
+                      {event.type}
+                    </Status>
+                  </div>
 
-              <div className="pb-7">
-                <div className="flex flex-wrap items-center gap-2">
-                  <p className="text-xs text-slate-400">{event.date}</p>
-                  <Status>{event.type}</Status>
+                  <p className="mt-1 text-xs text-slate-500">
+                    {event.detail}
+                  </p>
                 </div>
 
-                <p className="mt-2 font-medium">{event.title}</p>
-                <p className="mt-1 text-sm text-slate-500">{event.detail}</p>
+                <p className="text-xs text-slate-400">
+                  {new Date(
+                    event.occurred_at
+                  ).toLocaleString()}
+                </p>
               </div>
-            </div>
-          ))}
-        </div>
-      </Panel>
-
-      <Panel title="Timeline filters">
-        <div className="flex flex-wrap gap-2">
-          {[
-            "All",
-            "Assessments",
-            "Ambulatory",
-            "Wearables",
-            "Sessions",
-            "Notes",
-          ].map((item, index) => (
-            <button
-              key={item}
-              className={`rounded-full border px-3 py-2 text-xs font-medium ${
-                index === 0
-                  ? "border-cyan-700 bg-cyan-50 text-cyan-800"
-                  : "border-slate-200 text-slate-500"
-              }`}
-            >
-              {item}
-            </button>
-          ))}
-        </div>
+            ))}
+          </div>
+        )}
       </Panel>
     </div>
   );
@@ -5603,69 +6524,40 @@ function Timeline() {
    NOTES
    ========================================================= */
 
-function Notes() {
-  const [note, setNote] = useState(
-    "Reviewed latest self-assessment and ambulatory entries. Discuss contextual pattern during scheduled consultation.",
-  );
+function Notes({
+  client,
+}: {
+  client: ConnectedClient | null;
+}) {
+  if (!client) {
+    return (
+      <div className="rounded-2xl border border-slate-200 bg-white p-8 text-center">
+        <p className="text-lg font-semibold">
+          Select a client above
+        </p>
+        <p className="mt-2 text-sm text-slate-500">
+          Choose a client to work in Professional Notes.
+        </p>
+      </div>
+    );
+  }
 
   return (
-    <div className="grid gap-5 xl:grid-cols-[1.1fr_.9fr]">
-      <Panel title="New professional note">
-        <div className="space-y-4">
-          <label className="block">
-            <span className="text-sm font-medium">Note type</span>
+    <Panel
+      title={`${client.client_name} · Professional Notes`}
+      description="This tab is client-scoped. The selected client can be changed above without returning to the Clients page."
+    >
+      <div className="rounded-2xl bg-slate-50 p-6">
+        <p className="font-semibold text-slate-800">
+          Client-specific professional notes are not connected to a persistent clinical-record backend yet.
+        </p>
 
-            <select className="mt-2 w-full rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm">
-              <option>Assessment review</option>
-              <option>Session note</option>
-              <option>Follow-up</option>
-              <option>Referral</option>
-            </select>
-          </label>
-
-          <label className="block">
-            <span className="text-sm font-medium">Professional note</span>
-
-            <textarea
-              value={note}
-              onChange={(event) => setNote(event.target.value)}
-              className="mt-2 min-h-40 w-full rounded-xl border border-slate-200 p-4 text-sm leading-6 outline-none focus:border-cyan-700"
-            />
-          </label>
-
-          <div className="rounded-xl bg-slate-50 p-4 text-xs leading-5 text-slate-500">
-            Professional notes will later be timestamped, attributed to the
-            authenticated professional and included in the audit trail.
-          </div>
-
-          <button className="rounded-xl bg-slate-950 px-5 py-3 text-sm font-semibold text-white">
-            Save professional note
-          </button>
-        </div>
-      </Panel>
-
-      <Panel title="Recent notes">
-        <div className="divide-y divide-slate-100">
-          {[
-            ["09 Aug · 11:32", "Assessment review", "Dr. Sharma"],
-            ["02 Aug · 16:05", "Follow-up note", "Dr. Sharma"],
-            ["26 Jul · 10:18", "Initial triage", "Counselling service"],
-          ].map(([date, type, author]) => (
-            <div
-              key={date}
-              className="py-4 first:pt-0 last:pb-0"
-            >
-              <div className="flex items-center justify-between gap-3">
-                <p className="text-sm font-medium">{type}</p>
-                <Status>{author}</Status>
-              </div>
-
-              <p className="mt-1 text-xs text-slate-400">{date}</p>
-            </div>
-          ))}
-        </div>
-      </Panel>
-    </div>
+        <p className="mt-2 max-w-3xl text-sm leading-6 text-slate-500">
+          PsyLattice is not displaying demo client records here. This tab will
+          be connected only when its real backend workflow is implemented.
+        </p>
+      </div>
+    </Panel>
   );
 }
 
@@ -5673,120 +6565,40 @@ function Notes() {
    CARE PATHWAY
    ========================================================= */
 
-function CarePathway() {
-  return (
-    <div className="space-y-5">
-      <Panel title="Current support pathway">
-        <div className="flex flex-wrap items-center gap-2">
-          <Status type="success">1 · Request ✓</Status>
-          <span className="text-slate-300">→</span>
-          <Status type="success">2 · Review ✓</Status>
-          <span className="text-slate-300">→</span>
-          <Status type="accent">3 · Consultation</Status>
-          <span className="text-slate-300">→</span>
-          <Status>4 · Follow-up</Status>
-        </div>
-
-        <div className="mt-7 divide-y divide-slate-100">
-          {[
-            [
-              "Support request",
-              "Submitted 26 Jul",
-              "Complete",
-            ],
-            [
-              "Initial professional review",
-              "Reviewed by counselling service",
-              "Complete",
-            ],
-            [
-              "Consultation",
-              "14 Aug · 14:30",
-              "Scheduled",
-            ],
-            [
-              "Follow-up plan",
-              "To be determined by professional",
-              "Pending",
-            ],
-          ].map(([name, detail, status]) => (
-            <div
-              key={name}
-              className="flex items-center justify-between gap-5 py-4 first:pt-0 last:pb-0"
-            >
-              <div>
-                <p className="text-sm font-medium">{name}</p>
-                <p className="mt-1 text-xs text-slate-400">{detail}</p>
-              </div>
-
-              <Status
-                type={
-                  status === "Complete"
-                    ? "success"
-                    : status === "Scheduled"
-                      ? "accent"
-                      : "neutral"
-                }
-              >
-                {status}
-              </Status>
-            </div>
-          ))}
-        </div>
-      </Panel>
-
-      <Panel title="Record professional decision">
-        <div className="grid gap-4 md:grid-cols-2">
-          <label>
-            <span className="text-sm font-medium">Next action</span>
-
-            <select className="mt-2 w-full rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm">
-              <option>Continue current support</option>
-              <option>Schedule follow-up</option>
-              <option>Refer to another service</option>
-              <option>Close current pathway</option>
-            </select>
-          </label>
-
-          <label>
-            <span className="text-sm font-medium">Follow-up interval</span>
-
-            <select className="mt-2 w-full rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm">
-              <option>1 week</option>
-              <option>2 weeks</option>
-              <option>4 weeks</option>
-            </select>
-          </label>
-        </div>
-
-        <label className="mt-5 block">
-          <span className="text-sm font-medium">
-            Professional rationale
-          </span>
-
-          <textarea
-            className="mt-2 min-h-28 w-full rounded-xl border border-slate-200 p-4 text-sm"
-            placeholder="Record the professional basis for the decision..."
-          />
-        </label>
-
-        <button className="mt-4 rounded-xl bg-slate-950 px-5 py-3 text-sm font-semibold text-white">
-          Record decision
-        </button>
-      </Panel>
-
-      <div className="rounded-2xl border border-amber-200 bg-amber-50 p-5">
-        <p className="font-medium text-amber-900">
-          Human decision required
+function CarePathway({
+  client,
+}: {
+  client: ConnectedClient | null;
+}) {
+  if (!client) {
+    return (
+      <div className="rounded-2xl border border-slate-200 bg-white p-8 text-center">
+        <p className="text-lg font-semibold">
+          Select a client above
         </p>
-
-        <p className="mt-2 max-w-4xl text-sm leading-6 text-amber-800">
-          Referral, escalation, diagnosis and treatment decisions remain
-          professional actions. PsyLattice may organise information or surface
-          workflow tasks, but does not make these decisions autonomously.
+        <p className="mt-2 text-sm text-slate-500">
+          Choose a client to work in Care Pathway.
         </p>
       </div>
-    </div>
+    );
+  }
+
+  return (
+    <Panel
+      title={`${client.client_name} · Care Pathway`}
+      description="This tab is client-scoped. The selected client can be changed above without returning to the Clients page."
+    >
+      <div className="rounded-2xl bg-slate-50 p-6">
+        <p className="font-semibold text-slate-800">
+          The care-pathway backend has not been connected yet. No fictional pathway data is shown.
+        </p>
+
+        <p className="mt-2 max-w-3xl text-sm leading-6 text-slate-500">
+          PsyLattice is not displaying demo client records here. This tab will
+          be connected only when its real backend workflow is implemented.
+        </p>
+      </div>
+    </Panel>
   );
 }
 
@@ -5794,113 +6606,40 @@ function CarePathway() {
    APPOINTMENTS
    ========================================================= */
 
-function Appointments() {
+function Appointments({
+  client,
+}: {
+  client: ConnectedClient | null;
+}) {
+  if (!client) {
+    return (
+      <div className="rounded-2xl border border-slate-200 bg-white p-8 text-center">
+        <p className="text-lg font-semibold">
+          Select a client above
+        </p>
+        <p className="mt-2 text-sm text-slate-500">
+          Choose a client to work in Appointments.
+        </p>
+      </div>
+    );
+  }
+
   return (
-    <div className="space-y-5">
-      <Panel title="Upcoming appointments">
-        <div className="divide-y divide-slate-100">
-          {[
-            [
-              "14 Aug · 14:30",
-              "Maya S.",
-              "Initial consultation · In person",
-              "Confirmed",
-            ],
-            [
-              "14 Aug · 16:00",
-              "Lina P.",
-              "Follow-up · Online",
-              "Confirmed",
-            ],
-            [
-              "15 Aug · 10:30",
-              "Arjun K.",
-              "Follow-up · In person",
-              "Pending",
-            ],
-          ].map(([time, person, type, status]) => (
-            <div
-              key={`${time}-${person}`}
-              className="grid gap-3 py-4 first:pt-0 last:pb-0 md:grid-cols-[150px_1fr_200px_auto] md:items-center"
-            >
-              <p className="text-sm font-semibold">{time}</p>
-              <p className="text-sm font-medium">{person}</p>
-              <p className="text-sm text-slate-500">{type}</p>
-              <Status
-                type={status === "Confirmed" ? "success" : "warning"}
-              >
-                {status}
-              </Status>
-            </div>
-          ))}
-        </div>
-      </Panel>
+    <Panel
+      title={`${client.client_name} · Appointments`}
+      description="This tab is client-scoped. The selected client can be changed above without returning to the Clients page."
+    >
+      <div className="rounded-2xl bg-slate-50 p-6">
+        <p className="font-semibold text-slate-800">
+          Client-specific appointment scheduling is not connected yet.
+        </p>
 
-      <Panel title="Follow-up tasks">
-        <div className="divide-y divide-slate-100">
-          {[
-            [
-              "Maya S.",
-              "Review ambulatory entries before consultation",
-              "14 Aug",
-            ],
-            ["Arjun K.", "Send agreed follow-up questionnaire", "Today"],
-            [
-              "Lina P.",
-              "Acknowledge changed data permission",
-              "Today",
-            ],
-          ].map(([person, task, due]) => (
-            <div
-              key={`${person}-${task}`}
-              className="flex items-center justify-between gap-5 py-4 first:pt-0 last:pb-0"
-            >
-              <div>
-                <p className="text-sm font-medium">{person}</p>
-                <p className="mt-1 text-sm text-slate-500">{task}</p>
-              </div>
-
-              <Status>{due}</Status>
-            </div>
-          ))}
-        </div>
-      </Panel>
-
-      <Panel title="Schedule appointment">
-        <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
-          <label>
-            <span className="text-sm font-medium">Client</span>
-            <select className="mt-2 w-full rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm">
-              <option>Maya S.</option>
-              <option>Arjun K.</option>
-              <option>Lina P.</option>
-            </select>
-          </label>
-
-          <label>
-            <span className="text-sm font-medium">Type</span>
-            <select className="mt-2 w-full rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm">
-              <option>Follow-up</option>
-              <option>Initial consultation</option>
-            </select>
-          </label>
-
-          <label>
-            <span className="text-sm font-medium">Mode</span>
-            <select className="mt-2 w-full rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm">
-              <option>In person</option>
-              <option>Online</option>
-            </select>
-          </label>
-
-          <div className="flex items-end">
-            <button className="w-full rounded-xl bg-slate-950 px-5 py-3 text-sm font-semibold text-white">
-              Schedule
-            </button>
-          </div>
-        </div>
-      </Panel>
-    </div>
+        <p className="mt-2 max-w-3xl text-sm leading-6 text-slate-500">
+          PsyLattice is not displaying demo client records here. This tab will
+          be connected only when its real backend workflow is implemented.
+        </p>
+      </div>
+    </Panel>
   );
 }
 
@@ -5908,69 +6647,40 @@ function Appointments() {
    MESSAGES
    ========================================================= */
 
-function Messages() {
-  const [message, setMessage] = useState("");
+function Messages({
+  client,
+}: {
+  client: ConnectedClient | null;
+}) {
+  if (!client) {
+    return (
+      <div className="rounded-2xl border border-slate-200 bg-white p-8 text-center">
+        <p className="text-lg font-semibold">
+          Select a client above
+        </p>
+        <p className="mt-2 text-sm text-slate-500">
+          Choose a client to work in Messages.
+        </p>
+      </div>
+    );
+  }
 
   return (
-    <div className="grid gap-5 xl:grid-cols-[.8fr_1.2fr]">
-      <Panel title="Conversations">
-        <div className="divide-y divide-slate-100">
-          {[
-            ["Maya S.", "Question about tomorrow's check-in", "12m"],
-            ["Arjun K.", "Follow-up questionnaire", "1h"],
-            ["Lina P.", "Data-sharing preference updated", "Today"],
-          ].map(([person, preview, time]) => (
-            <button
-              key={person}
-              className="w-full py-4 text-left first:pt-0 last:pb-0"
-            >
-              <div className="flex justify-between gap-3">
-                <p className="text-sm font-medium">{person}</p>
-                <span className="text-xs text-slate-400">{time}</span>
-              </div>
+    <Panel
+      title={`${client.client_name} · Messages`}
+      description="This tab is client-scoped. The selected client can be changed above without returning to the Clients page."
+    >
+      <div className="rounded-2xl bg-slate-50 p-6">
+        <p className="font-semibold text-slate-800">
+          Secure client messaging is not connected yet.
+        </p>
 
-              <p className="mt-1 text-xs text-slate-500">{preview}</p>
-            </button>
-          ))}
-        </div>
-      </Panel>
-
-      <Panel title="Maya S.">
-        <div className="min-h-[380px] space-y-4">
-          <div className="max-w-md rounded-2xl rounded-tl-sm border border-slate-200 bg-slate-50 p-4">
-            <p className="text-sm leading-6">
-              Do I need to complete the evening check-in if I'm travelling?
-            </p>
-            <p className="mt-2 text-xs text-slate-400">12:22</p>
-          </div>
-
-          <div className="ml-auto max-w-md rounded-2xl rounded-tr-sm bg-slate-950 p-4 text-white">
-            <p className="text-sm leading-6">
-              Complete it if practical. Missing an occasional prompt is okay,
-              and we can review the overall pattern later.
-            </p>
-            <p className="mt-2 text-xs text-slate-400">12:28</p>
-          </div>
-        </div>
-
-        <div className="mt-5 flex gap-2 border-t border-slate-100 pt-5">
-          <input
-            value={message}
-            onChange={(event) => setMessage(event.target.value)}
-            placeholder="Write a secure message..."
-            className="min-w-0 flex-1 rounded-xl border border-slate-200 px-4 py-3 text-sm"
-          />
-
-          <button
-            type="button"
-            onClick={() => setMessage("")}
-            className="rounded-xl bg-slate-950 px-5 py-3 text-sm font-semibold text-white"
-          >
-            Send
-          </button>
-        </div>
-      </Panel>
-    </div>
+        <p className="mt-2 max-w-3xl text-sm leading-6 text-slate-500">
+          PsyLattice is not displaying demo client records here. This tab will
+          be connected only when its real backend workflow is implemented.
+        </p>
+      </div>
+    </Panel>
   );
 }
 
@@ -5978,96 +6688,40 @@ function Messages() {
    REPORTS
    ========================================================= */
 
-function Reports() {
-  return (
-    <div className="space-y-5">
-      <div className="grid gap-5 xl:grid-cols-[1.1fr_.9fr]">
-        <Panel
-          title="Create professional report"
-          description="Prepare a structured summary from authorised information."
-        >
-          <div className="space-y-5">
-            <label className="block">
-              <span className="text-sm font-medium">Report type</span>
-
-              <select className="mt-2 w-full rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm">
-                <option>Longitudinal assessment summary</option>
-                <option>Monitoring summary</option>
-                <option>Referral summary</option>
-              </select>
-            </label>
-
-            <label className="block">
-              <span className="text-sm font-medium">Period</span>
-
-              <select className="mt-2 w-full rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm">
-                <option>Last 30 days</option>
-                <option>Last 90 days</option>
-                <option>Custom range</option>
-              </select>
-            </label>
-
-            <div className="space-y-3">
-              {[
-                "Assessment history",
-                "Ambulatory summary",
-                "Authorised wearable summaries",
-                "Professional notes",
-              ].map((item, index) => (
-                <label key={item} className="flex items-center gap-3">
-                  <input
-                    type="checkbox"
-                    defaultChecked={index !== 2}
-                  />
-                  <span className="text-sm">{item}</span>
-                </label>
-              ))}
-            </div>
-
-            <button className="w-full rounded-xl bg-slate-950 px-5 py-3 text-sm font-semibold text-white">
-              Generate draft report
-            </button>
-          </div>
-        </Panel>
-
-        <Panel title="Professional review required">
-          <div className="rounded-2xl border border-cyan-100 bg-cyan-50/60 p-5">
-            <p className="font-medium">Reports remain professional documents.</p>
-
-            <p className="mt-2 text-sm leading-6 text-slate-600">
-              PsyLattice may organise authorised information into a draft,
-              but a qualified professional must review and finalise the
-              report. The system does not autonomously generate definitive
-              diagnosis or treatment recommendations.
-            </p>
-          </div>
-        </Panel>
+function Reports({
+  client,
+}: {
+  client: ConnectedClient | null;
+}) {
+  if (!client) {
+    return (
+      <div className="rounded-2xl border border-slate-200 bg-white p-8 text-center">
+        <p className="text-lg font-semibold">
+          Select a client above
+        </p>
+        <p className="mt-2 text-sm text-slate-500">
+          Choose a client to work in Reports.
+        </p>
       </div>
+    );
+  }
 
-      <Panel title="Previous reports">
-        <div className="divide-y divide-slate-100">
-          {[
-            ["02 Aug 2026", "Monitoring summary", "PDF", "Finalised"],
-            [
-              "26 Jul 2026",
-              "Initial assessment summary",
-              "PDF",
-              "Finalised",
-            ],
-          ].map(([date, name, format, status]) => (
-            <div
-              key={date}
-              className="grid gap-3 py-4 first:pt-0 last:pb-0 sm:grid-cols-[140px_1fr_100px_auto] sm:items-center"
-            >
-              <span className="text-xs text-slate-400">{date}</span>
-              <span className="text-sm font-medium">{name}</span>
-              <span className="text-xs text-slate-500">{format}</span>
-              <Status type="success">{status}</Status>
-            </div>
-          ))}
-        </div>
-      </Panel>
-    </div>
+  return (
+    <Panel
+      title={`${client.client_name} · Reports`}
+      description="This tab is client-scoped. The selected client can be changed above without returning to the Clients page."
+    >
+      <div className="rounded-2xl bg-slate-50 p-6">
+        <p className="font-semibold text-slate-800">
+          Structured client reports are not connected yet. Authorised assessment and monitoring data remains available in the live data tabs.
+        </p>
+
+        <p className="mt-2 max-w-3xl text-sm leading-6 text-slate-500">
+          PsyLattice is not displaying demo client records here. This tab will
+          be connected only when its real backend workflow is implemented.
+        </p>
+      </div>
+    </Panel>
   );
 }
 
@@ -6521,7 +7175,7 @@ export default function ClinicianWorkspace() {
   function renderScreen() {
     switch (screen) {
       case "dashboard":
-        return <Dashboard changeScreen={setScreen} />;
+        return <Dashboard onOpenClient={openClient} />;
 
       case "clients":
         return (
@@ -6560,25 +7214,60 @@ export default function ClinicianWorkspace() {
         );
 
       case "wearables":
-        return <Wearables />;
+        return (
+          <Wearables
+            key={selectedClient?.connection_id ?? "no-client"}
+            client={selectedClient}
+          />
+        );
 
       case "timeline":
-        return <Timeline />;
+        return (
+          <Timeline
+            key={selectedClient?.connection_id ?? "no-client"}
+            client={selectedClient}
+          />
+        );
 
       case "notes":
-        return <Notes />;
+        return (
+          <Notes
+            key={selectedClient?.connection_id ?? "no-client"}
+            client={selectedClient}
+          />
+        );
 
       case "care":
-        return <CarePathway />;
+        return (
+          <CarePathway
+            key={selectedClient?.connection_id ?? "no-client"}
+            client={selectedClient}
+          />
+        );
 
       case "appointments":
-        return <Appointments />;
+        return (
+          <Appointments
+            key={selectedClient?.connection_id ?? "no-client"}
+            client={selectedClient}
+          />
+        );
 
       case "messages":
-        return <Messages />;
+        return (
+          <Messages
+            key={selectedClient?.connection_id ?? "no-client"}
+            client={selectedClient}
+          />
+        );
 
       case "reports":
-        return <Reports />;
+        return (
+          <Reports
+            key={selectedClient?.connection_id ?? "no-client"}
+            client={selectedClient}
+          />
+        );
 
       case "permissions":
         return (
@@ -6592,7 +7281,7 @@ export default function ClinicianWorkspace() {
         return <Settings />;
 
       default:
-        return <Dashboard changeScreen={setScreen} />;
+        return <Dashboard onOpenClient={openClient} />;
     }
   }
 
@@ -6602,6 +7291,20 @@ export default function ClinicianWorkspace() {
     "Care",
     "Governance",
   ];
+
+  const clientContextScreens = new Set<Screen>([
+    "overview",
+    "assessments",
+    "ambulatory",
+    "wearables",
+    "timeline",
+    "notes",
+    "care",
+    "appointments",
+    "messages",
+    "reports",
+    "permissions",
+  ]);
 
   return (
     <main className="min-h-screen bg-[#f6f8f8] text-slate-950">
@@ -6691,12 +7394,13 @@ export default function ClinicianWorkspace() {
 
           <div className="mt-8 rounded-2xl bg-slate-950 p-4 text-white">
             <p className="text-xs font-medium text-cyan-200">
-              Clinical prototype
+              Client-controlled access
             </p>
 
             <p className="mt-2 text-xs leading-5 text-slate-400">
-              Every client name, assessment result and professional record
-              shown here is fictional demo data.
+              Assessment and monitoring views use real connected-client data
+              and remain permission-gated. Unimplemented clinical-record tabs
+              no longer display fictional client records.
             </p>
           </div>
         </aside>
@@ -6710,7 +7414,7 @@ export default function ClinicianWorkspace() {
                 <Status type="accent">Clinician workspace</Status>
 
                 <span className="text-xs text-slate-400">
-                  Frontend prototype
+                  Connected clinical workspace
                 </span>
               </div>
 
@@ -6724,6 +7428,13 @@ export default function ClinicianWorkspace() {
                 {descriptions[screen]}
               </p>
             </div>
+
+            {clientContextScreens.has(screen) && (
+              <ClinicalClientSelector
+                client={selectedClient}
+                onSelect={setSelectedClient}
+              />
+            )}
 
             {renderScreen()}
           </div>

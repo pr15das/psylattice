@@ -57,6 +57,9 @@ export default function WorkspacePage() {
   const [fullName, setFullName] =
     useState("");
 
+  const [userId, setUserId] =
+    useState<string | null>(null);
+
   const [loading, setLoading] =
     useState(true);
 
@@ -124,6 +127,8 @@ export default function WorkspacePage() {
           profileError
         );
       }
+
+      setUserId(user.id);
 
       const name =
         profile?.full_name?.trim() ||
@@ -201,110 +206,71 @@ export default function WorkspacePage() {
     workspace: WorkspaceId,
     href: string
   ) {
-    if (
-      openingWorkspace
-    ) {
+    if (openingWorkspace) {
       return;
     }
 
-    setOpeningWorkspace(
-      workspace
-    );
-
+    setOpeningWorkspace(workspace);
     setPageError("");
 
-    const supabase =
-      createClient();
+    /*
+     * The page has already authenticated the user in loadAccount().
+     * Do not call auth.getUser() again here.
+     *
+     * Re-checking auth during the button click could send an already
+     * authenticated user back to /signin if that second client-side
+     * request briefly fails or the session is still being refreshed.
+     */
+    if (!userId) {
+      setOpeningWorkspace(null);
 
-    const {
-      data: { user },
-      error: userError,
-    } =
-      await supabase.auth.getUser();
-
-    if (
-      userError ||
-      !user
-    ) {
-      setOpeningWorkspace(
-        null
-      );
-
-      router.replace(
-        `/signin?workspace=${workspace}`
+      setPageError(
+        "Your signed-in session is still loading. Please try opening the workspace again."
       );
 
       return;
     }
 
+    const supabase = createClient();
+
     /*
-     * Check whether this user has
-     * completed onboarding for this
-     * specific workspace.
-     *
-     * The three workspace tours are
-     * completely independent.
+     * Check onboarding only. RLS on workspace_onboarding still protects
+     * this row, so the client cannot read another user's onboarding state.
      */
     const {
       data: onboarding,
       error: onboardingError,
     } = await supabase
-      .from(
-        "workspace_onboarding"
-      )
-      .select(
-        "current_step, completed_at"
-      )
-      .eq(
-        "user_id",
-        user.id
-      )
-      .eq(
-        "workspace",
-        workspace
-      )
+      .from("workspace_onboarding")
+      .select("current_step, completed_at")
+      .eq("user_id", userId)
+      .eq("workspace", workspace)
       .maybeSingle();
 
     /*
-     * If Supabase cannot check the
-     * onboarding table for some reason,
-     * do not block access to PsyLattice.
-     *
-     * Open the workspace normally.
+     * If onboarding state cannot be checked, never lock the user out of
+     * the product. Open the requested workspace normally.
      */
-    if (
-      onboardingError
-    ) {
+    if (onboardingError) {
       console.error(
         "Could not check workspace onboarding:",
         onboardingError
       );
 
       router.push(href);
-
       return;
     }
 
     /*
-     * Completed tour:
-     * enter the workspace normally.
+     * Completed tour: open the workspace.
      */
-    if (
-      onboarding?.completed_at
-    ) {
+    if (onboarding?.completed_at) {
       router.push(href);
-
       return;
     }
 
     /*
-     * No onboarding record OR
-     * partially completed onboarding:
-     *
-     * send the user into the tour.
-     *
-     * The onboarding page already knows
-     * how to resume from current_step.
+     * First visit or partially completed tour: open/resume onboarding.
      */
     router.push(
       `/onboarding?workspace=${workspace}`

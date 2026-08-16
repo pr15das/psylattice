@@ -402,8 +402,13 @@ function ClinicianInvitations({
   const [successMessage, setSuccessMessage] = useState("");
 
   useEffect(() => {
-    async function loadInvitations() {
-      setLoading(true);
+    let cancelled = false;
+
+    async function loadInvitations(showLoading = false) {
+      if (showLoading) {
+        setLoading(true);
+      }
+
       setError("");
 
       const supabase = createClient();
@@ -419,6 +424,8 @@ function ClinicianInvitations({
           "psylattice_my_clinicians_and_permissions_v2"
         ),
       ]);
+
+      if (cancelled) return;
 
       if (invitationsResult.error) {
         console.error(
@@ -449,9 +456,7 @@ function ClinicianInvitations({
         (cliniciansResult.data ??
           []) as ActiveClinicianIdentity[];
 
-      setInvitations(
-        loadedInvitations
-      );
+      setInvitations(loadedInvitations);
       setActiveClinician(
         currentClinicians[0] || null
       );
@@ -462,7 +467,52 @@ function ClinicianInvitations({
       setLoading(false);
     }
 
-    void loadInvitations();
+    function refreshWhenVisible() {
+      if (document.visibilityState === "visible") {
+        void loadInvitations(false);
+      }
+    }
+
+    function refreshClinicianState() {
+      void loadInvitations(false);
+    }
+
+    void loadInvitations(true);
+
+    const interval = window.setInterval(
+      () => void loadInvitations(false),
+      10000
+    );
+
+    window.addEventListener(
+      "focus",
+      refreshClinicianState
+    );
+    window.addEventListener(
+      "psylattice-clinician-state-changed",
+      refreshClinicianState
+    );
+    document.addEventListener(
+      "visibilitychange",
+      refreshWhenVisible
+    );
+
+    return () => {
+      cancelled = true;
+      window.clearInterval(interval);
+      window.removeEventListener(
+        "focus",
+        refreshClinicianState
+      );
+      window.removeEventListener(
+        "psylattice-clinician-state-changed",
+        refreshClinicianState
+      );
+      document.removeEventListener(
+        "visibilitychange",
+        refreshWhenVisible
+      );
+    };
   }, []);
 
   async function respondToInvitation(
@@ -536,6 +586,10 @@ function ClinicianInvitations({
 
 setInvitations(remainingInvitations);
 onCountChange?.(remainingInvitations.length);
+
+    window.dispatchEvent(
+      new Event("psylattice-clinician-state-changed")
+    );
 
     const respondedInvitation = invitations.find(
       (invitation) =>
@@ -778,8 +832,10 @@ onCountChange?.(remainingInvitations.length);
 
 function Dashboard({
   changeScreen,
+  pendingClinicianInvitations,
 }: {
   changeScreen: (screen: Screen) => void;
+  pendingClinicianInvitations: number;
 }) {
   type DashboardV2Item = {
     item_id?: string;
@@ -1105,6 +1161,10 @@ function Dashboard({
     setRemovingDashboardClinician(false);
     setDashboardConnectionMessage(
       `${clinician.clinician_name} has been disconnected. Their access through this PsyLattice connection has ended. Your Self data remains in your account.`
+    );
+
+    window.dispatchEvent(
+      new Event("psylattice-clinician-state-changed")
     );
 
     void loadDashboardClinicians(false);
@@ -1546,6 +1606,33 @@ function Dashboard({
         <div className="rounded-2xl border border-emerald-200 bg-emerald-50 px-5 py-4 text-sm text-emerald-800">
           {dashboardConnectionMessage}
         </div>
+      )}
+
+      {pendingClinicianInvitations > 0 && (
+        <section className="overflow-hidden rounded-3xl border border-cyan-200 bg-cyan-50/70 shadow-sm">
+          <div className="flex flex-col gap-4 p-5 sm:flex-row sm:items-center sm:justify-between">
+            <div>
+              <p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-cyan-700">
+                New clinician request
+              </p>
+              <h2 className="mt-1 text-lg font-semibold text-slate-950">
+                You have {pendingClinicianInvitations}{" "}
+                clinician invitation{pendingClinicianInvitations === 1 ? "" : "s"} waiting
+              </h2>
+              <p className="mt-1 max-w-2xl text-sm leading-6 text-slate-600">
+                Review the request before deciding whether to connect. No Self data is shared just because an invitation was sent.
+              </p>
+            </div>
+
+            <button
+              type="button"
+              onClick={() => changeScreen("notifications")}
+              className="shrink-0 rounded-xl bg-cyan-800 px-4 py-2.5 text-xs font-semibold text-white transition hover:bg-cyan-700"
+            >
+              Review invitation{pendingClinicianInvitations === 1 ? "" : "s"}
+            </button>
+          </div>
+        </section>
       )}
 
       {/* CURRENT CLINICIAN — intentionally prominent because Self has one current clinician */}
@@ -11968,23 +12055,30 @@ const [
   }
 
   useEffect(() => {
-    void loadSelfNotificationCounts();
-
-    function refreshOnFocus() {
+    function refreshCounts() {
       void loadSelfNotificationCounts();
     }
 
     function refreshWhenVisible() {
-      if (
-        document.visibilityState === "visible"
-      ) {
-        void loadSelfNotificationCounts();
+      if (document.visibilityState === "visible") {
+        refreshCounts();
       }
     }
 
+    refreshCounts();
+
+    const interval = window.setInterval(
+      refreshCounts,
+      10000
+    );
+
     window.addEventListener(
       "focus",
-      refreshOnFocus
+      refreshCounts
+    );
+    window.addEventListener(
+      "psylattice-clinician-state-changed",
+      refreshCounts
     );
     document.addEventListener(
       "visibilitychange",
@@ -11992,9 +12086,14 @@ const [
     );
 
     return () => {
+      window.clearInterval(interval);
       window.removeEventListener(
         "focus",
-        refreshOnFocus
+        refreshCounts
+      );
+      window.removeEventListener(
+        "psylattice-clinician-state-changed",
+        refreshCounts
       );
       document.removeEventListener(
         "visibilitychange",
@@ -12208,7 +12307,12 @@ const [
   function renderScreen() {
     switch (screen) {
       case "dashboard":
-        return <Dashboard changeScreen={setScreen} />;
+        return (
+          <Dashboard
+            changeScreen={setScreen}
+            pendingClinicianInvitations={pendingClinicianInvitations}
+          />
+        );
 
       case "ai":
         return <AIGuide changeScreen={setScreen} />;
@@ -12254,7 +12358,12 @@ const [
         return <Privacy />;
 
       default:
-        return <Dashboard changeScreen={setScreen} />;
+        return (
+          <Dashboard
+            changeScreen={setScreen}
+            pendingClinicianInvitations={pendingClinicianInvitations}
+          />
+        );
     }
   }
 
@@ -12288,7 +12397,7 @@ const [
         return "Secure, non-urgent messaging with your connected clinicians.";
 
       case "notifications":
-        return "Control how and when PsyLattice reminds you to check in.";
+        return "Review clinician connection requests and manage PsyLattice reminders.";
 
       case "privacy":
         return "Control your data and exactly what you choose to share.";

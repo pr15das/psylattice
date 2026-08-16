@@ -9,6 +9,11 @@ import CarePathwayWorkspace from "@/components/CarePathwayWorkspace";
 import AppointmentsWorkspace from "@/components/AppointmentsWorkspace";
 import PsyLatticeMessagesWorkspace, { MessageUnreadBadge } from "@/components/PsyLatticeMessagesWorkspace";
 import AppointmentNotificationBadge from "@/components/AppointmentNotificationBadge";
+import UnifiedNotificationsCenter, {
+  UnifiedNotificationBadge,
+  UnifiedNotificationBell,
+  type UnifiedNotificationTargetParams,
+} from "@/components/UnifiedNotificationsCenter";
 import { createClient } from "@/lib/supabase/client";
 import {
   AmbulatoryProtocolBuilder,
@@ -21,6 +26,7 @@ import {
 
 type Screen =
   | "dashboard"
+  | "notifications"
   | "clients"
   | "overview"
   | "assessments"
@@ -41,6 +47,7 @@ const navigation: {
   group: "Clinical" | "Monitoring" | "Care" | "Governance";
 }[] = [
   { id: "dashboard", label: "Dashboard", group: "Clinical" },
+  { id: "notifications", label: "Notifications", group: "Clinical" },
   { id: "clients", label: "Clients", group: "Clinical" },
   { id: "overview", label: "Client Overview", group: "Clinical" },
 
@@ -8962,6 +8969,83 @@ export default function ClinicianWorkspace() {
     return true;
   }
 
+  async function openNotificationTarget(
+    targetScreen: string,
+    targetParams: UnifiedNotificationTargetParams
+  ) {
+    const allowedTargets = new Set<Screen>([
+      "dashboard",
+      "notifications",
+      "clients",
+      "overview",
+      "assessments",
+      "ambulatory",
+      "wearables",
+      "timeline",
+      "notes",
+      "care",
+      "appointments",
+      "messages",
+      "reports",
+      "permissions",
+      "settings",
+    ]);
+
+    const requestedScreen = allowedTargets.has(
+      targetScreen as Screen
+    )
+      ? (targetScreen as Screen)
+      : "notifications";
+
+    const connectionId =
+      typeof targetParams?.connection_id === "string"
+        ? targetParams.connection_id
+        : "";
+
+    const clientSpecificTargets = new Set<Screen>([
+      "overview",
+      "assessments",
+      "ambulatory",
+      "wearables",
+      "timeline",
+      "notes",
+      "care",
+      "appointments",
+      "reports",
+      "permissions",
+    ]);
+
+    if (
+      connectionId &&
+      clientSpecificTargets.has(requestedScreen)
+    ) {
+      const supabase = createClient();
+      const { data, error } = await supabase.rpc(
+        "psylattice_my_connected_clients"
+      );
+
+      if (error) {
+        console.error(
+          "Could not resolve notification client:",
+          error
+        );
+      } else {
+        const matchingClient = (
+          (data || []) as ConnectedClient[]
+        ).find(
+          (client) =>
+            client.connection_id === connectionId
+        );
+
+        if (matchingClient) {
+          setSelectedClient(matchingClient);
+        }
+      }
+    }
+
+    setScreen(requestedScreen);
+  }
+
   const clinicianFirstName =
     clinicianName.trim().split(/\s+/)[0] ||
     "Clinician";
@@ -8991,6 +9075,9 @@ export default function ClinicianWorkspace() {
   const descriptions: Record<Screen, string> = {
     dashboard:
       "A concise view of your connected caseload and authorised clinical data.",
+
+    notifications:
+      "Review actionable updates across secure messages, appointments, assessments and monitoring in one place.",
 
     clients:
       "View only clients assigned to you or explicitly shared through an authorised professional workflow.",
@@ -9036,6 +9123,14 @@ export default function ClinicianWorkspace() {
     switch (screen) {
       case "dashboard":
         return <Dashboard onOpenClient={openClient} />;
+
+      case "notifications":
+        return (
+          <UnifiedNotificationsCenter
+            workspace="clinician"
+            onNavigate={openNotificationTarget}
+          />
+        );
 
       case "clients":
         return (
@@ -9174,36 +9269,43 @@ export default function ClinicianWorkspace() {
   </p>
 </div>
 
-          <div className="hidden items-center gap-3 sm:flex">
-            <Status type="accent">Verified clinician</Status>
-
-            <AccountSwitcher
-              initials={clinicianInitials}
-              currentWorkspace="clinician"
-              title={clinicianName || "Switch workspace"}
+          <div className="flex items-center gap-2 sm:gap-3">
+            <UnifiedNotificationBell
+              workspace="clinician"
+              onClick={() => setScreen("notifications")}
             />
 
-            <Link
-              href="/signin"
-              className="rounded-xl border border-slate-200 px-4 py-2 text-xs font-semibold text-slate-600"
-            >
-              Sign out
-            </Link>
-          </div>
+            <div className="hidden items-center gap-3 sm:flex">
+              <Status type="accent">Verified clinician</Status>
 
-          <select
-            value={screen}
-            onChange={(event) =>
-              setScreen(event.target.value as Screen)
-            }
-            className="max-w-[210px] rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm lg:hidden"
-          >
-            {navigation.map((item) => (
-              <option key={item.id} value={item.id}>
-                {item.label}
-              </option>
-            ))}
-          </select>
+              <AccountSwitcher
+                initials={clinicianInitials}
+                currentWorkspace="clinician"
+                title={clinicianName || "Switch workspace"}
+              />
+
+              <Link
+                href="/signin"
+                className="rounded-xl border border-slate-200 px-4 py-2 text-xs font-semibold text-slate-600"
+              >
+                Sign out
+              </Link>
+            </div>
+
+            <select
+              value={screen}
+              onChange={(event) =>
+                setScreen(event.target.value as Screen)
+              }
+              className="max-w-[170px] rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm lg:hidden sm:max-w-[210px]"
+            >
+              {navigation.map((item) => (
+                <option key={item.id} value={item.id}>
+                  {item.label}
+                </option>
+              ))}
+            </select>
+          </div>
         </div>
       </header>
 
@@ -9308,6 +9410,14 @@ export default function ClinicianWorkspace() {
                                 compact
                               />
                             )}
+
+                          {sidebarCollapsed &&
+                            item.id === "notifications" && (
+                              <UnifiedNotificationBadge
+                                workspace="clinician"
+                                compact
+                              />
+                            )}
                         </span>
 
                         {!sidebarCollapsed && (
@@ -9321,6 +9431,12 @@ export default function ClinicianWorkspace() {
                             {item.id === "appointments" && (
                               <AppointmentNotificationBadge
                                 mode="clinician"
+                              />
+                            )}
+
+                            {item.id === "notifications" && (
+                              <UnifiedNotificationBadge
+                                workspace="clinician"
                               />
                             )}
                           </span>

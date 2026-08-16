@@ -8,6 +8,7 @@ import ClinicalNotesWorkspace from "@/components/ClinicalNotesWorkspace";
 import CarePathwayWorkspace from "@/components/CarePathwayWorkspace";
 import AppointmentsWorkspace from "@/components/AppointmentsWorkspace";
 import PsyLatticeMessagesWorkspace, { MessageUnreadBadge } from "@/components/PsyLatticeMessagesWorkspace";
+import AppointmentNotificationBadge from "@/components/AppointmentNotificationBadge";
 import { createClient } from "@/lib/supabase/client";
 import {
   AmbulatoryProtocolBuilder,
@@ -9299,6 +9300,14 @@ export default function ClinicianWorkspace() {
                             item.id === "messages" && (
                               <MessageUnreadBadge compact />
                             )}
+
+                          {sidebarCollapsed &&
+                            item.id === "appointments" && (
+                              <AppointmentNotificationBadge
+                                mode="clinician"
+                                compact
+                              />
+                            )}
                         </span>
 
                         {!sidebarCollapsed && (
@@ -9307,6 +9316,12 @@ export default function ClinicianWorkspace() {
 
                             {item.id === "messages" && (
                               <MessageUnreadBadge />
+                            )}
+
+                            {item.id === "appointments" && (
+                              <AppointmentNotificationBadge
+                                mode="clinician"
+                              />
                             )}
                           </span>
                         )}

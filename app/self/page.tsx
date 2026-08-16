@@ -8,6 +8,7 @@ import PsyLatticeLogo from "@/components/PsyLatticeLogo";
 import AccountSwitcher from "@/components/AccountSwitcher";
 import ClientAppointmentsWorkspace from "@/components/ClientAppointmentsWorkspace";
 import PsyLatticeMessagesWorkspace, { MessageUnreadBadge } from "@/components/PsyLatticeMessagesWorkspace";
+import AppointmentNotificationBadge from "@/components/AppointmentNotificationBadge";
 import {
   AmbulatoryProtocolBuilder,
   ambulatoryResponseAnswered,
@@ -12152,6 +12153,14 @@ const [
               )}
 
             {sidebarCollapsed &&
+              item.id === "appointments" && (
+                <AppointmentNotificationBadge
+                  mode="client"
+                  compact
+                />
+              )}
+
+            {sidebarCollapsed &&
   ((item.id === "notifications" &&
     pendingClinicianInvitations > 0) ||
     (item.id === "monitoring" &&
@@ -12197,6 +12206,12 @@ const [
 
     {item.id === "messages" && (
       <MessageUnreadBadge />
+    )}
+
+    {item.id === "appointments" && (
+      <AppointmentNotificationBadge
+        mode="client"
+      />
     )}
 
     {item.id === "ai" && (

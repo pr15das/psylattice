@@ -33,6 +33,88 @@ type ClientAppointment = {
   updated_at: string;
 };
 
+type AppointmentRequest = {
+  id: string;
+  connection_id: string;
+  clinician_id: string;
+  clinician_name: string;
+  appointment_type: string;
+  requested_start_at: string;
+  requested_end_at: string;
+  timezone: string;
+  mode: string;
+  client_message: string;
+  clinician_response: string;
+  status:
+    | "pending"
+    | "accepted"
+    | "rejected"
+    | "cancelled";
+  linked_appointment_id: string | null;
+  requested_at: string;
+  decided_at: string | null;
+  cancelled_at: string | null;
+  updated_at: string;
+};
+
+type CurrentClinician = {
+  connection_id: string;
+  clinician_id: string;
+  clinician_name: string;
+  clinician_email: string;
+  connected_at: string;
+};
+
+type AppointmentType =
+  | "intake"
+  | "therapy"
+  | "assessment"
+  | "review"
+  | "consultation"
+  | "other";
+
+type AppointmentMode =
+  | "in_person"
+  | "video"
+  | "phone";
+
+const appointmentTypeOptions: Array<{
+  value: AppointmentType;
+  label: string;
+}> = [
+  { value: "intake", label: "Intake" },
+  {
+    value: "therapy",
+    label: "Therapy / session",
+  },
+  {
+    value: "assessment",
+    label: "Assessment",
+  },
+  { value: "review", label: "Review" },
+  {
+    value: "consultation",
+    label: "Consultation",
+  },
+  { value: "other", label: "Other" },
+];
+
+const modeOptions: Array<{
+  value: AppointmentMode;
+  label: string;
+}> = [
+  {
+    value: "in_person",
+    label: "In person",
+  },
+  { value: "video", label: "Video" },
+  { value: "phone", label: "Phone" },
+];
+
+const durationOptions = [
+  30, 45, 50, 60, 75, 90, 120,
+];
+
 function pad(value: number) {
   return String(value).padStart(2, "0");
 }
@@ -118,11 +200,17 @@ function modeLabel(value: string) {
 }
 
 function typeLabel(value: string) {
-  return value
-    .replaceAll("_", " ")
-    .replace(/\b\w/g, (char) =>
-      char.toUpperCase()
-    );
+  return (
+    appointmentTypeOptions.find(
+      (option) =>
+        option.value === value
+    )?.label ||
+    value
+      .replaceAll("_", " ")
+      .replace(/\b\w/g, (char) =>
+        char.toUpperCase()
+      )
+  );
 }
 
 function statusLabel(value: string) {
@@ -138,16 +226,28 @@ function statusLabel(value: string) {
 }
 
 function statusClasses(value: string) {
-  if (value === "completed") {
+  if (
+    value === "completed" ||
+    value === "accepted"
+  ) {
     return "border-emerald-200 bg-emerald-50 text-emerald-700";
   }
 
-  if (value === "cancelled") {
+  if (
+    value === "cancelled"
+  ) {
     return "border-slate-200 bg-slate-50 text-slate-500";
   }
 
-  if (value === "no_show") {
+  if (
+    value === "no_show" ||
+    value === "rejected"
+  ) {
     return "border-red-200 bg-red-50 text-red-700";
+  }
+
+  if (value === "pending") {
+    return "border-amber-200 bg-amber-50 text-amber-700";
   }
 
   return "border-cyan-200 bg-cyan-50 text-cyan-700";
@@ -172,47 +272,148 @@ export default function ClientAppointmentsWorkspace() {
 
   const [appointments, setAppointments] =
     useState<ClientAppointment[]>([]);
+  const [requests, setRequests] =
+    useState<AppointmentRequest[]>([]);
+  const [currentClinician, setCurrentClinician] =
+    useState<CurrentClinician | null>(
+      null
+    );
+
   const [loading, setLoading] =
     useState(true);
+  const [submitting, setSubmitting] =
+    useState(false);
   const [errorMessage, setErrorMessage] =
     useState("");
+  const [successMessage, setSuccessMessage] =
+    useState("");
+
   const [visibleMonth, setVisibleMonth] =
     useState(startOfMonth(now));
   const [selectedDate, setSelectedDate] =
     useState(localDateKey(now));
 
-  async function loadAppointments() {
+  const [requestOpen, setRequestOpen] =
+    useState(false);
+  const [requestType, setRequestType] =
+    useState<AppointmentType>(
+      "therapy"
+    );
+  const [requestDate, setRequestDate] =
+    useState(
+      localDateKey(
+        addDays(now, 1)
+      )
+    );
+  const [requestTime, setRequestTime] =
+    useState("10:00");
+  const [requestDuration, setRequestDuration] =
+    useState(50);
+  const [requestMode, setRequestMode] =
+    useState<AppointmentMode>(
+      "in_person"
+    );
+  const [requestMessage, setRequestMessage] =
+    useState("");
+
+  const timezone = useMemo(
+    () =>
+      Intl.DateTimeFormat()
+        .resolvedOptions()
+        .timeZone || "UTC",
+    []
+  );
+
+  async function markNotificationsRead() {
+    const supabase = createClient();
+
+    const { error } = await supabase.rpc(
+      "psylattice_mark_appointment_notifications_read",
+      {
+        p_scope: "client",
+      }
+    );
+
+    if (error) {
+      console.error(
+        "Could not mark appointment notifications read:",
+        error
+      );
+    }
+  }
+
+  async function loadWorkspace() {
     setLoading(true);
     setErrorMessage("");
 
     const supabase = createClient();
 
-    const { data, error } =
-      await supabase.rpc(
+    const [
+      appointmentsResult,
+      requestsResult,
+      cliniciansResult,
+    ] = await Promise.all([
+      supabase.rpc(
         "psylattice_my_appointments"
-      );
+      ),
+      supabase.rpc(
+        "psylattice_my_appointment_requests"
+      ),
+      supabase.rpc(
+        "psylattice_my_clinicians_and_permissions_v2"
+      ),
+    ]);
 
-    if (error) {
-      console.error(
-        "Could not load client appointments:",
-        error
-      );
+    if (appointmentsResult.error) {
       setErrorMessage(
-        error.message ||
+        appointmentsResult.error.message ||
           "Your appointments could not be loaded."
       );
       setLoading(false);
       return;
     }
 
+    if (requestsResult.error) {
+      setErrorMessage(
+        requestsResult.error.message ||
+          "Your appointment requests could not be loaded."
+      );
+      setLoading(false);
+      return;
+    }
+
+    if (cliniciansResult.error) {
+      setErrorMessage(
+        cliniciansResult.error.message ||
+          "Your clinician connection could not be loaded."
+      );
+      setLoading(false);
+      return;
+    }
+
     setAppointments(
-      (data || []) as ClientAppointment[]
+      (appointmentsResult.data ||
+        []) as ClientAppointment[]
     );
+    setRequests(
+      (requestsResult.data ||
+        []) as AppointmentRequest[]
+    );
+
+    const clinicians =
+      (cliniciansResult.data ||
+        []) as CurrentClinician[];
+
+    setCurrentClinician(
+      clinicians[0] || null
+    );
+
     setLoading(false);
+    void markNotificationsRead();
   }
 
   useEffect(() => {
-    void loadAppointments();
+    void loadWorkspace();
   }, []);
 
   const calendarDays = useMemo(
@@ -268,8 +469,154 @@ export default function ClientAppointmentsWorkspace() {
     [appointments]
   );
 
+  const pendingRequests = useMemo(
+    () =>
+      requests.filter(
+        (request) =>
+          request.status ===
+          "pending"
+      ),
+    [requests]
+  );
+
   const nextAppointment =
     upcoming[0] || null;
+
+  const proposedStart = useMemo(() => {
+    const value = new Date(
+      `${requestDate}T${requestTime}:00`
+    );
+
+    return Number.isNaN(
+      value.getTime()
+    )
+      ? null
+      : value;
+  }, [
+    requestDate,
+    requestTime,
+  ]);
+
+  const proposedEnd = useMemo(() => {
+    if (!proposedStart) {
+      return null;
+    }
+
+    return new Date(
+      proposedStart.getTime() +
+        requestDuration * 60_000
+    );
+  }, [
+    proposedStart,
+    requestDuration,
+  ]);
+
+  function resetRequestForm() {
+    const tomorrow = addDays(
+      new Date(),
+      1
+    );
+
+    setRequestType("therapy");
+    setRequestDate(
+      localDateKey(tomorrow)
+    );
+    setRequestTime("10:00");
+    setRequestDuration(50);
+    setRequestMode("in_person");
+    setRequestMessage("");
+  }
+
+  async function submitRequest() {
+    if (
+      submitting ||
+      !proposedStart ||
+      !proposedEnd ||
+      !currentClinician
+    ) {
+      return;
+    }
+
+    setSubmitting(true);
+    setErrorMessage("");
+    setSuccessMessage("");
+
+    const supabase = createClient();
+
+    const { error } = await supabase.rpc(
+      "psylattice_request_appointment",
+      {
+        p_appointment_type:
+          requestType,
+        p_requested_start_at:
+          proposedStart.toISOString(),
+        p_requested_end_at:
+          proposedEnd.toISOString(),
+        p_timezone: timezone,
+        p_mode: requestMode,
+        p_client_message:
+          requestMessage.trim(),
+      }
+    );
+
+    if (error) {
+      setErrorMessage(
+        error.message ||
+          "Your appointment request could not be sent."
+      );
+      setSubmitting(false);
+      return;
+    }
+
+    setSuccessMessage(
+      `Request sent to ${currentClinician.clinician_name}.`
+    );
+    setRequestOpen(false);
+    resetRequestForm();
+    await loadWorkspace();
+    setSubmitting(false);
+
+    window.setTimeout(
+      () => setSuccessMessage(""),
+      2400
+    );
+  }
+
+  async function cancelRequest(
+    request: AppointmentRequest
+  ) {
+    const confirmed = window.confirm(
+      "Cancel this appointment request?"
+    );
+
+    if (!confirmed) {
+      return;
+    }
+
+    const supabase = createClient();
+
+    const { data, error } =
+      await supabase.rpc(
+        "psylattice_cancel_my_appointment_request",
+        {
+          p_request_id:
+            request.id,
+        }
+      );
+
+    if (error || !data) {
+      setErrorMessage(
+        error?.message ||
+          "The appointment request could not be cancelled."
+      );
+      return;
+    }
+
+    setSuccessMessage(
+      "Appointment request cancelled."
+    );
+    await loadWorkspace();
+  }
 
   return (
     <div className="space-y-5">
@@ -279,7 +626,47 @@ export default function ClientAppointmentsWorkspace() {
         </div>
       )}
 
-      <div className="grid gap-3 md:grid-cols-3">
+      {successMessage && (
+        <div className="rounded-2xl border border-emerald-200 bg-emerald-50 px-5 py-4 text-sm text-emerald-800">
+          {successMessage}
+        </div>
+      )}
+
+      <section className="overflow-hidden rounded-3xl border border-cyan-100 bg-gradient-to-r from-cyan-50/80 via-white to-white">
+        <div className="flex flex-col justify-between gap-4 p-5 lg:flex-row lg:items-center">
+          <div>
+            <p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-cyan-700">
+              Appointment requests
+            </p>
+
+            <h3 className="mt-2 text-lg font-semibold text-slate-950">
+              Need another appointment?
+            </h3>
+
+            <p className="mt-1 max-w-2xl text-sm leading-6 text-slate-500">
+              Send your preferred date, time and session format to{" "}
+              <strong className="font-semibold text-slate-700">
+                {currentClinician?.clinician_name ||
+                  "your clinician"}
+              </strong>
+              . The final appointment is confirmed only after the clinician accepts and schedules it.
+            </p>
+          </div>
+
+          <button
+            type="button"
+            disabled={!currentClinician}
+            onClick={() =>
+              setRequestOpen(true)
+            }
+            className="shrink-0 rounded-xl bg-slate-950 px-5 py-3 text-xs font-semibold text-white shadow-sm transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-40"
+          >
+            + Request appointment
+          </button>
+        </div>
+      </section>
+
+      <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
         <div className="rounded-2xl border border-slate-200 bg-white p-5">
           <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-400">
             Next appointment
@@ -322,18 +709,157 @@ export default function ClientAppointmentsWorkspace() {
           </p>
         </div>
 
+        <div className="rounded-2xl border border-amber-100 bg-amber-50/60 p-5">
+          <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-amber-700">
+            Pending requests
+          </p>
+          <p className="mt-2 text-2xl font-semibold text-amber-950">
+            {pendingRequests.length}
+          </p>
+        </div>
+
         <div className="rounded-2xl border border-slate-200 bg-white p-5">
           <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-400">
-            Your calendar
+            Current clinician
           </p>
-          <p className="mt-2 text-sm font-semibold text-slate-800">
-            Clinician-scheduled appointments
+          <p className="mt-2 truncate text-sm font-semibold text-slate-800">
+            {currentClinician?.clinician_name ||
+              "Not connected"}
           </p>
-          <p className="mt-1 text-xs leading-5 text-slate-400">
-            Private clinician notes are never shown here.
+          <p className="mt-1 truncate text-xs text-slate-400">
+            {currentClinician?.clinician_email ||
+              "Appointment requests require an active clinician connection."}
           </p>
         </div>
       </div>
+
+      {requests.length > 0 && (
+        <section className="overflow-hidden rounded-3xl border border-slate-200 bg-white">
+          <div className="flex flex-col justify-between gap-3 border-b border-slate-100 p-5 sm:flex-row sm:items-center">
+            <div>
+              <h3 className="font-semibold text-slate-900">
+                Your appointment requests
+              </h3>
+              <p className="mt-1 text-sm text-slate-500">
+                Track pending, accepted and declined requests.
+              </p>
+            </div>
+
+            <button
+              type="button"
+              onClick={() =>
+                void loadWorkspace()
+              }
+              className="rounded-xl border border-slate-200 px-3 py-2 text-xs font-semibold text-slate-600"
+            >
+              Refresh
+            </button>
+          </div>
+
+          <div className="grid gap-3 p-4 lg:grid-cols-2">
+            {requests
+              .slice(0, 6)
+              .map((request) => (
+                <article
+                  key={request.id}
+                  className={`rounded-2xl border p-4 ${
+                    request.status ===
+                    "pending"
+                      ? "border-amber-200 bg-amber-50/40"
+                      : "border-slate-200 bg-white"
+                  }`}
+                >
+                  <div className="flex items-start justify-between gap-3">
+                    <div>
+                      <p className="text-sm font-semibold text-slate-900">
+                        {typeLabel(
+                          request.appointment_type
+                        )}
+                      </p>
+                      <p className="mt-1 text-xs text-slate-500">
+                        {new Date(
+                          request.requested_start_at
+                        ).toLocaleDateString(
+                          [],
+                          {
+                            weekday:
+                              "short",
+                            month:
+                              "short",
+                            day:
+                              "numeric",
+                            year:
+                              "numeric",
+                          }
+                        )}{" "}
+                        ·{" "}
+                        {timeRangeLabel(
+                          request.requested_start_at,
+                          request.requested_end_at
+                        )}
+                      </p>
+                    </div>
+
+                    <span
+                      className={`rounded-full border px-2.5 py-1 text-[9px] font-semibold ${statusClasses(
+                        request.status
+                      )}`}
+                    >
+                      {statusLabel(
+                        request.status
+                      )}
+                    </span>
+                  </div>
+
+                  <div className="mt-3 flex flex-wrap gap-2">
+                    <span className="rounded-full bg-slate-100 px-2 py-1 text-[9px] font-medium text-slate-500">
+                      {modeLabel(
+                        request.mode
+                      )}
+                    </span>
+                    <span className="rounded-full bg-cyan-50 px-2 py-1 text-[9px] font-medium text-cyan-700">
+                      {request.clinician_name}
+                    </span>
+                  </div>
+
+                  {request.client_message && (
+                    <p className="mt-3 whitespace-pre-wrap text-xs leading-5 text-slate-600">
+                      {request.client_message}
+                    </p>
+                  )}
+
+                  {request.clinician_response && (
+                    <div className="mt-3 rounded-xl border border-cyan-100 bg-cyan-50/50 p-3">
+                      <p className="text-[10px] font-semibold uppercase tracking-[0.12em] text-cyan-700">
+                        Clinician response
+                      </p>
+                      <p className="mt-1 whitespace-pre-wrap text-xs leading-5 text-cyan-950">
+                        {
+                          request.clinician_response
+                        }
+                      </p>
+                    </div>
+                  )}
+
+                  {request.status ===
+                    "pending" && (
+                    <button
+                      type="button"
+                      onClick={() =>
+                        void cancelRequest(
+                          request
+                        )
+                      }
+                      className="mt-4 rounded-lg border border-slate-200 px-3 py-2 text-[10px] font-semibold text-slate-500"
+                    >
+                      Cancel request
+                    </button>
+                  )}
+                </article>
+              ))}
+          </div>
+        </section>
+      )}
 
       <div className="grid gap-5 xl:grid-cols-[minmax(0,1fr)_380px]">
         <section className="overflow-hidden rounded-3xl border border-slate-200 bg-white">
@@ -343,7 +869,7 @@ export default function ClientAppointmentsWorkspace() {
                 Appointment calendar
               </h3>
               <p className="mt-1 text-sm text-slate-500">
-                Upcoming appointments are marked directly on the calendar.
+                Confirmed appointments are marked directly on the calendar.
               </p>
             </div>
 
@@ -366,13 +892,13 @@ export default function ClientAppointmentsWorkspace() {
               <button
                 type="button"
                 onClick={() => {
-                  const today =
+                  const date =
                     new Date();
                   setVisibleMonth(
-                    startOfMonth(today)
+                    startOfMonth(date)
                   );
                   setSelectedDate(
-                    localDateKey(today)
+                    localDateKey(date)
                   );
                 }}
                 className="rounded-xl border border-slate-200 px-3 py-2 text-xs font-semibold text-slate-600"
@@ -408,7 +934,7 @@ export default function ClientAppointmentsWorkspace() {
               )}
             </h4>
 
-            <div className="grid grid-cols-7">
+            <div className="grid grid-cols-7 border-b border-l border-slate-100 text-center">
               {[
                 "Mon",
                 "Tue",
@@ -420,7 +946,7 @@ export default function ClientAppointmentsWorkspace() {
               ].map((day) => (
                 <div
                   key={day}
-                  className="px-1 pb-2 text-center text-[10px] font-semibold uppercase tracking-[0.12em] text-slate-400"
+                  className="border-r border-t border-slate-100 py-2 text-[10px] font-semibold uppercase tracking-[0.12em] text-slate-400"
                 >
                   {day}
                 </div>
@@ -430,25 +956,23 @@ export default function ClientAppointmentsWorkspace() {
                 (day) => {
                   const key =
                     localDateKey(day);
-                  const isCurrentMonth =
+                  const inMonth =
                     day.getMonth() ===
                     visibleMonth.getMonth();
-                  const isToday =
-                    key ===
-                    localDateKey(
-                      new Date()
-                    );
-                  const isSelected =
+                  const selected =
                     key === selectedDate;
-
                   const dayAppointments =
                     appointments.filter(
-                      (appointment) =>
+                      (
+                        appointment
+                      ) =>
                         localDateKey(
                           new Date(
                             appointment.starts_at
                           )
-                        ) === key
+                        ) === key &&
+                        appointment.status !==
+                          "cancelled"
                     );
 
                   return (
@@ -460,23 +984,21 @@ export default function ClientAppointmentsWorkspace() {
                           key
                         )
                       }
-                      className={`relative min-h-[92px] border border-slate-100 p-2 text-left transition sm:min-h-[108px] ${
-                        isSelected
-                          ? "z-10 border-cyan-300 bg-cyan-50/60"
+                      className={`min-h-[98px] border-r border-t border-slate-100 p-2 text-left transition ${
+                        selected
+                          ? "bg-cyan-50/70"
                           : "hover:bg-slate-50"
                       } ${
-                        isCurrentMonth
+                        inMonth
                           ? ""
                           : "bg-slate-50/40 text-slate-300"
                       }`}
                     >
                       <span
-                        className={`inline-flex h-7 w-7 items-center justify-center rounded-full text-xs ${
-                          isToday
-                            ? "bg-slate-950 font-semibold text-white"
-                            : isSelected
-                              ? "font-semibold text-cyan-900"
-                              : "text-slate-600"
+                        className={`inline-flex h-7 min-w-7 items-center justify-center rounded-lg px-1 text-xs font-semibold ${
+                          selected
+                            ? "bg-cyan-800 text-white"
+                            : "text-slate-600"
                         }`}
                       >
                         {day.getDate()}
@@ -493,25 +1015,15 @@ export default function ClientAppointmentsWorkspace() {
                                 key={
                                   appointment.id
                                 }
-                                className={`truncate rounded-md px-1.5 py-1 text-[9px] font-medium ${
-                                  appointment.status ===
-                                  "scheduled"
-                                    ? "bg-cyan-100/80 text-cyan-900"
-                                    : appointment.status ===
-                                        "completed"
-                                      ? "bg-emerald-50 text-emerald-700"
-                                      : appointment.status ===
-                                          "no_show"
-                                        ? "bg-red-50 text-red-700"
-                                        : "bg-slate-100 text-slate-500"
-                                }`}
+                                className="truncate rounded-md bg-cyan-100 px-1.5 py-1 text-[9px] font-medium text-cyan-900"
                               >
                                 {new Date(
                                   appointment.starts_at
                                 ).toLocaleTimeString(
                                   [],
                                   {
-                                    hour: "numeric",
+                                    hour:
+                                      "numeric",
                                     minute:
                                       "2-digit",
                                   }
@@ -523,16 +1035,6 @@ export default function ClientAppointmentsWorkspace() {
                               </div>
                             )
                           )}
-
-                        {dayAppointments.length >
-                          2 && (
-                          <p className="text-[9px] font-medium text-slate-400">
-                            +
-                            {dayAppointments.length -
-                              2}{" "}
-                            more
-                          </p>
-                        )}
                       </div>
                     </button>
                   );
@@ -669,22 +1171,6 @@ export default function ClientAppointmentsWorkspace() {
                           Open appointment link
                         </a>
                       )}
-
-                      {appointment.client_link &&
-                        appointment.meeting_url &&
-                        appointment.client_link !==
-                          appointment.meeting_url && (
-                          <a
-                            href={safeExternalUrl(
-                              appointment.meeting_url
-                            )}
-                            target="_blank"
-                            rel="noreferrer"
-                            className="mt-2 block rounded-xl border border-slate-200 px-4 py-2.5 text-center text-xs font-semibold text-slate-600"
-                          >
-                            Open video meeting
-                          </a>
-                        )}
                     </article>
                   );
                 }
@@ -700,7 +1186,7 @@ export default function ClientAppointmentsWorkspace() {
             Upcoming appointments
           </h3>
           <p className="mt-1 text-sm text-slate-500">
-            Your next clinician-scheduled sessions in chronological order.
+            Your next confirmed sessions in chronological order.
           </p>
         </div>
 
@@ -757,9 +1243,9 @@ export default function ClientAppointmentsWorkspace() {
                       {appointment.title}
                     </p>
                     <p className="mt-1 text-xs text-slate-400">
-                      {
-                        appointment.clinician_name
-                      }{" "}
+                      {typeLabel(
+                        appointment.appointment_type
+                      )}{" "}
                       ·{" "}
                       {modeLabel(
                         appointment.mode
@@ -776,6 +1262,217 @@ export default function ClientAppointmentsWorkspace() {
           )}
         </div>
       </section>
+
+      {requestOpen && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-950/45 p-4">
+          <div className="max-h-[92vh] w-full max-w-xl overflow-y-auto rounded-3xl border border-slate-200 bg-white shadow-2xl">
+            <div className="flex items-start justify-between gap-4 border-b border-slate-100 p-5">
+              <div>
+                <p className="text-lg font-semibold text-slate-950">
+                  Request an appointment
+                </p>
+                <p className="mt-1 text-sm text-slate-500">
+                  With{" "}
+                  {currentClinician?.clinician_name ||
+                    "your clinician"}
+                </p>
+              </div>
+
+              <button
+                type="button"
+                onClick={() =>
+                  setRequestOpen(false)
+                }
+                className="flex h-9 w-9 items-center justify-center rounded-xl border border-slate-200 text-slate-500"
+              >
+                ×
+              </button>
+            </div>
+
+            <div className="space-y-5 p-5">
+              <div className="rounded-xl border border-cyan-100 bg-cyan-50/50 p-4">
+                <p className="text-xs leading-5 text-cyan-900">
+                  You are requesting a preferred time. Your clinician can accept it as requested or adjust the final date, time, duration and appointment details before confirming.
+                </p>
+              </div>
+
+              <label className="block">
+                <span className="text-xs font-semibold text-slate-600">
+                  Appointment type
+                </span>
+                <select
+                  value={requestType}
+                  onChange={(event) =>
+                    setRequestType(
+                      event.target
+                        .value as AppointmentType
+                    )
+                  }
+                  className="mt-2 w-full rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm"
+                >
+                  {appointmentTypeOptions.map(
+                    (option) => (
+                      <option
+                        key={
+                          option.value
+                        }
+                        value={
+                          option.value
+                        }
+                      >
+                        {option.label}
+                      </option>
+                    )
+                  )}
+                </select>
+              </label>
+
+              <div className="grid gap-3 sm:grid-cols-[1fr_1fr_130px]">
+                <label>
+                  <span className="text-xs font-semibold text-slate-600">
+                    Preferred date
+                  </span>
+                  <input
+                    type="date"
+                    value={requestDate}
+                    onChange={(event) =>
+                      setRequestDate(
+                        event.target.value
+                      )
+                    }
+                    className="mt-2 w-full rounded-xl border border-slate-200 px-4 py-3 text-sm"
+                  />
+                </label>
+
+                <label>
+                  <span className="text-xs font-semibold text-slate-600">
+                    Preferred time
+                  </span>
+                  <input
+                    type="time"
+                    value={requestTime}
+                    onChange={(event) =>
+                      setRequestTime(
+                        event.target.value
+                      )
+                    }
+                    className="mt-2 w-full rounded-xl border border-slate-200 px-4 py-3 text-sm"
+                  />
+                </label>
+
+                <label>
+                  <span className="text-xs font-semibold text-slate-600">
+                    Duration
+                  </span>
+                  <select
+                    value={
+                      requestDuration
+                    }
+                    onChange={(event) =>
+                      setRequestDuration(
+                        Number(
+                          event.target.value
+                        )
+                      )
+                    }
+                    className="mt-2 w-full rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm"
+                  >
+                    {durationOptions.map(
+                      (minutes) => (
+                        <option
+                          key={minutes}
+                          value={minutes}
+                        >
+                          {minutes} min
+                        </option>
+                      )
+                    )}
+                  </select>
+                </label>
+              </div>
+
+              <label className="block">
+                <span className="text-xs font-semibold text-slate-600">
+                  Preferred format
+                </span>
+                <select
+                  value={requestMode}
+                  onChange={(event) =>
+                    setRequestMode(
+                      event.target
+                        .value as AppointmentMode
+                    )
+                  }
+                  className="mt-2 w-full rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm"
+                >
+                  {modeOptions.map(
+                    (option) => (
+                      <option
+                        key={
+                          option.value
+                        }
+                        value={
+                          option.value
+                        }
+                      >
+                        {option.label}
+                      </option>
+                    )
+                  )}
+                </select>
+              </label>
+
+              <label className="block">
+                <span className="text-xs font-semibold text-slate-600">
+                  Message for your clinician
+                </span>
+                <textarea
+                  value={requestMessage}
+                  onChange={(event) =>
+                    setRequestMessage(
+                      event.target.value
+                    )
+                  }
+                  rows={4}
+                  placeholder="Optional: explain the reason for the appointment, scheduling constraints or anything your clinician should know."
+                  className="mt-2 w-full resize-y rounded-xl border border-slate-200 px-4 py-3 text-sm leading-6 outline-none focus:border-cyan-700"
+                />
+              </label>
+
+              <div className="flex justify-end gap-2 border-t border-slate-100 pt-5">
+                <button
+                  type="button"
+                  onClick={() =>
+                    setRequestOpen(
+                      false
+                    )
+                  }
+                  className="rounded-xl border border-slate-200 px-4 py-2.5 text-xs font-semibold text-slate-600"
+                >
+                  Cancel
+                </button>
+
+                <button
+                  type="button"
+                  disabled={
+                    submitting ||
+                    !requestDate ||
+                    !requestTime
+                  }
+                  onClick={() =>
+                    void submitRequest()
+                  }
+                  className="rounded-xl bg-cyan-800 px-5 py-2.5 text-xs font-semibold text-white disabled:opacity-40"
+                >
+                  {submitting
+                    ? "Sending..."
+                    : "Send request"}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

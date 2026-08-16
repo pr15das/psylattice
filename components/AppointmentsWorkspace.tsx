@@ -6,7 +6,7 @@ import {
   useState,
 } from "react";
 import { createClient } from "@/lib/supabase/client";
-
+import ReceptionistAccessManager from "./ReceptionistAccessManager";
 type AppointmentClient = {
   connection_id: string;
   client_id: string;
@@ -51,6 +51,31 @@ type ClinicalAppointment = {
   client_link: string;
   private_notes: string;
   created_at: string;
+  updated_at: string;
+};
+
+type AppointmentRequest = {
+  id: string;
+  connection_id: string;
+  clinician_id: string;
+  client_id: string;
+  client_name: string;
+  appointment_type: AppointmentType;
+  requested_start_at: string;
+  requested_end_at: string;
+  timezone: string;
+  mode: AppointmentMode;
+  client_message: string;
+  clinician_response: string;
+  status:
+    | "pending"
+    | "accepted"
+    | "rejected"
+    | "cancelled";
+  linked_appointment_id: string | null;
+  requested_at: string;
+  decided_at: string | null;
+  cancelled_at: string | null;
   updated_at: string;
 };
 
@@ -269,6 +294,16 @@ export default function AppointmentsWorkspace({
 
   const [appointments, setAppointments] =
     useState<ClinicalAppointment[]>([]);
+  const [requests, setRequests] =
+    useState<AppointmentRequest[]>([]);
+  const [
+    requestResponses,
+    setRequestResponses,
+  ] = useState<Record<string, string>>({});
+  const [
+    acceptingRequestId,
+    setAcceptingRequestId,
+  ] = useState("");
   const [loading, setLoading] =
     useState(true);
   const [saving, setSaving] =
@@ -391,6 +426,15 @@ export default function AppointmentsWorkspace({
   const nextAppointment =
     upcomingAppointments[0] || null;
 
+  const pendingRequests = useMemo(
+    () =>
+      requests.filter(
+        (request) =>
+          request.status === "pending"
+      ),
+    [requests]
+  );
+
   const currentMonthKey =
     `${visibleMonth.getFullYear()}-${pad(
       visibleMonth.getMonth() + 1
@@ -452,6 +496,54 @@ export default function AppointmentsWorkspace({
     setLoading(false);
   }
 
+  async function loadRequests() {
+    const supabase = createClient();
+
+    const { data, error } =
+      await supabase.rpc(
+        "psylattice_clinician_appointment_requests",
+        {
+          p_client_id:
+            client.client_id,
+        }
+      );
+
+    if (error) {
+      console.error(
+        "Could not load appointment requests:",
+        error
+      );
+      setErrorMessage(
+        error.message ||
+          "Appointment requests could not be loaded."
+      );
+      return;
+    }
+
+    setRequests(
+      (data || []) as AppointmentRequest[]
+    );
+  }
+
+  async function markAppointmentNotificationsRead() {
+    const supabase = createClient();
+
+    const { error } =
+      await supabase.rpc(
+        "psylattice_mark_appointment_notifications_read",
+        {
+          p_scope: "clinician",
+        }
+      );
+
+    if (error) {
+      console.error(
+        "Could not mark appointment notifications read:",
+        error
+      );
+    }
+  }
+
   useEffect(() => {
     setSelectedDate(
       localDateKey(new Date())
@@ -461,7 +553,12 @@ export default function AppointmentsWorkspace({
     );
     setFormOpen(false);
     setEditingAppointmentId("");
-    void loadAppointments();
+    setAcceptingRequestId("");
+    void Promise.all([
+      loadAppointments(),
+      loadRequests(),
+    ]);
+    void markAppointmentNotificationsRead();
   }, [
     client.client_id,
     client.connection_id,
@@ -469,6 +566,7 @@ export default function AppointmentsWorkspace({
 
   function clearForm() {
     setEditingAppointmentId("");
+    setAcceptingRequestId("");
     setFormTitle("");
     setFormType("therapy");
     setFormStatus("scheduled");
@@ -545,6 +643,45 @@ export default function AppointmentsWorkspace({
     setFormPrivateNotes(
       appointment.private_notes
     );
+    setFormOpen(true);
+    setErrorMessage("");
+  }
+
+  function openRequestForm(
+    request: AppointmentRequest
+  ) {
+    const startsAt = new Date(
+      request.requested_start_at
+    );
+
+    clearForm();
+    setAcceptingRequestId(
+      request.id
+    );
+    setFormTitle(
+      appointmentTypeLabel(
+        request.appointment_type
+      )
+    );
+    setFormType(
+      request.appointment_type
+    );
+    setFormStatus("scheduled");
+    setFormDate(
+      localDateKey(startsAt)
+    );
+    setFormTime(
+      localTimeValue(startsAt)
+    );
+    setFormDuration(
+      durationMinutes(
+        request.requested_start_at,
+        request.requested_end_at
+      )
+    );
+    setFormMode(request.mode);
+    setFormClientVisible(true);
+    setFormClientMessage("");
     setFormOpen(true);
     setErrorMessage("");
   }
@@ -688,6 +825,70 @@ export default function AppointmentsWorkspace({
       private_notes:
         formPrivateNotes.trim(),
     };
+
+    if (acceptingRequestId) {
+      const { error } =
+        await supabase.rpc(
+          "psylattice_accept_appointment_request",
+          {
+            p_request_id:
+              acceptingRequestId,
+            p_title: title,
+            p_appointment_type:
+              formType,
+            p_starts_at:
+              proposedStart.toISOString(),
+            p_ends_at:
+              proposedEnd.toISOString(),
+            p_timezone: timezone,
+            p_mode: formMode,
+            p_location:
+              formMode ===
+              "in_person"
+                ? formLocation.trim()
+                : "",
+            p_meeting_url:
+              formMode === "video"
+                ? formMeetingUrl.trim()
+                : "",
+            p_client_visible:
+              formClientVisible,
+            p_client_message:
+              formClientMessage.trim(),
+            p_client_link:
+              formClientLink.trim(),
+            p_private_notes:
+              formPrivateNotes.trim(),
+          }
+        );
+
+      if (error) {
+        setErrorMessage(
+          error.message ||
+            "The appointment request could not be accepted."
+        );
+        setSaving(false);
+        return;
+      }
+
+      setMessage(
+        "Request accepted and appointment scheduled."
+      );
+      setFormOpen(false);
+      setAcceptingRequestId("");
+      setSaving(false);
+
+      await Promise.all([
+        loadAppointments(),
+        loadRequests(),
+      ]);
+
+      window.setTimeout(
+        () => setMessage(""),
+        2200
+      );
+      return;
+    }
 
     if (editingAppointmentId) {
       const { data, error } =
@@ -895,6 +1096,55 @@ export default function AppointmentsWorkspace({
     }
   }
 
+  async function rejectRequest(
+    request: AppointmentRequest
+  ) {
+    const confirmed = window.confirm(
+      `Reject ${request.client_name}'s appointment request?`
+    );
+
+    if (!confirmed) {
+      return;
+    }
+
+    setErrorMessage("");
+    setMessage("");
+
+    const supabase = createClient();
+
+    const { data, error } =
+      await supabase.rpc(
+        "psylattice_reject_appointment_request",
+        {
+          p_request_id:
+            request.id,
+          p_response:
+            requestResponses[
+              request.id
+            ]?.trim() || "",
+        }
+      );
+
+    if (error || !data) {
+      setErrorMessage(
+        error?.message ||
+          "The appointment request could not be rejected."
+      );
+      return;
+    }
+
+    setMessage(
+      "Appointment request rejected."
+    );
+    await loadRequests();
+
+    window.setTimeout(
+      () => setMessage(""),
+      1800
+    );
+  }
+
+
   return (
     <div className="space-y-5">
       {errorMessage && (
@@ -908,6 +1158,227 @@ export default function AppointmentsWorkspace({
           {message}
         </div>
       )}
+
+      {/* APPOINTMENT REQUESTS */}
+      <section className="overflow-hidden rounded-3xl border border-slate-200 bg-white">
+        <div className="flex flex-col justify-between gap-3 border-b border-slate-100 bg-gradient-to-r from-amber-50/60 via-white to-white p-5 sm:flex-row sm:items-center">
+          <div>
+            <div className="flex flex-wrap items-center gap-2">
+              <h3 className="font-semibold text-slate-900">
+                Appointment requests
+              </h3>
+
+              {pendingRequests.length > 0 && (
+                <span className="rounded-full bg-amber-100 px-2.5 py-1 text-[10px] font-semibold text-amber-800">
+                  {pendingRequests.length} pending
+                </span>
+              )}
+            </div>
+
+            <p className="mt-1 text-sm text-slate-500">
+              Review requests from {client.client_name}. Accepting a request opens the normal appointment editor so you can adjust the final date, time, duration and other details before confirming.
+            </p>
+          </div>
+
+          <button
+            type="button"
+            onClick={() =>
+              void loadRequests()
+            }
+            className="rounded-xl border border-slate-200 px-3 py-2 text-xs font-semibold text-slate-600"
+          >
+            Refresh requests
+          </button>
+        </div>
+
+        {requests.length === 0 ? (
+          <div className="p-6 text-center">
+            <p className="text-sm font-semibold text-slate-700">
+              No appointment requests
+            </p>
+            <p className="mt-1 text-xs text-slate-400">
+              New client requests will appear here.
+            </p>
+          </div>
+        ) : (
+          <div className="grid gap-3 p-4 lg:grid-cols-2">
+            {requests
+              .slice(0, 8)
+              .map((request) => (
+                <article
+                  key={request.id}
+                  className={`rounded-2xl border p-4 ${
+                    request.status ===
+                    "pending"
+                      ? "border-amber-200 bg-amber-50/35"
+                      : "border-slate-200 bg-white"
+                  }`}
+                >
+                  <div className="flex items-start justify-between gap-3">
+                    <div>
+                      <p className="text-sm font-semibold text-slate-900">
+                        {appointmentTypeLabel(
+                          request.appointment_type
+                        )}
+                      </p>
+
+                      <p className="mt-1 text-xs font-medium text-slate-500">
+                        {new Date(
+                          request.requested_start_at
+                        ).toLocaleDateString(
+                          [],
+                          {
+                            weekday:
+                              "short",
+                            month:
+                              "short",
+                            day:
+                              "numeric",
+                            year:
+                              "numeric",
+                          }
+                        )}{" "}
+                        ·{" "}
+                        {timeRangeLabel(
+                          request.requested_start_at,
+                          request.requested_end_at
+                        )}
+                      </p>
+                    </div>
+
+                    <span
+                      className={`rounded-full border px-2.5 py-1 text-[9px] font-semibold ${
+                        request.status ===
+                        "pending"
+                          ? "border-amber-200 bg-amber-50 text-amber-700"
+                          : request.status ===
+                              "accepted"
+                            ? "border-emerald-200 bg-emerald-50 text-emerald-700"
+                            : request.status ===
+                                "rejected"
+                              ? "border-red-200 bg-red-50 text-red-700"
+                              : "border-slate-200 bg-slate-50 text-slate-500"
+                      }`}
+                    >
+                      {request.status
+                        .replaceAll(
+                          "_",
+                          " "
+                        )
+                        .replace(
+                          /\b\w/g,
+                          (char) =>
+                            char.toUpperCase()
+                        )}
+                    </span>
+                  </div>
+
+                  <div className="mt-3 flex flex-wrap gap-2">
+                    <span className="rounded-full bg-cyan-50 px-2 py-1 text-[9px] font-medium text-cyan-700">
+                      {modeLabel(
+                        request.mode
+                      )}
+                    </span>
+                    <span className="rounded-full bg-slate-100 px-2 py-1 text-[9px] font-medium text-slate-500">
+                      Requested{" "}
+                      {new Date(
+                        request.requested_at
+                      ).toLocaleDateString()}
+                    </span>
+                  </div>
+
+                  {request.client_message && (
+                    <div className="mt-3 rounded-xl border border-slate-200 bg-white p-3">
+                      <p className="text-[10px] font-semibold uppercase tracking-[0.12em] text-slate-400">
+                        Client message
+                      </p>
+                      <p className="mt-1 whitespace-pre-wrap text-xs leading-5 text-slate-600">
+                        {
+                          request.client_message
+                        }
+                      </p>
+                    </div>
+                  )}
+
+                  {request.status ===
+                    "pending" && (
+                    <>
+                      <label className="mt-3 block">
+                        <span className="text-[10px] font-semibold uppercase tracking-[0.12em] text-slate-400">
+                          Optional response if declining
+                        </span>
+                        <textarea
+                          value={
+                            requestResponses[
+                              request.id
+                            ] || ""
+                          }
+                          onChange={(
+                            event
+                          ) =>
+                            setRequestResponses(
+                              (
+                                current
+                              ) => ({
+                                ...current,
+                                [request.id]:
+                                  event
+                                    .target
+                                    .value,
+                              })
+                            )
+                          }
+                          rows={2}
+                          placeholder="e.g. I am unavailable at this time. Please request another slot."
+                          className="mt-2 w-full resize-y rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-xs leading-5 outline-none focus:border-cyan-700"
+                        />
+                      </label>
+
+                      <div className="mt-4 flex flex-wrap gap-2">
+                        <button
+                          type="button"
+                          onClick={() =>
+                            openRequestForm(
+                              request
+                            )
+                          }
+                          className="rounded-xl bg-cyan-800 px-4 py-2.5 text-xs font-semibold text-white"
+                        >
+                          Accept & schedule
+                        </button>
+
+                        <button
+                          type="button"
+                          onClick={() =>
+                            void rejectRequest(
+                              request
+                            )
+                          }
+                          className="rounded-xl border border-red-200 px-4 py-2.5 text-xs font-semibold text-red-600"
+                        >
+                          Reject
+                        </button>
+                      </div>
+                    </>
+                  )}
+
+                  {request.clinician_response && (
+                    <div className="mt-3 rounded-xl border border-cyan-100 bg-cyan-50/50 p-3">
+                      <p className="text-[10px] font-semibold uppercase tracking-[0.12em] text-cyan-700">
+                        Response sent
+                      </p>
+                      <p className="mt-1 text-xs leading-5 text-cyan-950">
+                        {
+                          request.clinician_response
+                        }
+                      </p>
+                    </div>
+                  )}
+                </article>
+              ))}
+          </div>
+        )}
+      </section>
 
       {/* SUMMARY */}
       <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
@@ -1479,6 +1950,8 @@ export default function AppointmentsWorkspace({
         </div>
       </section>
 
+      <ReceptionistAccessManager />
+
       {/* CREATE / EDIT MODAL */}
       {formOpen && (
         <div className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-950/45 p-4">
@@ -1488,10 +1961,15 @@ export default function AppointmentsWorkspace({
                 <p className="text-lg font-semibold text-slate-950">
                   {editingAppointmentId
                     ? "Edit appointment"
-                    : "New appointment"}
+                    : acceptingRequestId
+                      ? "Accept request & schedule"
+                      : "New appointment"}
                 </p>
                 <p className="mt-1 text-sm text-slate-500">
                   {client.client_name}
+                  {acceptingRequestId
+                    ? " · Adjust the requested slot before confirming"
+                    : ""}
                 </p>
               </div>
 
@@ -1500,6 +1978,9 @@ export default function AppointmentsWorkspace({
                 onClick={() => {
                   setFormOpen(false);
                   setEditingAppointmentId(
+                    ""
+                  );
+                  setAcceptingRequestId(
                     ""
                   );
                 }}
@@ -1916,7 +2397,9 @@ export default function AppointmentsWorkspace({
                       ? "Saving..."
                       : editingAppointmentId
                         ? "Save changes"
-                        : "Create appointment"}
+                        : acceptingRequestId
+                          ? "Accept & schedule"
+                          : "Create appointment"}
                   </button>
                 </div>
               </div>

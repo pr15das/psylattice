@@ -375,11 +375,27 @@ type ClinicianInvitation = {
   created_at: string;
 };
 
+type ActiveClinicianIdentity = {
+  connection_id: string;
+  clinician_id: string;
+  clinician_name: string;
+  clinician_email: string;
+  connected_at: string;
+};
+
 function ClinicianInvitations({
   onCountChange,
 }: {
   onCountChange?: (count: number) => void;
-}) {  const [invitations, setInvitations] = useState<ClinicianInvitation[]>([]);
+}) {
+  const [invitations, setInvitations] =
+    useState<ClinicianInvitation[]>([]);
+  const [
+    activeClinician,
+    setActiveClinician,
+  ] = useState<ActiveClinicianIdentity | null>(
+    null
+  );
   const [loading, setLoading] = useState(true);
   const [respondingId, setRespondingId] = useState<string | null>(null);
   const [error, setError] = useState("");
@@ -392,14 +408,22 @@ function ClinicianInvitations({
 
       const supabase = createClient();
 
-      const { data, error } = await supabase.rpc(
-        "psylattice_my_clinician_invitations_v2"
-      );
+      const [
+        invitationsResult,
+        cliniciansResult,
+      ] = await Promise.all([
+        supabase.rpc(
+          "psylattice_my_clinician_invitations_v2"
+        ),
+        supabase.rpc(
+          "psylattice_my_clinicians_and_permissions_v2"
+        ),
+      ]);
 
-      if (error) {
+      if (invitationsResult.error) {
         console.error(
           "Could not load clinician invitations:",
-          error
+          invitationsResult.error
         );
 
         setError(
@@ -410,13 +434,32 @@ function ClinicianInvitations({
         return;
       }
 
+      if (cliniciansResult.error) {
+        console.error(
+          "Could not load your current clinician:",
+          cliniciansResult.error
+        );
+      }
+
       const loadedInvitations =
-  (data ?? []) as ClinicianInvitation[];
+        (invitationsResult.data ??
+          []) as ClinicianInvitation[];
 
-setInvitations(loadedInvitations);
-onCountChange?.(loadedInvitations.length);
+      const currentClinicians =
+        (cliniciansResult.data ??
+          []) as ActiveClinicianIdentity[];
 
-setLoading(false);
+      setInvitations(
+        loadedInvitations
+      );
+      setActiveClinician(
+        currentClinicians[0] || null
+      );
+      onCountChange?.(
+        loadedInvitations.length
+      );
+
+      setLoading(false);
     }
 
     void loadInvitations();
@@ -427,6 +470,16 @@ setLoading(false);
     response: "accept" | "decline"
   ) {
     if (respondingId) return;
+
+    if (
+      response === "accept" &&
+      activeClinician
+    ) {
+      setError(
+        `You are already connected to ${activeClinician.clinician_name}. Disconnect your current clinician before connecting to another clinician.`
+      );
+      return;
+    }
 
     setRespondingId(invitationId);
     setError("");
@@ -449,10 +502,27 @@ setLoading(false);
         error
       );
 
+      const alreadyConnected =
+        response === "accept" &&
+        (
+          error.message
+            ?.toLowerCase()
+            .includes(
+              "already have an active clinician"
+            ) ||
+          error.message
+            ?.toLowerCase()
+            .includes(
+              "one_active_clinician"
+            )
+        );
+
       setError(
-        response === "accept"
-          ? "The clinician connection could not be accepted. Please try again."
-          : "The invitation could not be declined. Please try again."
+        alreadyConnected
+          ? "You already have an active clinician connection. Disconnect your current clinician before connecting to another clinician."
+          : response === "accept"
+            ? "The clinician connection could not be accepted. Please try again."
+            : "The invitation could not be declined. Please try again."
       );
 
       setRespondingId(null);
@@ -471,6 +541,23 @@ onCountChange?.(remainingInvitations.length);
       (invitation) =>
         invitation.invitation_id === invitationId
     );
+
+    if (
+      response === "accept" &&
+      respondedInvitation
+    ) {
+      setActiveClinician({
+        connection_id: "",
+        clinician_id:
+          respondedInvitation.clinician_id,
+        clinician_name:
+          respondedInvitation.clinician_name,
+        clinician_email:
+          respondedInvitation.clinician_email,
+        connected_at:
+          new Date().toISOString(),
+      });
+    }
 
     setSuccessMessage(
       response === "accept"
@@ -526,6 +613,19 @@ onCountChange?.(remainingInvitations.length);
           {error}
         </div>
       )}
+
+      {activeClinician &&
+        invitations.length > 0 && (
+          <div className="rounded-2xl border border-amber-200 bg-amber-50 px-5 py-4">
+            <p className="text-sm font-semibold text-amber-950">
+              You are already connected to{" "}
+              {activeClinician.clinician_name}.
+            </p>
+            <p className="mt-1 text-xs leading-5 text-amber-800">
+              PsyLattice allows one active clinician at a time. You can still decline other invitations, but to accept a different clinician you must first disconnect your current clinician from the Self dashboard.
+            </p>
+          </div>
+        )}
 
       {invitations.map((invitation) => {
         const responding =
@@ -617,18 +717,28 @@ onCountChange?.(remainingInvitations.length);
               <div className="mt-5 flex flex-col gap-2 sm:flex-row">
                 <button
                   type="button"
-                  disabled={responding}
+                  disabled={
+                    responding ||
+                    Boolean(activeClinician)
+                  }
                   onClick={() =>
                     void respondToInvitation(
                       invitation.invitation_id,
                       "accept"
                     )
                   }
-                  className="rounded-xl bg-slate-950 px-5 py-3 text-sm font-semibold text-white transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-50"
+                  title={
+                    activeClinician
+                      ? `Disconnect ${activeClinician.clinician_name} before accepting another clinician.`
+                      : "Accept clinician connection"
+                  }
+                  className="rounded-xl bg-slate-950 px-5 py-3 text-sm font-semibold text-white transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:bg-slate-300 disabled:text-slate-600 disabled:opacity-100"
                 >
                   {responding
                     ? "Updating..."
-                    : "Accept connection"}
+                    : activeClinician
+                      ? "Already connected"
+                      : "Accept connection"}
                 </button>
 
                 <button
@@ -645,6 +755,12 @@ onCountChange?.(remainingInvitations.length);
                   Decline
                 </button>
               </div>
+
+              {activeClinician && (
+                <p className="mt-3 text-xs font-medium leading-5 text-amber-700">
+                  To connect with {invitation.clinician_name}, first disconnect {activeClinician.clinician_name} from your Self dashboard.
+                </p>
+              )}
 
               <p className="mt-4 text-xs text-slate-400">
                 Invited{" "}
@@ -770,6 +886,21 @@ function Dashboard({
   const [
     dashboardClinicianError,
     setDashboardClinicianError,
+  ] = useState("");
+
+  const [
+    clinicianPendingRemoval,
+    setClinicianPendingRemoval,
+  ] = useState<DashboardConnectedClinician | null>(
+    null
+  );
+  const [
+    removingDashboardClinician,
+    setRemovingDashboardClinician,
+  ] = useState(false);
+  const [
+    dashboardConnectionMessage,
+    setDashboardConnectionMessage,
   ] = useState("");
 
   function getLocalDateString(date = new Date()) {
@@ -932,6 +1063,51 @@ function Dashboard({
       (data ?? []) as DashboardConnectedClinician[]
     );
     setLoadingDashboardClinicians(false);
+  }
+
+  async function disconnectDashboardClinician() {
+    if (
+      !clinicianPendingRemoval ||
+      removingDashboardClinician
+    ) {
+      return;
+    }
+
+    setRemovingDashboardClinician(true);
+    setDashboardClinicianError("");
+    setDashboardConnectionMessage("");
+
+    const clinician = clinicianPendingRemoval;
+    const supabase = createClient();
+
+    const { error } = await supabase.rpc(
+      "psylattice_end_connection_as_client",
+      {
+        p_connection_id:
+          clinician.connection_id,
+      }
+    );
+
+    if (error) {
+      console.error(
+        "Could not disconnect clinician:",
+        error
+      );
+      setDashboardClinicianError(
+        "The clinician connection could not be removed. Please try again."
+      );
+      setRemovingDashboardClinician(false);
+      return;
+    }
+
+    setDashboardClinicians([]);
+    setClinicianPendingRemoval(null);
+    setRemovingDashboardClinician(false);
+    setDashboardConnectionMessage(
+      `${clinician.clinician_name} has been disconnected. Their access through this PsyLattice connection has ended. Your Self data remains in your account.`
+    );
+
+    void loadDashboardClinicians(false);
   }
 
   async function loadDashboardMonitoring(
@@ -1335,6 +1511,11 @@ function Dashboard({
         )
       : 0;
 
+  // A Self account is designed to have one current clinician.
+  // We deliberately present a single, clear connection in the UI.
+  const currentClinician =
+    dashboardClinicians[0] || null;
+
   return (
     <div className="space-y-5">
       {dashboardClinicianError && (
@@ -1360,6 +1541,173 @@ function Dashboard({
           </p>
         </div>
       )}
+
+      {dashboardConnectionMessage && (
+        <div className="rounded-2xl border border-emerald-200 bg-emerald-50 px-5 py-4 text-sm text-emerald-800">
+          {dashboardConnectionMessage}
+        </div>
+      )}
+
+      {/* CURRENT CLINICIAN — intentionally prominent because Self has one current clinician */}
+      <section className="overflow-hidden rounded-3xl border border-cyan-200 bg-white shadow-sm">
+        <div className="border-b border-cyan-100 bg-gradient-to-r from-cyan-50 via-white to-white px-5 py-4">
+          <div className="flex flex-col justify-between gap-3 sm:flex-row sm:items-center">
+            <div>
+              <p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-cyan-700">
+                Your clinician connection
+              </p>
+              <h2 className="mt-1 text-lg font-semibold text-slate-950">
+                {loadingDashboardClinicians
+                  ? "Checking your clinician..."
+                  : currentClinician
+                    ? "You are connected to"
+                    : "No clinician connected"}
+              </h2>
+            </div>
+
+            {currentClinician && (
+              <span className="w-fit rounded-full border border-emerald-200 bg-emerald-50 px-3 py-1.5 text-xs font-semibold text-emerald-700">
+                ● Connected
+              </span>
+            )}
+          </div>
+        </div>
+
+        {loadingDashboardClinicians ? (
+          <div className="p-6 text-sm text-slate-500">
+            Loading your clinician connection...
+          </div>
+        ) : !currentClinician ? (
+          <div className="p-6">
+            <div className="rounded-2xl border border-dashed border-slate-300 bg-slate-50/70 p-5">
+              <p className="font-semibold text-slate-800">
+                You are not currently connected to a clinician.
+              </p>
+              <p className="mt-2 max-w-2xl text-sm leading-6 text-slate-500">
+                When you accept a clinician invitation, that clinician becomes your current PsyLattice clinician and will appear here.
+              </p>
+            </div>
+          </div>
+        ) : (
+          <div className="p-5">
+            <div className="flex flex-col gap-5 lg:flex-row lg:items-center lg:justify-between">
+              <div className="flex min-w-0 items-center gap-4">
+                <div className="flex h-14 w-14 shrink-0 items-center justify-center rounded-2xl bg-cyan-800 text-base font-bold text-white shadow-sm">
+                  {currentClinician.clinician_name
+                    .trim()
+                    .split(/\s+/)
+                    .filter(Boolean)
+                    .slice(0, 2)
+                    .map((part) =>
+                      part.charAt(0).toUpperCase()
+                    )
+                    .join("") || "CL"}
+                </div>
+
+                <div className="min-w-0">
+                  <p className="text-xl font-semibold tracking-tight text-slate-950">
+                    {currentClinician.clinician_name}
+                  </p>
+
+                  {currentClinician.clinician_email && (
+                    <p className="mt-1 break-all text-sm text-slate-500">
+                      {currentClinician.clinician_email}
+                    </p>
+                  )}
+
+                  <p className="mt-2 text-xs text-slate-400">
+                    Connected since{" "}
+                    {new Date(
+                      currentClinician.connected_at
+                    ).toLocaleDateString()}
+                  </p>
+                </div>
+              </div>
+
+              <div className="flex flex-wrap gap-2">
+                <button
+                  type="button"
+                  onClick={() =>
+                    changeScreen("messages")
+                  }
+                  className="rounded-xl bg-slate-950 px-4 py-2.5 text-xs font-semibold text-white transition hover:bg-slate-800"
+                >
+                  Message clinician
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() =>
+                    changeScreen("appointments")
+                  }
+                  className="rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-xs font-semibold text-slate-700 transition hover:bg-slate-50"
+                >
+                  Appointments
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() =>
+                    changeScreen("privacy")
+                  }
+                  className="rounded-xl border border-cyan-200 bg-cyan-50 px-4 py-2.5 text-xs font-semibold text-cyan-800 transition hover:bg-cyan-100/70"
+                >
+                  Manage sharing
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => {
+                    setDashboardConnectionMessage("");
+                    setClinicianPendingRemoval(
+                      currentClinician
+                    );
+                  }}
+                  className="rounded-xl border border-red-200 bg-white px-4 py-2.5 text-xs font-semibold text-red-700 transition hover:bg-red-50"
+                >
+                  Disconnect clinician
+                </button>
+              </div>
+            </div>
+
+            <div className="mt-5 grid gap-3 border-t border-slate-100 pt-4 sm:grid-cols-3">
+              <div className="rounded-xl bg-slate-50 p-3">
+                <p className="text-[10px] font-semibold uppercase tracking-[0.12em] text-slate-400">
+                  Connection
+                </p>
+                <p className="mt-1 text-xs font-semibold text-slate-700">
+                  Active
+                </p>
+              </div>
+
+              <div className="rounded-xl bg-slate-50 p-3">
+                <p className="text-[10px] font-semibold uppercase tracking-[0.12em] text-slate-400">
+                  Data sharing
+                </p>
+                <p className="mt-1 text-xs font-semibold text-slate-700">
+                  {[
+                    currentClinician.share_assessments,
+                    currentClinician.share_monitoring,
+                    currentClinician.share_progress,
+                    currentClinician.share_wearables,
+                    currentClinician.share_regulation,
+                  ].filter(Boolean).length}{" "}
+                  of 5 categories enabled
+                </p>
+              </div>
+
+              <div className="rounded-xl bg-slate-50 p-3">
+                <p className="text-[10px] font-semibold uppercase tracking-[0.12em] text-slate-400">
+                  Luna conversations
+                </p>
+                <p className="mt-1 text-xs font-semibold text-slate-700">
+                  Private
+                </p>
+              </div>
+            </div>
+          </div>
+        )}
+      </section>
 
       <div className="flex justify-end">
         <button
@@ -1444,105 +1792,6 @@ function Dashboard({
         />
       </div>
 
-      <Panel
-        title={
-          dashboardClinicians.length === 1
-            ? "Your connected clinician"
-            : "Your connected clinicians"
-        }
-        description="This is loaded from your active PsyLattice clinician connection, not from demo data."
-      >
-        {loadingDashboardClinicians ? (
-          <p className="text-sm text-slate-500">
-            Loading clinician connection...
-          </p>
-        ) : dashboardClinicians.length === 0 ? (
-          <div className="rounded-2xl bg-slate-50 p-5">
-            <p className="font-medium text-slate-800">
-              No clinician currently connected
-            </p>
-
-            <p className="mt-2 text-sm leading-6 text-slate-500">
-              When you accept a clinician invitation, their actual
-              PsyLattice account identity will appear here.
-            </p>
-          </div>
-        ) : (
-          <div className="divide-y divide-slate-100">
-            {dashboardClinicians.map((clinician) => {
-              const initials =
-                clinician.clinician_name
-                  .trim()
-                  .split(/\s+/)
-                  .filter(Boolean)
-                  .slice(0, 2)
-                  .map((part) => part.charAt(0))
-                  .join("")
-                  .toUpperCase() || "CL";
-
-              const sharedCount = [
-                clinician.share_assessments,
-                clinician.share_monitoring,
-                clinician.share_progress,
-                clinician.share_wearables,
-                clinician.share_regulation,
-              ].filter(Boolean).length;
-
-              return (
-                <div
-                  key={clinician.connection_id}
-                  className="flex flex-col justify-between gap-4 py-4 first:pt-0 last:pb-0 sm:flex-row sm:items-center"
-                >
-                  <div className="flex min-w-0 items-center gap-3">
-                    <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-cyan-50 text-sm font-semibold text-cyan-900">
-                      {initials}
-                    </div>
-
-                    <div className="min-w-0">
-                      <p className="font-semibold text-slate-950">
-                        {clinician.clinician_name}
-                      </p>
-
-                      {clinician.clinician_email && (
-                        <p className="mt-1 break-all text-xs text-slate-500">
-                          {clinician.clinician_email}
-                        </p>
-                      )}
-
-                      <p className="mt-1 text-xs text-slate-400">
-                        Connected{" "}
-                        {new Date(
-                          clinician.connected_at
-                        ).toLocaleDateString()}
-                      </p>
-                    </div>
-                  </div>
-
-                  <div className="flex flex-wrap items-center gap-2">
-                    <span className="rounded-full bg-emerald-50 px-3 py-1 text-xs font-medium text-emerald-700">
-                      Connected
-                    </span>
-
-                    <span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-medium text-slate-600">
-                      {sharedCount} / 5 categories shared
-                    </span>
-
-                    <button
-                      type="button"
-                      onClick={() =>
-                        changeScreen("privacy")
-                      }
-                      className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-slate-700 transition hover:bg-slate-50"
-                    >
-                      Manage sharing
-                    </button>
-                  </div>
-                </div>
-              );
-            })}
-          </div>
-        )}
-      </Panel>
 
       <div className="grid gap-5 xl:grid-cols-[1.15fr_.85fr]">
         <Panel
@@ -1871,6 +2120,71 @@ function Dashboard({
           </div>
         )}
       </Panel>
+      {clinicianPendingRemoval && (
+        <div className="fixed inset-0 z-[120] flex items-center justify-center bg-slate-950/45 p-4">
+          <div className="w-full max-w-lg overflow-hidden rounded-3xl border border-slate-200 bg-white shadow-2xl">
+            <div className="border-b border-red-100 bg-red-50/60 p-5">
+              <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-red-600">
+                End clinician connection
+              </p>
+              <h3 className="mt-2 text-xl font-semibold text-slate-950">
+                Disconnect from{" "}
+                {clinicianPendingRemoval.clinician_name}?
+              </h3>
+            </div>
+
+            <div className="space-y-4 p-5">
+              <p className="text-sm leading-6 text-slate-600">
+                This will end your active PsyLattice connection with this clinician immediately.
+              </p>
+
+              <div className="rounded-2xl border border-slate-200 bg-slate-50/70 p-4">
+                <p className="text-sm font-semibold text-slate-800">
+                  What happens when you disconnect
+                </p>
+
+                <div className="mt-3 space-y-2 text-xs leading-5 text-slate-600">
+                  <p>• The clinician loses access through this active connection.</p>
+                  <p>• All sharing permissions for this connection stop.</p>
+                  <p>• Your Self data remains in your own PsyLattice account.</p>
+                  <p>• This does not delete your personal assessment or monitoring history.</p>
+                </div>
+              </div>
+
+              <p className="text-xs leading-5 text-slate-400">
+                You can connect with a clinician again later by accepting a new clinician invitation.
+              </p>
+
+              <div className="flex flex-col-reverse gap-2 border-t border-slate-100 pt-4 sm:flex-row sm:justify-end">
+                <button
+                  type="button"
+                  disabled={removingDashboardClinician}
+                  onClick={() =>
+                    setClinicianPendingRemoval(null)
+                  }
+                  className="rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-xs font-semibold text-slate-600 transition hover:bg-slate-50 disabled:opacity-50"
+                >
+                  Keep clinician
+                </button>
+
+                <button
+                  type="button"
+                  disabled={removingDashboardClinician}
+                  onClick={() =>
+                    void disconnectDashboardClinician()
+                  }
+                  className="rounded-xl bg-red-600 px-5 py-2.5 text-xs font-semibold text-white transition hover:bg-red-700 disabled:cursor-wait disabled:opacity-50"
+                >
+                  {removingDashboardClinician
+                    ? "Disconnecting..."
+                    : "Yes, disconnect clinician"}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
     </div>
   );
 }

@@ -26,7 +26,8 @@ const workspaces: Array<{
     description:
       "Use self-assessments, daily monitoring, self-regulation, progress tools and the AI Guide.",
     href: "/self",
-    note: "Your personal psychological workspace.",
+    note:
+      "Your personal psychological workspace.",
   },
   {
     id: "researcher",
@@ -35,7 +36,8 @@ const workspaces: Array<{
     description:
       "Build studies, questionnaires, participant workflows, datasets and exports.",
     href: "/researcher",
-    note: "Research tools use this same PsyLattice account.",
+    note:
+      "Research tools use this same PsyLattice account.",
   },
   {
     id: "clinician",
@@ -44,44 +46,77 @@ const workspaces: Array<{
     description:
       "Use PsyLattice's professional assessment and client-management workflows.",
     href: "/clinician",
-    note: "Workspace access does not represent verification of professional credentials or licensure.",
+    note:
+      "Workspace access does not represent verification of professional credentials or licensure.",
   },
 ];
 
 export default function WorkspacePage() {
   const router = useRouter();
 
-  const [fullName, setFullName] = useState("");
-  const [loading, setLoading] = useState(true);
-  const [openingWorkspace, setOpeningWorkspace] =
-    useState<WorkspaceId | null>(null);
-  const [signingOut, setSigningOut] =
-    useState(false);
+  const [fullName, setFullName] =
+    useState("");
+
+  const [loading, setLoading] =
+    useState(true);
+
+  const [
+    openingWorkspace,
+    setOpeningWorkspace,
+  ] = useState<WorkspaceId | null>(
+    null
+  );
+
+  const [
+    signingOut,
+    setSigningOut,
+  ] = useState(false);
+
   const [pageError, setPageError] =
     useState("");
 
   useEffect(() => {
+    let cancelled = false;
+
     async function loadAccount() {
-      const supabase = createClient();
+      const supabase =
+        createClient();
 
       const {
         data: { user },
         error: userError,
-      } = await supabase.auth.getUser();
+      } =
+        await supabase.auth.getUser();
 
-      if (userError || !user) {
-        router.replace("/signin");
+      if (cancelled) {
         return;
       }
 
-      const { data: profile, error: profileError } =
-        await supabase
-          .from("profiles")
-          .select(
-            "full_name, workspace_access"
-          )
-          .eq("id", user.id)
-          .maybeSingle();
+      if (
+        userError ||
+        !user
+      ) {
+        router.replace(
+          "/signin"
+        );
+
+        return;
+      }
+
+      const {
+        data: profile,
+        error: profileError,
+      } = await supabase
+        .from("profiles")
+        .select(
+          "full_name, workspace_access"
+        )
+        .eq("id", user.id)
+        .maybeSingle();
+
+      if (cancelled) {
+        return;
+      }
 
       if (profileError) {
         console.error(
@@ -92,8 +127,9 @@ export default function WorkspacePage() {
 
       const name =
         profile?.full_name?.trim() ||
-        (typeof user.user_metadata?.full_name ===
-        "string"
+        (typeof user
+          .user_metadata
+          ?.full_name === "string"
           ? user.user_metadata.full_name.trim()
           : "") ||
         user.email?.split("@")[0] ||
@@ -101,11 +137,12 @@ export default function WorkspacePage() {
 
       setFullName(name);
 
-      const access = Array.isArray(
-        profile?.workspace_access
-      )
-        ? profile.workspace_access
-        : [];
+      const access =
+        Array.isArray(
+          profile?.workspace_access
+        )
+          ? profile.workspace_access
+          : [];
 
       const hasAllWorkspaces = [
         "self",
@@ -116,19 +153,27 @@ export default function WorkspacePage() {
       );
 
       if (!hasAllWorkspaces) {
-        const { error: repairError } =
-          await supabase
-            .from("profiles")
-            .update({
-              workspace_access: [
-                "self",
-                "researcher",
-                "clinician",
-              ],
-              updated_at:
-                new Date().toISOString(),
-            })
-            .eq("id", user.id);
+        const {
+          error: repairError,
+        } = await supabase
+          .from("profiles")
+          .update({
+            workspace_access: [
+              "self",
+              "researcher",
+              "clinician",
+            ],
+
+            updated_at:
+              new Date().toISOString(),
+          })
+          .eq("id", user.id);
+
+        if (
+          cancelled
+        ) {
+          return;
+        }
 
         if (repairError) {
           console.error(
@@ -146,30 +191,135 @@ export default function WorkspacePage() {
     }
 
     void loadAccount();
+
+    return () => {
+      cancelled = true;
+    };
   }, [router]);
 
-  function openWorkspace(
+  async function openWorkspace(
     workspace: WorkspaceId,
     href: string
   ) {
-    if (openingWorkspace) return;
+    if (
+      openingWorkspace
+    ) {
+      return;
+    }
 
-    setOpeningWorkspace(workspace);
+    setOpeningWorkspace(
+      workspace
+    );
 
-    // IMPORTANT:
-    // We intentionally do NOT read or write profiles.role here.
-    // We also avoid Next <Link> prefetching for the workspace
-    // destinations so an old/cached redirect cannot decide
-    // which workspace opens.
-    router.push(href);
+    setPageError("");
+
+    const supabase =
+      createClient();
+
+    const {
+      data: { user },
+      error: userError,
+    } =
+      await supabase.auth.getUser();
+
+    if (
+      userError ||
+      !user
+    ) {
+      setOpeningWorkspace(
+        null
+      );
+
+      router.replace(
+        `/signin?workspace=${workspace}`
+      );
+
+      return;
+    }
+
+    /*
+     * Check whether this user has
+     * completed onboarding for this
+     * specific workspace.
+     *
+     * The three workspace tours are
+     * completely independent.
+     */
+    const {
+      data: onboarding,
+      error: onboardingError,
+    } = await supabase
+      .from(
+        "workspace_onboarding"
+      )
+      .select(
+        "current_step, completed_at"
+      )
+      .eq(
+        "user_id",
+        user.id
+      )
+      .eq(
+        "workspace",
+        workspace
+      )
+      .maybeSingle();
+
+    /*
+     * If Supabase cannot check the
+     * onboarding table for some reason,
+     * do not block access to PsyLattice.
+     *
+     * Open the workspace normally.
+     */
+    if (
+      onboardingError
+    ) {
+      console.error(
+        "Could not check workspace onboarding:",
+        onboardingError
+      );
+
+      router.push(href);
+
+      return;
+    }
+
+    /*
+     * Completed tour:
+     * enter the workspace normally.
+     */
+    if (
+      onboarding?.completed_at
+    ) {
+      router.push(href);
+
+      return;
+    }
+
+    /*
+     * No onboarding record OR
+     * partially completed onboarding:
+     *
+     * send the user into the tour.
+     *
+     * The onboarding page already knows
+     * how to resume from current_step.
+     */
+    router.push(
+      `/onboarding?workspace=${workspace}`
+    );
   }
 
   async function handleSignOut() {
-    if (signingOut) return;
+    if (signingOut) {
+      return;
+    }
 
     setSigningOut(true);
 
-    const supabase = createClient();
+    const supabase =
+      createClient();
 
     const { error } =
       await supabase.auth.signOut();
@@ -179,20 +329,28 @@ export default function WorkspacePage() {
         "Sign out failed:",
         error
       );
+
       setSigningOut(false);
+
       return;
     }
 
-    router.replace("/signin");
+    router.replace(
+      "/signin"
+    );
+
     router.refresh();
   }
 
   const firstName =
-    fullName.trim().split(/\s+/)[0] ||
+    fullName
+      .trim()
+      .split(/\s+/)[0] ||
     "there";
 
   return (
     <main className="min-h-screen bg-slate-50 text-slate-950">
+      {/* HEADER */}
       <header className="border-b border-slate-200 bg-white">
         <div className="mx-auto flex max-w-7xl items-center justify-between gap-4 px-5 py-4 sm:px-8 lg:px-10">
           <PsyLatticeLogo />
@@ -200,7 +358,7 @@ export default function WorkspacePage() {
           <div className="flex items-center gap-3">
             <Link
               href="/"
-              className="hidden text-sm font-medium text-slate-500 hover:text-slate-950 sm:inline"
+              className="hidden text-sm font-medium text-slate-500 transition hover:text-slate-950 sm:inline"
             >
               Website
             </Link>
@@ -210,8 +368,10 @@ export default function WorkspacePage() {
               onClick={() =>
                 void handleSignOut()
               }
-              disabled={signingOut}
-              className="rounded-xl border border-slate-200 px-4 py-2.5 text-sm font-semibold disabled:opacity-50"
+              disabled={
+                signingOut
+              }
+              className="rounded-xl border border-slate-200 px-4 py-2.5 text-sm font-semibold transition hover:bg-slate-50 disabled:opacity-50"
             >
               {signingOut
                 ? "Signing out..."
@@ -221,10 +381,12 @@ export default function WorkspacePage() {
         </div>
       </header>
 
+      {/* PAGE */}
       <section className="mx-auto max-w-7xl px-5 py-10 sm:px-8 lg:px-10 lg:py-14">
         <div className="max-w-3xl">
           <span className="inline-flex rounded-full border border-cyan-100 bg-cyan-50 px-3 py-1.5 text-xs font-semibold text-cyan-900">
-            One account · Three workspaces
+            One account · Three
+            workspaces
           </span>
 
           <h1 className="mt-5 text-3xl font-semibold tracking-[-0.03em] sm:text-4xl">
@@ -234,13 +396,23 @@ export default function WorkspacePage() {
           </h1>
 
           <p className="mt-3 max-w-2xl text-base leading-7 text-slate-500">
-            Choose how you want to use
-            PsyLattice right now. Self,
-            Researcher and Clinician all use
+            Choose how you want
+            to use PsyLattice right
+            now. Self, Researcher
+            and Clinician all use
             this same account.
+          </p>
+
+          <p className="mt-2 text-sm leading-6 text-slate-400">
+            The first time you open
+            a workspace, PsyLattice
+            will give you a short
+            visual tour. You can
+            skip it at any time.
           </p>
         </div>
 
+        {/* ERROR */}
         {pageError && (
           <div className="mt-6 rounded-2xl border border-amber-200 bg-amber-50 px-5 py-4">
             <p className="text-sm leading-6 text-amber-800">
@@ -249,75 +421,98 @@ export default function WorkspacePage() {
           </div>
         )}
 
+        {/* WORKSPACE CARDS */}
         <div className="mt-9 grid gap-5 lg:grid-cols-3">
-          {workspaces.map((workspace) => {
-            const isOpening =
-              openingWorkspace === workspace.id;
+          {workspaces.map(
+            (workspace) => {
+              const isOpening =
+                openingWorkspace ===
+                workspace.id;
 
-            return (
-              <article
-                key={workspace.id}
-                className="flex min-h-[315px] flex-col rounded-3xl border border-slate-200 bg-white p-6"
-              >
-                <span className="text-xs font-semibold uppercase tracking-[0.14em] text-cyan-800">
-                  {workspace.eyebrow}
-                </span>
+              return (
+                <article
+                  key={
+                    workspace.id
+                  }
+                  className="flex min-h-[315px] flex-col rounded-3xl border border-slate-200 bg-white p-6 shadow-sm transition hover:-translate-y-0.5 hover:shadow-md"
+                >
+                  <span className="text-xs font-semibold uppercase tracking-[0.14em] text-cyan-800">
+                    {
+                      workspace.eyebrow
+                    }
+                  </span>
 
-                <h2 className="mt-4 text-xl font-semibold tracking-tight">
-                  {workspace.title}
-                </h2>
+                  <h2 className="mt-4 text-xl font-semibold tracking-tight">
+                    {
+                      workspace.title
+                    }
+                  </h2>
 
-                <p className="mt-3 text-sm leading-6 text-slate-500">
-                  {workspace.description}
-                </p>
-
-                <div className="mt-auto pt-8">
-                  <p className="text-xs leading-5 text-slate-400">
-                    {workspace.note}
+                  <p className="mt-3 text-sm leading-6 text-slate-500">
+                    {
+                      workspace.description
+                    }
                   </p>
 
-                  <button
-                    type="button"
-                    onClick={() =>
-                      openWorkspace(
-                        workspace.id,
-                        workspace.href
-                      )
-                    }
-                    disabled={
-                      loading ||
-                      openingWorkspace !== null
-                    }
-                    className="mt-4 flex w-full items-center justify-between rounded-xl bg-slate-950 px-4 py-3 text-sm font-semibold text-white transition hover:bg-slate-800 disabled:opacity-50"
-                  >
-                    <span>
-                      {isOpening
-                        ? "Opening..."
-                        : "Open workspace"}
-                    </span>
-                    <span aria-hidden="true">
-                      →
-                    </span>
-                  </button>
-                </div>
-              </article>
-            );
-          })}
+                  <div className="mt-auto pt-8">
+                    <p className="text-xs leading-5 text-slate-400">
+                      {
+                        workspace.note
+                      }
+                    </p>
+
+                    <button
+                      type="button"
+                      onClick={() =>
+                        void openWorkspace(
+                          workspace.id,
+                          workspace.href
+                        )
+                      }
+                      disabled={
+                        loading ||
+                        openingWorkspace !==
+                          null
+                      }
+                      className="mt-4 flex w-full items-center justify-between rounded-xl bg-slate-950 px-4 py-3 text-sm font-semibold text-white transition hover:bg-slate-800 disabled:cursor-wait disabled:opacity-50"
+                    >
+                      <span>
+                        {isOpening
+                          ? "Checking..."
+                          : "Open workspace"}
+                      </span>
+
+                      <span
+                        aria-hidden="true"
+                      >
+                        →
+                      </span>
+                    </button>
+                  </div>
+                </article>
+              );
+            }
+          )}
         </div>
 
+        {/* ACCOUNT EXPLANATION */}
         <div className="mt-6 rounded-2xl border border-slate-200 bg-white p-5">
           <p className="text-sm font-medium">
-            Workspace choice is navigation,
-            not an account role.
+            Workspace choice is
+            navigation, not an
+            account role.
           </p>
 
           <p className="mt-2 text-sm leading-6 text-slate-500">
-            Selecting Self, Researcher or
-            Clinician only decides which
-            interface opens. It does not
-            change your account and it does
-            not remove access to the other
-            two workspaces.
+            Selecting Self,
+            Researcher or Clinician
+            only decides which
+            interface opens. It
+            does not change your
+            account and it does
+            not remove access to
+            the other two
+            workspaces.
           </p>
         </div>
       </section>

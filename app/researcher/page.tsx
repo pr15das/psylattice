@@ -4170,6 +4170,8 @@ function QuestionnaireLibrary({
     label: string;
     value: number;
     weight: number;
+    media_url?: string;
+    media_mime_type?: string;
   };
 
   type BuilderLogicRule = {
@@ -4179,7 +4181,9 @@ function QuestionnaireLibrary({
       | "equals"
       | "not_equals"
       | "greater_than"
+      | "greater_than_or_equal"
       | "less_than"
+      | "less_than_or_equal"
       | "contains"
       | "not_contains"
       | "answered"
@@ -4220,6 +4224,7 @@ function QuestionnaireLibrary({
     constant_sum_target: number;
     matrix_rows: string;
     media_url: string;
+    media_mime_type: string;
     randomize_options: boolean;
     logic_mode: "all" | "any";
     logic_rules: BuilderLogicRule[];
@@ -4270,6 +4275,8 @@ function QuestionnaireLibrary({
   const [builderMissingRule, setBuilderMissingRule] = useState("complete_case");
   const [builderRandomizeItems, setBuilderRandomizeItems] = useState(false);
   const [builderRightsConfirmed, setBuilderRightsConfirmed] = useState(false);
+  const [builderMediaUploadState, setBuilderMediaUploadState] = useState<Record<string, string>>({});
+  const [builderMediaPreviews, setBuilderMediaPreviews] = useState<Record<string, string>>({});
 
   const [builderBlocks, setBuilderBlocks] = useState<BuilderBlock[]>([
     {
@@ -4313,6 +4320,7 @@ function QuestionnaireLibrary({
       constant_sum_target: 100,
       matrix_rows: "",
       media_url: "",
+      media_mime_type: "",
       randomize_options: false,
       logic_mode: "all",
       logic_rules: [],
@@ -4540,7 +4548,138 @@ function QuestionnaireLibrary({
   const textItemTypes = new Set(["short_text", "long_text", "email", "phone", "location"]);
   const matrixItemTypes = new Set(["likert_matrix", "single_choice_matrix", "multiple_choice_matrix", "semantic_matrix"]);
   const contentItemTypes = new Set(["heading", "instructions", "divider", "image_content", "audio_content", "video_content"]);
-  const mediaItemTypes = new Set(["image_content", "audio_content", "video_content", "image_choice"]);
+  const collectionLogicTypes = new Set(["multiple_choice", "checklist"]);
+  const orderedChoiceLogicTypes = new Set([
+    "likert",
+    "frequency",
+    "intensity",
+    "thurstone",
+    "guttman",
+    "semantic_differential",
+  ]);
+  const objectLogicTypes = new Set([
+    "q_sort",
+    "ranking",
+    "pairwise",
+    "best_worst",
+    "constant_sum",
+    "likert_matrix",
+    "single_choice_matrix",
+    "multiple_choice_matrix",
+    "semantic_matrix",
+  ]);
+  const dateTimeLogicTypes = new Set(["date", "time", "datetime"]);
+
+  const logicOperatorLabels: Record<BuilderLogicRule["operator"], string> = {
+    equals: "is",
+    not_equals: "is not",
+    greater_than: "is greater than",
+    greater_than_or_equal: "is greater than or equal to",
+    less_than: "is less than",
+    less_than_or_equal: "is less than or equal to",
+    contains: "includes",
+    not_contains: "does not include",
+    answered: "has been answered",
+    not_answered: "has not been answered",
+  };
+
+  function logicOperatorsForSource(source: BuilderItem | null) {
+    if (!source) {
+      return ["answered", "not_answered"] as BuilderLogicRule["operator"][];
+    }
+
+    if (collectionLogicTypes.has(source.item_type)) {
+      return [
+        "contains",
+        "not_contains",
+        "answered",
+        "not_answered",
+      ] as BuilderLogicRule["operator"][];
+    }
+
+    if (objectLogicTypes.has(source.item_type)) {
+      return ["answered", "not_answered"] as BuilderLogicRule["operator"][];
+    }
+
+    if (
+      numericItemTypes.has(source.item_type) ||
+      orderedChoiceLogicTypes.has(source.item_type) ||
+      dateTimeLogicTypes.has(source.item_type)
+    ) {
+      return [
+        "equals",
+        "not_equals",
+        "greater_than",
+        "greater_than_or_equal",
+        "less_than",
+        "less_than_or_equal",
+        "answered",
+        "not_answered",
+      ] as BuilderLogicRule["operator"][];
+    }
+
+    if (source.options.length > 0) {
+      return [
+        "equals",
+        "not_equals",
+        "answered",
+        "not_answered",
+      ] as BuilderLogicRule["operator"][];
+    }
+
+    return [
+      "equals",
+      "not_equals",
+      "contains",
+      "not_contains",
+      "answered",
+      "not_answered",
+    ] as BuilderLogicRule["operator"][];
+  }
+
+  function logicRuleNeedsValue(operator: BuilderLogicRule["operator"]) {
+    return operator !== "answered" && operator !== "not_answered";
+  }
+
+  function logicDefaultValueForSource(source: BuilderItem | null) {
+    if (!source || source.options.length === 0) return "";
+    return String(source.options[0]?.value ?? "");
+  }
+
+  function logicSourceDisplay(source: BuilderItem, sourceIndex: number) {
+    const wording = source.prompt.trim().replace(/\s+/g, " ");
+    const shortWording = wording.length > 72 ? `${wording.slice(0, 69)}…` : wording;
+    return `Q${sourceIndex + 1} · ${source.key || "unnamed"}${shortWording ? ` · ${shortWording}` : ""}`;
+  }
+
+  function logicExpectedDisplay(source: BuilderItem | null, value: string) {
+    if (!source) return value;
+    const option = source.options.find(
+      (candidate) => String(candidate.value) === String(value)
+    );
+    return option?.label || value;
+  }
+
+  function firstLogicOrderIssue(itemsToCheck: BuilderItem[]) {
+    const indexes = new Map(
+      itemsToCheck.map((candidate, candidateIndex) => [
+        candidate.key.trim(),
+        candidateIndex,
+      ])
+    );
+
+    for (let itemIndex = 0; itemIndex < itemsToCheck.length; itemIndex += 1) {
+      const item = itemsToCheck[itemIndex];
+      for (const rule of item.logic_rules) {
+        const sourceIndex = indexes.get(rule.source_key.trim());
+        if (sourceIndex !== undefined && sourceIndex >= itemIndex) {
+          return `Branching on ${item.key || `Q${itemIndex + 1}`} must use an earlier question. Move the source question above it or update the condition.`;
+        }
+      }
+    }
+
+    return "";
+  }
 
   function makeBuilderId(prefix: string) {
     return `${prefix}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
@@ -4613,6 +4752,7 @@ function QuestionnaireLibrary({
       constant_sum_target: 100,
       matrix_rows: "",
       media_url: "",
+      media_mime_type: "",
       randomize_options: false,
       logic_mode: "all",
       logic_rules: [],
@@ -4639,6 +4779,9 @@ function QuestionnaireLibrary({
     setBuilderMissingRule("complete_case");
     setBuilderRandomizeItems(false);
     setBuilderRightsConfirmed(false);
+    setBuilderMediaUploadState({});
+    Object.values(builderMediaPreviews).forEach((url) => URL.revokeObjectURL(url));
+    setBuilderMediaPreviews({});
     setBuilderBlocks([
       {
         id: blockId,
@@ -4674,10 +4817,135 @@ function QuestionnaireLibrary({
     return itemTypeDefinitions.find((item) => item.value === type)?.label || type;
   }
 
+  function builderMediaAccept(type: string) {
+    if (type === "image_content" || type === "image_choice") return "image/*";
+    if (type === "audio_content") return "audio/*";
+    if (type === "video_content") return "video/*";
+    return "image/*,audio/*,video/*";
+  }
+
+  function builderMediaLabel(type: string) {
+    if (type === "image_content") return "Upload image stimulus";
+    if (type === "audio_content") return "Upload audio stimulus";
+    if (type === "video_content") return "Upload video stimulus";
+    return "Attach image / audio / video (optional)";
+  }
+
+  async function uploadBuilderMedia(
+    file: File,
+    itemId: string,
+    optionId?: string
+  ) {
+    const uploadKey = optionId ? `${itemId}:${optionId}` : itemId;
+    setBuilderError("");
+    setBuilderMediaUploadState((previous) => ({
+      ...previous,
+      [uploadKey]: "Uploading...",
+    }));
+
+    try {
+      const supabase = createClient();
+      const { data: sessionData } = await supabase.auth.getSession();
+      const accessToken = sessionData.session?.access_token;
+
+      if (!accessToken) {
+        throw new Error("Your researcher session expired. Please sign in again.");
+      }
+
+      const ticketResponse = await fetch("/api/media/ticket", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${accessToken}`,
+        },
+        body: JSON.stringify({
+          action: "researcher_upload",
+          fileName: file.name,
+          fileSize: file.size,
+          contentType: file.type,
+          mediaKind: optionId ? "option_image" : "question_media",
+        }),
+      });
+
+      const ticket = (await ticketResponse.json()) as {
+        ok?: boolean;
+        error?: string;
+        bucket?: string;
+        path?: string;
+        token?: string;
+        storage_ref?: string;
+      };
+
+      if (!ticketResponse.ok || !ticket.ok || !ticket.bucket || !ticket.path || !ticket.token || !ticket.storage_ref) {
+        throw new Error(ticket.error || "Could not prepare the media upload.");
+      }
+
+      const { error: uploadError } = await supabase.storage
+        .from(ticket.bucket)
+        .uploadToSignedUrl(ticket.path, ticket.token, file, {
+          contentType: file.type || undefined,
+          cacheControl: "3600",
+        });
+
+      if (uploadError) throw uploadError;
+
+      if (optionId) {
+        updateBuilderOption(itemId, optionId, {
+          media_url: ticket.storage_ref,
+          media_mime_type: file.type,
+        });
+      } else {
+        updateBuilderItem(itemId, {
+          media_url: ticket.storage_ref,
+          media_mime_type: file.type,
+        });
+      }
+
+      setBuilderMediaPreviews((previous) => {
+        const prior = previous[uploadKey];
+        if (prior) URL.revokeObjectURL(prior);
+        return { ...previous, [uploadKey]: URL.createObjectURL(file) };
+      });
+
+      setBuilderMediaUploadState((previous) => ({
+        ...previous,
+        [uploadKey]: "Uploaded",
+      }));
+    } catch (error) {
+      console.error("Questionnaire media upload failed:", error);
+      const message = error instanceof Error ? error.message : "Media upload failed.";
+      setBuilderMediaUploadState((previous) => ({
+        ...previous,
+        [uploadKey]: "",
+      }));
+      setBuilderError(message);
+    }
+  }
+
   function updateBuilderItem(id: string, patch: Partial<BuilderItem>) {
-    setBuilderItems((previous) =>
-      previous.map((item) => (item.id === id ? { ...item, ...patch } : item))
-    );
+    setBuilderItems((previous) => {
+      const source = previous.find((item) => item.id === id);
+      const oldKey = source?.key.trim() || "";
+      const nextKey =
+        typeof patch.key === "string" ? patch.key.trim() : oldKey;
+
+      return previous.map((item) => {
+        const updated = item.id === id ? { ...item, ...patch } : item;
+
+        if (!oldKey || !nextKey || oldKey === nextKey) {
+          return updated;
+        }
+
+        return {
+          ...updated,
+          logic_rules: updated.logic_rules.map((rule) =>
+            rule.source_key.trim() === oldKey
+              ? { ...rule, source_key: nextKey }
+              : rule
+          ),
+        };
+      });
+    });
   }
 
   function changeBuilderItemType(id: string, type: string) {
@@ -4714,8 +4982,14 @@ function QuestionnaireLibrary({
           ...source,
           id: makeBuilderId("item"),
           key: `${source.key || "q"}_copy_${previous.length + 1}`,
-          options: source.options.map((option) => ({ ...option, id: makeBuilderId("option") })),
-          logic_rules: source.logic_rules.map((rule) => ({ ...rule, id: makeBuilderId("logic") })),
+          options: source.options.map((option) => ({
+            ...option,
+            id: makeBuilderId("option"),
+          })),
+          logic_rules: source.logic_rules.map((rule) => ({
+            ...rule,
+            id: makeBuilderId("logic"),
+          })),
         },
       ];
     });
@@ -4723,18 +4997,40 @@ function QuestionnaireLibrary({
 
   function removeBuilderItem(id: string) {
     if (builderItems.length <= 1) return;
-    setBuilderItems((previous) => previous.filter((item) => item.id !== id));
+
+    setBuilderItems((previous) => {
+      const removed = previous.find((item) => item.id === id);
+      const removedKey = removed?.key.trim() || "";
+
+      return previous
+        .filter((item) => item.id !== id)
+        .map((item) => ({
+          ...item,
+          logic_rules: removedKey
+            ? item.logic_rules.filter(
+                (rule) => rule.source_key.trim() !== removedKey
+              )
+            : item.logic_rules,
+        }));
+    });
   }
 
   function moveBuilderItem(id: string, direction: -1 | 1) {
-    setBuilderItems((previous) => {
-      const index = previous.findIndex((item) => item.id === id);
-      const target = index + direction;
-      if (index < 0 || target < 0 || target >= previous.length) return previous;
-      const next = [...previous];
-      [next[index], next[target]] = [next[target], next[index]];
-      return next;
-    });
+    const index = builderItems.findIndex((item) => item.id === id);
+    const target = index + direction;
+    if (index < 0 || target < 0 || target >= builderItems.length) return;
+
+    const next = [...builderItems];
+    [next[index], next[target]] = [next[target], next[index]];
+
+    const issue = firstLogicOrderIssue(next);
+    if (issue) {
+      setBuilderError(issue);
+      return;
+    }
+
+    setBuilderError("");
+    setBuilderItems(next);
   }
 
   function addBuilderOption(itemId: string) {
@@ -4750,6 +5046,8 @@ function QuestionnaireLibrary({
                   label: `Option ${item.options.length + 1}`,
                   value: item.options.length + 1,
                   weight: 1,
+                  media_url: "",
+                  media_mime_type: "",
                 },
               ],
             }
@@ -4781,7 +5079,10 @@ function QuestionnaireLibrary({
     setBuilderItems((previous) =>
       previous.map((item) =>
         item.id === itemId && item.options.length > 2
-          ? { ...item, options: item.options.filter((option) => option.id !== optionId) }
+          ? {
+              ...item,
+              options: item.options.filter((option) => option.id !== optionId),
+            }
           : item
       )
     );
@@ -4804,7 +5105,9 @@ function QuestionnaireLibrary({
 
   function updateBuilderBlock(id: string, patch: Partial<BuilderBlock>) {
     setBuilderBlocks((previous) =>
-      previous.map((block) => (block.id === id ? { ...block, ...patch } : block))
+      previous.map((block) =>
+        block.id === id ? { ...block, ...patch } : block
+      )
     );
   }
 
@@ -4813,13 +5116,26 @@ function QuestionnaireLibrary({
     const fallback = builderBlocks.find((block) => block.id !== id)?.id || "";
     setBuilderBlocks((previous) => previous.filter((block) => block.id !== id));
     setBuilderItems((previous) =>
-      previous.map((item) => (item.block_id === id ? { ...item, block_id: fallback } : item))
+      previous.map((item) =>
+        item.block_id === id ? { ...item, block_id: fallback } : item
+      )
     );
   }
 
   function addLogicRule(itemId: string) {
-    setBuilderItems((previous) =>
-      previous.map((item) =>
+    setBuilderItems((previous) => {
+      const itemIndex = previous.findIndex((item) => item.id === itemId);
+      if (itemIndex < 0) return previous;
+
+      const source = [...previous.slice(0, itemIndex)]
+        .reverse()
+        .find((candidate) => !contentItemTypes.has(candidate.item_type));
+
+      if (!source) return previous;
+
+      const operator = logicOperatorsForSource(source)[0] || "answered";
+
+      return previous.map((item) =>
         item.id === itemId
           ? {
               ...item,
@@ -4827,18 +5143,24 @@ function QuestionnaireLibrary({
                 ...item.logic_rules,
                 {
                   id: makeBuilderId("logic"),
-                  source_key: "",
-                  operator: "equals",
-                  value: "",
+                  source_key: source.key.trim(),
+                  operator,
+                  value: logicRuleNeedsValue(operator)
+                    ? logicDefaultValueForSource(source)
+                    : "",
                 },
               ],
             }
           : item
-      )
-    );
+      );
+    });
   }
 
-  function updateLogicRule(itemId: string, ruleId: string, patch: Partial<BuilderLogicRule>) {
+  function updateLogicRule(
+    itemId: string,
+    ruleId: string,
+    patch: Partial<BuilderLogicRule>
+  ) {
     setBuilderItems((previous) =>
       previous.map((item) =>
         item.id === itemId
@@ -4853,13 +5175,268 @@ function QuestionnaireLibrary({
     );
   }
 
+  function changeLogicRuleSource(
+    itemId: string,
+    ruleId: string,
+    sourceKey: string
+  ) {
+    const source = builderItems.find(
+      (candidate) => candidate.key.trim() === sourceKey
+    );
+    const operator = logicOperatorsForSource(source || null)[0] || "answered";
+
+    updateLogicRule(itemId, ruleId, {
+      source_key: sourceKey,
+      operator,
+      value: logicRuleNeedsValue(operator)
+        ? logicDefaultValueForSource(source || null)
+        : "",
+    });
+  }
+
   function removeLogicRule(itemId: string, ruleId: string) {
     setBuilderItems((previous) =>
       previous.map((item) =>
         item.id === itemId
-          ? { ...item, logic_rules: item.logic_rules.filter((rule) => rule.id !== ruleId) }
+          ? {
+              ...item,
+              logic_rules: item.logic_rules.filter((rule) => rule.id !== ruleId),
+            }
           : item
       )
+    );
+  }
+
+  function renderLogicValueControl(
+    item: BuilderItem,
+    rule: BuilderLogicRule,
+    source: BuilderItem | null
+  ) {
+    if (!logicRuleNeedsValue(rule.operator)) {
+      return (
+        <div className="flex min-h-11 items-center rounded-xl bg-slate-50 px-3 text-xs text-slate-400">
+          No comparison value needed
+        </div>
+      );
+    }
+
+    if (source && source.options.length > 0 && !objectLogicTypes.has(source.item_type)) {
+      return (
+        <select
+          value={rule.value}
+          onChange={(event) =>
+            updateLogicRule(item.id, rule.id, { value: event.target.value })
+          }
+          className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm"
+        >
+          <option value="">Choose a response...</option>
+          {source.options.map((option) => (
+            <option key={option.id} value={String(option.value)}>
+              {option.label} ({option.value})
+            </option>
+          ))}
+        </select>
+      );
+    }
+
+    const inputType = numericItemTypes.has(source?.item_type || "")
+      ? "number"
+      : source?.item_type === "date"
+        ? "date"
+        : source?.item_type === "time"
+          ? "time"
+          : source?.item_type === "datetime"
+            ? "datetime-local"
+            : "text";
+
+    return (
+      <input
+        type={inputType}
+        value={rule.value}
+        onChange={(event) =>
+          updateLogicRule(item.id, rule.id, { value: event.target.value })
+        }
+        placeholder={inputType === "text" ? "Comparison value" : undefined}
+        className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm"
+      />
+    );
+  }
+
+  function renderLogicBuilder(item: BuilderItem, itemIndex: number) {
+    const previousSources = builderItems
+      .slice(0, itemIndex)
+      .filter((candidate) => !contentItemTypes.has(candidate.item_type));
+
+    return (
+      <div className="mt-5 rounded-2xl border border-slate-200 bg-white p-4">
+        <div className="flex flex-wrap items-start justify-between gap-3">
+          <div>
+            <p className="text-sm font-medium">Display logic / branching</p>
+            <p className="mt-1 max-w-2xl text-xs leading-5 text-slate-400">
+              Show this item only when earlier answers meet the conditions below.
+              Choose the source question and response — no item-key typing is required.
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={() => addLogicRule(item.id)}
+            disabled={previousSources.length === 0}
+            className="rounded-lg border border-slate-200 px-3 py-2 text-xs font-semibold disabled:cursor-not-allowed disabled:opacity-40"
+          >
+            + Condition
+          </button>
+        </div>
+
+        {previousSources.length === 0 && (
+          <div className="mt-3 rounded-xl bg-slate-50 px-3 py-2.5 text-xs leading-5 text-slate-500">
+            Add an earlier answerable question before using branching here.
+          </div>
+        )}
+
+        {item.logic_rules.length > 0 && (
+          <>
+            <div className="mt-4 flex flex-wrap items-center gap-3 rounded-xl bg-slate-50 p-3">
+              <span className="text-xs font-medium text-slate-500">Show this item when</span>
+              <select
+                value={item.logic_mode}
+                onChange={(event) =>
+                  updateBuilderItem(item.id, {
+                    logic_mode: event.target.value as "all" | "any",
+                  })
+                }
+                className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs font-semibold"
+              >
+                <option value="all">ALL conditions are true (AND)</option>
+                <option value="any">ANY condition is true (OR)</option>
+              </select>
+            </div>
+
+            <div className="mt-3 space-y-3">
+              {item.logic_rules.map((rule, ruleIndex) => {
+                const source =
+                  previousSources.find(
+                    (candidate) => candidate.key.trim() === rule.source_key.trim()
+                  ) || null;
+                const operators = logicOperatorsForSource(source);
+                const invalidSource = !source;
+
+                return (
+                  <div
+                    key={rule.id}
+                    className={`rounded-xl border p-3 ${
+                      invalidSource
+                        ? "border-amber-200 bg-amber-50/60"
+                        : "border-slate-200 bg-slate-50/40"
+                    }`}
+                  >
+                    <div className="mb-2 flex items-center justify-between gap-3">
+                      <span className="text-[11px] font-semibold uppercase tracking-[0.12em] text-slate-400">
+                        Condition {ruleIndex + 1}
+                      </span>
+                      <button
+                        type="button"
+                        onClick={() => removeLogicRule(item.id, rule.id)}
+                        className="rounded-lg border border-red-200 bg-white px-2.5 py-1.5 text-xs text-red-700"
+                        aria-label={`Remove condition ${ruleIndex + 1}`}
+                      >
+                        Remove
+                      </button>
+                    </div>
+
+                    <div className="grid gap-2 lg:grid-cols-[1.25fr_.9fr_1fr]">
+                      <label>
+                        <span className="text-[11px] font-medium text-slate-500">Earlier question</span>
+                        <select
+                          value={source?.key.trim() || ""}
+                          onChange={(event) =>
+                            changeLogicRuleSource(
+                              item.id,
+                              rule.id,
+                              event.target.value
+                            )
+                          }
+                          className={`mt-1 w-full rounded-xl border bg-white px-3 py-2.5 text-sm ${
+                            invalidSource ? "border-amber-300" : "border-slate-200"
+                          }`}
+                        >
+                          <option value="">Choose an earlier question...</option>
+                          {previousSources.map((candidate) => {
+                            const sourceIndex = builderItems.findIndex(
+                              (entry) => entry.id === candidate.id
+                            );
+                            return (
+                              <option key={candidate.id} value={candidate.key.trim()}>
+                                {logicSourceDisplay(candidate, sourceIndex)}
+                              </option>
+                            );
+                          })}
+                        </select>
+                      </label>
+
+                      <label>
+                        <span className="text-[11px] font-medium text-slate-500">Condition</span>
+                        <select
+                          value={operators.includes(rule.operator) ? rule.operator : operators[0]}
+                          onChange={(event) => {
+                            const operator = event.target
+                              .value as BuilderLogicRule["operator"];
+                            updateLogicRule(item.id, rule.id, {
+                              operator,
+                              value: logicRuleNeedsValue(operator)
+                                ? rule.value || logicDefaultValueForSource(source)
+                                : "",
+                            });
+                          }}
+                          disabled={!source}
+                          className="mt-1 w-full rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm disabled:opacity-50"
+                        >
+                          {operators.map((operator) => (
+                            <option key={operator} value={operator}>
+                              {logicOperatorLabels[operator]}
+                            </option>
+                          ))}
+                        </select>
+                      </label>
+
+                      <label>
+                        <span className="text-[11px] font-medium text-slate-500">Response / value</span>
+                        <div className="mt-1">
+                          {renderLogicValueControl(item, rule, source)}
+                        </div>
+                      </label>
+                    </div>
+
+                    {invalidSource ? (
+                      <p className="mt-2 text-xs leading-5 text-amber-800">
+                        This condition points to a missing, renamed, or later question.
+                        Choose a valid earlier question before saving.
+                      </p>
+                    ) : (
+                      <p className="mt-2 text-xs leading-5 text-slate-500">
+                        <span className="font-medium text-slate-700">Preview:</span>{" "}
+                        {logicSourceDisplay(
+                          source,
+                          builderItems.findIndex((entry) => entry.id === source.id)
+                        )}{" "}
+                        {logicOperatorLabels[rule.operator]}
+                        {logicRuleNeedsValue(rule.operator)
+                          ? ` ${logicExpectedDisplay(source, rule.value)}`
+                          : ""}
+                      </p>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+
+            <div className="mt-3 rounded-xl border border-cyan-100 bg-cyan-50/50 px-3 py-2.5 text-xs leading-5 text-cyan-950">
+              {item.logic_mode === "all"
+                ? "The item appears only after every condition above is true."
+                : "The item appears as soon as at least one condition above is true."}
+            </div>
+          </>
+        )}
+      </div>
     );
   }
 
@@ -4899,11 +5476,52 @@ function QuestionnaireLibrary({
           return setBuilderError(`${item.key} needs at least two labelled response options.`);
         }
       }
+      if (["image_content", "audio_content", "video_content"].includes(item.item_type) && !item.media_url.trim()) {
+        return setBuilderError(`${item.key} needs an uploaded media file or media URL.`);
+      }
+      if (item.item_type === "image_choice" && item.options.some((option) => !option.media_url?.trim())) {
+        return setBuilderError(`${item.key} is an image-choice item, so every response option needs an image.`);
+      }
       if (numericItemTypes.has(item.item_type) && item.numeric_min >= item.numeric_max) {
         return setBuilderError(`${item.key} needs a maximum greater than its minimum.`);
       }
       if (matrixItemTypes.has(item.item_type) && !item.matrix_rows.trim()) {
         return setBuilderError(`${item.key} needs at least one matrix row.`);
+      }
+
+      const itemIndex = builderItems.findIndex((candidate) => candidate.id === item.id);
+      for (const rule of item.logic_rules) {
+        const sourceIndex = builderItems.findIndex(
+          (candidate) =>
+            candidate.key.trim() === rule.source_key.trim() &&
+            !contentItemTypes.has(candidate.item_type)
+        );
+
+        if (!rule.source_key.trim() || sourceIndex < 0) {
+          return setBuilderError(
+            `${item.key} has a branching condition with no valid source question.`
+          );
+        }
+
+        if (sourceIndex >= itemIndex) {
+          return setBuilderError(
+            `${item.key} can only branch from an earlier question.`
+          );
+        }
+
+        const source = builderItems[sourceIndex];
+        const allowedOperators = logicOperatorsForSource(source);
+        if (!allowedOperators.includes(rule.operator)) {
+          return setBuilderError(
+            `${item.key} uses a branching comparison that is not valid for ${source.key}.`
+          );
+        }
+
+        if (logicRuleNeedsValue(rule.operator) && !rule.value.trim()) {
+          return setBuilderError(
+            `${item.key} needs a response/value for its condition based on ${source.key}.`
+          );
+        }
       }
     }
 
@@ -5042,6 +5660,8 @@ function QuestionnaireLibrary({
               label: option.label.trim(),
               value: option.value,
               weight: option.weight,
+              media_url: option.media_url?.trim() || null,
+              media_mime_type: option.media_mime_type?.trim() || null,
             })),
             required: contentItemTypes.has(item.item_type) ? false : item.required,
             response_config: {
@@ -5081,7 +5701,10 @@ function QuestionnaireLibrary({
               })),
             },
             randomization_config: { randomize_options: item.randomize_options },
-            media_config: { url: item.media_url.trim() || null },
+            media_config: {
+              url: item.media_url.trim() || null,
+              mime_type: item.media_mime_type.trim() || null,
+            },
             is_content_only: contentItemTypes.has(item.item_type),
           }))
         );
@@ -5269,7 +5892,67 @@ function QuestionnaireLibrary({
                     {optionItemTypes.has(item.item_type) && (
                       <div className="mt-5 rounded-2xl bg-slate-50 p-4">
                         <div className="flex items-center justify-between gap-3"><div><p className="text-sm font-medium">Response options</p><p className="mt-1 text-xs text-slate-400">Participant label, numeric code/score and optional weight are stored separately.</p></div><button type="button" onClick={() => addBuilderOption(item.id)} className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs font-semibold">+ Option</button></div>
-                        <div className="mt-3 space-y-2">{item.options.map((option) => <div key={option.id} className="grid gap-2 sm:grid-cols-[1fr_90px_90px_auto]"><input value={option.label} onChange={(event) => updateBuilderOption(item.id, option.id, { label: event.target.value })} className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm" /><input type="number" value={option.value} onChange={(event) => updateBuilderOption(item.id, option.id, { value: Number(event.target.value) })} className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm" title="Numeric code / score" /><input type="number" step="0.01" value={option.weight} onChange={(event) => updateBuilderOption(item.id, option.id, { weight: Number(event.target.value) })} className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm" title="Weight" /><button type="button" onClick={() => removeBuilderOption(item.id, option.id)} className="rounded-lg border border-red-200 bg-white px-3 py-2 text-xs text-red-700">×</button></div>)}</div>
+                        <div className="mt-3 space-y-3">
+                          {item.options.map((option) => {
+                            const optionUploadKey = `${item.id}:${option.id}`;
+                            return (
+                              <div key={option.id} className="rounded-xl border border-slate-200 bg-white p-3">
+                                <div className="grid gap-2 sm:grid-cols-[1fr_90px_90px_auto]">
+                                  <input value={option.label} onChange={(event) => updateBuilderOption(item.id, option.id, { label: event.target.value })} className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm" />
+                                  <input type="number" value={option.value} onChange={(event) => updateBuilderOption(item.id, option.id, { value: Number(event.target.value) })} className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm" title="Numeric code / score" />
+                                  <input type="number" step="0.01" value={option.weight} onChange={(event) => updateBuilderOption(item.id, option.id, { weight: Number(event.target.value) })} className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm" title="Weight" />
+                                  <button type="button" onClick={() => removeBuilderOption(item.id, option.id)} className="rounded-lg border border-red-200 bg-white px-3 py-2 text-xs text-red-700">×</button>
+                                </div>
+
+                                {item.item_type === "image_choice" && (
+                                  <div className="mt-3 rounded-xl bg-slate-50 p-3">
+                                    <div className="flex flex-wrap items-center gap-3">
+                                      <label className="cursor-pointer rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-50">
+                                        {option.media_url ? "Replace option image" : "Upload option image"}
+                                        <input
+                                          type="file"
+                                          accept="image/*"
+                                          className="hidden"
+                                          onChange={(event) => {
+                                            const file = event.target.files?.[0];
+                                            if (file) void uploadBuilderMedia(file, item.id, option.id);
+                                            event.currentTarget.value = "";
+                                          }}
+                                        />
+                                      </label>
+                                      {builderMediaUploadState[optionUploadKey] && (
+                                        <span className="text-xs text-slate-500">{builderMediaUploadState[optionUploadKey]}</span>
+                                      )}
+                                      {option.media_url && (
+                                        <button
+                                          type="button"
+                                          onClick={() => {
+                                            updateBuilderOption(item.id, option.id, { media_url: "", media_mime_type: "" });
+                                            setBuilderMediaPreviews((previous) => {
+                                              const next = { ...previous };
+                                              if (next[optionUploadKey]) URL.revokeObjectURL(next[optionUploadKey]);
+                                              delete next[optionUploadKey];
+                                              return next;
+                                            });
+                                          }}
+                                          className="text-xs font-semibold text-red-700"
+                                        >
+                                          Remove image
+                                        </button>
+                                      )}
+                                    </div>
+                                    {builderMediaPreviews[optionUploadKey] ? (
+                                      // eslint-disable-next-line @next/next/no-img-element
+                                      <img src={builderMediaPreviews[optionUploadKey]} alt="" className="mt-3 max-h-40 rounded-xl border border-slate-200 object-contain" />
+                                    ) : option.media_url ? (
+                                      <p className="mt-2 text-xs text-emerald-700">Stored private option image attached.</p>
+                                    ) : null}
+                                  </div>
+                                )}
+                              </div>
+                            );
+                          })}
+                        </div>
                         <label className="mt-3 flex items-center gap-2 text-sm"><input type="checkbox" checked={item.randomize_options} onChange={(event) => updateBuilderItem(item.id, { randomize_options: event.target.checked })} />Randomize option order</label>
                       </div>
                     )}
@@ -5289,13 +5972,75 @@ function QuestionnaireLibrary({
                     {item.item_type === "thurstone" && <label className="mt-4 block"><span className="text-xs font-medium text-slate-500">Hidden Thurstone statement scale value</span><input type="number" step="0.01" value={item.thurstone_weight} onChange={(event) => updateBuilderItem(item.id, { thurstone_weight: Number(event.target.value) })} className="mt-1 w-full rounded-xl border border-slate-200 px-3 py-2.5 text-sm" /></label>}
                     {item.item_type === "constant_sum" && <label className="mt-4 block"><span className="text-xs font-medium text-slate-500">Required allocation total</span><input type="number" value={item.constant_sum_target} onChange={(event) => updateBuilderItem(item.id, { constant_sum_target: Number(event.target.value) })} className="mt-1 w-full rounded-xl border border-slate-200 px-3 py-2.5 text-sm" /></label>}
                     {matrixItemTypes.has(item.item_type) && <label className="mt-4 block"><span className="text-xs font-medium text-slate-500">Matrix rows — one per line</span><textarea value={item.matrix_rows} onChange={(event) => updateBuilderItem(item.id, { matrix_rows: event.target.value })} className="mt-1 min-h-28 w-full rounded-xl border border-slate-200 px-3 py-2.5 text-sm" /></label>}
-                    {mediaItemTypes.has(item.item_type) && <label className="mt-4 block"><span className="text-xs font-medium text-slate-500">Media URL / future storage reference</span><input value={item.media_url} onChange={(event) => updateBuilderItem(item.id, { media_url: event.target.value })} className="mt-1 w-full rounded-xl border border-slate-200 px-3 py-2.5 text-sm" /></label>}
+                    {item.item_type !== "divider" && (
+                      <div className="mt-4 rounded-2xl border border-slate-200 bg-slate-50 p-4">
+                        <div className="flex flex-wrap items-center justify-between gap-3">
+                          <div>
+                            <p className="text-sm font-medium text-slate-800">{builderMediaLabel(item.item_type)}</p>
+                            <p className="mt-1 text-xs leading-5 text-slate-500">Stored privately. Participants receive only a temporary signed viewing URL.</p>
+                          </div>
+                          <label className="cursor-pointer rounded-xl bg-slate-950 px-4 py-2.5 text-xs font-semibold text-white hover:bg-slate-800">
+                            {item.media_url ? "Replace media" : "Upload media"}
+                            <input
+                              type="file"
+                              accept={builderMediaAccept(item.item_type)}
+                              className="hidden"
+                              onChange={(event) => {
+                                const file = event.target.files?.[0];
+                                if (file) void uploadBuilderMedia(file, item.id);
+                                event.currentTarget.value = "";
+                              }}
+                            />
+                          </label>
+                        </div>
 
-                    <div className="mt-5 rounded-2xl border border-slate-200 p-4">
-                      <div className="flex flex-wrap items-center justify-between gap-3"><div><p className="text-sm font-medium">Display logic / branching</p><p className="mt-1 text-xs text-slate-400">Show this item only when previous responses meet the stored conditions.</p></div><button type="button" onClick={() => addLogicRule(item.id)} className="rounded-lg border border-slate-200 px-3 py-2 text-xs font-semibold">+ Condition</button></div>
-                      {item.logic_rules.length > 0 && <div className="mt-3"><select value={item.logic_mode} onChange={(event) => updateBuilderItem(item.id, { logic_mode: event.target.value as "all" | "any" })} className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs"><option value="all">All conditions must match (AND)</option><option value="any">Any condition may match (OR)</option></select></div>}
-                      <div className="mt-3 space-y-2">{item.logic_rules.map((rule) => <div key={rule.id} className="grid gap-2 md:grid-cols-[150px_180px_1fr_auto]"><input value={rule.source_key} onChange={(event) => updateLogicRule(item.id, rule.id, { source_key: event.target.value })} placeholder="Source item key" className="rounded-lg border border-slate-200 px-3 py-2 text-xs" /><select value={rule.operator} onChange={(event) => updateLogicRule(item.id, rule.id, { operator: event.target.value as BuilderLogicRule["operator"] })} className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs"><option value="equals">Equals</option><option value="not_equals">Does not equal</option><option value="greater_than">Greater than</option><option value="less_than">Less than</option><option value="contains">Contains</option><option value="not_contains">Does not contain</option><option value="answered">Answered</option><option value="not_answered">Not answered</option></select><input value={rule.value} onChange={(event) => updateLogicRule(item.id, rule.id, { value: event.target.value })} placeholder="Comparison value" className="rounded-lg border border-slate-200 px-3 py-2 text-xs" /><button type="button" onClick={() => removeLogicRule(item.id, rule.id)} className="rounded-lg border border-red-200 px-3 py-2 text-xs text-red-700">×</button></div>)}</div>
-                    </div>
+                        {builderMediaUploadState[item.id] && (
+                          <p className="mt-2 text-xs text-slate-500">{builderMediaUploadState[item.id]}</p>
+                        )}
+
+                        {builderMediaPreviews[item.id] && item.media_mime_type.startsWith("image/") && (
+                          // eslint-disable-next-line @next/next/no-img-element
+                          <img src={builderMediaPreviews[item.id]} alt="" className="mt-3 max-h-64 rounded-xl border border-slate-200 object-contain" />
+                        )}
+                        {builderMediaPreviews[item.id] && item.media_mime_type.startsWith("audio/") && (
+                          <audio controls src={builderMediaPreviews[item.id]} className="mt-3 w-full" />
+                        )}
+                        {builderMediaPreviews[item.id] && item.media_mime_type.startsWith("video/") && (
+                          <video controls src={builderMediaPreviews[item.id]} className="mt-3 max-h-80 w-full rounded-xl border border-slate-200" />
+                        )}
+                        {!builderMediaPreviews[item.id] && item.media_url.startsWith("storage://") && (
+                          <p className="mt-2 text-xs text-emerald-700">Stored private media attached.</p>
+                        )}
+
+                        <div className="mt-3 grid gap-2 sm:grid-cols-[1fr_auto]">
+                          <input
+                            value={item.media_url}
+                            onChange={(event) => updateBuilderItem(item.id, { media_url: event.target.value, media_mime_type: "" })}
+                            placeholder="Or paste an https:// media URL"
+                            className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-xs"
+                          />
+                          {item.media_url && (
+                            <button
+                              type="button"
+                              onClick={() => {
+                                updateBuilderItem(item.id, { media_url: "", media_mime_type: "" });
+                                setBuilderMediaPreviews((previous) => {
+                                  const next = { ...previous };
+                                  if (next[item.id]) URL.revokeObjectURL(next[item.id]);
+                                  delete next[item.id];
+                                  return next;
+                                });
+                              }}
+                              className="rounded-xl border border-red-200 bg-white px-3 py-2 text-xs font-semibold text-red-700"
+                            >
+                              Remove
+                            </button>
+                          )}
+                        </div>
+                      </div>
+                    )}
+
+                    {renderLogicBuilder(item, index)}
 
                     {item.item_type === "custom" && <label className="mt-4 block"><span className="text-xs font-medium text-slate-500">Custom item configuration / implementation notes</span><textarea value={item.custom_config_notes} onChange={(event) => updateBuilderItem(item.id, { custom_config_notes: event.target.value })} placeholder="Describe any format not represented above. The database stores this as structured extension metadata for a future renderer/plugin." className="mt-1 min-h-28 w-full rounded-xl border border-slate-200 px-3 py-2.5 text-sm" /></label>}
                   </div>
@@ -7845,6 +8590,7 @@ type ResearchDatasetType =
   | "consent"
   | "ambulatory_checkins"
   | "ambulatory_responses"
+  | "ambulatory_wide"
   | "ambulatory_participant_days"
   | "analysis_wide";
 
@@ -7972,9 +8718,16 @@ type ResearchDataQuestionnaireItem = {
   position: number;
   prompt: string;
   subscale: string | null;
+  reverse_scored: boolean;
   response_type: string;
   required: boolean;
   response_options: unknown;
+  response_config: Record<string, unknown>;
+  validation_config: Record<string, unknown>;
+  scoring_config: Record<string, unknown>;
+  display_logic: Record<string, unknown>;
+  randomization_config: Record<string, unknown>;
+  is_content_only: boolean;
 };
 
 type ResearchDataAmbulatoryPrompt = {
@@ -8066,6 +8819,16 @@ type ResearchCodebookRow = {
   type: string;
   source: string;
   notes: string;
+  questionnaire?: string;
+  phase?: string;
+  item_key?: string;
+  item_position?: number | string;
+  response_type?: string;
+  component?: string;
+  value_labels?: string;
+  required?: boolean | string;
+  reverse_scored?: boolean | string;
+  storage?: string;
 };
 
 const emptyResearchDataBundle: ResearchDataBundle = {
@@ -8095,6 +8858,7 @@ const researchDatasetLabels: Record<ResearchDatasetType, string> = {
   consent: "Consent records",
   ambulatory_checkins: "Ambulatory check-ins — one row per check-in",
   ambulatory_responses: "Ambulatory responses — one row per item response",
+  ambulatory_wide: "Ambulatory check-ins — analysis wide / one row per check-in",
   ambulatory_participant_days: "Ambulatory participant-days — one row per participant per day",
   analysis_wide: "Analysis dataset — one row per participant",
 };
@@ -8448,7 +9212,7 @@ function useResearchDataWorkspace() {
           supabase
             .from("questionnaire_items")
             .select(
-              "id, version_id, item_key, position, prompt, subscale, response_type, required, response_options"
+              "id, version_id, item_key, position, prompt, subscale, reverse_scored, response_type, required, response_options, response_config, validation_config, scoring_config, display_logic, randomization_config, is_content_only"
             )
             .in("version_id", versionIds)
             .order("position", { ascending: true }),
@@ -8613,6 +9377,425 @@ type ResearchParticipantSummaryQuestionnaireField = {
   groupLabel: string;
   prompt: string;
 };
+
+type ResearchAnalysisQuestionnaireField = {
+  source: string;
+  label: string;
+  measureId: string;
+  itemId: string;
+  itemKey: string;
+  itemPosition: number;
+  responseType: string;
+  questionnaireName: string;
+  phaseLabel: string;
+  groupLabel: string;
+  prompt: string;
+  required: boolean;
+  reverseScored: boolean;
+  kind:
+    | "scalar"
+    | "multi_binary"
+    | "object_option_value"
+    | "object_row_value"
+    | "matrix_binary"
+    | "pairwise_choice"
+    | "best_worst"
+    | "raw_json";
+  optionValue?: string;
+  optionLabel?: string;
+  rowKey?: string;
+  pairKey?: string;
+  component?: string;
+  valueLabels?: string;
+};
+
+function researchStatVariable(...parts: Array<string | number | null | undefined>) {
+  const joined = parts
+    .map((part) => researchSafeVariable(String(part ?? "")))
+    .filter(Boolean)
+    .join("_") || "variable";
+
+  const withPrefix = /^[a-z]/.test(joined) ? joined : `v_${joined}`;
+
+  if (withPrefix.length <= 60) {
+    return withPrefix;
+  }
+
+  let hash = 2166136261;
+  for (let index = 0; index < withPrefix.length; index += 1) {
+    hash ^= withPrefix.charCodeAt(index);
+    hash = Math.imul(hash, 16777619);
+  }
+
+  const suffix = (hash >>> 0).toString(36).slice(0, 7);
+  return `${withPrefix.slice(0, Math.max(1, 52 - suffix.length))}_${suffix}`;
+}
+
+function researchResponseOptions(item: ResearchDataQuestionnaireItem) {
+  if (!Array.isArray(item.response_options)) return [];
+
+  return item.response_options
+    .filter((option) => option && typeof option === "object")
+    .map((option) => option as Record<string, unknown>);
+}
+
+function researchOptionLabel(
+  item: ResearchDataQuestionnaireItem,
+  value: unknown
+) {
+  const match = researchResponseOptions(item).find(
+    (option) => String(option.value ?? "") === String(value ?? "")
+  );
+
+  return typeof match?.label === "string" && match.label.trim()
+    ? match.label
+    : value;
+}
+
+function researchValueLabels(item: ResearchDataQuestionnaireItem) {
+  return researchResponseOptions(item)
+    .map((option) => `${String(option.value ?? "")}=${String(option.label ?? "")}`)
+    .join(" | ");
+}
+
+function researchObjectValue(value: unknown) {
+  return value && typeof value === "object" && !Array.isArray(value)
+    ? (value as Record<string, unknown>)
+    : null;
+}
+
+function researchAnalysisMeasurementType(
+  item: ResearchDataQuestionnaireItem,
+  field?: ResearchAnalysisQuestionnaireField
+) {
+  if (field?.kind === "multi_binary" || field?.kind === "matrix_binary") {
+    return "Binary numeric (0/1)";
+  }
+
+  if (
+    [
+      "numeric_rating",
+      "slider",
+      "visual_analogue",
+      "star_rating",
+      "integer",
+      "decimal",
+      "percentage",
+      "duration",
+      "constant_sum",
+    ].includes(item.response_type)
+  ) {
+    return "Numeric";
+  }
+
+  if (
+    [
+      "likert",
+      "frequency",
+      "intensity",
+      "semantic_differential",
+      "ranking",
+      "q_sort",
+    ].includes(item.response_type)
+  ) {
+    return "Ordinal / coded";
+  }
+
+  if (
+    [
+      "yes_no",
+      "true_false",
+      "single_choice",
+      "dropdown",
+      "image_choice",
+      "forced_choice",
+      "guttman",
+      "thurstone",
+      "best_worst",
+      "pairwise",
+      "single_choice_matrix",
+      "likert_matrix",
+      "semantic_matrix",
+    ].includes(item.response_type)
+  ) {
+    return "Categorical / coded";
+  }
+
+  if (["date", "time", "datetime"].includes(item.response_type)) {
+    return "Date/time text";
+  }
+
+  if (["short_text", "long_text", "email", "phone", "location"].includes(item.response_type)) {
+    return "Text";
+  }
+
+  return "Mixed / structured";
+}
+
+function researchAnalysisQuestionnaireFields(
+  bundle: ResearchDataBundle
+): ResearchAnalysisQuestionnaireField[] {
+  const measures = [...bundle.measures].sort((a, b) => {
+    const aWave =
+      a.measurement_point === "baseline"
+        ? 0
+        : researchFollowupWaveForMeasure(bundle, a)?.position ?? 999;
+    const bWave =
+      b.measurement_point === "baseline"
+        ? 0
+        : researchFollowupWaveForMeasure(bundle, b)?.position ?? 999;
+
+    if (aWave !== bWave) return aWave - bWave;
+    return a.position - b.position;
+  });
+
+  const questionnaireUseCount = new Map<string, number>();
+  for (const measure of measures) {
+    questionnaireUseCount.set(
+      measure.questionnaire_id,
+      (questionnaireUseCount.get(measure.questionnaire_id) || 0) + 1
+    );
+  }
+
+  const fields: ResearchAnalysisQuestionnaireField[] = [];
+
+  for (const measure of measures) {
+    const questionnaire = researchQuestionnaireForMeasure(bundle, measure);
+    if (!questionnaire) continue;
+
+    const phaseLabel = researchMeasurePhaseDisplay(bundle, measure);
+    const repeatedQuestionnaire =
+      (questionnaireUseCount.get(questionnaire.id) || 0) > 1;
+    const followupWave = researchFollowupWaveForMeasure(bundle, measure);
+    const groupLabel =
+      measure.measurement_point === "followup"
+        ? `${followupWave ? `Follow-up ${followupWave.position}` : "Follow-up"} - ${questionnaire.name}`
+        : repeatedQuestionnaire
+          ? `${phaseLabel} - ${questionnaire.name}`
+          : questionnaire.name;
+
+    const phaseVariable = researchMeasurePhaseVariable(bundle, measure);
+    const questionnaireKey = questionnaire.acronym || questionnaire.name;
+
+    const items = bundle.questionnaireItems
+      .filter(
+        (item) =>
+          item.version_id === measure.questionnaire_version_id &&
+          !item.is_content_only
+      )
+      .sort((a, b) => a.position - b.position);
+
+    for (const item of items) {
+      const itemKey = item.item_key || `item_${item.position}`;
+      const options = researchResponseOptions(item);
+      const optionLabels = researchValueLabels(item);
+      const base = [
+        "q",
+        phaseVariable,
+        measure.position,
+        questionnaireKey,
+        itemKey,
+      ];
+
+      const baseField = {
+        measureId: measure.id,
+        itemId: item.id,
+        itemKey,
+        itemPosition: item.position,
+        responseType: item.response_type,
+        questionnaireName: questionnaire.name,
+        phaseLabel,
+        groupLabel,
+        prompt: item.prompt,
+        required: item.required,
+        reverseScored: Boolean(item.reverse_scored),
+        valueLabels: optionLabels,
+      };
+
+      if (["multiple_choice", "checklist"].includes(item.response_type) && options.length > 0) {
+        for (const option of options) {
+          const optionValue = String(option.value ?? "");
+          const optionLabel = String(option.label ?? optionValue);
+          fields.push({
+            ...baseField,
+            source: researchStatVariable(...base, "selected", optionLabel || optionValue),
+            label: `${groupLabel} - ${itemKey} - ${optionLabel}`,
+            kind: "multi_binary",
+            optionValue,
+            optionLabel,
+            component: `Selected: ${optionLabel}`,
+          });
+        }
+        continue;
+      }
+
+      if (["ranking", "q_sort", "constant_sum"].includes(item.response_type) && options.length > 0) {
+        for (const option of options) {
+          const optionValue = String(option.value ?? "");
+          const optionLabel = String(option.label ?? optionValue);
+          fields.push({
+            ...baseField,
+            source: researchStatVariable(...base, optionLabel || optionValue),
+            label: `${groupLabel} - ${itemKey} - ${optionLabel}`,
+            kind: "object_option_value",
+            optionValue,
+            optionLabel,
+            component: optionLabel,
+          });
+        }
+        continue;
+      }
+
+      if (item.response_type === "best_worst") {
+        for (const component of ["best", "worst"] as const) {
+          fields.push({
+            ...baseField,
+            source: researchStatVariable(...base, component),
+            label: `${groupLabel} - ${itemKey} - ${component === "best" ? "Most / best" : "Least / worst"}`,
+            kind: "best_worst",
+            component,
+          });
+        }
+        continue;
+      }
+
+      if (item.response_type === "pairwise" && options.length >= 2) {
+        for (let a = 0; a < options.length; a += 1) {
+          for (let b = a + 1; b < options.length; b += 1) {
+            const left = String(options[a].label ?? options[a].value ?? `Option ${a + 1}`);
+            const right = String(options[b].label ?? options[b].value ?? `Option ${b + 1}`);
+            const pairKey = `${a}-${b}`;
+            fields.push({
+              ...baseField,
+              source: researchStatVariable(...base, "pair", a + 1, b + 1),
+              label: `${groupLabel} - ${itemKey} - ${left} vs ${right}`,
+              kind: "pairwise_choice",
+              pairKey,
+              component: `${left} vs ${right}`,
+            });
+          }
+        }
+        continue;
+      }
+
+      if (["likert_matrix", "single_choice_matrix", "semantic_matrix", "multiple_choice_matrix"].includes(item.response_type)) {
+        const rows = Array.isArray(item.response_config?.matrix_rows)
+          ? (item.response_config.matrix_rows as unknown[]).map(String)
+          : [];
+
+        if (item.response_type === "multiple_choice_matrix" && options.length > 0) {
+          for (const rowKey of rows) {
+            for (const option of options) {
+              const optionValue = String(option.value ?? "");
+              const optionLabel = String(option.label ?? optionValue);
+              fields.push({
+                ...baseField,
+                source: researchStatVariable(...base, rowKey, optionLabel || optionValue),
+                label: `${groupLabel} - ${itemKey} - ${rowKey} - ${optionLabel}`,
+                kind: "matrix_binary",
+                rowKey,
+                optionValue,
+                optionLabel,
+                component: `${rowKey} / ${optionLabel}`,
+              });
+            }
+          }
+        } else {
+          for (const rowKey of rows) {
+            fields.push({
+              ...baseField,
+              source: researchStatVariable(...base, rowKey),
+              label: `${groupLabel} - ${itemKey} - ${rowKey}`,
+              kind: "object_row_value",
+              rowKey,
+              component: rowKey,
+            });
+          }
+        }
+
+        if (rows.length > 0) continue;
+      }
+
+      const structuredFallback = [
+        "custom",
+        "file_upload",
+        "image_upload",
+        "audio_response",
+        "video_response",
+      ].includes(item.response_type);
+
+      fields.push({
+        ...baseField,
+        source: researchStatVariable(...base),
+        label: `${groupLabel} - ${itemKey}`,
+        kind: structuredFallback ? "raw_json" : "scalar",
+        component: structuredFallback ? "Raw structured response" : "Response",
+      });
+    }
+  }
+
+  return fields;
+}
+
+function researchAnalysisFieldValue(
+  field: ResearchAnalysisQuestionnaireField,
+  item: ResearchDataQuestionnaireItem,
+  response: ResearchDataResponse
+) {
+  const raw = response.response;
+
+  if (field.kind === "multi_binary") {
+    if (!Array.isArray(raw)) return "";
+    return raw.map(String).includes(String(field.optionValue ?? "")) ? 1 : 0;
+  }
+
+  const objectValue = researchObjectValue(raw);
+
+  if (field.kind === "object_option_value") {
+    return objectValue ? objectValue[String(field.optionValue ?? "")] ?? "" : "";
+  }
+
+  if (field.kind === "object_row_value") {
+    return objectValue ? objectValue[String(field.rowKey ?? "")] ?? "" : "";
+  }
+
+  if (field.kind === "matrix_binary") {
+    if (!objectValue) return "";
+    const row = objectValue[String(field.rowKey ?? "")];
+    if (!Array.isArray(row)) return "";
+    return row.map(String).includes(String(field.optionValue ?? "")) ? 1 : 0;
+  }
+
+  if (field.kind === "pairwise_choice") {
+    return objectValue ? objectValue[String(field.pairKey ?? "")] ?? "" : "";
+  }
+
+  if (field.kind === "best_worst") {
+    return objectValue ? objectValue[String(field.component ?? "")] ?? "" : "";
+  }
+
+  if (field.kind === "raw_json") {
+    return researchValueText(raw);
+  }
+
+  if (response.numeric_value !== null && response.numeric_value !== undefined) {
+    return response.numeric_value;
+  }
+
+  if (response.text_value !== null && response.text_value !== undefined && response.text_value !== "") {
+    return response.text_value;
+  }
+
+  if (raw !== null && raw !== undefined && typeof raw !== "object") {
+    return raw;
+  }
+
+  if (Array.isArray(raw)) {
+    return raw.map((value) => researchOptionLabel(item, value)).join(" | ");
+  }
+
+  return raw === null || raw === undefined ? "" : researchValueText(raw);
+}
 
 function researchParticipantSummaryQuestionnaireFields(
   bundle: ResearchDataBundle
@@ -8845,6 +10028,220 @@ function researchFilteredParticipants(
   );
 }
 
+type ResearchAmbulatoryWideField = {
+  variable: string;
+  itemKey: string;
+  itemType: string;
+  prompt: string;
+  kind: "scalar" | "binary" | "object" | "nested";
+  component?: string;
+  responsePath?: string[];
+};
+
+function researchAmbulatoryWideFields(
+  bundle: ResearchDataBundle
+): ResearchAmbulatoryWideField[] {
+  const fields = new Map<string, ResearchAmbulatoryWideField>();
+
+  const add = (field: ResearchAmbulatoryWideField) => {
+    if (!fields.has(field.variable)) {
+      fields.set(field.variable, field);
+    }
+  };
+
+  for (const response of bundle.ambulatoryResponses) {
+    const itemKey = response.item_key || "item";
+    const itemType = response.item_type || "unknown";
+    const prompt = response.prompt_snapshot || itemKey;
+    const base = `ema_${researchSafeVariable(itemKey) || "item"}`;
+    const raw = response.response;
+
+    if (Array.isArray(raw)) {
+      const values = raw
+        .filter((value) =>
+          ["string", "number", "boolean"].includes(typeof value)
+        )
+        .map((value) => String(value));
+
+      for (const value of values) {
+        add({
+          variable: `${base}__${researchSafeVariable(value) || "selected"}`,
+          itemKey,
+          itemType,
+          prompt,
+          kind: "binary",
+          component: value,
+        });
+      }
+
+      if (values.length === 0) {
+        add({
+          variable: base,
+          itemKey,
+          itemType,
+          prompt,
+          kind: "object",
+        });
+      }
+
+      continue;
+    }
+
+    if (raw && typeof raw === "object") {
+      const object = raw as Record<string, unknown>;
+      const answers =
+        object.answers &&
+        typeof object.answers === "object" &&
+        !Array.isArray(object.answers)
+          ? (object.answers as Record<string, unknown>)
+          : null;
+
+      if (answers) {
+        for (const [answerKey, answerValue] of Object.entries(answers)) {
+          if (Array.isArray(answerValue)) {
+            const observed = answerValue
+              .filter((value) =>
+                ["string", "number", "boolean"].includes(typeof value)
+              )
+              .map((value) => String(value));
+
+            if (observed.length > 0) {
+              for (const value of observed) {
+                add({
+                  variable: `${base}__q_${researchSafeVariable(answerKey)}__${researchSafeVariable(value) || "selected"}`,
+                  itemKey,
+                  itemType,
+                  prompt,
+                  kind: "binary",
+                  component: `Embedded questionnaire ${answerKey}: ${value}`,
+                  responsePath: ["answers", answerKey],
+                });
+              }
+            } else {
+              add({
+                variable: `${base}__q_${researchSafeVariable(answerKey)}`,
+                itemKey,
+                itemType,
+                prompt,
+                kind: "nested",
+                component: `Embedded questionnaire ${answerKey}`,
+                responsePath: ["answers", answerKey],
+              });
+            }
+          } else {
+            add({
+              variable: `${base}__q_${researchSafeVariable(answerKey)}`,
+              itemKey,
+              itemType,
+              prompt,
+              kind: "nested",
+              component: `Embedded questionnaire ${answerKey}`,
+              responsePath: ["answers", answerKey],
+            });
+          }
+        }
+
+        add({
+          variable: `${base}__completed`,
+          itemKey,
+          itemType,
+          prompt,
+          kind: "nested",
+          component: "Embedded questionnaire completed",
+          responsePath: ["completed"],
+        });
+        continue;
+      }
+
+      const entries = Object.entries(object);
+      if (entries.length > 0) {
+        for (const [key] of entries) {
+          add({
+            variable: `${base}__${researchSafeVariable(key) || "value"}`,
+            itemKey,
+            itemType,
+            prompt,
+            kind: "nested",
+            component: key,
+            responsePath: [key],
+          });
+        }
+      } else {
+        add({
+          variable: base,
+          itemKey,
+          itemType,
+          prompt,
+          kind: "object",
+        });
+      }
+      continue;
+    }
+
+    add({
+      variable: base,
+      itemKey,
+      itemType,
+      prompt,
+      kind: "scalar",
+    });
+  }
+
+  return Array.from(fields.values()).sort((a, b) =>
+    a.variable.localeCompare(b.variable)
+  );
+}
+
+function researchReadPath(value: unknown, path: string[] | undefined) {
+  let current = value;
+  for (const part of path || []) {
+    if (!current || typeof current !== "object" || Array.isArray(current)) {
+      return undefined;
+    }
+    current = (current as Record<string, unknown>)[part];
+  }
+  return current;
+}
+
+function researchAmbulatoryWideValue(
+  field: ResearchAmbulatoryWideField,
+  response: ResearchDataAmbulatoryResponse
+) {
+  const raw = response.response;
+
+  if (field.kind === "binary") {
+    const value = researchReadPath(raw, field.responsePath);
+    if (field.responsePath && value === undefined) return "";
+    const source = field.responsePath ? value : raw;
+    if (!Array.isArray(source)) return "";
+    const selected = source.map(String);
+    const component = field.component || "";
+    const expected = component.includes(": ")
+      ? component.split(": ").slice(-1)[0]
+      : component;
+    return selected.includes(expected) ? 1 : 0;
+  }
+
+  if (field.kind === "nested") {
+    const value = researchReadPath(raw, field.responsePath);
+    if (value === undefined || value === null) return "";
+    if (typeof value === "object") return researchValueText(value);
+    return value;
+  }
+
+  if (field.kind === "object") {
+    return researchValueText(raw);
+  }
+
+  if (response.numeric_value !== null) return response.numeric_value;
+  if (response.text_value !== null && response.text_value !== "") {
+    return response.text_value;
+  }
+  if (raw === null || raw === undefined) return "";
+  if (typeof raw === "object") return researchValueText(raw);
+  return raw;
+}
+
 function researchBuildRows(
   bundle: ResearchDataBundle,
   datasetType: ResearchDatasetType,
@@ -9017,10 +10414,25 @@ function researchBuildRows(
             item_prompt: item.prompt,
             subscale: item.subscale || "",
             response_type: item.response_type,
+            required: item.required,
+            reverse_scored: item.reverse_scored,
             response: response.response,
+            response_display: researchParticipantSummaryResponseValue(
+              item,
+              response
+            ),
+            response_json:
+              response.response !== null &&
+              typeof response.response === "object"
+                ? researchValueText(response.response)
+                : "",
             numeric_value: response.numeric_value,
             text_value: response.text_value,
             score_value: response.score_value,
+            measure_session_id: response.measure_session_id,
+            study_measure_id: response.study_measure_id,
+            questionnaire_version_id: response.questionnaire_version_id,
+            item_id: response.item_id,
             answered_at: response.answered_at,
           },
         ];
@@ -9106,28 +10518,18 @@ function researchBuildRows(
         );
         const prompt = checkin.prompt_instance_id
           ? bundle.ambulatoryPrompts.find(
-              (candidate) =>
-                candidate.id ===
-                checkin.prompt_instance_id
+              (candidate) => candidate.id === checkin.prompt_instance_id
             )
           : null;
-        const responseCount =
-          bundle.ambulatoryResponses.filter(
-            (response) =>
-              response.checkin_id ===
-              checkin.id
-          ).length;
+        const responseCount = bundle.ambulatoryResponses.filter(
+          (response) => response.checkin_id === checkin.id
+        ).length;
 
         const latencyMinutes =
-          prompt?.scheduled_for &&
-          checkin.completed_at
+          prompt?.scheduled_for && checkin.completed_at
             ? Math.round(
-                ((new Date(
-                  checkin.completed_at
-                ).getTime() -
-                  new Date(
-                    prompt.scheduled_for
-                  ).getTime()) /
+                ((new Date(checkin.completed_at).getTime() -
+                  new Date(prompt.scheduled_for).getTime()) /
                   60000) *
                   10
               ) / 10
@@ -9135,93 +10537,141 @@ function researchBuildRows(
 
         return {
           participant: participant
-            ? identityMap.get(
-                participant.id
-              ) || ""
+            ? identityMap.get(participant.id) || ""
             : "",
+          checkin_id: checkin.id,
+          prompt_instance_id: checkin.prompt_instance_id || "",
           local_date: checkin.local_date,
-          schedule_key:
-            checkin.schedule_key,
-          checkin:
-            checkin.schedule_label,
-          trigger_type:
-            checkin.trigger_type,
-          trigger_source:
-            checkin.trigger_source,
-          occurrence:
-            checkin.occurrence_index,
-          scheduled_for:
-            prompt?.scheduled_for || "",
-          opened_at:
-            prompt?.opened_at || "",
-          started_at:
-            checkin.started_at,
-          completed_at:
-            checkin.completed_at || "",
-          response_latency_minutes:
-            latencyMinutes ?? "",
+          schedule_key: checkin.schedule_key,
+          checkin: checkin.schedule_label,
+          trigger_type: checkin.trigger_type,
+          trigger_source: checkin.trigger_source,
+          occurrence: checkin.occurrence_index,
+          scheduled_for: prompt?.scheduled_for || "",
+          expires_at: prompt?.expires_at || "",
+          notification_sent_at: prompt?.notification_sent_at || "",
+          opened_at: prompt?.opened_at || "",
+          started_at: checkin.started_at,
+          completed_at: checkin.completed_at || "",
+          response_latency_minutes: latencyMinutes ?? "",
           item_responses: responseCount,
-          prompt_status:
-            prompt?.status || "event",
-          is_test:
-            participant?.is_test || false,
+          prompt_status: prompt?.status || "event",
+          is_test: participant?.is_test || false,
         };
       });
   }
 
   if (datasetType === "ambulatory_responses") {
     return bundle.ambulatoryResponses
-      .filter((response) =>
-        participantIds.has(
-          response.participant_id
-        )
-      )
+      .filter((response) => participantIds.has(response.participant_id))
       .map((response) => {
-        const participant =
-          researchParticipantForId(
-            bundle,
-            response.participant_id
-          );
-        const checkin =
-          bundle.ambulatoryCheckins.find(
-            (candidate) =>
-              candidate.id ===
-              response.checkin_id
-          );
+        const participant = researchParticipantForId(
+          bundle,
+          response.participant_id
+        );
+        const checkin = bundle.ambulatoryCheckins.find(
+          (candidate) => candidate.id === response.checkin_id
+        );
+        const prompt = checkin?.prompt_instance_id
+          ? bundle.ambulatoryPrompts.find(
+              (candidate) => candidate.id === checkin.prompt_instance_id
+            )
+          : null;
 
         return {
           participant: participant
-            ? identityMap.get(
-                participant.id
-              ) || ""
+            ? identityMap.get(participant.id) || ""
             : "",
-          local_date:
-            checkin?.local_date || "",
-          checkin:
-            checkin?.schedule_label || "",
-          trigger_type:
-            checkin?.trigger_type || "",
-          occurrence:
-            checkin?.occurrence_index || "",
-          item_key:
-            response.item_key,
-          item_type:
-            response.item_type,
-          prompt:
-            response.prompt_snapshot,
-          response:
-            researchValueText(
-              response.response
-            ),
-          numeric_value:
-            response.numeric_value ?? "",
-          text_value:
-            response.text_value ?? "",
-          answered_at:
-            response.answered_at,
-          is_test:
-            participant?.is_test || false,
+          response_id: response.id,
+          checkin_id: response.checkin_id,
+          prompt_instance_id: checkin?.prompt_instance_id || "",
+          local_date: checkin?.local_date || "",
+          schedule_key: checkin?.schedule_key || "",
+          checkin: checkin?.schedule_label || "",
+          trigger_type: checkin?.trigger_type || "",
+          trigger_source: checkin?.trigger_source || "",
+          occurrence: checkin?.occurrence_index ?? "",
+          scheduled_for: prompt?.scheduled_for || "",
+          opened_at: prompt?.opened_at || "",
+          checkin_started_at: checkin?.started_at || "",
+          checkin_completed_at: checkin?.completed_at || "",
+          item_key: response.item_key,
+          item_type: response.item_type,
+          prompt: response.prompt_snapshot,
+          raw_response: researchValueText(response.response),
+          numeric_value: response.numeric_value ?? "",
+          text_value: response.text_value ?? "",
+          answered_at: response.answered_at,
+          is_test: participant?.is_test || false,
         };
+      });
+  }
+
+  if (datasetType === "ambulatory_wide") {
+    const fields = researchAmbulatoryWideFields(bundle);
+
+    return bundle.ambulatoryCheckins
+      .filter((checkin) => participantIds.has(checkin.participant_id))
+      .map((checkin) => {
+        const participant = researchParticipantForId(
+          bundle,
+          checkin.participant_id
+        );
+        const prompt = checkin.prompt_instance_id
+          ? bundle.ambulatoryPrompts.find(
+              (candidate) => candidate.id === checkin.prompt_instance_id
+            )
+          : null;
+        const responses = bundle.ambulatoryResponses.filter(
+          (response) => response.checkin_id === checkin.id
+        );
+        const latencyMinutes =
+          prompt?.scheduled_for && checkin.completed_at
+            ? Math.round(
+                ((new Date(checkin.completed_at).getTime() -
+                  new Date(prompt.scheduled_for).getTime()) /
+                  60000) *
+                  10
+              ) / 10
+            : null;
+
+        const row: ResearchTableRow = {
+          participant: participant
+            ? identityMap.get(participant.id) || ""
+            : "",
+          checkin_id: checkin.id,
+          prompt_instance_id: checkin.prompt_instance_id || "",
+          local_date: checkin.local_date,
+          schedule_key: checkin.schedule_key,
+          checkin: checkin.schedule_label,
+          trigger_type: checkin.trigger_type,
+          trigger_source: checkin.trigger_source,
+          occurrence: checkin.occurrence_index,
+          scheduled_for: prompt?.scheduled_for || "",
+          expires_at: prompt?.expires_at || "",
+          opened_at: prompt?.opened_at || "",
+          started_at: checkin.started_at,
+          completed_at: checkin.completed_at || "",
+          response_latency_minutes: latencyMinutes ?? "",
+          prompt_status: prompt?.status || "event",
+          is_test: participant?.is_test || false,
+        };
+
+        for (const field of fields) {
+          row[field.variable] = "";
+        }
+
+        for (const response of responses) {
+          const responseFields = fields.filter(
+            (field) => field.itemKey === response.item_key
+          );
+
+          for (const field of responseFields) {
+            row[field.variable] = researchAmbulatoryWideValue(field, response);
+          }
+        }
+
+        return row;
       });
   }
 
@@ -9393,10 +10843,11 @@ function researchBuildRows(
   }
 
   // analysis_wide — one row per participant with demographics +
-  // one column for every questionnaire ITEM response. Questionnaire selection
-  // in Export Data is grouped at the questionnaire/measurement-wave level.
+  // analysis-ready questionnaire variables. Complex custom item responses are
+  // expanded into stable scalar columns while the lossless long-format export
+  // continues to preserve each original raw response.
   const questionnaireFields =
-    researchParticipantSummaryQuestionnaireFields(bundle);
+    researchAnalysisQuestionnaireFields(bundle);
 
   return participants.map((participant) => {
     const row: ResearchTableRow = {
@@ -9436,13 +10887,13 @@ function researchBuildRows(
     );
 
     for (const response of participantResponses) {
-      const field = questionnaireFields.find(
+      const matchingFields = questionnaireFields.filter(
         (candidate) =>
           candidate.measureId === response.study_measure_id &&
           candidate.itemId === response.item_id
       );
 
-      if (!field) {
+      if (matchingFields.length === 0) {
         continue;
       }
 
@@ -9454,11 +10905,13 @@ function researchBuildRows(
         continue;
       }
 
-      row[field.source] =
-        researchParticipantSummaryResponseValue(
+      for (const field of matchingFields) {
+        row[field.source] = researchAnalysisFieldValue(
+          field,
           item,
           response
         );
+      }
     }
 
     return row;
@@ -9576,6 +11029,15 @@ function researchBuildCodebook(
           )}${
             item.subscale ? ` · Subscale: ${item.subscale}` : ""
           }${item.required ? " · Required" : ""}`,
+          questionnaire: questionnaire.name,
+          phase: researchMeasurePhaseDisplay(bundle, measure),
+          item_key: item.item_key || `item_${item.position}`,
+          item_position: item.position,
+          response_type: item.response_type,
+          value_labels: researchValueLabels(item),
+          required: item.required,
+          reverse_scored: item.reverse_scored,
+          storage: "Lossless raw response + numeric/text/score helpers",
         });
       }
     }
@@ -9631,17 +11093,24 @@ function researchBuildCodebook(
   if (datasetType === "ambulatory_checkins") {
     return [
       ["participant", "Participant", "text", "participant", "Pseudonymous or export-scoped anonymous participant identifier."],
+      ["checkin_id", "Check-in record ID", "text", "ambulatory check-in", "Stable PsyLattice check-in identifier."],
+      ["prompt_instance_id", "Scheduled prompt instance ID", "text", "prompt instance", "Blank for event/participant-initiated check-ins without a scheduled prompt."],
       ["local_date", "Participant-local date", "date", "ambulatory check-in", ""],
+      ["schedule_key", "Schedule key", "text", "ambulatory protocol", "Stable schedule key configured by the researcher."],
       ["checkin", "Check-in / event title", "text", "ambulatory check-in", ""],
       ["trigger_type", "Trigger type", "text", "ambulatory check-in", "fixed_time, random_window, interval, event_contingent or participant_initiated."],
-      ["trigger_source", "Trigger source", "text", "ambulatory check-in", "Scheduled, participant, wearable/device/API in future integrations."],
+      ["trigger_source", "Trigger source", "text", "ambulatory check-in", "How the check-in was initiated."],
       ["occurrence", "Occurrence within day", "number", "ambulatory check-in", ""],
       ["scheduled_for", "Scheduled timestamp", "datetime", "prompt instance", "Blank for participant/event-triggered check-ins."],
+      ["expires_at", "Prompt expiry timestamp", "datetime", "prompt instance", ""],
+      ["notification_sent_at", "Reminder notification timestamp", "datetime", "prompt instance", ""],
+      ["opened_at", "Prompt opened timestamp", "datetime", "prompt instance", ""],
       ["started_at", "Check-in started", "datetime", "ambulatory check-in", ""],
       ["completed_at", "Check-in completed", "datetime", "ambulatory check-in", ""],
       ["response_latency_minutes", "Scheduled-to-completion latency (minutes)", "number", "derived", "Available for scheduled prompts."],
-      ["item_responses", "Number of item responses", "number", "derived", ""],
+      ["item_responses", "Number of stored item responses", "number", "derived", ""],
       ["prompt_status", "Prompt status", "text", "prompt instance", ""],
+      ["is_test", "Test participation flag", "boolean", "participant", "TRUE identifies test participation."],
     ].map(([variable, label, type, source, notes]) => ({
       variable,
       label,
@@ -9654,17 +11123,27 @@ function researchBuildCodebook(
   if (datasetType === "ambulatory_responses") {
     return [
       ["participant", "Participant", "text", "participant", ""],
+      ["response_id", "Ambulatory response ID", "text", "ambulatory response", "Stable response-record identifier."],
+      ["checkin_id", "Check-in record ID", "text", "ambulatory check-in", ""],
+      ["prompt_instance_id", "Scheduled prompt instance ID", "text", "prompt instance", ""],
       ["local_date", "Participant-local date", "date", "ambulatory check-in", ""],
+      ["schedule_key", "Schedule key", "text", "ambulatory protocol", ""],
       ["checkin", "Check-in / event title", "text", "ambulatory check-in", ""],
       ["trigger_type", "Trigger type", "text", "ambulatory check-in", ""],
+      ["trigger_source", "Trigger source", "text", "ambulatory check-in", ""],
       ["occurrence", "Occurrence within day", "number", "ambulatory check-in", ""],
+      ["scheduled_for", "Scheduled timestamp", "datetime", "prompt instance", ""],
+      ["opened_at", "Prompt opened timestamp", "datetime", "prompt instance", ""],
+      ["checkin_started_at", "Check-in started", "datetime", "ambulatory check-in", ""],
+      ["checkin_completed_at", "Check-in completed", "datetime", "ambulatory check-in", ""],
       ["item_key", "Protocol item key", "text", "ambulatory response", ""],
       ["item_type", "Protocol item type", "text", "ambulatory response", ""],
       ["prompt", "Prompt snapshot", "text", "ambulatory response", "The prompt shown when this response was saved."],
-      ["response", "Raw response", "mixed", "ambulatory response", "Arrays/objects are JSON encoded in flat exports."],
-      ["numeric_value", "Numeric helper", "number", "ambulatory response", "Filled when response is numeric."],
-      ["text_value", "Text helper", "text", "ambulatory response", "Filled when response is text."],
+      ["raw_response", "Lossless stored response", "mixed / JSON", "ambulatory response", "Arrays and objects are JSON encoded in CSV/XLSX. This is the lossless source response."],
+      ["numeric_value", "Numeric helper", "number", "ambulatory response", "Filled when the response is stored as a scalar number."],
+      ["text_value", "Text helper", "text", "ambulatory response", "Filled when the response is stored as scalar text."],
       ["answered_at", "Answered at", "datetime", "ambulatory response", ""],
+      ["is_test", "Test participation flag", "boolean", "participant", ""],
     ].map(([variable, label, type, source, notes]) => ({
       variable,
       label,
@@ -9672,6 +11151,60 @@ function researchBuildCodebook(
       source,
       notes,
     }));
+  }
+
+  if (datasetType === "ambulatory_wide") {
+    const baseRows: ResearchCodebookRow[] = [
+      ["participant", "Participant", "text", "participant", "Pseudonymous or export-scoped anonymous participant identifier."],
+      ["checkin_id", "Check-in record ID", "text", "ambulatory check-in", "One row represents one check-in."],
+      ["prompt_instance_id", "Scheduled prompt instance ID", "text", "prompt instance", "Blank for event/participant-initiated check-ins without a scheduled prompt."],
+      ["local_date", "Participant-local date", "date", "ambulatory check-in", ""],
+      ["schedule_key", "Schedule key", "text", "ambulatory protocol", ""],
+      ["checkin", "Check-in / event title", "text", "ambulatory check-in", ""],
+      ["trigger_type", "Trigger type", "text", "ambulatory check-in", ""],
+      ["trigger_source", "Trigger source", "text", "ambulatory check-in", ""],
+      ["occurrence", "Occurrence within day", "number", "ambulatory check-in", ""],
+      ["scheduled_for", "Scheduled timestamp", "datetime", "prompt instance", ""],
+      ["expires_at", "Prompt expiry timestamp", "datetime", "prompt instance", ""],
+      ["opened_at", "Prompt opened timestamp", "datetime", "prompt instance", ""],
+      ["started_at", "Check-in started", "datetime", "ambulatory check-in", ""],
+      ["completed_at", "Check-in completed", "datetime", "ambulatory check-in", ""],
+      ["response_latency_minutes", "Scheduled-to-completion latency (minutes)", "number", "derived", ""],
+      ["prompt_status", "Prompt status", "text", "prompt instance", ""],
+      ["is_test", "Test participation flag", "boolean", "participant", ""],
+    ].map(([variable, label, type, source, notes]) => ({
+      variable, label, type, source, notes,
+    }));
+
+    const responseRows = researchAmbulatoryWideFields(bundle).map((field) => ({
+      variable: field.variable,
+      label: field.component
+        ? `${field.prompt} — ${field.component}`
+        : field.prompt,
+      type: field.kind === "binary" ? "0/1 binary" : field.itemType,
+      source: "study_ambulatory_responses",
+      notes:
+        field.kind === "binary"
+          ? "Analysis-ready binary expansion. The lossless original remains in Ambulatory responses — one row per item response."
+          : field.kind === "nested"
+            ? "Expanded from a structured ambulatory response. The lossless original remains in the long-format ambulatory response dataset."
+            : field.kind === "object"
+              ? "JSON text in the wide dataset; use the long-format ambulatory response dataset for the exact stored response."
+              : "Analysis-ready scalar ambulatory response.",
+      item_key: field.itemKey,
+      response_type: field.itemType,
+      component: field.component || "Response",
+      storage:
+        field.kind === "binary"
+          ? "Derived 0/1 column"
+          : field.kind === "nested"
+            ? "Structured response component"
+            : field.kind === "object"
+              ? "JSON text"
+              : "Scalar response",
+    }));
+
+    return [...baseRows, ...responseRows];
   }
 
   if (datasetType === "ambulatory_participant_days") {
@@ -9756,14 +11289,35 @@ function researchBuildCodebook(
       });
     });
 
-  researchParticipantSummaryQuestionnaireFields(bundle).forEach(
+  researchAnalysisQuestionnaireFields(bundle).forEach(
     (field) => {
+      const item = bundle.questionnaireItems.find(
+        (candidate) => candidate.id === field.itemId
+      );
+
       rows.push({
         variable: field.source,
         label: field.label,
-        type: field.responseType,
+        type: item
+          ? researchAnalysisMeasurementType(item, field)
+          : field.responseType,
         source: "research_responses",
-        notes: `${field.phaseLabel} · ${field.questionnaireName} · Item ${field.itemPosition}: ${field.prompt}`,
+        notes: `${field.phaseLabel} · ${field.questionnaireName} · ${field.itemKey}: ${field.prompt}`,
+        questionnaire: field.questionnaireName,
+        phase: field.phaseLabel,
+        item_key: field.itemKey,
+        item_position: field.itemPosition,
+        response_type: field.responseType,
+        component: field.component || "Response",
+        value_labels: field.valueLabels || "",
+        required: field.required,
+        reverse_scored: field.reverseScored,
+        storage:
+          field.kind === "raw_json"
+            ? "JSON text in analysis-wide; complete original retained in questionnaire long export"
+            : field.kind === "multi_binary" || field.kind === "matrix_binary"
+              ? "Derived 0/1 analysis column; complete original retained in questionnaire long export"
+              : "Analysis-ready scalar derived from the stored response",
       });
     }
   );
@@ -10741,15 +12295,24 @@ function ExportData() {
     includeDirectIdentifiers
   );
 
-  const participantSummaryQuestionnaireLabelMap =
-    new Map(
-      researchParticipantSummaryQuestionnaireFields(bundle).map(
-        (field) => [field.source, field.label]
-      )
-    );
-
-  const questionnaireFieldsForExport =
+  const participantQuestionnaireFields =
     researchParticipantSummaryQuestionnaireFields(bundle);
+  const analysisQuestionnaireFields =
+    researchAnalysisQuestionnaireFields(bundle);
+
+  const questionnaireLabelMap = new Map(
+    [...participantQuestionnaireFields, ...analysisQuestionnaireFields].map(
+      (field) => [field.source, field.label]
+    )
+  );
+
+  const questionnaireFieldsForExport: Array<
+    ResearchParticipantSummaryQuestionnaireField |
+    ResearchAnalysisQuestionnaireField
+  > =
+    datasetType === "analysis_wide"
+      ? analysisQuestionnaireFields
+      : participantQuestionnaireFields;
 
   const questionnaireFieldSourceSet = new Set(
     questionnaireFieldsForExport.map(
@@ -10779,7 +12342,10 @@ function ExportData() {
         {
           measureId: string;
           label: string;
-          fields: ResearchParticipantSummaryQuestionnaireField[];
+          fields: Array<
+            ResearchParticipantSummaryQuestionnaireField |
+            ResearchAnalysisQuestionnaireField
+          >;
         }
       >()
     ).values()
@@ -10811,7 +12377,7 @@ function ExportData() {
             label:
               datasetType === "participant_summary" ||
               datasetType === "analysis_wide"
-                ? participantSummaryQuestionnaireLabelMap.get(
+                ? questionnaireLabelMap.get(
                     source
                   ) || source
                 : source,
@@ -10930,6 +12496,16 @@ function ExportData() {
         Label: variable.label,
         Type: variable.type,
         Source: variable.source,
+        Questionnaire: variable.questionnaire || "",
+        Phase: variable.phase || "",
+        Item_Key: variable.item_key || "",
+        Item_Position: variable.item_position ?? "",
+        Response_Type: variable.response_type || "",
+        Component: variable.component || "",
+        Value_Labels: variable.value_labels || "",
+        Required: variable.required ?? "",
+        Reverse_Scored: variable.reverse_scored ?? "",
+        Storage: variable.storage || "",
         Notes: variable.notes,
       })
     );
@@ -11758,23 +13334,23 @@ function ExportData() {
             {[
               [
                 "Analysis dataset — one row per participant",
-                "Choose questionnaires with one checkbox each. Every selected questionnaire expands into one exported column per item response, while baseline and follow-up waves remain clearly separated.",
+                "Every selected questionnaire becomes analysis-ready scalar columns. Multi-select, ranking, Q-sort, constant-sum, best/worst, pairwise and matrix responses are expanded rather than buried inside one JSON cell.",
               ],
               [
-                "Long-format questionnaire data",
-                "One row per item response, with questionnaire, phase, item metadata and stored score value.",
+                "Lossless questionnaire data",
+                "One row per answered item preserves the original stored response plus display, numeric, text, score and identifier helpers, so complex custom responses are never discarded.",
               ],
               [
                 "Demographic data",
                 "Direct identifier fields are excluded by default.",
               ],
               [
-                "Codebook",
-                "Generated from the exact study demographic questions and questionnaire versions selected for the study.",
+                "Analysis codebook",
+                "Generated from the exact study configuration with item keys, response types, value labels, complex-response components, required/reverse-scored flags and source metadata.",
               ],
               [
-                "Ambulatory datasets",
-                "Export one row per check-in, one row per item response or one participant-day with compliance and event counts.",
+                "Ambulatory / EMA datasets",
+                "Use lossless item-level responses, detailed check-in records, an analysis-wide dataset with one row per check-in, or participant-day compliance summaries. Complex EMA responses are expanded where possible while the original stored response is retained in long format.",
               ],
               [
                 "XLSX table designer",

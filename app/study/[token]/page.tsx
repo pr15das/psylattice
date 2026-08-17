@@ -18,6 +18,8 @@ type ResponseOption = {
   label: string;
   value: number | string;
   weight?: number;
+  media_url?: string | null;
+  media_mime_type?: string | null;
 };
 
 type PublicConsentItem = {
@@ -76,6 +78,7 @@ type PublicItem = {
   randomization_config: JsonObject;
   media_config: {
     url?: string | null;
+    mime_type?: string | null;
   };
   is_content_only: boolean;
 };
@@ -318,74 +321,90 @@ function displayValue(value: AnswerValue | undefined) {
   return String(value);
 }
 
+function logicExpectedValue(sourceItem: PublicItem, expected: string) {
+  const exactValue = sourceItem.response_options.find(
+    (option) => String(option.value) === String(expected)
+  );
+
+  if (exactValue) return String(exactValue.value);
+
+  const byLabel = sourceItem.response_options.find(
+    (option) =>
+      option.label.trim().toLowerCase() === expected.trim().toLowerCase()
+  );
+
+  return byLabel ? String(byLabel.value) : expected;
+}
+
 function compareLogicValue(
   actual: AnswerValue | undefined,
   operator: string,
-  expected: string
+  expected: string,
+  sourceItem: PublicItem
 ) {
-  const actualText = displayValue(actual);
-  const actualNumber = Number(actualText);
-  const expectedNumber = Number(expected);
-
   if (operator === "answered") {
-    return actual !== undefined && actual !== null && actualText !== "";
+    return responseHasValue(actual);
   }
 
   if (operator === "not_answered") {
-    return actual === undefined || actual === null || actualText === "";
+    return !responseHasValue(actual);
   }
 
+  const expectedValue = logicExpectedValue(sourceItem, expected);
+  const actualText = displayValue(actual);
+
   if (operator === "equals") {
-    return actualText.toLowerCase() === expected.toLowerCase();
+    return actualText.trim().toLowerCase() === expectedValue.trim().toLowerCase();
   }
 
   if (operator === "not_equals") {
-    return actualText.toLowerCase() !== expected.toLowerCase();
+    return actualText.trim().toLowerCase() !== expectedValue.trim().toLowerCase();
   }
 
-  if (operator === "greater_than") {
-    return Number.isFinite(actualNumber) &&
-      Number.isFinite(expectedNumber) &&
-      actualNumber > expectedNumber;
+  if (operator === "contains" || operator === "not_contains") {
+    const contains = Array.isArray(actual)
+      ? actual.map(String).some(
+          (entry) =>
+            entry.trim().toLowerCase() === expectedValue.trim().toLowerCase()
+        )
+      : actualText.toLowerCase().includes(expectedValue.toLowerCase());
+
+    return operator === "contains" ? contains : !contains;
   }
 
-  if (operator === "less_than") {
-    return Number.isFinite(actualNumber) &&
-      Number.isFinite(expectedNumber) &&
-      actualNumber < expectedNumber;
-  }
+  const actualNumber = Number(actualText);
+  const expectedNumber = Number(expectedValue);
+  const numericComparison =
+    Number.isFinite(actualNumber) && Number.isFinite(expectedNumber);
 
-  if (operator === "contains") {
-    if (Array.isArray(actual)) {
-      return actual.map(String).some((entry) =>
-        entry.toLowerCase().includes(expected.toLowerCase())
-      );
-    }
+  const compare = numericComparison
+    ? actualNumber - expectedNumber
+    : actualText.localeCompare(expectedValue);
 
-    return actualText.toLowerCase().includes(expected.toLowerCase());
-  }
+  if (operator === "greater_than") return compare > 0;
+  if (operator === "greater_than_or_equal") return compare >= 0;
+  if (operator === "less_than") return compare < 0;
+  if (operator === "less_than_or_equal") return compare <= 0;
 
-  if (operator === "not_contains") {
-    if (Array.isArray(actual)) {
-      return !actual.map(String).some((entry) =>
-        entry.toLowerCase().includes(expected.toLowerCase())
-      );
-    }
-
-    return !actualText.toLowerCase().includes(expected.toLowerCase());
-  }
-
-  return true;
+  // Unknown legacy operators should fail closed rather than accidentally
+  // displaying a branch that the researcher did not intend to show.
+  return false;
 }
 
 function itemIsVisible(
   item: PublicItem,
   answers: Record<string, AnswerValue>,
-  items: PublicItem[]
+  items: PublicItem[],
+  resolving: Set<string> = new Set()
 ) {
   const rules = item.display_logic?.rules || [];
 
   if (rules.length === 0) return true;
+  if (resolving.has(item.id)) return false;
+
+  const itemIndex = items.findIndex((candidate) => candidate.id === item.id);
+  const nextResolving = new Set(resolving);
+  nextResolving.add(item.id);
 
   const results = rules.map((rule) => {
     const sourceItem = items.find(
@@ -394,16 +413,58 @@ function itemIsVisible(
 
     if (!sourceItem) return false;
 
+    const sourceIndex = items.findIndex(
+      (candidate) => candidate.id === sourceItem.id
+    );
+
+    // Branches may only depend on earlier questions. This also prevents
+    // circular dependencies in legacy/badly edited questionnaire JSON.
+    if (sourceIndex < 0 || itemIndex < 0 || sourceIndex >= itemIndex) {
+      return false;
+    }
+
+    // A downstream question cannot become visible from a stale answer to a
+    // source question that is itself currently hidden by another branch.
+    if (!itemIsVisible(sourceItem, answers, items, nextResolving)) {
+      return false;
+    }
+
     return compareLogicValue(
       answers[sourceItem.id],
       rule.operator || "equals",
-      rule.value || ""
+      String(rule.value ?? ""),
+      sourceItem
     );
   });
 
   return item.display_logic?.mode === "any"
     ? results.some(Boolean)
     : results.every(Boolean);
+}
+
+function cleanHiddenMeasureAnswers(
+  measure: PublicMeasure,
+  answers: Record<string, AnswerValue>
+) {
+  const next = { ...answers };
+
+  // Repeat because hiding one answered question can in turn hide a later
+  // question that depended on it.
+  for (let pass = 0; pass < measure.items.length; pass += 1) {
+    let changed = false;
+
+    for (const item of measure.items) {
+      if (!(item.id in next)) continue;
+      if (itemIsVisible(item, next, measure.items)) continue;
+
+      delete next[item.id];
+      changed = true;
+    }
+
+    if (!changed) break;
+  }
+
+  return next;
 }
 
 function pipeText(
@@ -418,6 +479,274 @@ function pipeText(
   });
 }
 
+function deterministicSeed(text: string) {
+  let seed = 0;
+
+  for (let index = 0; index < text.length; index += 1) {
+    seed = (seed * 31 + text.charCodeAt(index)) >>> 0;
+  }
+
+  return seed;
+}
+
+function deterministicRank(seedText: string, itemId: string) {
+  const seed = deterministicSeed(`${seedText}:${itemId}`);
+  return ((seed ^ 2654435761) >>> 0) / 4294967296;
+}
+
+function pipedItemKeys(item: PublicItem) {
+  const keys = new Set<string>();
+  const text = `${item.prompt || ""} ${item.help_text || ""}`;
+
+  for (const match of text.matchAll(/\{\{([^}]+)\}\}/g)) {
+    const key = String(match[1] || "").trim();
+    if (key) keys.add(key);
+  }
+
+  return keys;
+}
+
+function itemDependencyKeys(item: PublicItem) {
+  const keys = pipedItemKeys(item);
+
+  for (const rule of item.display_logic?.rules || []) {
+    const key = String(rule.source_key || "").trim();
+    if (key) keys.add(key);
+  }
+
+  return keys;
+}
+
+function dependencySafeShuffle(
+  items: PublicItem[],
+  seedText: string
+) {
+  if (items.length < 2) return items;
+
+  const idsInScope = new Set(items.map((item) => item.id));
+  const itemByKey = new Map(
+    items
+      .filter((item) => Boolean(item.item_key))
+      .map((item) => [String(item.item_key), item] as const)
+  );
+  const dependencies = new Map<string, Set<string>>();
+
+  for (const item of items) {
+    const dependencyIds = new Set<string>();
+
+    for (const key of itemDependencyKeys(item)) {
+      const source = itemByKey.get(key);
+      if (source && idsInScope.has(source.id) && source.id !== item.id) {
+        dependencyIds.add(source.id);
+      }
+    }
+
+    dependencies.set(item.id, dependencyIds);
+  }
+
+  const remaining = new Map(items.map((item) => [item.id, item] as const));
+  const ordered: PublicItem[] = [];
+  const emitted = new Set<string>();
+
+  while (remaining.size > 0) {
+    const available = Array.from(remaining.values())
+      .filter((item) =>
+        Array.from(dependencies.get(item.id) || []).every((dependencyId) =>
+          emitted.has(dependencyId)
+        )
+      )
+      .sort((a, b) => {
+        const rankDifference =
+          deterministicRank(seedText, a.id) -
+          deterministicRank(seedText, b.id);
+
+        if (rankDifference !== 0) return rankDifference;
+        return a.position - b.position;
+      });
+
+    // Bad legacy data can contain a dependency cycle. Fail safely by keeping
+    // the remaining authored order rather than producing an unstable order.
+    if (available.length === 0) {
+      ordered.push(
+        ...Array.from(remaining.values()).sort(
+          (a, b) => a.position - b.position
+        )
+      );
+      break;
+    }
+
+    const next = available[0];
+    ordered.push(next);
+    emitted.add(next.id);
+    remaining.delete(next.id);
+  }
+
+  return ordered;
+}
+
+function randomizeQuestionSegments(
+  items: PublicItem[],
+  seedText: string
+) {
+  const output: PublicItem[] = [];
+  let segment: PublicItem[] = [];
+  let segmentIndex = 0;
+
+  const flushSegment = () => {
+    if (segment.length === 0) return;
+    output.push(
+      ...dependencySafeShuffle(
+        segment,
+        `${seedText}:segment-${segmentIndex}`
+      )
+    );
+    segment = [];
+    segmentIndex += 1;
+  };
+
+  for (const item of items) {
+    // Instructions/headings/media are structural anchors. Keeping them fixed
+    // prevents randomisation from separating guidance from its questions.
+    if (item.is_content_only) {
+      flushSegment();
+      output.push(item);
+    } else {
+      segment.push(item);
+    }
+  }
+
+  flushSegment();
+  return output;
+}
+
+function deterministicMeasureItems(
+  measure: PublicMeasure,
+  sessionToken: string
+) {
+  const authoredItems = [...measure.items].sort(
+    (a, b) => a.position - b.position
+  );
+  const questionnaireRandomization = Boolean(
+    (measure.version.randomization_config as {
+      randomize_all_items?: boolean;
+    })?.randomize_all_items
+  );
+
+  if (measure.blocks.length === 0) {
+    return questionnaireRandomization
+      ? randomizeQuestionSegments(
+          authoredItems,
+          `${sessionToken}:${measure.study_measure_id}:questionnaire`
+        )
+      : authoredItems;
+  }
+
+  const orderedBlocks = [...measure.blocks].sort(
+    (a, b) => a.position - b.position
+  );
+  const usedItemIds = new Set<string>();
+  const ordered: PublicItem[] = [];
+
+  for (const block of orderedBlocks) {
+    const blockItems = authoredItems.filter(
+      (item) => item.block_id === block.id
+    );
+
+    blockItems.forEach((item) => usedItemIds.add(item.id));
+
+    const shouldRandomize =
+      questionnaireRandomization || Boolean(block.randomize_items);
+
+    ordered.push(
+      ...(shouldRandomize
+        ? randomizeQuestionSegments(
+            blockItems,
+            `${sessionToken}:${measure.study_measure_id}:block:${block.id}`
+          )
+        : blockItems)
+    );
+  }
+
+  // Standardised/legacy questionnaires can have items without explicit blocks.
+  // Preserve them, and honour questionnaire-level randomisation when enabled.
+  const unblockedItems = authoredItems.filter(
+    (item) => !usedItemIds.has(item.id)
+  );
+
+  ordered.push(
+    ...(questionnaireRandomization
+      ? randomizeQuestionSegments(
+          unblockedItems,
+          `${sessionToken}:${measure.study_measure_id}:unblocked`
+        )
+      : unblockedItems)
+  );
+
+  return ordered;
+}
+
+function isStandaloneMediaContent(item: PublicItem) {
+  return (
+    item.is_content_only &&
+    ["image_content", "audio_content", "video_content"].includes(
+      item.response_type
+    )
+  );
+}
+
+function measureItemPages(
+  measure: PublicMeasure,
+  orderedItems: PublicItem[]
+) {
+  if (orderedItems.length === 0) {
+    return [[]] as PublicItem[][];
+  }
+
+  const blockById = new Map(
+    measure.blocks.map((block) => [block.id, block])
+  );
+  const pages: PublicItem[][] = [];
+  let currentPage: PublicItem[] = [];
+
+  const flushCurrentPage = () => {
+    if (currentPage.length === 0) return;
+    pages.push(currentPage);
+    currentPage = [];
+  };
+
+  orderedItems.forEach((item, index) => {
+    // Standalone image/audio/video content is an authored participant step,
+    // not merely decoration. Give it its own page so it cannot be collapsed
+    // into an adjacent question block or effectively skipped by pagination.
+    // Media attached to a normal question is NOT content-only and therefore
+    // remains on the same page as that question.
+    if (isStandaloneMediaContent(item)) {
+      flushCurrentPage();
+      pages.push([item]);
+      return;
+    }
+
+    currentPage.push(item);
+
+    const block = item.block_id
+      ? blockById.get(item.block_id) || null
+      : null;
+    const nextItem = orderedItems[index + 1];
+    const nextBlockId = nextItem?.block_id || null;
+    const leavingBlock = Boolean(
+      block && block.id !== nextBlockId
+    );
+
+    if (leavingBlock && block?.page_break_after) {
+      flushCurrentPage();
+    }
+  });
+
+  flushCurrentPage();
+
+  return pages.length > 0 ? pages : ([[]] as PublicItem[][]);
+}
+
 function deterministicOptions(
   item: PublicItem,
   sessionToken: string
@@ -430,12 +759,7 @@ function deterministicOptions(
 
   if (!shouldRandomize || options.length < 2) return options;
 
-  let seed = 0;
-  const seedText = `${sessionToken}:${item.id}`;
-
-  for (let index = 0; index < seedText.length; index += 1) {
-    seed = (seed * 31 + seedText.charCodeAt(index)) >>> 0;
-  }
+  const seed = deterministicSeed(`${sessionToken}:${item.id}`);
 
   return options
     .map((option, index) => ({
@@ -457,6 +781,7 @@ function responseHasValue(value: AnswerValue | undefined) {
 
 function scalarNumericValue(value: AnswerValue | undefined) {
   if (typeof value === "number" && Number.isFinite(value)) return value;
+  if (typeof value === "boolean") return value ? 1 : 0;
 
   if (typeof value === "string") {
     const parsed = Number(value);
@@ -508,32 +833,484 @@ function rawScoreForItem(
   return null;
 }
 
+function median(values: number[]) {
+  if (values.length === 0) return null;
+
+  const sorted = [...values].sort((a, b) => a - b);
+  const middle = Math.floor(sorted.length / 2);
+
+  return sorted.length % 2 === 0
+    ? (sorted[middle - 1] + sorted[middle]) / 2
+    : sorted[middle];
+}
+
+function optionWeightForValue(
+  item: PublicItem,
+  value: string | number | boolean
+) {
+  const option = (item.response_options || []).find(
+    (candidate) => String(candidate.value) === String(value)
+  );
+  const parsed = Number(option?.weight ?? 1);
+  return Number.isFinite(parsed) ? parsed : 1;
+}
+
+function weightedScoreForItem(
+  item: PublicItem,
+  value: AnswerValue | undefined
+) {
+  if (Array.isArray(value)) {
+    let found = false;
+    let total = 0;
+
+    for (const entry of value) {
+      const numeric = Number(entry);
+      if (!Number.isFinite(numeric)) continue;
+
+      found = true;
+      total += numeric * optionWeightForValue(item, entry);
+    }
+
+    return found ? total : null;
+  }
+
+  const raw = rawScoreForItem(item, value);
+  if (raw === null) return null;
+
+  if (
+    typeof value === "string" ||
+    typeof value === "number" ||
+    typeof value === "boolean"
+  ) {
+    return raw * optionWeightForValue(item, value);
+  }
+
+  return raw;
+}
+
+function possibleMaximumForItem(item: PublicItem) {
+  if (item.response_type === "thurstone") {
+    const weight = Number(
+      (item.scoring_config as { thurstone_weight?: number })
+        ?.thurstone_weight
+    );
+    return Number.isFinite(weight) ? Math.max(0, weight) : null;
+  }
+
+  const numericOptions = (item.response_options || [])
+    .map((option) => Number(option.value))
+    .filter((value) => Number.isFinite(value));
+
+  if (numericOptions.length > 0) {
+    if (["multiple_choice", "checklist"].includes(item.response_type)) {
+      const positive = numericOptions.filter((value) => value > 0);
+      return positive.length > 0
+        ? positive.reduce((sum, value) => sum + value, 0)
+        : Math.max(...numericOptions);
+    }
+
+    return Math.max(...numericOptions);
+  }
+
+  const configuredMax = Number(
+    (item.response_config as { max?: number | string | null })?.max
+  );
+
+  return Number.isFinite(configuredMax) ? configuredMax : null;
+}
+
+function responseIsEndorsed(value: AnswerValue | undefined) {
+  if (typeof value === "boolean") return value;
+  if (typeof value === "number") return value > 0;
+
+  if (typeof value === "string") {
+    const numeric = Number(value);
+    if (Number.isFinite(numeric)) return numeric > 0;
+
+    const normalised = value.trim().toLowerCase();
+    return ["yes", "true", "endorsed", "selected"].includes(normalised);
+  }
+
+  if (Array.isArray(value)) return value.length > 0;
+  return false;
+}
+
+type ScoredMeasureItem = {
+  item: PublicItem;
+  score: number;
+  weightedScore: number;
+  maximum: number | null;
+  endorsement: number;
+  imputed: boolean;
+};
+
+type PreparedScoringData = {
+  entries: ScoredMeasureItem[];
+  eligibleItems: PublicItem[];
+  missingMethod: string;
+  prorationFactor: number;
+};
+
+function average(values: number[]) {
+  if (values.length === 0) return null;
+  return values.reduce((sum, value) => sum + value, 0) / values.length;
+}
+
+function itemCanProduceNumericScore(item: PublicItem) {
+  if (item.is_content_only) return false;
+  if (item.response_type === "thurstone") return true;
+
+  const numericOptions = (item.response_options || [])
+    .map((option) => Number(option.value))
+    .filter((value) => Number.isFinite(value));
+
+  if (numericOptions.length > 0) return true;
+
+  return [
+    "numeric_rating",
+    "slider",
+    "visual_analogue",
+    "star_rating",
+    "semantic_differential",
+    "integer",
+    "decimal",
+    "percentage",
+    "duration",
+  ].includes(item.response_type);
+}
+
+function scoredEntryForAnswer(
+  item: PublicItem,
+  value: AnswerValue | undefined
+): ScoredMeasureItem | null {
+  if (!responseHasValue(value)) return null;
+
+  const score = rawScoreForItem(item, value);
+  if (score === null || !Number.isFinite(score)) return null;
+
+  const weighted = weightedScoreForItem(item, value);
+
+  return {
+    item,
+    score,
+    weightedScore:
+      weighted !== null && Number.isFinite(weighted) ? weighted : score,
+    maximum: possibleMaximumForItem(item),
+    endorsement: responseIsEndorsed(value) ? 1 : 0,
+    imputed: false,
+  };
+}
+
+function prepareScoringData(
+  measure: PublicMeasure,
+  answers: Record<string, AnswerValue>
+): PreparedScoringData | null {
+  const eligibleItems = measure.items.filter(
+    (item) =>
+      !item.is_content_only &&
+      itemCanProduceNumericScore(item) &&
+      itemIsVisible(item, answers, measure.items)
+  );
+
+  if (eligibleItems.length === 0) {
+    return {
+      entries: [],
+      eligibleItems: [],
+      missingMethod: "available_items",
+      prorationFactor: 1,
+    };
+  }
+
+  const answeredEntries = eligibleItems
+    .map((item) => scoredEntryForAnswer(item, answers[item.id]))
+    .filter((entry): entry is ScoredMeasureItem => entry !== null);
+
+  const answeredIds = new Set(answeredEntries.map((entry) => entry.item.id));
+  const missingItems = eligibleItems.filter((item) => !answeredIds.has(item.id));
+
+  const missingMethod = String(
+    (measure.version.missing_data_config as { method?: string })?.method ||
+      "complete_case"
+  );
+
+  // A custom missing-data rule is documentation, not executable code. If there
+  // is no missing data, normal scoring remains safe; otherwise suppress scores.
+  if (missingMethod === "custom" && missingItems.length > 0) {
+    return null;
+  }
+
+  // This option is intentionally literal to the builder label: optional items
+  // may be absent, but a visible required scorable item blocks automatic score.
+  if (
+    missingMethod === "complete_case" &&
+    missingItems.some((item) => item.required)
+  ) {
+    return null;
+  }
+
+  const missingFraction = missingItems.length / eligibleItems.length;
+
+  if (missingMethod === "allow_10_percent" && missingFraction > 0.1 + 1e-9) {
+    return null;
+  }
+
+  if (missingMethod === "allow_20_percent" && missingFraction > 0.2 + 1e-9) {
+    return null;
+  }
+
+  if (missingMethod === "prorate_80_percent") {
+    const completionFraction = answeredEntries.length / eligibleItems.length;
+    if (completionFraction < 0.8 - 1e-9 || answeredEntries.length === 0) {
+      return null;
+    }
+
+    return {
+      entries: answeredEntries,
+      eligibleItems,
+      missingMethod,
+      prorationFactor: eligibleItems.length / answeredEntries.length,
+    };
+  }
+
+  if (missingMethod === "subscale_mean_imputation" && missingItems.length > 0) {
+    if (answeredEntries.length === 0) return null;
+
+    const imputedEntries: ScoredMeasureItem[] = [];
+
+    for (const item of missingItems) {
+      const subscale = item.subscale?.trim() || "";
+      const pool = subscale
+        ? answeredEntries.filter(
+            (entry) => entry.item.subscale?.trim() === subscale
+          )
+        : answeredEntries;
+
+      // A subscale mean cannot be inferred when that entire subscale is absent.
+      // Returning no automatic score is safer than silently borrowing another
+      // subscale's distribution.
+      if (pool.length === 0) return null;
+
+      const meanScore = average(pool.map((entry) => entry.score));
+      const meanWeighted = average(
+        pool.map((entry) => entry.weightedScore)
+      );
+      const meanEndorsement = average(
+        pool.map((entry) => entry.endorsement)
+      );
+
+      if (
+        meanScore === null ||
+        meanWeighted === null ||
+        meanEndorsement === null
+      ) {
+        return null;
+      }
+
+      imputedEntries.push({
+        item,
+        score: meanScore,
+        weightedScore: meanWeighted,
+        maximum: possibleMaximumForItem(item),
+        endorsement: meanEndorsement,
+        imputed: true,
+      });
+    }
+
+    return {
+      entries: [...answeredEntries, ...imputedEntries],
+      eligibleItems,
+      missingMethod,
+      prorationFactor: 1,
+    };
+  }
+
+  return {
+    entries: answeredEntries,
+    eligibleItems,
+    missingMethod,
+    prorationFactor: 1,
+  };
+}
+
 function calculateRawScores(
   measure: PublicMeasure,
   answers: Record<string, AnswerValue>
 ) {
-  const scores: Record<string, number> = {};
+  const method = String(measure.version.scoring_method || "sum");
 
-  for (const item of measure.items) {
-    if (item.is_content_only || !itemIsVisible(item, answers, measure.items)) {
-      continue;
+  // Researcher-entered formulas and calibrated IRT/Rasch models are stored as
+  // metadata only. Never eval arbitrary researcher text in a participant browser.
+  if (
+    method === "none" ||
+    method === "custom_formula" ||
+    method === "irt_rasch"
+  ) {
+    return {};
+  }
+
+  const prepared = prepareScoringData(measure, answers);
+  if (!prepared || prepared.entries.length === 0) return {};
+
+  const { entries, eligibleItems, missingMethod, prorationFactor } = prepared;
+
+  const multiplierRaw = Number(measure.version.score_multiplier ?? 1);
+  const multiplier = Number.isFinite(multiplierRaw) ? multiplierRaw : 1;
+  const result: Record<string, number> = {};
+
+  const write = (key: string, value: number | null) => {
+    if (value === null || !Number.isFinite(value)) return;
+    result[key] = Number((value * multiplier).toFixed(4));
+  };
+
+  const totalScores = entries.map((entry) => entry.score);
+  const weightedScores = entries.map((entry) => entry.weightedScore);
+  const subscaleNames = Array.from(
+    new Set(
+      eligibleItems
+        .map((item) => item.subscale?.trim() || "")
+        .filter(Boolean)
+    )
+  );
+
+  const entriesForSubscale = (name: string) =>
+    entries.filter((entry) => entry.item.subscale?.trim() === name);
+
+  const subscaleProrationFactor = (name: string) => {
+    if (missingMethod !== "prorate_80_percent") return 1;
+
+    const eligibleCount = eligibleItems.filter(
+      (item) => item.subscale?.trim() === name
+    ).length;
+    const answeredCount = entriesForSubscale(name).length;
+
+    if (eligibleCount === 0 || answeredCount === 0) return null;
+    return eligibleCount / answeredCount;
+  };
+
+  if (method === "mean") {
+    write("Total", average(totalScores));
+    return result;
+  }
+
+  if (method === "median") {
+    write("Total", median(totalScores));
+    return result;
+  }
+
+  if (method === "count_endorsed") {
+    write(
+      "Total",
+      entries.reduce((sum, entry) => sum + entry.endorsement, 0) *
+        prorationFactor
+    );
+    return result;
+  }
+
+  if (method === "percentage") {
+    const scorable = entries.filter(
+      (entry) => entry.maximum !== null && Number(entry.maximum) > 0
+    );
+    const maximum = scorable.reduce(
+      (sum, entry) => sum + Number(entry.maximum),
+      0
+    );
+    const achieved = scorable.reduce(
+      (sum, entry) => sum + entry.score,
+      0
+    );
+
+    write("Total", maximum > 0 ? (achieved / maximum) * 100 : null);
+    return result;
+  }
+
+  if (method === "weighted_sum") {
+    write(
+      "Total",
+      weightedScores.reduce((sum, value) => sum + value, 0) *
+        prorationFactor
+    );
+    return result;
+  }
+
+  if (method === "weighted_mean") {
+    write("Total", average(weightedScores));
+    return result;
+  }
+
+  if (method === "thurstone_median") {
+    // Missing-value imputation cannot establish that an unobserved statement was
+    // endorsed, so only actual endorsed responses enter a Thurstone median.
+    const endorsedValues = entries
+      .filter(
+        (entry) =>
+          entry.item.response_type === "thurstone" &&
+          !entry.imputed &&
+          entry.endorsement > 0
+      )
+      .map((entry) => entry.score);
+
+    write("Total", median(endorsedValues));
+    return result;
+  }
+
+  if (method === "subscale_sum" || method === "subscale_mean") {
+    if (subscaleNames.length === 0) {
+      const value =
+        method === "subscale_mean"
+          ? average(totalScores)
+          : totalScores.reduce((sum, score) => sum + score, 0) *
+            prorationFactor;
+      write("Total", value);
+      return result;
     }
 
-    const score = rawScoreForItem(item, answers[item.id]);
+    for (const name of subscaleNames) {
+      const group = entriesForSubscale(name).map((entry) => entry.score);
+      if (group.length === 0) continue;
 
-    if (score === null) continue;
+      const factor = subscaleProrationFactor(name);
+      if (factor === null) continue;
 
-    const key = item.subscale?.trim() || "Total";
-    scores[key] = (scores[key] || 0) + score;
+      const value =
+        method === "subscale_mean"
+          ? average(group)
+          : group.reduce((sum, score) => sum + score, 0) * factor;
+      write(name, value);
+    }
+
+    return result;
   }
 
-  const multiplier = Number(measure.version.score_multiplier || 1);
+  if (method === "total_and_subscales") {
+    write(
+      "Total",
+      totalScores.reduce((sum, value) => sum + value, 0) *
+        prorationFactor
+    );
 
-  for (const key of Object.keys(scores)) {
-    scores[key] = Number((scores[key] * multiplier).toFixed(4));
+    for (const name of subscaleNames) {
+      const group = entriesForSubscale(name);
+      if (group.length === 0) continue;
+
+      const factor = subscaleProrationFactor(name);
+      if (factor === null) continue;
+
+      write(
+        name,
+        group.reduce((sum, entry) => sum + entry.score, 0) * factor
+      );
+    }
+
+    return result;
   }
 
-  return scores;
+  // Default and explicit `sum`: always emit a true overall Total.
+  write(
+    "Total",
+    totalScores.reduce((sum, value) => sum + value, 0) *
+      prorationFactor
+  );
+  return result;
 }
 
 function makeResponseRows(
@@ -563,20 +1340,289 @@ function makeResponseRows(
     });
 }
 
+function privateStorageRef(value: unknown) {
+  return typeof value === "string" && value.startsWith("storage://");
+}
+
+function inferredMediaKind(
+  mimeType: string | null | undefined,
+  responseType: string,
+  url: string
+) {
+  const mime = String(mimeType || "").toLowerCase();
+  const lowerUrl = url.toLowerCase();
+
+  if (mime.startsWith("image/") || responseType === "image_content" || /\.(png|jpe?g|gif|webp|avif|svg)(\?|#|$)/.test(lowerUrl)) return "image";
+  if (mime.startsWith("audio/") || responseType === "audio_content" || /\.(mp3|wav|m4a|aac|ogg|flac)(\?|#|$)/.test(lowerUrl)) return "audio";
+  if (mime.startsWith("video/") || responseType === "video_content" || /\.(mp4|webm|mov|m4v|ogv)(\?|#|$)/.test(lowerUrl)) return "video";
+  return "link";
+}
+
+function StimulusMedia({
+  item,
+  storageRef,
+  mimeType,
+  sessionToken,
+  studyToken,
+  compact = false,
+}: {
+  item: PublicItem;
+  storageRef: string;
+  mimeType?: string | null;
+  sessionToken: string;
+  studyToken: string;
+  compact?: boolean;
+}) {
+  const [resolvedUrl, setResolvedUrl] = useState(
+    privateStorageRef(storageRef) ? "" : storageRef
+  );
+  const [loadingMedia, setLoadingMedia] = useState(privateStorageRef(storageRef));
+  const [mediaError, setMediaError] = useState("");
+
+  useEffect(() => {
+    let cancelled = false;
+
+    async function resolvePrivateMedia() {
+      if (!privateStorageRef(storageRef)) {
+        setResolvedUrl(storageRef);
+        setLoadingMedia(false);
+        setMediaError("");
+        return;
+      }
+
+      setLoadingMedia(true);
+      setMediaError("");
+
+      try {
+        const response = await fetch("/api/media/ticket", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            action: "participant_read",
+            sessionToken,
+            studyToken,
+            itemId: item.id,
+            storageRef,
+          }),
+        });
+
+        const result = (await response.json()) as {
+          ok?: boolean;
+          error?: string;
+          signedUrl?: string;
+        };
+
+        if (!response.ok || !result.ok || !result.signedUrl) {
+          throw new Error(result.error || "Could not load questionnaire media.");
+        }
+
+        if (!cancelled) setResolvedUrl(result.signedUrl);
+      } catch (error) {
+        if (!cancelled) {
+          setMediaError(error instanceof Error ? error.message : "Could not load questionnaire media.");
+        }
+      } finally {
+        if (!cancelled) setLoadingMedia(false);
+      }
+    }
+
+    void resolvePrivateMedia();
+    return () => {
+      cancelled = true;
+    };
+  }, [item.id, sessionToken, studyToken, storageRef]);
+
+  if (loadingMedia) {
+    return (
+      <div className={`rounded-xl border border-slate-200 bg-slate-50 text-xs text-slate-500 ${compact ? "p-3" : "p-4"}`}>
+        Loading media...
+      </div>
+    );
+  }
+
+  if (mediaError || !resolvedUrl) {
+    return (
+      <div className={`rounded-xl border border-amber-200 bg-amber-50 text-xs text-amber-800 ${compact ? "p-3" : "p-4"}`}>
+        {mediaError || "Media is unavailable."}
+      </div>
+    );
+  }
+
+  const kind = inferredMediaKind(mimeType, item.response_type, resolvedUrl);
+
+  if (kind === "image") {
+    return (
+      // eslint-disable-next-line @next/next/no-img-element
+      <img
+        src={resolvedUrl}
+        alt=""
+        className={compact
+          ? "max-h-44 w-full rounded-xl border border-slate-200 object-contain"
+          : "max-h-[520px] w-full rounded-2xl border border-slate-200 object-contain"}
+      />
+    );
+  }
+
+  if (kind === "audio") {
+    return <audio controls preload="metadata" className="w-full" src={resolvedUrl} />;
+  }
+
+  if (kind === "video") {
+    return (
+      <video
+        controls
+        preload="metadata"
+        className={compact
+          ? "max-h-52 w-full rounded-xl border border-slate-200"
+          : "max-h-[620px] w-full rounded-2xl border border-slate-200"}
+        src={resolvedUrl}
+      />
+    );
+  }
+
+  return (
+    <a
+      href={resolvedUrl}
+      target="_blank"
+      rel="noreferrer"
+      className="text-sm font-medium text-cyan-800 underline"
+    >
+      Open attached media
+    </a>
+  );
+}
+
 function QuestionInput({
   item,
   answer,
   onChange,
   sessionToken,
+  studyToken,
+  studyMeasureId,
 }: {
   item: PublicItem;
   answer: AnswerValue | undefined;
   onChange: (value: AnswerValue) => void;
   sessionToken: string;
+  studyToken: string;
+  studyMeasureId?: string;
+}) {
+  const mediaUrl = typeof item.media_config?.url === "string" ? item.media_config.url : "";
+
+  return (
+    <>
+      {!item.is_content_only && mediaUrl && (
+        <div className="mb-4">
+          <StimulusMedia
+            item={item}
+            storageRef={mediaUrl}
+            mimeType={item.media_config?.mime_type}
+            sessionToken={sessionToken}
+            studyToken={studyToken}
+          />
+        </div>
+      )}
+      <QuestionInputBody
+        item={item}
+        answer={answer}
+        onChange={onChange}
+        sessionToken={sessionToken}
+        studyToken={studyToken}
+        studyMeasureId={studyMeasureId}
+      />
+    </>
+  );
+}
+
+function QuestionInputBody({
+  item,
+  answer,
+  onChange,
+  sessionToken,
+  studyToken,
+  studyMeasureId,
+}: {
+  item: PublicItem;
+  answer: AnswerValue | undefined;
+  onChange: (value: AnswerValue) => void;
+  sessionToken: string;
+  studyToken: string;
+  studyMeasureId?: string;
 }) {
   const type = item.response_type;
   const options = deterministicOptions(item, sessionToken);
   const config = item.response_config || {};
+  const [uploadingFile, setUploadingFile] = useState(false);
+  const [uploadError, setUploadError] = useState("");
+  const [localUploadPreview, setLocalUploadPreview] = useState("");
+
+  async function uploadParticipantResponse(file: File) {
+    if (!studyMeasureId) {
+      setUploadError("File responses are not available in this questionnaire context yet.");
+      return;
+    }
+
+    setUploadingFile(true);
+    setUploadError("");
+
+    try {
+      const ticketResponse = await fetch("/api/media/ticket", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          action: "participant_upload",
+          sessionToken,
+          studyMeasureId,
+          itemId: item.id,
+          fileName: file.name,
+          fileSize: file.size,
+          contentType: file.type,
+        }),
+      });
+
+      const ticket = (await ticketResponse.json()) as {
+        ok?: boolean;
+        error?: string;
+        bucket?: string;
+        path?: string;
+        token?: string;
+        storage_ref?: string;
+      };
+
+      if (!ticketResponse.ok || !ticket.ok || !ticket.bucket || !ticket.path || !ticket.token || !ticket.storage_ref) {
+        throw new Error(ticket.error || "Could not prepare the file upload.");
+      }
+
+      const supabase = createClient();
+      const { error } = await supabase.storage
+        .from(ticket.bucket)
+        .uploadToSignedUrl(ticket.path, ticket.token, file, {
+          contentType: file.type || undefined,
+          cacheControl: "3600",
+        });
+
+      if (error) throw error;
+
+      if (localUploadPreview) URL.revokeObjectURL(localUploadPreview);
+      const shouldPreview = file.type.startsWith("image/") || file.type.startsWith("audio/") || file.type.startsWith("video/");
+      setLocalUploadPreview(shouldPreview ? URL.createObjectURL(file) : "");
+
+      onChange({
+        storage_ref: ticket.storage_ref,
+        bucket: ticket.bucket,
+        path: ticket.path,
+        name: file.name,
+        mime_type: file.type,
+        size: file.size,
+        uploaded_at: new Date().toISOString(),
+      });
+    } catch (error) {
+      console.error("Participant file upload failed:", error);
+      setUploadError(error instanceof Error ? error.message : "File upload failed.");
+    } finally {
+      setUploadingFile(false);
+    }
+  }
 
   if (item.is_content_only) {
     const mediaUrl =
@@ -596,12 +1642,7 @@ function QuestionInput({
       return (
         <div>
           <p className="mb-4 text-sm leading-6 text-slate-600">{item.prompt}</p>
-          {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img
-            src={mediaUrl}
-            alt=""
-            className="max-h-[520px] rounded-2xl border border-slate-200 object-contain"
-          />
+          <StimulusMedia item={item} storageRef={mediaUrl} mimeType={item.media_config?.mime_type || "image/*"} sessionToken={sessionToken} studyToken={studyToken} />
         </div>
       );
     }
@@ -610,7 +1651,7 @@ function QuestionInput({
       return (
         <div>
           <p className="mb-4 text-sm leading-6 text-slate-600">{item.prompt}</p>
-          <audio controls className="w-full" src={mediaUrl} />
+          <StimulusMedia item={item} storageRef={mediaUrl} mimeType={item.media_config?.mime_type || "audio/*"} sessionToken={sessionToken} studyToken={studyToken} />
         </div>
       );
     }
@@ -619,11 +1660,7 @@ function QuestionInput({
       return (
         <div>
           <p className="mb-4 text-sm leading-6 text-slate-600">{item.prompt}</p>
-          <video
-            controls
-            className="w-full rounded-2xl border border-slate-200"
-            src={mediaUrl}
-          />
+          <StimulusMedia item={item} storageRef={mediaUrl} mimeType={item.media_config?.mime_type || "video/*"} sessionToken={sessionToken} studyToken={studyToken} />
         </div>
       );
     }
@@ -665,7 +1702,19 @@ function QuestionInput({
                   : "border-slate-200 bg-white hover:border-slate-300"
               }`}
             >
-              {option.label}
+              {type === "image_choice" && option.media_url && (
+                <div className="mb-3">
+                  <StimulusMedia
+                    item={item}
+                    storageRef={option.media_url}
+                    mimeType={option.media_mime_type || "image/*"}
+                    sessionToken={sessionToken}
+                    studyToken={studyToken}
+                    compact
+                  />
+                </div>
+              )}
+              <span>{option.label}</span>
             </button>
           );
         })}
@@ -1133,15 +2182,75 @@ function QuestionInput({
       type
     )
   ) {
+    const accept =
+      type === "image_upload"
+        ? "image/*"
+        : type === "audio_response"
+          ? "audio/*"
+          : type === "video_response"
+            ? "video/*"
+            : ".pdf,.txt,.csv,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.rtf,image/*,audio/*,video/*";
+
+    const metadata =
+      answer && typeof answer === "object" && !Array.isArray(answer)
+        ? (answer as Record<string, string | number | boolean | string[]>)
+        : null;
+    const fileName = typeof metadata?.name === "string" ? metadata.name : "";
+    const mime = typeof metadata?.mime_type === "string" ? metadata.mime_type : "";
+
     return (
-      <div className="rounded-xl border border-amber-200 bg-amber-50 p-4">
-        <p className="text-sm font-medium text-amber-950">
-          Participant file storage is not enabled yet.
-        </p>
-        <p className="mt-2 text-xs leading-5 text-amber-800">
-          This item type is defined by the Universal Builder, but secure
-          participant file upload requires the dedicated Study Uploads storage
-          stage. Do not deploy a live study with this item marked required yet.
+      <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
+        <div className="flex flex-wrap items-center gap-3">
+          <label className={`cursor-pointer rounded-xl px-4 py-2.5 text-sm font-semibold ${uploadingFile ? "bg-slate-300 text-slate-600" : "bg-slate-950 text-white hover:bg-slate-800"}`}>
+            {uploadingFile ? "Uploading..." : fileName ? "Replace file" : type === "audio_response" ? "Choose / record audio" : type === "video_response" ? "Choose / record video" : "Choose file"}
+            <input
+              type="file"
+              accept={accept}
+              disabled={uploadingFile}
+              className="hidden"
+              onChange={(event) => {
+                const file = event.target.files?.[0];
+                if (file) void uploadParticipantResponse(file);
+                event.currentTarget.value = "";
+              }}
+            />
+          </label>
+
+          {fileName && (
+            <>
+              <span className="max-w-full truncate text-xs text-emerald-700">✓ {fileName}</span>
+              <button
+                type="button"
+                onClick={() => {
+                  if (localUploadPreview) URL.revokeObjectURL(localUploadPreview);
+                  setLocalUploadPreview("");
+                  onChange(null);
+                }}
+                className="text-xs font-semibold text-red-700"
+              >
+                Remove
+              </button>
+            </>
+          )}
+        </div>
+
+        {uploadError && (
+          <p className="mt-3 text-xs leading-5 text-red-700">{uploadError}</p>
+        )}
+
+        {localUploadPreview && mime.startsWith("image/") && (
+          // eslint-disable-next-line @next/next/no-img-element
+          <img src={localUploadPreview} alt="" className="mt-4 max-h-72 rounded-xl border border-slate-200 object-contain" />
+        )}
+        {localUploadPreview && mime.startsWith("audio/") && (
+          <audio controls src={localUploadPreview} className="mt-4 w-full" />
+        )}
+        {localUploadPreview && mime.startsWith("video/") && (
+          <video controls src={localUploadPreview} className="mt-4 max-h-80 w-full rounded-xl border border-slate-200" />
+        )}
+
+        <p className="mt-3 text-xs leading-5 text-slate-500">
+          Files are uploaded to private study storage. The saved questionnaire response contains only private file metadata/path, not a public URL.
         </p>
       </div>
     );
@@ -1365,6 +2474,7 @@ export default function ParticipantStudyPage() {
 
   const [completedMeasureIds, setCompletedMeasureIds] = useState<string[]>([]);
   const [currentMeasureIndex, setCurrentMeasureIndex] = useState(0);
+  const [currentMeasurePage, setCurrentMeasurePage] = useState(0);
   const [measureAnswers, setMeasureAnswers] = useState<
     Record<string, AnswerValue>
   >({});
@@ -1522,13 +2632,59 @@ export default function ParticipantStudyPage() {
           });
 
         if (!resumeError && resumeData?.ok) {
-          setSessionToken(storedSession);
-          setPublicId(String(resumeData.public_id || ""));
-          setCompletedMeasureIds(
+          const resumedCompletedIds =
             Array.isArray(resumeData.completed_measure_ids)
               ? resumeData.completed_measure_ids.map(String)
-              : []
-          );
+              : [];
+
+          const resumedBaselineIds =
+            (studyPayload.measures || [])
+              .filter(
+                (measure) =>
+                  measure.measurement_point === "baseline"
+              )
+              .map(
+                (measure) =>
+                  String(measure.study_measure_id)
+              );
+
+          const resumedBaselineComplete =
+            resumedBaselineIds.length > 0 &&
+            resumedBaselineIds.every((id) =>
+              resumedCompletedIds.includes(id)
+            );
+
+          // TEST links are commonly reused while a questionnaire is being
+          // edited. Once the prior TEST baseline is complete, silently
+          // resuming that browser session makes the runner skip every
+          // already-completed study_measure_id — even when the questionnaire
+          // content has since changed. A completed TEST run therefore starts
+          // fresh on the next load instead of being silently resumed.
+          if (
+            studyPayload.link?.is_test_link &&
+            (resumeData.session_status === "completed" ||
+              resumedBaselineComplete)
+          ) {
+            window.localStorage.removeItem(
+              `psylattice-study-${token}`
+            );
+            setSessionToken("");
+            setPublicId("");
+            setCompletedMeasureIds([]);
+            setCurrentMeasureIndex(0);
+            setCurrentMeasurePage(0);
+            setMeasureAnswers({});
+            setConsentAnswers({});
+            setDemographicAnswers({});
+            setDemographicsSaved(false);
+            setPhase("landing");
+            setLoading(false);
+            return;
+          }
+
+          setSessionToken(storedSession);
+          setPublicId(String(resumeData.public_id || ""));
+          setCompletedMeasureIds(resumedCompletedIds);
 
           if (resumeData.session_status === "completed") {
             if (hasFollowupContact) {
@@ -1684,6 +2840,7 @@ export default function ParticipantStudyPage() {
 
     if (firstIncomplete >= 0) {
       setCurrentMeasureIndex(firstIncomplete);
+      setCurrentMeasurePage(0);
       setMeasureAnswers({});
     }
   }, [phase, completedMeasureIds.length]);
@@ -2268,6 +3425,18 @@ export default function ParticipantStudyPage() {
     }
 
     const newSessionToken = String(data.session_token);
+
+    // A new participation session must always begin with clean client-side
+    // questionnaire progress. This is especially important for reusable TEST
+    // links after a previous completed run.
+    setCompletedMeasureIds([]);
+    setCurrentMeasureIndex(0);
+    setCurrentMeasurePage(0);
+    setMeasureAnswers({});
+    setConsentAnswers({});
+    setDemographicAnswers({});
+    setDemographicsSaved(false);
+
     setSessionToken(newSessionToken);
     setPublicId(String(data.public_id || ""));
 
@@ -2462,22 +3631,33 @@ export default function ParticipantStudyPage() {
     setSavingDemographics(false);
   }
 
-  function validateMeasure(measure: PublicMeasure) {
+  function validateMeasure(
+    measure: PublicMeasure,
+    answers: Record<string, AnswerValue>,
+    itemsToValidate: PublicItem[] = measure.items
+  ) {
+    const itemIdsToValidate = new Set(
+      itemsToValidate.map((item) => item.id)
+    );
+
     for (const item of measure.items) {
+      if (!itemIdsToValidate.has(item.id)) {
+        continue;
+      }
       if (
         item.is_content_only ||
-        !itemIsVisible(item, measureAnswers, measure.items)
+        !itemIsVisible(item, answers, measure.items)
       ) {
         continue;
       }
 
-      if (item.required && !responseHasValue(measureAnswers[item.id])) {
+      if (item.required && !responseHasValue(answers[item.id])) {
         return "Please answer every required question before continuing.";
       }
 
       if (["multiple_choice", "checklist"].includes(item.response_type)) {
-        const selected = Array.isArray(measureAnswers[item.id])
-          ? (measureAnswers[item.id] as Array<string | number>)
+        const selected = Array.isArray(answers[item.id])
+          ? (answers[item.id] as Array<string | number>)
           : [];
 
         const min = Number(item.response_config?.min_selections || 0);
@@ -2493,7 +3673,7 @@ export default function ParticipantStudyPage() {
       }
 
       if (item.response_type === "constant_sum") {
-        const value = measureAnswers[item.id];
+        const value = answers[item.id];
         const target = Number(item.response_config?.constant_sum_target || 100);
 
         if (value && typeof value === "object" && !Array.isArray(value)) {
@@ -2512,21 +3692,75 @@ export default function ParticipantStudyPage() {
     return "";
   }
 
+  function continueCurrentMeasurePage(
+    pageItems: PublicItem[],
+    activePageIndex: number,
+    pageCount: number
+  ) {
+    if (!currentMeasure) return;
+
+    const cleanAnswers = cleanHiddenMeasureAnswers(
+      currentMeasure,
+      measureAnswers
+    );
+    const validation = validateMeasure(
+      currentMeasure,
+      cleanAnswers,
+      pageItems
+    );
+
+    if (validation) {
+      setMeasureAnswers(cleanAnswers);
+      setPageError(validation);
+      return;
+    }
+
+    setMeasureAnswers(cleanAnswers);
+    setPageError("");
+
+    if (activePageIndex < pageCount - 1) {
+      setCurrentMeasurePage(activePageIndex + 1);
+
+      if (typeof window !== "undefined") {
+        window.scrollTo({ top: 0, behavior: "smooth" });
+      }
+
+      return;
+    }
+
+    void saveCurrentMeasure();
+  }
+
+  function returnToPreviousMeasurePage(activePageIndex: number) {
+    setPageError("");
+    setCurrentMeasurePage(Math.max(0, activePageIndex - 1));
+
+    if (typeof window !== "undefined") {
+      window.scrollTo({ top: 0, behavior: "smooth" });
+    }
+  }
+
   async function saveCurrentMeasure() {
     if (!currentMeasure || !sessionToken || savingMeasure) return;
 
-    const validation = validateMeasure(currentMeasure);
+    const cleanAnswers = cleanHiddenMeasureAnswers(
+      currentMeasure,
+      measureAnswers
+    );
+    const validation = validateMeasure(currentMeasure, cleanAnswers);
 
     if (validation) {
+      setMeasureAnswers(cleanAnswers);
       setPageError(validation);
       return;
     }
 
     setSavingMeasure(true);
     setPageError("");
+    setMeasureAnswers(cleanAnswers);
 
-    const responses = makeResponseRows(currentMeasure, measureAnswers);
-    const scores = calculateRawScores(currentMeasure, measureAnswers);
+    const responses = makeResponseRows(currentMeasure, cleanAnswers);
+    const scores = calculateRawScores(currentMeasure, cleanAnswers);
 
     const supabase = createClient();
 
@@ -2589,6 +3823,7 @@ export default function ParticipantStudyPage() {
 
     if (nextIndex >= 0) {
       setCurrentMeasureIndex(nextIndex);
+      setCurrentMeasurePage(0);
       setSavingMeasure(false);
       return;
     }
@@ -2709,7 +3944,9 @@ export default function ParticipantStudyPage() {
               <p className="font-medium text-amber-950">Test participation</p>
               <p className="mt-1 text-sm leading-6 text-amber-800">
                 Responses submitted through this link are marked as TEST data
-                and should not be treated as study observations.
+                and should not be treated as study observations. After a TEST
+                baseline is completed, reopening this link starts a fresh test
+                run so edited questionnaires are not skipped as already complete.
               </p>
             </div>
           )}
@@ -4060,9 +5297,8 @@ export default function ParticipantStudyPage() {
                                                 }
                                               );
                                             }}
-                                            sessionToken={
-                                              sessionToken
-                                            }
+                                            sessionToken={sessionToken}
+                                            studyToken={token}
                                           />
                                         </div>
                                       </div>
@@ -4261,9 +5497,40 @@ export default function ParticipantStudyPage() {
       );
     }
 
-    const visibleItems = currentMeasure.items.filter((item) =>
-      itemIsVisible(item, measureAnswers, currentMeasure.items)
+    const orderedItems = deterministicMeasureItems(
+      currentMeasure,
+      sessionToken
     );
+    const authoredPages = measureItemPages(
+      currentMeasure,
+      orderedItems
+    );
+    const visiblePages = authoredPages
+      .map((pageItems) =>
+        pageItems.filter((item) =>
+          itemIsVisible(
+            item,
+            measureAnswers,
+            currentMeasure.items
+          )
+        )
+      )
+      .filter((pageItems) => pageItems.length > 0);
+    const renderedPages =
+      visiblePages.length > 0
+        ? visiblePages
+        : ([[]] as PublicItem[][]);
+    const activePageIndex = Math.min(
+      currentMeasurePage,
+      renderedPages.length - 1
+    );
+    const visibleItems = renderedPages[activePageIndex] || [];
+    const hasMultiplePages = renderedPages.length > 1;
+    const isFinalQuestionnairePage =
+      activePageIndex === renderedPages.length - 1;
+    const isStandaloneMediaPage =
+      visibleItems.length === 1 &&
+      isStandaloneMediaContent(visibleItems[0]);
 
     return (
       <Shell>
@@ -4283,6 +5550,9 @@ export default function ParticipantStudyPage() {
                 {baselineMeasures.length}
               </span>
               <span>
+                {hasMultiplePages
+                  ? `Page ${activePageIndex + 1} of ${renderedPages.length} · `
+                  : ""}
                 {completedMeasureIds.length} completed
               </span>
             </div>
@@ -4323,6 +5593,25 @@ export default function ParticipantStudyPage() {
                 <p className="mt-1 text-sm leading-6 text-slate-600">
                   {currentMeasure.version.response_scale_description}
                 </p>
+              </div>
+            )}
+
+            {hasMultiplePages && (
+              <div className="mb-6 rounded-2xl border border-cyan-100 bg-cyan-50/50 p-4">
+                <div className="flex items-center justify-between gap-4 text-xs font-medium text-cyan-900">
+                  <span>Questionnaire page {activePageIndex + 1}</span>
+                  <span>{renderedPages.length} pages</span>
+                </div>
+                <div className="mt-3 h-1.5 overflow-hidden rounded-full bg-cyan-100">
+                  <div
+                    className="h-full rounded-full bg-cyan-700"
+                    style={{
+                      width: `${Math.round(
+                        ((activePageIndex + 1) / renderedPages.length) * 100
+                      )}%`,
+                    }}
+                  />
+                </div>
               </div>
             )}
 
@@ -4399,12 +5688,16 @@ export default function ParticipantStudyPage() {
                           }}
                           answer={measureAnswers[item.id]}
                           onChange={(value) =>
-                            setMeasureAnswers((previous) => ({
-                              ...previous,
-                              [item.id]: value,
-                            }))
+                            setMeasureAnswers((previous) =>
+                              cleanHiddenMeasureAnswers(currentMeasure, {
+                                ...previous,
+                                [item.id]: value,
+                              })
+                            )
                           }
                           sessionToken={sessionToken}
+                          studyToken={token}
+                          studyMeasureId={currentMeasure.study_measure_id}
                         />
                       </div>
                     </div>
@@ -4414,23 +5707,49 @@ export default function ParticipantStudyPage() {
             </div>
 
             <div className="mt-8 flex flex-wrap items-center justify-between gap-3 border-t border-slate-100 pt-5">
-              <p className="text-xs leading-5 text-slate-400">
-                Your responses are saved when you continue to the next
-                questionnaire.
+              <p className="max-w-xl text-xs leading-5 text-slate-400">
+                {hasMultiplePages
+                  ? "Your answers stay on this device while you move between questionnaire pages and are submitted after the final page."
+                  : "Your responses are submitted when you continue to the next questionnaire."}
               </p>
 
-              <button
-                type="button"
-                onClick={() => void saveCurrentMeasure()}
-                disabled={savingMeasure}
-                className="rounded-xl bg-slate-950 px-5 py-3 text-sm font-semibold text-white disabled:opacity-50"
-              >
-                {savingMeasure
-                  ? "Saving..."
-                  : currentMeasureIndex === baselineMeasures.length - 1
-                    ? "Submit questionnaires"
-                    : "Save & continue"}
-              </button>
+              <div className="flex flex-wrap items-center gap-2">
+                {activePageIndex > 0 && (
+                  <button
+                    type="button"
+                    onClick={() =>
+                      returnToPreviousMeasurePage(activePageIndex)
+                    }
+                    disabled={savingMeasure}
+                    className="rounded-xl border border-slate-200 bg-white px-5 py-3 text-sm font-semibold text-slate-700 disabled:opacity-50"
+                  >
+                    Previous page
+                  </button>
+                )}
+
+                <button
+                  type="button"
+                  onClick={() =>
+                    continueCurrentMeasurePage(
+                      visibleItems,
+                      activePageIndex,
+                      renderedPages.length
+                    )
+                  }
+                  disabled={savingMeasure}
+                  className="rounded-xl bg-slate-950 px-5 py-3 text-sm font-semibold text-white disabled:opacity-50"
+                >
+                  {savingMeasure
+                    ? "Saving..."
+                    : !isFinalQuestionnairePage
+                      ? isStandaloneMediaPage
+                        ? "Continue"
+                        : "Next page"
+                      : currentMeasureIndex === baselineMeasures.length - 1
+                        ? "Submit questionnaires"
+                        : "Save & continue"}
+                </button>
+              </div>
             </div>
           </Card>
         </div>

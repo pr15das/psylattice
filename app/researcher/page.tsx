@@ -8638,6 +8638,7 @@ type ResearchDatasetType =
   | "participant_summary"
   | "demographics"
   | "questionnaire_responses"
+  | "participant_uploads"
   | "questionnaire_scores"
   | "consent"
   | "ambulatory_checkins"
@@ -8906,6 +8907,7 @@ const researchDatasetLabels: Record<ResearchDatasetType, string> = {
   participant_summary: "Participant summary",
   demographics: "Demographics — long format",
   questionnaire_responses: "Questionnaire responses — long format",
+  participant_uploads: "Participant uploads — files & media",
   questionnaire_scores: "Questionnaire scores — long format",
   consent: "Consent records",
   ambulatory_checkins: "Ambulatory check-ins — one row per check-in",
@@ -8935,6 +8937,74 @@ function researchShortValue(value: unknown, maxLength = 90) {
 
   if (text.length <= maxLength) return text;
   return `${text.slice(0, maxLength - 1)}…`;
+}
+
+const researchParticipantUploadTypes = new Set([
+  "file_upload",
+  "image_upload",
+  "audio_response",
+  "video_response",
+]);
+
+type ResearchParticipantUploadMetadata = {
+  storageRef: string;
+  bucket: string;
+  path: string;
+  name: string;
+  mimeType: string;
+  size: number | null;
+  uploadedAt: string;
+};
+
+function researchParticipantUploadMetadata(
+  response: unknown
+): ResearchParticipantUploadMetadata | null {
+  if (!response || typeof response !== "object" || Array.isArray(response)) {
+    return null;
+  }
+
+  const record = response as Record<string, unknown>;
+  const storageRef =
+    typeof record.storage_ref === "string" ? record.storage_ref.trim() : "";
+  const bucket = typeof record.bucket === "string" ? record.bucket.trim() : "";
+  const path = typeof record.path === "string" ? record.path.trim() : "";
+  const name = typeof record.name === "string" ? record.name.trim() : "";
+  const mimeType =
+    typeof record.mime_type === "string" ? record.mime_type.trim() : "";
+  const uploadedAt =
+    typeof record.uploaded_at === "string" ? record.uploaded_at.trim() : "";
+  const rawSize = record.size;
+  const size =
+    typeof rawSize === "number" && Number.isFinite(rawSize)
+      ? rawSize
+      : typeof rawSize === "string" && Number.isFinite(Number(rawSize))
+        ? Number(rawSize)
+        : null;
+
+  if (!storageRef || !storageRef.startsWith("storage://study-uploads/")) {
+    return null;
+  }
+
+  return {
+    storageRef,
+    bucket,
+    path,
+    name: name || "Participant upload",
+    mimeType,
+    size,
+    uploadedAt,
+  };
+}
+
+function researchFormatBytes(value: unknown) {
+  const bytes = Number(value);
+  if (!Number.isFinite(bytes) || bytes < 0) return "—";
+  if (bytes < 1024) return `${Math.round(bytes)} B`;
+  if (bytes < 1024 * 1024) return `${Math.round((bytes / 1024) * 10) / 10} KB`;
+  if (bytes < 1024 * 1024 * 1024) {
+    return `${Math.round((bytes / (1024 * 1024)) * 10) / 10} MB`;
+  }
+  return `${Math.round((bytes / (1024 * 1024 * 1024)) * 10) / 10} GB`;
 }
 
 function researchSafeVariable(value: string) {
@@ -10491,6 +10561,59 @@ function researchBuildRows(
       });
   }
 
+  if (datasetType === "participant_uploads") {
+    return bundle.responses
+      .filter((response) => participantIds.has(response.participant_id))
+      .flatMap((response) => {
+        const participant = researchParticipantForId(
+          bundle,
+          response.participant_id
+        );
+        const measure = researchMeasureForId(
+          bundle,
+          response.study_measure_id
+        );
+        const questionnaire = researchQuestionnaireForMeasure(
+          bundle,
+          measure || undefined
+        );
+        const item = researchItemForResponse(bundle, response);
+        const upload = researchParticipantUploadMetadata(response.response);
+
+        if (
+          !participant ||
+          !measure ||
+          !questionnaire ||
+          !item ||
+          !researchParticipantUploadTypes.has(item.response_type) ||
+          !upload
+        ) {
+          return [];
+        }
+
+        return [
+          {
+            participant: identityMap.get(participant.id) || "",
+            is_test: participant.is_test,
+            phase: researchMeasurePhaseDisplay(bundle, measure),
+            questionnaire: questionnaire.name,
+            acronym: questionnaire.acronym || "",
+            item_key: item.item_key || `item_${item.position}`,
+            item_prompt: item.prompt,
+            response_type: item.response_type,
+            file_name: upload.name,
+            mime_type: upload.mimeType || "unknown",
+            size_bytes: upload.size ?? "",
+            uploaded_at: upload.uploadedAt || response.answered_at,
+            answered_at: response.answered_at,
+            response_id: response.id,
+            measure_session_id: response.measure_session_id,
+            item_id: response.item_id,
+          },
+        ];
+      });
+  }
+
   if (datasetType === "questionnaire_scores") {
     const rows: ResearchTableRow[] = [];
 
@@ -11095,6 +11218,32 @@ function researchBuildCodebook(
     }
 
     return rows;
+  }
+
+  if (datasetType === "participant_uploads") {
+    return [
+      ["participant", "Participant", "text", "participant", "Pseudonymous or export-scoped anonymous participant identifier."],
+      ["is_test", "Test participation flag", "boolean", "participant", "TRUE identifies test participation."],
+      ["phase", "Study phase", "text", "study measure", "Baseline or follow-up phase/wave."],
+      ["questionnaire", "Questionnaire", "text", "questionnaire", "Questionnaire containing the upload item."],
+      ["acronym", "Questionnaire acronym", "text", "questionnaire", "Blank when no acronym is configured."],
+      ["item_key", "Item key", "text", "questionnaire item", "Stable item key inside the questionnaire version."],
+      ["item_prompt", "Item prompt", "text", "questionnaire item", "Prompt shown to the participant."],
+      ["response_type", "Upload response type", "text", "questionnaire item", "file_upload, image_upload, audio_response, or video_response."],
+      ["file_name", "Original file name", "text", "participant upload metadata", "Participant-supplied filename stored with the private upload reference."],
+      ["mime_type", "MIME type", "text", "participant upload metadata", "Browser-reported media/file MIME type."],
+      ["size_bytes", "File size (bytes)", "number", "participant upload metadata", "Stored upload size in bytes."],
+      ["uploaded_at", "Upload timestamp", "datetime", "participant upload metadata", "Client upload timestamp stored with the response."],
+      ["answered_at", "Response saved at", "datetime", "research_responses", "Database timestamp when the questionnaire response was stored."],
+      ["measure_session_id", "Questionnaire session ID", "text", "research_responses", "Used internally to bind secure researcher file access to the exact stored response."],
+      ["item_id", "Questionnaire item ID", "text", "research_responses", "Used internally to bind secure researcher file access to the exact stored response."],
+    ].map(([variable, label, type, source, notes]) => ({
+      variable,
+      label,
+      type,
+      source,
+      notes,
+    }));
   }
 
   if (datasetType === "questionnaire_scores") {
@@ -12036,6 +12185,195 @@ function DataDashboard({
   );
 }
 
+function ResearchParticipantUploadActions({
+  responseId,
+  fileName,
+  mimeType,
+  sizeBytes,
+}: {
+  responseId: string;
+  fileName: string;
+  mimeType: string;
+  sizeBytes: unknown;
+}) {
+  const [opening, setOpening] = useState(false);
+  const [downloading, setDownloading] = useState(false);
+  const [error, setError] = useState("");
+  const [preview, setPreview] = useState<{
+    url: string;
+    name: string;
+    mimeType: string;
+  } | null>(null);
+
+  async function requestFile(disposition: "view" | "download") {
+    const supabase = createClient();
+    const {
+      data: { session },
+    } = await supabase.auth.getSession();
+
+    if (!session?.access_token) {
+      throw new Error("Your researcher session has expired. Please sign in again.");
+    }
+
+    const response = await fetch("/api/media/ticket", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${session.access_token}`,
+      },
+      body: JSON.stringify({
+        action: "researcher_participant_read",
+        responseId,
+        disposition,
+      }),
+    });
+
+    const result = (await response.json()) as {
+      ok?: boolean;
+      error?: string;
+      signedUrl?: string;
+      name?: string;
+      mimeType?: string;
+    };
+
+    if (!response.ok || !result.ok || !result.signedUrl) {
+      throw new Error(result.error || "Could not open this participant upload.");
+    }
+
+    return {
+      url: result.signedUrl,
+      name: result.name || fileName || "Participant upload",
+      mimeType: result.mimeType || mimeType || "",
+    };
+  }
+
+  async function openPreview() {
+    if (opening) return;
+    setOpening(true);
+    setError("");
+
+    try {
+      const file = await requestFile("view");
+      const canPreviewInline =
+        file.mimeType.startsWith("image/") ||
+        file.mimeType.startsWith("audio/") ||
+        file.mimeType.startsWith("video/") ||
+        file.mimeType === "application/pdf";
+
+      if (canPreviewInline) {
+        setPreview(file);
+      } else {
+        window.open(file.url, "_blank", "noopener,noreferrer");
+      }
+    } catch (error) {
+      setError(error instanceof Error ? error.message : "Could not open this file.");
+    } finally {
+      setOpening(false);
+    }
+  }
+
+  async function downloadFile() {
+    if (downloading) return;
+    setDownloading(true);
+    setError("");
+
+    try {
+      const file = await requestFile("download");
+      const anchor = document.createElement("a");
+      anchor.href = file.url;
+      anchor.rel = "noopener noreferrer";
+      document.body.appendChild(anchor);
+      anchor.click();
+      anchor.remove();
+    } catch (error) {
+      setError(error instanceof Error ? error.message : "Could not download this file.");
+    } finally {
+      setDownloading(false);
+    }
+  }
+
+  return (
+    <>
+      <div className="min-w-[220px]">
+        <p className="max-w-[260px] truncate text-xs font-medium text-slate-800" title={fileName}>
+          {fileName || "Participant upload"}
+        </p>
+        <p className="mt-1 text-[11px] text-slate-400">
+          {mimeType || "Unknown type"} · {researchFormatBytes(sizeBytes)}
+        </p>
+        <div className="mt-2 flex flex-wrap gap-2">
+          <button
+            type="button"
+            onClick={() => void openPreview()}
+            disabled={opening || downloading}
+            className="rounded-lg border border-slate-200 px-3 py-1.5 text-xs font-semibold text-slate-700 hover:border-cyan-300 hover:text-cyan-800 disabled:opacity-50"
+          >
+            {opening ? "Opening..." : "Preview"}
+          </button>
+          <button
+            type="button"
+            onClick={() => void downloadFile()}
+            disabled={opening || downloading}
+            className="rounded-lg bg-slate-950 px-3 py-1.5 text-xs font-semibold text-white disabled:opacity-50"
+          >
+            {downloading ? "Preparing..." : "Download"}
+          </button>
+        </div>
+        {error && (
+          <p className="mt-2 max-w-[280px] whitespace-normal text-[11px] leading-4 text-red-700">
+            {error}
+          </p>
+        )}
+      </div>
+
+      {preview && (
+        <div
+          className="fixed inset-0 z-[120] flex items-center justify-center bg-slate-950/70 p-4"
+          onClick={() => setPreview(null)}
+        >
+          <div
+            className="max-h-[92vh] w-full max-w-5xl overflow-auto rounded-2xl bg-white p-5 shadow-2xl"
+            onClick={(event) => event.stopPropagation()}
+          >
+            <div className="mb-4 flex items-start justify-between gap-4">
+              <div className="min-w-0">
+                <p className="truncate font-semibold text-slate-950">{preview.name}</p>
+                <p className="mt-1 text-xs text-slate-400">{preview.mimeType || "Participant upload"}</p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setPreview(null)}
+                className="rounded-lg border border-slate-200 px-3 py-1.5 text-xs font-semibold"
+              >
+                Close
+              </button>
+            </div>
+
+            {preview.mimeType.startsWith("image/") ? (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img
+                src={preview.url}
+                alt={preview.name}
+                className="mx-auto max-h-[75vh] max-w-full rounded-xl object-contain"
+              />
+            ) : preview.mimeType.startsWith("audio/") ? (
+              <audio controls src={preview.url} className="w-full" />
+            ) : preview.mimeType.startsWith("video/") ? (
+              <video controls src={preview.url} className="max-h-[75vh] w-full rounded-xl bg-black" />
+            ) : preview.mimeType === "application/pdf" ? (
+              <iframe
+                src={preview.url}
+                title={preview.name}
+                className="h-[75vh] w-full rounded-xl border border-slate-200"
+              />
+            ) : null}
+          </div>
+        </div>
+      )}
+    </>
+  );
+}
+
 /* =========================================================
    DATA EXPLORER
    ========================================================= */
@@ -12080,6 +12418,10 @@ function DataExplorer() {
   const columns = Array.from(
     new Set(displayedRows.flatMap((row) => Object.keys(row)))
   );
+  const displayColumns =
+    datasetType === "participant_uploads"
+      ? [...columns, "__file_actions"]
+      : columns;
 
   const codebook = researchBuildCodebook(
     bundle,
@@ -12091,7 +12433,7 @@ function DataExplorer() {
     <div className="space-y-5">
       <Panel
         title="Data Explorer"
-        description="Inspect real participant, demographic, questionnaire, score and consent records for one study."
+        description="Inspect real participant, demographic, questionnaire, score, consent and secure participant-upload records for one study."
       >
         <div className="grid gap-4 xl:grid-cols-[1fr_1fr]">
           <label>
@@ -12204,12 +12546,12 @@ function DataExplorer() {
             <table className="w-full min-w-max text-left text-sm">
               <thead className="border-b border-slate-100 text-xs text-slate-400">
                 <tr>
-                  {columns.map((column) => (
+                  {displayColumns.map((column) => (
                     <th
                       key={column}
                       className="whitespace-nowrap pb-3 pr-5 font-medium"
                     >
-                      {column}
+                      {column === "__file_actions" ? "File access" : column}
                     </th>
                   ))}
                 </tr>
@@ -12218,15 +12560,32 @@ function DataExplorer() {
               <tbody className="divide-y divide-slate-100">
                 {displayedRows.map((row, rowIndex) => (
                   <tr key={rowIndex}>
-                    {columns.map((column) => (
-                      <td
-                        key={column}
-                        className="max-w-[360px] whitespace-nowrap py-4 pr-5 text-slate-600"
-                        title={researchValueText(row[column])}
-                      >
-                        {researchShortValue(row[column], 70)}
-                      </td>
-                    ))}
+                    {displayColumns.map((column) => {
+                      if (column === "__file_actions") {
+                        return (
+                          <td key={column} className="py-4 pr-5 align-top">
+                            <ResearchParticipantUploadActions
+                              responseId={String(row.response_id || "")}
+                              fileName={String(row.file_name || "Participant upload")}
+                              mimeType={String(row.mime_type || "")}
+                              sizeBytes={row.size_bytes}
+                            />
+                          </td>
+                        );
+                      }
+
+                      return (
+                        <td
+                          key={column}
+                          className="max-w-[360px] whitespace-nowrap py-4 pr-5 text-slate-600"
+                          title={researchValueText(row[column])}
+                        >
+                          {column === "size_bytes"
+                            ? researchFormatBytes(row[column])
+                            : researchShortValue(row[column], 70)}
+                        </td>
+                      );
+                    })}
                   </tr>
                 ))}
               </tbody>

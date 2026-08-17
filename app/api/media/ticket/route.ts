@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
+import { createHash } from "node:crypto";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -143,7 +144,7 @@ function isAllowedParticipantMime(responseType: string, mime: string) {
   return false;
 }
 
-async function authenticatedResearcher(request: NextRequest) {
+async function authenticatedResearcherContext(request: NextRequest) {
   const token = bearerToken(request);
   if (!token) return null;
 
@@ -159,8 +160,8 @@ async function authenticatedResearcher(request: NextRequest) {
     );
   }
 
-  // Authenticate the researcher's bearer token with the normal public client.
-  // Keep the service-role client exclusively for privileged Storage operations.
+  // Use the researcher's own JWT for authorization-sensitive database reads.
+  // Those reads therefore obey the same RLS policies as Data Explorer itself.
   const authClient = createClient(supabaseUrl, publishableKey, {
     global: {
       headers: {
@@ -180,19 +181,12 @@ async function authenticatedResearcher(request: NextRequest) {
   } = await authClient.auth.getUser();
 
   if (error || !user) return null;
-  return user;
+  return { user, client: authClient };
 }
 
-async function activeParticipantSession(sessionToken: string) {
-  const supabase = adminClient();
-  const { data, error } = await supabase
-    .from("participant_sessions")
-    .select("id, participant_id, study_id, owner_user_id, status, phase")
-    .eq("session_token", sessionToken)
-    .maybeSingle();
-
-  if (error || !data || data.status !== "in_progress") return null;
-  return data;
+async function authenticatedResearcher(request: NextRequest) {
+  const context = await authenticatedResearcherContext(request);
+  return context?.user || null;
 }
 
 function referencedMediaValues(item: {
@@ -305,57 +299,236 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ ok: true, signedUrl: data.signedUrl });
     }
 
+
+    if (action === "researcher_participant_read") {
+      const researcher = await authenticatedResearcherContext(request);
+      if (!researcher) {
+        return jsonError(
+          "Researcher authentication is required. Please refresh the page and sign in again.",
+          401
+        );
+      }
+
+      const responseId = String(body.responseId || "").trim();
+      const disposition = body.disposition === "download" ? "download" : "view";
+
+      if (!responseId) {
+        return jsonError("The participant upload response could not be identified.");
+      }
+
+      // Authorize with the exact same authenticated/RLS path that Data Explorer
+      // uses. If this signed-in researcher cannot SELECT this response through
+      // RLS, the API refuses to sign the private file.
+      const { data: responseRow, error: responseError } = await researcher.client
+        .from("research_responses")
+        .select(
+          "id, measure_session_id, participant_id, study_id, study_measure_id, item_id, response"
+        )
+        .eq("id", responseId)
+        .maybeSingle();
+
+      if (responseError || !responseRow) {
+        return jsonError(
+          "This participant upload is not available to the signed-in researcher.",
+          403
+        );
+      }
+
+      // Do not perform a second questionnaire-item lookup here. Data Explorer
+      // has already identified this exact RLS-readable response as a participant
+      // upload from its stored response metadata. The secure file-access decision
+      // is therefore bound to the exact research_responses.id, the private
+      // storage://study-uploads reference saved in that row, and the study/measure/
+      // item identifiers encoded in the current participant-upload path. This
+      // avoids false negatives when questionnaire metadata/version visibility
+      // differs from the immutable stored research response.
+
+      const metadata =
+        responseRow.response &&
+        typeof responseRow.response === "object" &&
+        !Array.isArray(responseRow.response)
+          ? (responseRow.response as Record<string, unknown>)
+          : null;
+
+      const ref = parseStorageRef(metadata?.storage_ref);
+      const metadataBucket =
+        typeof metadata?.bucket === "string" ? metadata.bucket : "";
+      const metadataPath =
+        typeof metadata?.path === "string" ? metadata.path : "";
+      const fileName = safeName(
+        typeof metadata?.name === "string" ? metadata.name : "participant-upload.bin"
+      );
+      const mimeType = normaliseMime(metadata?.mime_type);
+      const rawSize = metadata?.size;
+      const size =
+        typeof rawSize === "number" && Number.isFinite(rawSize)
+          ? rawSize
+          : typeof rawSize === "string" && Number.isFinite(Number(rawSize))
+            ? Number(rawSize)
+            : null;
+
+      if (!ref || ref.bucket !== PARTICIPANT_BUCKET) {
+        return jsonError("The stored participant upload reference is invalid.", 403);
+      }
+
+      if (
+        (metadataBucket && metadataBucket !== ref.bucket) ||
+        (metadataPath && metadataPath !== ref.path)
+      ) {
+        return jsonError("The participant upload metadata is inconsistent.", 403);
+      }
+
+      // Current participant uploads intentionally do not expose participant IDs
+      // or raw session tokens in Storage paths. Validate the V9 path contract:
+      // study_id/sessions/<hashed-session>/study_measure_id/item_id/file
+      const expectedStudyPrefix = `${responseRow.study_id}/sessions/`;
+      const expectedMeasureItemSegment =
+        `/${responseRow.study_measure_id}/${responseRow.item_id}/`;
+
+      if (
+        !ref.path.startsWith(expectedStudyPrefix) ||
+        !ref.path.includes(expectedMeasureItemSegment)
+      ) {
+        return jsonError("The participant upload path does not match this response.", 403);
+      }
+
+      const { data, error } = await supabase.storage
+        .from(PARTICIPANT_BUCKET)
+        .createSignedUrl(
+          ref.path,
+          5 * 60,
+          disposition === "download" ? { download: fileName } : undefined
+        );
+
+      if (error || !data?.signedUrl) {
+        return jsonError(
+          error?.message || "Could not create secure participant file access.",
+          500
+        );
+      }
+
+      return NextResponse.json(
+        {
+          ok: true,
+          signedUrl: data.signedUrl,
+          name: fileName,
+          mimeType,
+          size,
+          expiresIn: 5 * 60,
+          disposition,
+        },
+        { headers: { "Cache-Control": "no-store" } }
+      );
+    }
+
     if (action === "participant_upload") {
-      const sessionToken = String(body.sessionToken || "");
-      const studyMeasureId = String(body.studyMeasureId || "");
-      const itemId = String(body.itemId || "");
+      const studyToken = String(body.studyToken || "").trim();
+      const sessionToken = String(body.sessionToken || "").trim();
+      const studyMeasureId = String(body.studyMeasureId || "").trim();
+      const itemId = String(body.itemId || "").trim();
       const fileName = safeName(String(body.fileName || "upload.bin"));
       const mime = normaliseMime(body.contentType);
       const fileSize = Number(body.fileSize || 0);
 
-      const session = await activeParticipantSession(sessionToken);
-      if (!session) return jsonError("This participant session is not active.", 401);
+      if (!studyToken || !sessionToken) {
+        return jsonError("The participant study session could not be verified.", 401);
+      }
 
-      const { data: measure, error: measureError } = await supabase
-        .from("study_measures")
-        .select("id, questionnaire_version_id")
-        .eq("id", studyMeasureId)
-        .eq("study_id", session.study_id)
-        .maybeSingle();
+      // IMPORTANT: use the same token/session contract as the participant
+      // runner instead of independently querying participant_sessions through
+      // the privileged client. This keeps upload authorization aligned with
+      // the exact RPCs the participant page already uses successfully.
+      const publicSupabase = publicRpcClient();
 
-      if (measureError || !measure) {
+      const [{ data: resumeData, error: resumeError }, { data: publicStudy, error: publicStudyError }] =
+        await Promise.all([
+          publicSupabase.rpc("psylattice_resume_participation", {
+            p_token: studyToken,
+            p_session_token: sessionToken,
+          }),
+          publicSupabase.rpc("psylattice_public_study", {
+            p_token: studyToken,
+          }),
+        ]);
+
+      if (
+        resumeError ||
+        !resumeData?.ok ||
+        String(resumeData.session_status || "") !== "in_progress"
+      ) {
+        return jsonError(
+          String(
+            resumeData?.error ||
+              resumeError?.message ||
+              "This participant session is not active."
+          ),
+          401
+        );
+      }
+
+      if (publicStudyError || !publicStudy?.ok) {
+        return jsonError(
+          String(
+            publicStudy?.error ||
+              publicStudyError?.message ||
+              "This study could not be verified."
+          ),
+          403
+        );
+      }
+
+      const studyId = String(publicStudy?.study?.id || "").trim();
+      const measures = Array.isArray(publicStudy?.measures)
+        ? publicStudy.measures
+        : [];
+
+      const measure = measures.find(
+        (candidate: { study_measure_id?: unknown }) =>
+          String(candidate?.study_measure_id || "") === studyMeasureId
+      );
+
+      if (!studyId || !measure) {
         return jsonError("This questionnaire is not part of the active study.", 403);
       }
 
-      const { data: item, error: itemError } = await supabase
-        .from("questionnaire_items")
-        .select("id, version_id, response_type")
-        .eq("id", itemId)
-        .eq("version_id", measure.questionnaire_version_id)
-        .maybeSingle();
+      const items = Array.isArray(measure?.items) ? measure.items : [];
+      const item = items.find(
+        (candidate: { id?: unknown }) => String(candidate?.id || "") === itemId
+      ) as { id?: unknown; response_type?: unknown } | undefined;
 
-      if (itemError || !item || !PARTICIPANT_RESPONSE_TYPES.has(item.response_type)) {
+      const responseType = String(item?.response_type || "");
+      if (!item || !PARTICIPANT_RESPONSE_TYPES.has(responseType)) {
         return jsonError("This question does not accept participant file uploads.", 403);
       }
 
       if (!Number.isFinite(fileSize) || fileSize <= 0) {
         return jsonError("The selected file is empty or invalid.");
       }
-      if (fileSize > participantMaxBytes(item.response_type)) {
+      if (fileSize > participantMaxBytes(responseType)) {
         return jsonError("The selected file is larger than the limit for this response type.");
       }
-      if (!isAllowedParticipantMime(item.response_type, mime)) {
+      if (!isAllowedParticipantMime(responseType, mime)) {
         return jsonError("That file type is not allowed for this response.");
       }
 
-      const path = `${session.study_id}/${session.participant_id}/${session.id}/${studyMeasureId}/${itemId}/${crypto.randomUUID()}-${fileName}`;
+      // Never put the raw participant session token in a Storage path.
+      const sessionFolder = createHash("sha256")
+        .update(sessionToken)
+        .digest("hex")
+        .slice(0, 24);
 
+      const path = `${studyId}/sessions/${sessionFolder}/${studyMeasureId}/${itemId}/${crypto.randomUUID()}-${fileName}`;
+
+      // Privileged client is used only for private Storage signing.
       const { data, error } = await supabase.storage
         .from(PARTICIPANT_BUCKET)
         .createSignedUploadUrl(path);
 
       if (error || !data?.token) {
-        return jsonError(error?.message || "Could not create the participant upload ticket.", 500);
+        return jsonError(
+          error?.message || "Could not create the participant upload ticket.",
+          500
+        );
       }
 
       return NextResponse.json({

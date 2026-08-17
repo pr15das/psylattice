@@ -4916,7 +4916,7 @@ function QuestionnaireLibrary({
       const message = error instanceof Error ? error.message : "Media upload failed.";
       setBuilderMediaUploadState((previous) => ({
         ...previous,
-        [uploadKey]: "",
+        [uploadKey]: `Error: ${message}`,
       }));
       setBuilderError(message);
     }
@@ -5907,21 +5907,46 @@ function QuestionnaireLibrary({
                                 {item.item_type === "image_choice" && (
                                   <div className="mt-3 rounded-xl bg-slate-50 p-3">
                                     <div className="flex flex-wrap items-center gap-3">
-                                      <label className="cursor-pointer rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-50">
-                                        {option.media_url ? "Replace option image" : "Upload option image"}
-                                        <input
-                                          type="file"
-                                          accept="image/*"
-                                          className="hidden"
-                                          onChange={(event) => {
-                                            const file = event.target.files?.[0];
-                                            if (file) void uploadBuilderMedia(file, item.id, option.id);
-                                            event.currentTarget.value = "";
-                                          }}
-                                        />
+                                      <label
+                                        htmlFor={`option-media-${item.id}-${option.id}`}
+                                        className={`cursor-pointer rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-50 ${
+                                          builderMediaUploadState[optionUploadKey] === "Uploading..."
+                                            ? "pointer-events-none opacity-60"
+                                            : ""
+                                        }`}
+                                      >
+                                        {builderMediaUploadState[optionUploadKey] === "Uploading..."
+                                          ? "Uploading image..."
+                                          : option.media_url
+                                            ? "Replace option image"
+                                            : "Upload option image"}
                                       </label>
+                                      <input
+                                        id={`option-media-${item.id}-${option.id}`}
+                                        type="file"
+                                        accept="image/*"
+                                        className="sr-only"
+                                        disabled={builderMediaUploadState[optionUploadKey] === "Uploading..."}
+                                        onChange={async (event) => {
+                                          const input = event.currentTarget;
+                                          const file = input.files?.[0];
+                                          if (!file) return;
+                                          await uploadBuilderMedia(file, item.id, option.id);
+                                          input.value = "";
+                                        }}
+                                      />
                                       {builderMediaUploadState[optionUploadKey] && (
-                                        <span className="text-xs text-slate-500">{builderMediaUploadState[optionUploadKey]}</span>
+                                        <span
+                                          className={`text-xs ${
+                                            builderMediaUploadState[optionUploadKey].startsWith("Error:")
+                                              ? "font-medium text-red-700"
+                                              : builderMediaUploadState[optionUploadKey] === "Uploaded"
+                                                ? "font-medium text-emerald-700"
+                                                : "text-slate-500"
+                                          }`}
+                                        >
+                                          {builderMediaUploadState[optionUploadKey]}
+                                        </span>
                                       )}
                                       {option.media_url && (
                                         <button
@@ -5979,23 +6004,50 @@ function QuestionnaireLibrary({
                             <p className="text-sm font-medium text-slate-800">{builderMediaLabel(item.item_type)}</p>
                             <p className="mt-1 text-xs leading-5 text-slate-500">Stored privately. Participants receive only a temporary signed viewing URL.</p>
                           </div>
-                          <label className="cursor-pointer rounded-xl bg-slate-950 px-4 py-2.5 text-xs font-semibold text-white hover:bg-slate-800">
-                            {item.media_url ? "Replace media" : "Upload media"}
+                          <div>
+                            <label
+                              htmlFor={`question-media-${item.id}`}
+                              className={`cursor-pointer rounded-xl bg-slate-950 px-4 py-2.5 text-xs font-semibold text-white hover:bg-slate-800 ${
+                                builderMediaUploadState[item.id] === "Uploading..."
+                                  ? "pointer-events-none opacity-60"
+                                  : ""
+                              }`}
+                            >
+                              {builderMediaUploadState[item.id] === "Uploading..."
+                                ? "Uploading media..."
+                                : item.media_url
+                                  ? "Replace media"
+                                  : "Upload media"}
+                            </label>
                             <input
+                              id={`question-media-${item.id}`}
                               type="file"
                               accept={builderMediaAccept(item.item_type)}
-                              className="hidden"
-                              onChange={(event) => {
-                                const file = event.target.files?.[0];
-                                if (file) void uploadBuilderMedia(file, item.id);
-                                event.currentTarget.value = "";
+                              className="sr-only"
+                              disabled={builderMediaUploadState[item.id] === "Uploading..."}
+                              onChange={async (event) => {
+                                const input = event.currentTarget;
+                                const file = input.files?.[0];
+                                if (!file) return;
+                                await uploadBuilderMedia(file, item.id);
+                                input.value = "";
                               }}
                             />
-                          </label>
+                          </div>
                         </div>
 
                         {builderMediaUploadState[item.id] && (
-                          <p className="mt-2 text-xs text-slate-500">{builderMediaUploadState[item.id]}</p>
+                          <p
+                            className={`mt-2 text-xs ${
+                              builderMediaUploadState[item.id].startsWith("Error:")
+                                ? "font-medium text-red-700"
+                                : builderMediaUploadState[item.id] === "Uploaded"
+                                  ? "font-medium text-emerald-700"
+                                  : "text-slate-500"
+                            }`}
+                          >
+                            {builderMediaUploadState[item.id]}
+                          </p>
                         )}
 
                         {builderMediaPreviews[item.id] && item.media_mime_type.startsWith("image/") && (

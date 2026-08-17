@@ -147,11 +147,37 @@ async function authenticatedResearcher(request: NextRequest) {
   const token = bearerToken(request);
   if (!token) return null;
 
-  const supabase = adminClient();
+  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+  const publishableKey =
+    process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY ||
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ||
+    process.env.NEXT_PUBLIC_SUPABASE_KEY;
+
+  if (!supabaseUrl || !publishableKey) {
+    throw new Error(
+      "A public Supabase key is not configured for researcher authentication."
+    );
+  }
+
+  // Authenticate the researcher's bearer token with the normal public client.
+  // Keep the service-role client exclusively for privileged Storage operations.
+  const authClient = createClient(supabaseUrl, publishableKey, {
+    global: {
+      headers: {
+        Authorization: `Bearer ${token}`,
+      },
+    },
+    auth: {
+      persistSession: false,
+      autoRefreshToken: false,
+      detectSessionInUrl: false,
+    },
+  });
+
   const {
     data: { user },
     error,
-  } = await supabase.auth.getUser(token);
+  } = await authClient.auth.getUser();
 
   if (error || !user) return null;
   return user;
@@ -200,7 +226,12 @@ export async function POST(request: NextRequest) {
 
     if (action === "researcher_upload") {
       const user = await authenticatedResearcher(request);
-      if (!user) return jsonError("Researcher authentication is required.", 401);
+      if (!user) {
+        return NextResponse.json(
+          { ok: false, stage: "researcher_auth", error: "Researcher authentication is required. Please refresh the page and sign in again." },
+          { status: 401 }
+        );
+      }
 
       const fileName = safeName(String(body.fileName || "upload.bin"));
       const mime = normaliseMime(body.contentType);
@@ -230,11 +261,19 @@ export async function POST(request: NextRequest) {
         .createSignedUploadUrl(path);
 
       if (error || !data?.token) {
-        return jsonError(error?.message || "Could not create the media upload ticket.", 500);
+        return NextResponse.json(
+          {
+            ok: false,
+            stage: "signed_upload_ticket",
+            error: error?.message || "Could not create the media upload ticket.",
+          },
+          { status: 500 }
+        );
       }
 
       return NextResponse.json({
         ok: true,
+        stage: "signed_upload_ticket",
         bucket: QUESTIONNAIRE_BUCKET,
         path,
         token: data.token,

@@ -9,6 +9,11 @@ import AccountSwitcher from "@/components/AccountSwitcher";
 import ClientAppointmentsWorkspace from "@/components/ClientAppointmentsWorkspace";
 import PsyLatticeMessagesWorkspace, { MessageUnreadBadge } from "@/components/PsyLatticeMessagesWorkspace";
 import AppointmentNotificationBadge from "@/components/AppointmentNotificationBadge";
+import UnifiedNotificationsCenter, {
+  UnifiedNotificationBadge,
+  UnifiedNotificationBell,
+  type UnifiedNotificationTargetParams,
+} from "@/components/UnifiedNotificationsCenter";
 import {
   AmbulatoryProtocolBuilder,
   ambulatoryResponseAnswered,
@@ -11122,70 +11127,26 @@ function Wearables() {
 
 function Notifications({
   onInvitationCountChange,
+  onNavigate,
 }: {
   onInvitationCountChange: (count: number) => void;
+  onNavigate: (
+    targetScreen: string,
+    targetParams: UnifiedNotificationTargetParams
+  ) => void | Promise<void>;
 }) {
   return (
     <div className="space-y-5">
+      {/* Invitation decisions remain explicit actions. Marking a notification
+          as read never accepts or declines a clinician connection. */}
       <ClinicianInvitations
         onCountChange={onInvitationCountChange}
       />
 
-      <Panel title="Your reminder rhythm">
-        <div className="divide-y divide-slate-100">
-          {[
-            ["Morning check-in", "One prompt between 08:00–10:00"],
-            ["Afternoon check-in", "One prompt between 15:00–17:00"],
-            ["Evening reflection", "20:30"],
-            ["Self-regulation reminder", "After a long study period"],
-          ].map(([title, description]) => (
-            <div
-              key={title}
-              className="flex items-center justify-between gap-5 py-4 first:pt-0 last:pb-0"
-            >
-              <div>
-                <p className="text-sm font-medium">{title}</p>
-                <p className="mt-1 text-xs text-slate-400">{description}</p>
-              </div>
-
-              <div className="relative h-6 w-11 rounded-full bg-cyan-700">
-                <div className="absolute right-1 top-1 h-4 w-4 rounded-full bg-white" />
-              </div>
-            </div>
-          ))}
-        </div>
-      </Panel>
-
-      <Panel title="Quiet hours">
-        <div className="grid gap-4 sm:grid-cols-2">
-          <label>
-            <span className="text-sm font-medium">Start</span>
-
-            <select className="mt-2 w-full rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm">
-              <option>22:30</option>
-              <option>23:00</option>
-            </select>
-          </label>
-
-          <label>
-            <span className="text-sm font-medium">End</span>
-
-            <select className="mt-2 w-full rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm">
-              <option>08:00</option>
-              <option>07:30</option>
-            </select>
-          </label>
-        </div>
-
-        <div className="mt-5 rounded-2xl bg-cyan-50 p-4">
-          <p className="font-medium text-cyan-950">Useful, not intrusive.</p>
-
-          <p className="mt-2 text-sm leading-6 text-cyan-900/70">
-            You remain in control of reminder timing, frequency and quiet
-            hours.
-          </p>
-        </div>
-      </Panel>
+      <UnifiedNotificationsCenter
+        workspace="self"
+        onNavigate={onNavigate}
+      />
     </div>
   );
 }
@@ -12300,6 +12261,41 @@ const [
     );
   }
 
+  async function openNotificationTarget(
+    targetScreen: string,
+    targetParams: UnifiedNotificationTargetParams
+  ) {
+    const allowedTargets = new Set<Screen>([
+      "dashboard",
+      "ai",
+      "assessments",
+      "monitoring",
+      "regulation",
+      "progress",
+      "wearables",
+      "appointments",
+      "messages",
+      "notifications",
+      "privacy",
+    ]);
+
+    if (
+      targetScreen === "dashboard" &&
+      typeof targetParams?.invitation_id === "string"
+    ) {
+      setScreen("notifications");
+      return;
+    }
+
+    const requestedScreen = allowedTargets.has(
+      targetScreen as Screen
+    )
+      ? (targetScreen as Screen)
+      : "notifications";
+
+    setScreen(requestedScreen);
+  }
+
   const activeNavigation = navigation.find(
     (item) => item.id === screen,
   )!;
@@ -12344,15 +12340,15 @@ const [
 
       case "messages":
         return <MessagesScreen />;
-
-     case "notifications":
-  return (
-    <Notifications
-      onInvitationCountChange={
-        setPendingClinicianInvitations
-      }
-    />
-  );
+      case "notifications":
+        return (
+          <Notifications
+            onInvitationCountChange={
+              setPendingClinicianInvitations
+            }
+            onNavigate={openNotificationTarget}
+          />
+        );
 
       case "privacy":
         return <Privacy />;
@@ -12397,7 +12393,7 @@ const [
         return "Secure, non-urgent messaging with your connected clinicians.";
 
       case "notifications":
-        return "Review clinician connection requests and manage PsyLattice reminders.";
+        return "Review clinician requests, assessments, monitoring, appointments and secure messages in one place.";
 
       case "privacy":
         return "Control your data and exactly what you choose to share.";
@@ -12420,52 +12416,53 @@ const [
   </p>
 </div>
 
-          {/* Desktop account controls */}
-
-          <div className="hidden items-center gap-3 sm:flex">
-            <span className="rounded-full bg-cyan-50 px-3 py-1.5 text-xs font-medium text-cyan-800">
-              For myself
-            </span>
-
-            <AccountSwitcher
-              initials={initials}
-              currentWorkspace="self"
-              title={fullName || "Switch workspace"}
+          <div className="flex items-center gap-2 sm:gap-3">
+            <UnifiedNotificationBell
+              workspace="self"
+              onClick={() => setScreen("notifications")}
             />
 
-            <button
-              type="button"
-              onClick={() => void handleSignOut()}
-              disabled={signingOut}
-              className="rounded-xl border border-slate-200 bg-white px-4 py-2 text-xs font-semibold text-slate-600 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50"
+            {/* Desktop account controls */}
+            <div className="hidden items-center gap-3 sm:flex">
+              <span className="rounded-full bg-cyan-50 px-3 py-1.5 text-xs font-medium text-cyan-800">
+                For myself
+              </span>
+
+              <AccountSwitcher
+                initials={initials}
+                currentWorkspace="self"
+                title={fullName || "Switch workspace"}
+              />
+
+              <button
+                type="button"
+                onClick={() => void handleSignOut()}
+                disabled={signingOut}
+                className="rounded-xl border border-slate-200 bg-white px-4 py-2 text-xs font-semibold text-slate-600 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                {signingOut ? "Signing out..." : "Sign out"}
+              </button>
+            </div>
+
+            {/* Mobile navigation */}
+            <select
+              value={screen}
+              onChange={(event) =>
+                setScreen(event.target.value as Screen)
+              }
+              className="max-w-[165px] rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm lg:hidden sm:max-w-[190px]"
             >
-              {signingOut ? "Signing out..." : "Sign out"}
-            </button>
+              {navigation.map((item) => (
+                <option key={item.id} value={item.id}>
+                  {item.label}
+                  {item.id === "monitoring" &&
+                  pendingMonitoringRequests > 0
+                    ? ` (${pendingMonitoringRequests})`
+                    : ""}
+                </option>
+              ))}
+            </select>
           </div>
-
-          {/* Mobile navigation */}
-
-          <select
-            value={screen}
-            onChange={(event) =>
-              setScreen(event.target.value as Screen)
-            }
-            className="max-w-[190px] rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm lg:hidden"
-          >
-            {navigation.map((item) => (
-              <option key={item.id} value={item.id}>
-  {item.label}
-  {item.id === "monitoring" &&
-  pendingMonitoringRequests > 0
-    ? ` (${pendingMonitoringRequests})`
-    : ""}
-  {item.id === "notifications" &&
-  pendingClinicianInvitations > 0
-    ? ` (${pendingClinicianInvitations})`
-    : ""}
-</option>
-            ))}
-          </select>
         </div>
       </header>
 
@@ -12536,7 +12533,7 @@ const [
         : "px-4"
     }`}
   >
-    {navigation.slice(0, 9).map((item) => {
+    {navigation.slice(0, 10).map((item) => {
       const active = item.id === screen;
 
       return (
@@ -12584,12 +12581,18 @@ const [
               )}
 
             {sidebarCollapsed &&
-  ((item.id === "notifications" &&
-    pendingClinicianInvitations > 0) ||
-    (item.id === "monitoring" &&
-      pendingMonitoringRequests > 0)) && (
-    <span className="absolute -right-1 -top-1 h-2.5 w-2.5 rounded-full border-2 border-white bg-cyan-700" />
-  )}
+              item.id === "notifications" && (
+                <UnifiedNotificationBadge
+                  workspace="self"
+                  compact
+                />
+              )}
+
+            {sidebarCollapsed &&
+              item.id === "monitoring" &&
+              pendingMonitoringRequests > 0 && (
+                <span className="absolute -right-1 -top-1 h-2.5 w-2.5 rounded-full border-2 border-white bg-cyan-700" />
+              )}
             {sidebarCollapsed ? (
               item.id === "dashboard" ? (
                 "D"
@@ -12657,14 +12660,11 @@ const [
         </span>
       )}
 
-    {item.id === "notifications" &&
-      pendingClinicianInvitations > 0 && (
-        <span className="flex min-w-5 items-center justify-center rounded-full bg-cyan-700 px-1.5 py-0.5 text-[10px] font-bold text-white">
-          {pendingClinicianInvitations > 9
-            ? "9+"
-            : pendingClinicianInvitations}
-        </span>
-      )}
+    {item.id === "notifications" && (
+      <UnifiedNotificationBadge
+        workspace="self"
+      />
+    )}
   </div>
 )}
         </button>

@@ -2069,34 +2069,34 @@ function WorkspaceTour() {
             <div className="pointer-events-none absolute inset-x-0 bottom-0 h-24 bg-gradient-to-t from-[#eef2f3] via-[#eef2f3]/60 to-transparent" />
 
             {/* Floating guide card restored: this was the preferred interaction. */}
-            <article className="psylattice-card-in absolute bottom-5 left-5 right-5 z-[80] rounded-2xl border border-slate-200 bg-white p-5 shadow-[0_18px_55px_rgba(15,23,42,0.20)] sm:left-auto sm:w-[390px] lg:bottom-7 lg:right-7 lg:p-6">
+            <article className="psylattice-card-in absolute bottom-5 left-5 right-5 z-[80] rounded-2xl border border-slate-800 bg-slate-950 p-5 text-white shadow-[0_22px_70px_rgba(2,6,23,0.38)] ring-1 ring-white/[0.04] sm:left-auto sm:w-[390px] lg:bottom-7 lg:right-7 lg:p-6">
               <div className="flex items-start justify-between gap-4">
                 <div className="min-w-0">
-                  <p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-cyan-800">{slide.eyebrow}</p>
-                  <h1 className="mt-1.5 text-xl font-semibold tracking-[-0.025em] text-slate-950 sm:text-2xl">{slide.title}</h1>
+                  <p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-cyan-300">{slide.eyebrow}</p>
+                  <h1 className="mt-1.5 text-xl font-semibold tracking-[-0.025em] text-white sm:text-2xl">{slide.title}</h1>
                 </div>
-                <span className="shrink-0 rounded-full bg-slate-100 px-2.5 py-1 text-[10px] font-semibold text-slate-500">{currentIndex + 1}/{config.slides.length}</span>
+                <span className="shrink-0 rounded-full border border-white/10 bg-white/[0.07] px-2.5 py-1 text-[10px] font-semibold text-slate-300">{currentIndex + 1}/{config.slides.length}</span>
               </div>
 
-              <p className="mt-3 text-sm leading-6 text-slate-600">{slide.description}</p>
+              <p className="mt-3 text-sm leading-6 text-slate-300">{slide.description}</p>
 
-              <div className="mt-4 rounded-xl border border-cyan-100 bg-cyan-50/70 px-3 py-2.5 text-[10px] leading-5 text-cyan-950">
+              <div className="mt-4 rounded-xl border border-cyan-700/40 bg-cyan-950/40 px-3 py-2.5 text-[10px] leading-5 text-cyan-100">
                 Try the demo: use the mini workspace sidebar or interact with the highlighted controls.
               </div>
 
-              {slide.note && <p className="mt-4 border-l-2 border-cyan-200 pl-3 text-[11px] leading-5 text-slate-500">{slide.note}</p>}
+              {slide.note && <p className="mt-4 border-l-2 border-cyan-500/70 pl-3 text-[11px] leading-5 text-slate-400">{slide.note}</p>}
 
-              <div className="mt-5 flex items-center justify-between gap-3 border-t border-slate-100 pt-4">
-                <button type="button" disabled={saving || isFirst} onClick={() => void savePosition(currentIndex - 1)} className="rounded-xl px-3 py-2 text-xs font-semibold text-slate-500 transition hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-25">
+              <div className="mt-5 flex items-center justify-between gap-3 border-t border-white/10 pt-4">
+                <button type="button" disabled={saving || isFirst} onClick={() => void savePosition(currentIndex - 1)} className="rounded-xl px-3 py-2 text-xs font-semibold text-slate-300 transition hover:bg-white/[0.07] hover:text-white disabled:cursor-not-allowed disabled:opacity-25">
                   ← Back
                 </button>
 
                 {!isLast ? (
-                  <button type="button" disabled={saving} onClick={() => void savePosition(currentIndex + 1)} className="rounded-xl bg-slate-950 px-4 py-2.5 text-xs font-semibold text-white transition hover:bg-slate-800 disabled:opacity-50">
+                  <button type="button" disabled={saving} onClick={() => void savePosition(currentIndex + 1)} className="rounded-xl bg-white px-4 py-2.5 text-xs font-semibold text-slate-950 transition hover:bg-slate-100 disabled:opacity-50">
                     {saving ? "Saving..." : "Next →"}
                   </button>
                 ) : (
-                  <button type="button" disabled={saving} onClick={() => void completeTour()} className="rounded-xl bg-cyan-900 px-4 py-2.5 text-xs font-semibold text-white transition hover:bg-cyan-800 disabled:opacity-50">
+                  <button type="button" disabled={saving} onClick={() => void completeTour()} className="rounded-xl bg-cyan-400 px-4 py-2.5 text-xs font-semibold text-slate-950 transition hover:bg-cyan-300 disabled:opacity-50">
                     {saving ? "Opening..." : `Enter ${config.shortLabel} →`}
                   </button>
                 )}

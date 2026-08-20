@@ -21,7 +21,6 @@ import {
   FlaskConical,
   HeartPulse,
   Layers3,
-  Link2,
   LockKeyhole,
   MessageSquare,
   Microscope,
@@ -35,17 +34,11 @@ import {
   Watch,
   Workflow,
   X,
-  BookOpen,
   Eye,
   Filter,
-  LayoutDashboard,
-  Lock,
-  MonitorSmartphone,
   MoreHorizontal,
   Plus,
-  RefreshCw,
   Send,
-  Settings2,
   type LucideIcon,
 } from "lucide-react";
 
@@ -2557,39 +2550,6 @@ const explorerNavigation: Record<ExplorerWorkspace, ExplorerNavGroup[]> = {
   ],
 };
 
-const explorerNavIcons: Record<string, React.ReactNode> = {
-  dashboard: <LayoutDashboard className="h-3.5 w-3.5" />,
-  ai: <Sparkles className="h-3.5 w-3.5" />,
-  assessments: <ClipboardList className="h-3.5 w-3.5" />,
-  monitoring: <Activity className="h-3.5 w-3.5" />,
-  regulation: <HeartPulse className="h-3.5 w-3.5" />,
-  progress: <BarChart3 className="h-3.5 w-3.5" />,
-  wearables: <MonitorSmartphone className="h-3.5 w-3.5" />,
-  appointments: <CalendarDays className="h-3.5 w-3.5" />,
-  messages: <MessageSquare className="h-3.5 w-3.5" />,
-  notifications: <BellRing className="h-3.5 w-3.5" />,
-  privacy: <ShieldCheck className="h-3.5 w-3.5" />,
-  studies: <BookOpen className="h-3.5 w-3.5" />,
-  "study-builder": <Workflow className="h-3.5 w-3.5" />,
-  questionnaires: <ClipboardList className="h-3.5 w-3.5" />,
-  ambulatory: <BellRing className="h-3.5 w-3.5" />,
-  followups: <RefreshCw className="h-3.5 w-3.5" />,
-  participants: <Users className="h-3.5 w-3.5" />,
-  "participant-links": <Link2 className="h-3.5 w-3.5" />,
-  "data-dashboard": <BarChart3 className="h-3.5 w-3.5" />,
-  "data-explorer": <Database className="h-3.5 w-3.5" />,
-  export: <FileDown className="h-3.5 w-3.5" />,
-  ethics: <ShieldCheck className="h-3.5 w-3.5" />,
-  team: <Users className="h-3.5 w-3.5" />,
-  clients: <Users className="h-3.5 w-3.5" />,
-  "client-overview": <LayoutDashboard className="h-3.5 w-3.5" />,
-  notes: <FileText className="h-3.5 w-3.5" />,
-  "care-pathway": <Workflow className="h-3.5 w-3.5" />,
-  reports: <FileText className="h-3.5 w-3.5" />,
-  permissions: <Lock className="h-3.5 w-3.5" />,
-  settings: <Settings2 className="h-3.5 w-3.5" />,
-};
-
 function SelfNotificationsView() {
   const [email, setEmail] = useState(true);
   const [appointment, setAppointment] = useState(true);
@@ -2733,7 +2693,32 @@ function ExactWorkspaceEnvironment({ workspace }: { workspace: ExplorerWorkspace
 
       <aside className={`absolute bottom-0 left-0 top-[74px] z-20 hidden overflow-y-auto border-r border-slate-200 bg-white p-3 transition-[width] duration-200 lg:block ${collapsed?"w-[76px]":"w-[250px]"}`}>
         <div className={`mb-4 flex ${collapsed?"justify-center":"justify-end"}`}><button onClick={()=>setCollapsed(v=>!v)} className="flex h-9 w-9 items-center justify-center rounded-xl border border-slate-200 bg-white text-lg font-semibold text-slate-500 hover:bg-slate-50">{collapsed?"›":"‹"}</button></div>
-        {navGroups.map((group,gi)=><div key={group.label} className={`mb-6 ${collapsed&&gi>0?"border-t border-slate-100 pt-4":""}`}>{!collapsed&&<p className="px-3 pb-2 text-[9px] font-semibold uppercase tracking-[.17em] text-slate-400">{group.label}</p>}<nav className="space-y-1">{group.items.map(item=>{const active=item.id===screen; return <button key={item.id} title={collapsed?item.title:undefined} onClick={()=>setScreen(item.id)} className={`flex w-full items-center rounded-xl py-2.5 text-[11px] transition ${collapsed?"justify-center px-2":"gap-3 px-3 text-left"} ${active?"bg-cyan-50 font-semibold text-cyan-900":"text-slate-500 hover:bg-slate-50 hover:text-slate-950"}`}><span className={active?"text-cyan-700":"text-slate-400"}>{explorerNavIcons[item.id]??<ChevronRight className="h-3.5 w-3.5"/>}</span>{!collapsed&&<span className="truncate">{item.title}</span>}</button>})}</nav></div>)}
+        {!collapsed &&
+          navGroups.map((group) => (
+            <div key={group.label} className="mb-6">
+              <p className="px-3 pb-2 text-[9px] font-semibold uppercase tracking-[.17em] text-slate-400">
+                {group.label}
+              </p>
+              <nav className="space-y-1">
+                {group.items.map((item) => {
+                  const active = item.id === screen;
+                  return (
+                    <button
+                      key={item.id}
+                      onClick={() => setScreen(item.id)}
+                      className={`block w-full rounded-xl px-3 py-2.5 text-left text-[11px] transition ${
+                        active
+                          ? "bg-cyan-50 font-semibold text-cyan-900"
+                          : "text-slate-500 hover:bg-slate-50 hover:text-slate-950"
+                      }`}
+                    >
+                      <span className="truncate">{item.title}</span>
+                    </button>
+                  );
+                })}
+              </nav>
+            </div>
+          ))}
       </aside>
 
       <section className={`absolute bottom-0 right-0 top-[74px] overflow-y-auto overscroll-contain p-4 pb-16 transition-[left] duration-200 sm:p-5 lg:p-7 ${collapsed?"lg:left-[76px]":"lg:left-[250px]"} left-0`}>

@@ -3,6 +3,20 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useRef, useState, type ReactNode } from "react";
+import {
+  Activity,
+  BarChart3,
+  Bell,
+  CalendarDays,
+  ClipboardCheck,
+  LayoutDashboard,
+  MessageSquare,
+  ShieldCheck,
+  Sparkles,
+  Target,
+  Watch,
+  type LucideIcon,
+} from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import PsyLatticeLogo from "@/components/PsyLatticeLogo";
 import AccountSwitcher from "@/components/AccountSwitcher";
@@ -58,6 +72,20 @@ const navigation: {
   { id: "notifications", label: "Notifications" },
   { id: "privacy", label: "Privacy & Sharing" },
 ];
+
+const sidebarIcons: Record<Screen, LucideIcon> = {
+  dashboard: LayoutDashboard,
+  ai: Sparkles,
+  assessments: ClipboardCheck,
+  monitoring: Activity,
+  regulation: Target,
+  progress: BarChart3,
+  wearables: Watch,
+  appointments: CalendarDays,
+  messages: MessageSquare,
+  notifications: Bell,
+  privacy: ShieldCheck,
+};
 
 function Icon({
   children,
@@ -12535,6 +12563,7 @@ const [
   >
     {navigation.slice(0, 10).map((item) => {
       const active = item.id === screen;
+      const NavIcon = sidebarIcons[item.id];
 
       return (
         <button
@@ -12557,16 +12586,18 @@ const [
           }`}
         >
           <span
-            className={`relative flex shrink-0 items-center justify-center ${
-              sidebarCollapsed
-                ? "h-8 w-8 rounded-lg text-[11px] font-semibold"
-                : ""
-            } ${
-              sidebarCollapsed && active
-                ? "bg-cyan-100 text-cyan-900"
-                : ""
+            className={`relative flex h-8 w-8 shrink-0 items-center justify-center rounded-lg ${
+              sidebarCollapsed && active ? "bg-cyan-100" : ""
             }`}
           >
+            <NavIcon
+              className={`h-[17px] w-[17px] ${
+                active ? "text-cyan-700" : "text-slate-400"
+              }`}
+              strokeWidth={1.8}
+              aria-hidden="true"
+            />
+
             {sidebarCollapsed &&
               item.id === "messages" && (
                 <MessageUnreadBadge compact />
@@ -12593,37 +12624,6 @@ const [
               pendingMonitoringRequests > 0 && (
                 <span className="absolute -right-1 -top-1 h-2.5 w-2.5 rounded-full border-2 border-white bg-cyan-700" />
               )}
-            {sidebarCollapsed ? (
-              item.id === "dashboard" ? (
-                "D"
-              ) : item.id === "ai" ? (
-                "AI"
-              ) : item.id === "assessments" ? (
-                "A"
-              ) : item.id === "monitoring" ? (
-                "M"
-              ) : item.id === "regulation" ? (
-                "R"
-              ) : item.id === "progress" ? (
-                "P"
-              ) : item.id === "wearables" ? (
-                "W"
-              ) : item.id === "appointments" ? (
-                "AP"
-              ) : item.id === "messages" ? (
-                "MS"
-              ) : (
-                "N"
-              )
-            ) : (
-              <span
-                className={`h-1.5 w-1.5 rounded-full ${
-                  active
-                    ? "bg-cyan-700"
-                    : "bg-slate-300"
-                }`}
-              />
-            )}
           </span>
 
           {!sidebarCollapsed && (
@@ -12706,23 +12706,21 @@ const [
           : "text-slate-500 hover:bg-slate-50"
       }`}
     >
-      {sidebarCollapsed ? (
-        <span className="flex h-8 w-8 items-center justify-center rounded-lg text-xs font-semibold">
-          P
-        </span>
-      ) : (
-        <>
-          <span
-            className={`h-1.5 w-1.5 rounded-full ${
-              screen === "privacy"
-                ? "bg-cyan-700"
-                : "bg-slate-300"
-            }`}
-          />
+      <span
+        className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-lg ${
+          sidebarCollapsed && screen === "privacy" ? "bg-cyan-100" : ""
+        }`}
+      >
+        <ShieldCheck
+          className={`h-[17px] w-[17px] ${
+            screen === "privacy" ? "text-cyan-700" : "text-slate-400"
+          }`}
+          strokeWidth={1.8}
+          aria-hidden="true"
+        />
+      </span>
 
-          Privacy & Sharing
-        </>
-      )}
+      {!sidebarCollapsed && <span>Privacy & Sharing</span>}
     </button>
   </div>
 

@@ -2,6 +2,21 @@
 
 import Link from "next/link";
 import { useEffect, useState } from "react";
+import {
+  Activity,
+  BarChart3,
+  BookOpen,
+  CalendarClock,
+  Database,
+  FileDown,
+  FlaskConical,
+  LayoutDashboard,
+  Link2,
+  ShieldCheck,
+  Users,
+  Workflow,
+  type LucideIcon,
+} from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import PsyLatticeLogo from "@/components/PsyLatticeLogo";
 import AccountSwitcher from "@/components/AccountSwitcher";
@@ -52,6 +67,22 @@ const navigation: {
   { id: "ethics", label: "Ethics & Consent", group: "Governance" },
   { id: "team", label: "Team & Permissions", group: "Governance" },
 ];
+
+const sidebarIcons: Record<Screen, LucideIcon> = {
+  dashboard: LayoutDashboard,
+  studies: FlaskConical,
+  builder: Workflow,
+  library: BookOpen,
+  ambulatory: Activity,
+  followup: CalendarClock,
+  participants: Users,
+  links: Link2,
+  data: BarChart3,
+  explorer: Database,
+  exports: FileDown,
+  ethics: ShieldCheck,
+  team: Users,
+};
 
 function ArrowIcon() {
   return (
@@ -14268,6 +14299,7 @@ export default function ResearcherWorkspace() {
                   .filter((item) => item.group === group)
                   .map((item) => {
                     const active = item.id === screen;
+                    const NavIcon = sidebarIcons[item.id];
 
                     return (
                       <button
@@ -14291,18 +14323,22 @@ export default function ResearcherWorkspace() {
                         }`}
                       >
                         <span
-                          className={`rounded-full transition-all ${
-                            sidebarCollapsed
-                              ? "h-2.5 w-2.5"
-                              : "h-1.5 w-1.5"
-                          } ${
-                            active
-                              ? "bg-cyan-700"
-                              : "bg-slate-300"
+                          className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-lg ${
+                            sidebarCollapsed && active ? "bg-cyan-100" : ""
                           }`}
-                        />
+                        >
+                          <NavIcon
+                            className={`h-[17px] w-[17px] ${
+                              active ? "text-cyan-700" : "text-slate-400"
+                            }`}
+                            strokeWidth={1.8}
+                            aria-hidden="true"
+                          />
+                        </span>
 
-                        {!sidebarCollapsed && item.label}
+                        {!sidebarCollapsed && (
+                          <span className="min-w-0 truncate">{item.label}</span>
+                        )}
                       </button>
                     );
                   })}

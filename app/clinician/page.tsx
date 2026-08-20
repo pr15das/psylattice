@@ -2,6 +2,24 @@
 
 import Link from "next/link";
 import { useEffect, useState, type ReactNode } from "react";
+import {
+  Activity,
+  BarChart3,
+  Bell,
+  CalendarDays,
+  ClipboardCheck,
+  FileText,
+  HeartPulse,
+  LayoutDashboard,
+  MessageSquare,
+  NotebookPen,
+  Settings2,
+  ShieldCheck,
+  UserRound,
+  Users,
+  Watch,
+  type LucideIcon,
+} from "lucide-react";
 import PsyLatticeLogo from "@/components/PsyLatticeLogo";
 import AccountSwitcher from "@/components/AccountSwitcher";
 import ClinicalNotesWorkspace from "@/components/ClinicalNotesWorkspace";
@@ -65,6 +83,24 @@ const navigation: {
   { id: "permissions", label: "Consent & Data Access", group: "Governance" },
   { id: "settings", label: "Clinical Settings", group: "Governance" },
 ];
+
+const sidebarIcons: Record<Screen, LucideIcon> = {
+  dashboard: LayoutDashboard,
+  notifications: Bell,
+  clients: Users,
+  overview: UserRound,
+  assessments: ClipboardCheck,
+  ambulatory: Activity,
+  wearables: Watch,
+  timeline: BarChart3,
+  notes: NotebookPen,
+  care: HeartPulse,
+  appointments: CalendarDays,
+  messages: MessageSquare,
+  reports: FileText,
+  permissions: ShieldCheck,
+  settings: Settings2,
+};
 
 function CheckIcon() {
   return (
@@ -9363,6 +9399,7 @@ export default function ClinicianWorkspace() {
                   .filter((item) => item.group === group)
                   .map((item) => {
                     const active = item.id === screen;
+                    const NavIcon = sidebarIcons[item.id];
 
                     return (
                       <button
@@ -9385,17 +9422,17 @@ export default function ClinicianWorkspace() {
                             : "text-slate-500 hover:bg-slate-50 hover:text-slate-950"
                         }`}
                       >
-                        <span className="relative flex shrink-0 items-center justify-center">
-                          <span
-                            className={`rounded-full transition-all ${
-                              sidebarCollapsed
-                                ? "h-2.5 w-2.5"
-                                : "h-1.5 w-1.5"
-                            } ${
-                              active
-                                ? "bg-cyan-700"
-                                : "bg-slate-300"
+                        <span
+                          className={`relative flex h-8 w-8 shrink-0 items-center justify-center rounded-lg ${
+                            sidebarCollapsed && active ? "bg-cyan-100" : ""
+                          }`}
+                        >
+                          <NavIcon
+                            className={`h-[17px] w-[17px] ${
+                              active ? "text-cyan-700" : "text-slate-400"
                             }`}
+                            strokeWidth={1.8}
+                            aria-hidden="true"
                           />
 
                           {sidebarCollapsed &&

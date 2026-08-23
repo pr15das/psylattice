@@ -41,6 +41,12 @@ export default function SignInPage() {
   const [authError, setAuthError] = useState("");
   const [authMessage, setAuthMessage] = useState("");
   const [verificationEmail, setVerificationEmail] = useState<string | null>(null);
+  const [resendingVerification, setResendingVerification] = useState(false);
+  const [resendCooldown, setResendCooldown] = useState(0);
+  const [resendMessage, setResendMessage] = useState("");
+  const [resendError, setResendError] = useState("");
+  const [forgotPasswordMode, setForgotPasswordMode] = useState(false);
+  const [resetEmailSent, setResetEmailSent] = useState(false);
 
   useEffect(() => {
     async function redirectExistingSession() {
@@ -63,11 +69,34 @@ export default function SignInPage() {
     void redirectExistingSession();
   }, [router]);
 
+  useEffect(() => {
+    if (resendCooldown <= 0) return;
+
+    const timer = window.setInterval(() => {
+      setResendCooldown((current) => {
+        if (current <= 1) {
+          window.clearInterval(timer);
+          return 0;
+        }
+
+        return current - 1;
+      });
+    }, 1000);
+
+    return () => window.clearInterval(timer);
+  }, [resendCooldown]);
+
   function switchMode(nextMode: AuthMode) {
     setMode(nextMode);
     setVerificationEmail(null);
     setAuthError("");
     setAuthMessage("");
+    setResendMessage("");
+    setResendError("");
+    setResendCooldown(0);
+    setResendingVerification(false);
+    setForgotPasswordMode(false);
+    setResetEmailSent(false);
   }
 
   async function ensureProfile(
@@ -241,8 +270,91 @@ export default function SignInPage() {
     setVerificationEmail(normalizedEmail);
     setAuthMessage("");
     setPassword("");
+    setResendMessage("");
+    setResendError("");
+    setResendCooldown(60);
     setSubmitting(false);
   }
+
+  async function handleResendVerification() {
+    if (
+      !verificationEmail ||
+      resendingVerification ||
+      resendCooldown > 0
+    ) {
+      return;
+    }
+
+    setResendingVerification(true);
+    setResendMessage("");
+    setResendError("");
+
+    const supabase = createClient();
+
+    const { error } = await supabase.auth.resend({
+      type: "signup",
+      email: verificationEmail,
+      options: {
+        emailRedirectTo: `${window.location.origin}/auth/callback`,
+      },
+    });
+
+    if (error) {
+      setResendError(
+        "We could not resend the verification email right now. Please wait a moment and try again."
+      );
+      setResendingVerification(false);
+      return;
+    }
+
+    setResendMessage("A new verification email has been sent.");
+    setResendCooldown(60);
+    setResendingVerification(false);
+  }
+
+  async function handleForgotPassword(
+    event: React.FormEvent<HTMLFormElement>
+  ) {
+    event.preventDefault();
+
+    if (submitting) return;
+
+    setAuthError("");
+    setAuthMessage("");
+    setResetEmailSent(false);
+
+    const normalizedEmail = email.trim().toLowerCase();
+
+    if (!normalizedEmail) {
+      setAuthError("Enter your email address.");
+      return;
+    }
+
+    setSubmitting(true);
+
+    const supabase = createClient();
+
+    const { error } = await supabase.auth.resetPasswordForEmail(
+      normalizedEmail,
+      {
+        redirectTo: `${window.location.origin}/auth/confirm?next=/reset-password`,
+      }
+    );
+
+    if (error) {
+      setAuthError(
+        "We could not send a password reset email right now. Please try again."
+      );
+      setSubmitting(false);
+      return;
+    }
+
+    // Keep this response intentionally generic so the UI does not reveal
+    // whether a particular email address is registered.
+    setResetEmailSent(true);
+    setSubmitting(false);
+  }
+
 
   return (
     <main className="min-h-screen bg-slate-50 text-slate-950">
@@ -359,6 +471,35 @@ export default function SignInPage() {
                     If you do not see the message, check your spam or junk folder.
                   </p>
 
+                  {resendMessage && (
+                    <div className="mt-4 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3">
+                      <p className="text-sm leading-6 text-emerald-800">
+                        {resendMessage}
+                      </p>
+                    </div>
+                  )}
+
+                  {resendError && (
+                    <div className="mt-4 rounded-xl border border-red-200 bg-red-50 px-4 py-3">
+                      <p className="text-sm leading-6 text-red-700">
+                        {resendError}
+                      </p>
+                    </div>
+                  )}
+
+                  <button
+                    type="button"
+                    onClick={() => void handleResendVerification()}
+                    disabled={resendingVerification || resendCooldown > 0}
+                    className="mt-6 w-full rounded-xl border border-slate-200 px-5 py-3 text-sm font-semibold text-slate-700 transition hover:bg-slate-50 hover:text-slate-950 disabled:cursor-not-allowed disabled:opacity-50"
+                  >
+                    {resendingVerification
+                      ? "Sending verification email..."
+                      : resendCooldown > 0
+                        ? `Resend available in ${resendCooldown}s`
+                        : "Resend verification email"}
+                  </button>
+
                   <button
                     type="button"
                     onClick={() => {
@@ -366,8 +507,11 @@ export default function SignInPage() {
                       setMode("signin");
                       setAuthError("");
                       setAuthMessage("");
+                      setResendMessage("");
+                      setResendError("");
+                      setResendCooldown(0);
                     }}
-                    className="mt-7 w-full rounded-xl bg-slate-950 px-5 py-3.5 text-sm font-semibold text-white transition hover:bg-slate-800"
+                    className="mt-3 w-full rounded-xl bg-slate-950 px-5 py-3.5 text-sm font-semibold text-white transition hover:bg-slate-800"
                   >
                     Back to sign in
                   </button>
@@ -380,10 +524,99 @@ export default function SignInPage() {
                       setEmail("");
                       setAuthError("");
                       setAuthMessage("");
+                      setResendMessage("");
+                      setResendError("");
+                      setResendCooldown(0);
                     }}
                     className="mt-3 w-full rounded-xl border border-slate-200 px-5 py-3 text-sm font-semibold text-slate-600 transition hover:bg-slate-50 hover:text-slate-950"
                   >
                     Use a different email
+                  </button>
+                </div>
+              ) : forgotPasswordMode ? (
+                <div className="py-2">
+                  <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-cyan-50 text-cyan-800">
+                    <svg
+                      viewBox="0 0 24 24"
+                      fill="none"
+                      stroke="currentColor"
+                      strokeWidth="1.8"
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      className="h-6 w-6"
+                      aria-hidden="true"
+                    >
+                      <path d="M7 10V8a5 5 0 0 1 10 0v2" />
+                      <rect x="5" y="10" width="14" height="10" rx="2" />
+                      <path d="M12 14v2" />
+                    </svg>
+                  </div>
+
+                  <h2 className="mt-6 text-2xl font-semibold tracking-tight">
+                    Reset your password
+                  </h2>
+
+                  <p className="mt-3 text-sm leading-6 text-slate-500">
+                    Enter the email address linked to your PsyLattice account.
+                    We&apos;ll send you a secure password reset link.
+                  </p>
+
+                  <form
+                    onSubmit={handleForgotPassword}
+                    className="mt-6 space-y-4"
+                  >
+                    <label className="block">
+                      <span className="text-sm font-medium">Email</span>
+                      <input
+                        type="email"
+                        autoComplete="email"
+                        value={email}
+                        onChange={(event) => setEmail(event.target.value)}
+                        placeholder="you@example.com"
+                        className="mt-2 w-full rounded-xl border border-slate-200 px-4 py-3 text-sm outline-none transition focus:border-cyan-700 focus:ring-2 focus:ring-cyan-100"
+                      />
+                    </label>
+
+                    {authError && (
+                      <div className="rounded-xl border border-red-200 bg-red-50 px-4 py-3">
+                        <p className="text-sm leading-6 text-red-700">
+                          {authError}
+                        </p>
+                      </div>
+                    )}
+
+                    {resetEmailSent && (
+                      <div className="rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3">
+                        <p className="text-sm font-medium text-emerald-900">
+                          Check your email
+                        </p>
+                        <p className="mt-1 text-xs leading-5 text-emerald-800">
+                          If an account exists for this email address, a password
+                          reset link has been sent.
+                        </p>
+                      </div>
+                    )}
+
+                    <button
+                      type="submit"
+                      disabled={submitting}
+                      className="w-full rounded-xl bg-slate-950 px-5 py-3.5 text-sm font-semibold text-white transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-50"
+                    >
+                      {submitting ? "Sending reset link..." : "Send reset link"}
+                    </button>
+                  </form>
+
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setForgotPasswordMode(false);
+                      setResetEmailSent(false);
+                      setAuthError("");
+                      setAuthMessage("");
+                    }}
+                    className="mt-3 w-full rounded-xl border border-slate-200 px-5 py-3 text-sm font-semibold text-slate-600 transition hover:bg-slate-50 hover:text-slate-950"
+                  >
+                    Back to sign in
                   </button>
                 </div>
               ) : (
@@ -463,7 +696,24 @@ export default function SignInPage() {
                     </label>
 
                     <label className="block">
-                      <span className="text-sm font-medium">Password</span>
+                      <div className="flex items-center justify-between gap-4">
+                        <span className="text-sm font-medium">Password</span>
+                        {mode === "signin" && (
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setForgotPasswordMode(true);
+                              setResetEmailSent(false);
+                              setAuthError("");
+                              setAuthMessage("");
+                              setPassword("");
+                            }}
+                            className="text-xs font-semibold text-cyan-800 transition hover:text-cyan-950"
+                          >
+                            Forgot password?
+                          </button>
+                        )}
+                      </div>
                       <input
                         type="password"
                         autoComplete={

@@ -3,34 +3,22 @@ import { NextRequest, NextResponse } from "next/server";
 
 export const dynamic = "force-dynamic";
 
-function safeNextPath(value: string | null) {
-  if (!value) return "/workspace";
-
-  // Only allow an internal path. This prevents open redirects.
-  if (!value.startsWith("/") || value.startsWith("//")) {
-    return "/workspace";
-  }
-
-  return value;
-}
-
 export async function GET(request: NextRequest) {
   const requestUrl = new URL(request.url);
   const code = requestUrl.searchParams.get("code");
-  const nextPath = safeNextPath(requestUrl.searchParams.get("next"));
 
   if (!code) {
-    const missingCodeUrl = new URL("/signin", request.url);
-    missingCodeUrl.searchParams.set("error", "missing_auth_code");
+    const failureUrl = new URL("/signin", request.url);
+    failureUrl.searchParams.set("error", "invalid_password_reset_link");
 
-    return NextResponse.redirect(missingCodeUrl);
+    return NextResponse.redirect(failureUrl);
   }
 
-  const successResponse = NextResponse.redirect(
-    new URL(nextPath, request.url)
+  const response = NextResponse.redirect(
+    new URL("/reset-password", request.url)
   );
 
-  successResponse.headers.set(
+  response.headers.set(
     "Cache-Control",
     "private, no-store, max-age=0"
   );
@@ -46,7 +34,7 @@ export async function GET(request: NextRequest) {
 
         setAll(cookiesToSet) {
           cookiesToSet.forEach(({ name, value, options }) => {
-            successResponse.cookies.set(name, value, options);
+            response.cookies.set(name, value, options);
           });
         },
       },
@@ -57,15 +45,15 @@ export async function GET(request: NextRequest) {
 
   if (error) {
     console.error(
-      "PsyLattice auth callback failed:",
+      "PsyLattice password-reset callback failed:",
       error.message
     );
 
     const failureUrl = new URL("/signin", request.url);
-    failureUrl.searchParams.set("error", "auth_callback_failed");
+    failureUrl.searchParams.set("error", "password_reset_callback_failed");
 
     return NextResponse.redirect(failureUrl);
   }
 
-  return successResponse;
+  return response;
 }

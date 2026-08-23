@@ -21,7 +21,8 @@ export type AmbulatoryTriggerType =
   | "random_window"
   | "interval"
   | "event_contingent"
-  | "participant_initiated";
+  | "participant_initiated"
+  | "sensor_trigger";
 
 export type AmbulatoryCondition = {
   sourceKey: string;
@@ -64,6 +65,54 @@ export type AmbulatoryItemDraft = {
   conditionalChildren?: AmbulatoryConditionalChild[];
 };
 
+export type AmbulatorySensorMetric =
+  | "heart_rate"
+  | "steps"
+  | "sleep_duration"
+  | "exercise_session";
+
+export type AmbulatorySensorOperator =
+  | "gt"
+  | "gte"
+  | "lt"
+  | "lte"
+  | "between"
+  | "event_started"
+  | "event_ended";
+
+export type AmbulatorySensorBaselineMode =
+  | "absolute"
+  | "delta_above_baseline"
+  | "percent_above_baseline";
+
+export type AmbulatorySensorDataMode =
+  | "trigger_only"
+  | "event_window"
+  | "continuous";
+
+export type AmbulatorySensorDisclosureMode =
+  | "neutral"
+  | "metric"
+  | "exact_value"
+  | "custom";
+
+export type AmbulatorySensorTriggerConfig = {
+  provider: "health_connect";
+  metric: AmbulatorySensorMetric;
+  operator: AmbulatorySensorOperator;
+  threshold?: number;
+  threshold2?: number;
+  baseline_mode?: AmbulatorySensorBaselineMode;
+  baseline_lookback_days?: number;
+  sustain_minutes?: number;
+  exclude_during_exercise?: boolean;
+  data_mode?: AmbulatorySensorDataMode;
+  event_window_before_minutes?: number;
+  event_window_after_minutes?: number;
+  disclosure_mode?: AmbulatorySensorDisclosureMode;
+  disclosure_text?: string;
+};
+
 export type AmbulatoryScheduleDraft = {
   schedule_id?: string;
   key: string;
@@ -83,6 +132,8 @@ export type AmbulatoryScheduleDraft = {
   event_description?: string;
   maximum_per_day?: number;
   minimum_interval_minutes?: number;
+
+  sensor_trigger?: AmbulatorySensorTriggerConfig;
 
   notification_enabled?: boolean;
   notification_title?: string;
@@ -638,6 +689,38 @@ export function serializeAmbulatoryProtocol(
       schedule.maximum_per_day ?? 8,
     minimum_interval_minutes:
       schedule.minimum_interval_minutes ?? 0,
+    sensor_trigger:
+      schedule.trigger_type === "sensor_trigger"
+        ? {
+            provider: "health_connect",
+            metric:
+              schedule.sensor_trigger?.metric || "heart_rate",
+            operator:
+              schedule.sensor_trigger?.operator || "gte",
+            threshold:
+              schedule.sensor_trigger?.threshold ?? 110,
+            threshold2:
+              schedule.sensor_trigger?.threshold2,
+            baseline_mode:
+              schedule.sensor_trigger?.baseline_mode || "absolute",
+            baseline_lookback_days:
+              schedule.sensor_trigger?.baseline_lookback_days ?? 7,
+            sustain_minutes:
+              schedule.sensor_trigger?.sustain_minutes ?? 3,
+            exclude_during_exercise:
+              schedule.sensor_trigger?.exclude_during_exercise ?? true,
+            data_mode:
+              schedule.sensor_trigger?.data_mode || "trigger_only",
+            event_window_before_minutes:
+              schedule.sensor_trigger?.event_window_before_minutes ?? 30,
+            event_window_after_minutes:
+              schedule.sensor_trigger?.event_window_after_minutes ?? 30,
+            disclosure_mode:
+              schedule.sensor_trigger?.disclosure_mode || "neutral",
+            disclosure_text:
+              schedule.sensor_trigger?.disclosure_text || "",
+          }
+        : schedule.sensor_trigger,
     notification_enabled:
       schedule.notification_enabled ??
       (schedule.trigger_type !== "event_contingent" &&
@@ -716,6 +799,38 @@ export function nestAmbulatoryProtocol(
       "09:00",
     response_window_minutes:
       schedule.response_window_minutes ?? 60,
+    sensor_trigger:
+      schedule.trigger_type === "sensor_trigger"
+        ? {
+            provider: "health_connect",
+            metric:
+              schedule.sensor_trigger?.metric || "heart_rate",
+            operator:
+              schedule.sensor_trigger?.operator || "gte",
+            threshold:
+              schedule.sensor_trigger?.threshold ?? 110,
+            threshold2:
+              schedule.sensor_trigger?.threshold2,
+            baseline_mode:
+              schedule.sensor_trigger?.baseline_mode || "absolute",
+            baseline_lookback_days:
+              schedule.sensor_trigger?.baseline_lookback_days ?? 7,
+            sustain_minutes:
+              schedule.sensor_trigger?.sustain_minutes ?? 3,
+            exclude_during_exercise:
+              schedule.sensor_trigger?.exclude_during_exercise ?? true,
+            data_mode:
+              schedule.sensor_trigger?.data_mode || "trigger_only",
+            event_window_before_minutes:
+              schedule.sensor_trigger?.event_window_before_minutes ?? 30,
+            event_window_after_minutes:
+              schedule.sensor_trigger?.event_window_after_minutes ?? 30,
+            disclosure_mode:
+              schedule.sensor_trigger?.disclosure_mode || "neutral",
+            disclosure_text:
+              schedule.sensor_trigger?.disclosure_text || "",
+          }
+        : schedule.sensor_trigger,
     items: nestAmbulatoryItems(schedule.items || []),
   }));
 }
@@ -1084,6 +1199,66 @@ export function validateAmbulatoryProtocol(
       return `Check the sampling window for ${schedule.label}.`;
     }
 
+    if (trigger === "sensor_trigger") {
+      const sensor = schedule.sensor_trigger;
+
+      if (!sensor) {
+        return `${schedule.label} needs a sensor trigger configuration.`;
+      }
+
+      if (sensor.provider !== "health_connect") {
+        return `${schedule.label} uses an unsupported sensor provider.`;
+      }
+
+      if (
+        ![
+          "heart_rate",
+          "steps",
+          "sleep_duration",
+          "exercise_session",
+        ].includes(sensor.metric)
+      ) {
+        return `${schedule.label} uses an unsupported Health Connect metric.`;
+      }
+
+      if (
+        sensor.metric === "exercise_session" &&
+        !["event_started", "event_ended"].includes(sensor.operator)
+      ) {
+        return `${schedule.label} needs an exercise start/end event.`;
+      }
+
+      if (
+        sensor.metric !== "exercise_session" &&
+        !["gt", "gte", "lt", "lte", "between"].includes(sensor.operator)
+      ) {
+        return `${schedule.label} needs a numeric sensor comparison.`;
+      }
+
+      if (
+        sensor.metric !== "exercise_session" &&
+        !Number.isFinite(Number(sensor.threshold))
+      ) {
+        return `${schedule.label} needs a valid sensor threshold.`;
+      }
+
+      if (
+        sensor.operator === "between" &&
+        (!Number.isFinite(Number(sensor.threshold2)) ||
+          Number(sensor.threshold) > Number(sensor.threshold2))
+      ) {
+        return `${schedule.label} needs a valid sensor range.`;
+      }
+
+      if (
+        !schedule.start_time ||
+        !schedule.end_time ||
+        schedule.start_time >= schedule.end_time
+      ) {
+        return `${schedule.label} needs valid active hours.`;
+      }
+    }
+
     if (
       (trigger === "event_contingent" ||
         trigger === "participant_initiated") &&
@@ -1134,6 +1309,19 @@ function triggerLabel(
     return `Interval · every ${
       schedule.interval_minutes || 60
     } min within ${schedule.start_time}–${schedule.end_time}`;
+  }
+
+  if (trigger === "sensor_trigger") {
+    const sensor = schedule.sensor_trigger;
+    const metric =
+      sensor?.metric === "heart_rate"
+        ? "Heart rate"
+        : sensor?.metric === "steps"
+          ? "Steps"
+          : sensor?.metric === "sleep_duration"
+            ? "Sleep"
+            : "Exercise";
+    return `Sensor · ${metric}`;
   }
 
   return `Event · ${
@@ -1214,7 +1402,9 @@ export function AmbulatoryProtocolBuilder({
           trigger_type ===
             "event_contingent" ||
           trigger_type ===
-            "participant_initiated"
+            "participant_initiated" ||
+          trigger_type ===
+            "sensor_trigger"
             ? `Event ${number}`
             : `Check-in ${number}`,
         trigger_type,
@@ -1227,6 +1417,24 @@ export function AmbulatoryProtocolBuilder({
         event_description: "",
         maximum_per_day: 8,
         minimum_interval_minutes: 10,
+        sensor_trigger:
+          trigger_type === "sensor_trigger"
+            ? {
+                provider: "health_connect",
+                metric: "heart_rate",
+                operator: "gte",
+                threshold: 110,
+                baseline_mode: "absolute",
+                baseline_lookback_days: 7,
+                sustain_minutes: 3,
+                exclude_during_exercise: true,
+                data_mode: "trigger_only",
+                event_window_before_minutes: 30,
+                event_window_after_minutes: 30,
+                disclosure_mode: "neutral",
+                disclosure_text: "",
+              }
+            : undefined,
         notification_enabled:
           trigger_type !==
             "event_contingent" &&
@@ -2492,7 +2700,7 @@ export function AmbulatoryProtocolBuilder({
         </p>
 
         <p className="mt-1 text-xs leading-5 text-slate-600">
-          The same protocol engine is used for Research and Clinical workspaces. Research protocols remain study/pseudonymous records; Clinical protocols remain client-controlled records.
+          The same protocol engine is used for Research and Clinical workspaces. It now supports time-, participant-, event- and Health Connect sensor-contingent sampling while keeping Research records pseudonymous and Clinical records client-controlled.
         </p>
       </div>
 
@@ -2508,6 +2716,9 @@ export function AmbulatoryProtocolBuilder({
             trigger ===
               "participant_initiated";
 
+          const sensorLike =
+            trigger === "sensor_trigger";
+
           return (
             <section
               key={schedule.key}
@@ -2517,9 +2728,11 @@ export function AmbulatoryProtocolBuilder({
                 <div className="min-w-0 flex-1">
                   <div className="flex flex-wrap items-center gap-2">
                     <span className="rounded-full bg-slate-950 px-3 py-1 text-[10px] font-semibold uppercase tracking-[0.12em] text-white">
-                      {eventLike
-                        ? "Event contingent"
-                        : "Time contingent"}
+                      {sensorLike
+                        ? "Sensor contingent"
+                        : eventLike
+                          ? "Event contingent"
+                          : "Time contingent"}
                     </span>
 
                     <span className="text-xs text-slate-400">
@@ -2594,6 +2807,9 @@ export function AmbulatoryProtocolBuilder({
                         </option>
                         <option value="participant_initiated">
                           Participant/client initiated
+                        </option>
+                        <option value="sensor_trigger">
+                          Sensor / Health Connect event
                         </option>
                       </select>
                     </label>
@@ -2771,6 +2987,438 @@ export function AmbulatoryProtocolBuilder({
                     </div>
                   )}
 
+                  {sensorLike && (
+                    <div className="mt-4 space-y-4 rounded-2xl border border-cyan-200 bg-cyan-50/40 p-4">
+                      <div>
+                        <p className="text-sm font-semibold text-cyan-950">
+                          Health Connect sensor trigger
+                        </p>
+                        <p className="mt-1 text-xs leading-5 text-slate-600">
+                          The Android companion evaluates permitted Health Connect data on the participant&apos;s device. PsyLattice records a sensor event and opens this ambulatory assessment only when the configured rule matches.
+                        </p>
+                      </div>
+
+                      <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+                        <label>
+                          <span className="text-xs font-medium text-slate-500">
+                            Data
+                          </span>
+                          <select
+                            value={schedule.sensor_trigger?.metric || "heart_rate"}
+                            onChange={(event) => {
+                              const metric =
+                                event.target.value as AmbulatorySensorMetric;
+                              updateSchedule(scheduleIndex, {
+                                sensor_trigger: {
+                                  provider: "health_connect",
+                                  metric,
+                                  operator:
+                                    metric === "exercise_session"
+                                      ? "event_ended"
+                                      : "gte",
+                                  threshold:
+                                    metric === "heart_rate"
+                                      ? 110
+                                      : metric === "steps"
+                                        ? 10000
+                                        : metric === "sleep_duration"
+                                          ? 6
+                                          : undefined,
+                                  baseline_mode: "absolute",
+                                  baseline_lookback_days: 7,
+                                  sustain_minutes:
+                                    metric === "heart_rate" ? 3 : 0,
+                                  exclude_during_exercise:
+                                    metric === "heart_rate",
+                                  data_mode: "trigger_only",
+                                  event_window_before_minutes: 30,
+                                  event_window_after_minutes: 30,
+                                  disclosure_mode: "neutral",
+                                  disclosure_text: "",
+                                },
+                              });
+                            }}
+                            className="mt-2 w-full rounded-xl border border-cyan-200 bg-white px-3 py-2.5 text-sm"
+                          >
+                            <option value="heart_rate">Heart rate</option>
+                            <option value="steps">Daily steps</option>
+                            <option value="sleep_duration">Sleep duration</option>
+                            <option value="exercise_session">Exercise session</option>
+                          </select>
+                        </label>
+
+                        <label>
+                          <span className="text-xs font-medium text-slate-500">
+                            Condition
+                          </span>
+                          <select
+                            value={schedule.sensor_trigger?.operator || "gte"}
+                            onChange={(event) =>
+                              updateSchedule(scheduleIndex, {
+                                sensor_trigger: {
+                                  ...(schedule.sensor_trigger || {
+                                    provider: "health_connect",
+                                    metric: "heart_rate",
+                                  }),
+                                  operator:
+                                    event.target.value as AmbulatorySensorOperator,
+                                } as AmbulatorySensorTriggerConfig,
+                              })
+                            }
+                            className="mt-2 w-full rounded-xl border border-cyan-200 bg-white px-3 py-2.5 text-sm"
+                          >
+                            {schedule.sensor_trigger?.metric === "exercise_session" ? (
+                              <>
+                                <option value="event_started">Workout starts</option>
+                                <option value="event_ended">Workout ends</option>
+                              </>
+                            ) : (
+                              <>
+                                <option value="gt">Greater than</option>
+                                <option value="gte">At least</option>
+                                <option value="lt">Less than</option>
+                                <option value="lte">At most</option>
+                                <option value="between">Between</option>
+                              </>
+                            )}
+                          </select>
+                        </label>
+
+                        {schedule.sensor_trigger?.metric !== "exercise_session" && (
+                          <label>
+                            <span className="text-xs font-medium text-slate-500">
+                              Threshold {
+                                schedule.sensor_trigger?.metric === "heart_rate"
+                                  ? "(bpm)"
+                                  : schedule.sensor_trigger?.metric === "steps"
+                                    ? "(steps)"
+                                    : "(hours)"
+                              }
+                            </span>
+                            <input
+                              type="number"
+                              value={schedule.sensor_trigger?.threshold ?? 0}
+                              onChange={(event) =>
+                                updateSchedule(scheduleIndex, {
+                                  sensor_trigger: {
+                                    ...(schedule.sensor_trigger as AmbulatorySensorTriggerConfig),
+                                    threshold: Number(event.target.value),
+                                  },
+                                })
+                              }
+                              className="mt-2 w-full rounded-xl border border-cyan-200 bg-white px-3 py-2.5 text-sm"
+                            />
+                          </label>
+                        )}
+
+                        {schedule.sensor_trigger?.operator === "between" && (
+                          <label>
+                            <span className="text-xs font-medium text-slate-500">
+                              Upper threshold
+                            </span>
+                            <input
+                              type="number"
+                              value={schedule.sensor_trigger?.threshold2 ?? 0}
+                              onChange={(event) =>
+                                updateSchedule(scheduleIndex, {
+                                  sensor_trigger: {
+                                    ...(schedule.sensor_trigger as AmbulatorySensorTriggerConfig),
+                                    threshold2: Number(event.target.value),
+                                  },
+                                })
+                              }
+                              className="mt-2 w-full rounded-xl border border-cyan-200 bg-white px-3 py-2.5 text-sm"
+                            />
+                          </label>
+                        )}
+                      </div>
+
+                      {schedule.sensor_trigger?.metric === "heart_rate" && (
+                        <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+                          <label>
+                            <span className="text-xs font-medium text-slate-500">
+                              Threshold mode
+                            </span>
+                            <select
+                              value={schedule.sensor_trigger?.baseline_mode || "absolute"}
+                              onChange={(event) =>
+                                updateSchedule(scheduleIndex, {
+                                  sensor_trigger: {
+                                    ...(schedule.sensor_trigger as AmbulatorySensorTriggerConfig),
+                                    baseline_mode:
+                                      event.target.value as AmbulatorySensorBaselineMode,
+                                  },
+                                })
+                              }
+                              className="mt-2 w-full rounded-xl border border-cyan-200 bg-white px-3 py-2.5 text-sm"
+                            >
+                              <option value="absolute">Absolute bpm</option>
+                              <option value="delta_above_baseline">Bpm above personal baseline</option>
+                              <option value="percent_above_baseline">% above personal baseline</option>
+                            </select>
+                          </label>
+
+                          {schedule.sensor_trigger?.baseline_mode !== "absolute" && (
+                            <label>
+                              <span className="text-xs font-medium text-slate-500">
+                                Baseline lookback (days)
+                              </span>
+                              <input
+                                type="number"
+                                min="1"
+                                max="30"
+                                value={schedule.sensor_trigger?.baseline_lookback_days ?? 7}
+                                onChange={(event) =>
+                                  updateSchedule(scheduleIndex, {
+                                    sensor_trigger: {
+                                      ...(schedule.sensor_trigger as AmbulatorySensorTriggerConfig),
+                                      baseline_lookback_days: Number(event.target.value),
+                                    },
+                                  })
+                                }
+                                className="mt-2 w-full rounded-xl border border-cyan-200 bg-white px-3 py-2.5 text-sm"
+                              />
+                            </label>
+                          )}
+
+                          <label>
+                            <span className="text-xs font-medium text-slate-500">
+                              Must persist (minutes)
+                            </span>
+                            <input
+                              type="number"
+                              min="0"
+                              max="120"
+                              value={schedule.sensor_trigger?.sustain_minutes ?? 3}
+                              onChange={(event) =>
+                                updateSchedule(scheduleIndex, {
+                                  sensor_trigger: {
+                                    ...(schedule.sensor_trigger as AmbulatorySensorTriggerConfig),
+                                    sustain_minutes: Number(event.target.value),
+                                  },
+                                })
+                              }
+                              className="mt-2 w-full rounded-xl border border-cyan-200 bg-white px-3 py-2.5 text-sm"
+                            />
+                          </label>
+
+                          <label className="flex items-center gap-3 rounded-xl border border-cyan-100 bg-white px-3 py-2.5">
+                            <input
+                              type="checkbox"
+                              checked={schedule.sensor_trigger?.exclude_during_exercise ?? true}
+                              onChange={(event) =>
+                                updateSchedule(scheduleIndex, {
+                                  sensor_trigger: {
+                                    ...(schedule.sensor_trigger as AmbulatorySensorTriggerConfig),
+                                    exclude_during_exercise: event.target.checked,
+                                  },
+                                })
+                              }
+                            />
+                            <span className="text-xs font-medium text-slate-600">
+                              Ignore during recorded exercise
+                            </span>
+                          </label>
+                        </div>
+                      )}
+
+                      <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+                        <label>
+                          <span className="text-xs font-medium text-slate-500">
+                            Active from
+                          </span>
+                          <input
+                            type="time"
+                            value={schedule.start_time || "08:00"}
+                            onChange={(event) =>
+                              updateSchedule(scheduleIndex, {
+                                start_time: event.target.value,
+                              })
+                            }
+                            className="mt-2 w-full rounded-xl border border-cyan-200 bg-white px-3 py-2.5 text-sm"
+                          />
+                        </label>
+
+                        <label>
+                          <span className="text-xs font-medium text-slate-500">
+                            Active until
+                          </span>
+                          <input
+                            type="time"
+                            value={schedule.end_time || "22:00"}
+                            onChange={(event) =>
+                              updateSchedule(scheduleIndex, {
+                                end_time: event.target.value,
+                              })
+                            }
+                            className="mt-2 w-full rounded-xl border border-cyan-200 bg-white px-3 py-2.5 text-sm"
+                          />
+                        </label>
+
+                        <label>
+                          <span className="text-xs font-medium text-slate-500">
+                            Maximum prompts / day
+                          </span>
+                          <input
+                            type="number"
+                            min="1"
+                            max="100"
+                            value={schedule.maximum_per_day ?? 3}
+                            onChange={(event) =>
+                              updateSchedule(scheduleIndex, {
+                                maximum_per_day: Number(event.target.value),
+                              })
+                            }
+                            className="mt-2 w-full rounded-xl border border-cyan-200 bg-white px-3 py-2.5 text-sm"
+                          />
+                        </label>
+
+                        <label>
+                          <span className="text-xs font-medium text-slate-500">
+                            Cooldown (minutes)
+                          </span>
+                          <input
+                            type="number"
+                            min="0"
+                            max="1440"
+                            value={schedule.minimum_interval_minutes ?? 90}
+                            onChange={(event) =>
+                              updateSchedule(scheduleIndex, {
+                                minimum_interval_minutes: Number(event.target.value),
+                              })
+                            }
+                            className="mt-2 w-full rounded-xl border border-cyan-200 bg-white px-3 py-2.5 text-sm"
+                          />
+                        </label>
+                      </div>
+
+                      <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+                        <label>
+                          <span className="text-xs font-medium text-slate-500">
+                            Store sensor data
+                          </span>
+                          <select
+                            value={schedule.sensor_trigger?.data_mode || "trigger_only"}
+                            onChange={(event) =>
+                              updateSchedule(scheduleIndex, {
+                                sensor_trigger: {
+                                  ...(schedule.sensor_trigger as AmbulatorySensorTriggerConfig),
+                                  data_mode:
+                                    event.target.value as AmbulatorySensorDataMode,
+                                },
+                              })
+                            }
+                            className="mt-2 w-full rounded-xl border border-cyan-200 bg-white px-3 py-2.5 text-sm"
+                          >
+                            <option value="trigger_only">Trigger event only</option>
+                            <option value="event_window">Event window</option>
+                            <option value="continuous">Continuous permitted stream</option>
+                          </select>
+                        </label>
+
+                        {schedule.sensor_trigger?.data_mode === "event_window" && (
+                          <>
+                            <label>
+                              <span className="text-xs font-medium text-slate-500">
+                                Minutes before
+                              </span>
+                              <input
+                                type="number"
+                                min="0"
+                                max="240"
+                                value={schedule.sensor_trigger?.event_window_before_minutes ?? 30}
+                                onChange={(event) =>
+                                  updateSchedule(scheduleIndex, {
+                                    sensor_trigger: {
+                                      ...(schedule.sensor_trigger as AmbulatorySensorTriggerConfig),
+                                      event_window_before_minutes: Number(event.target.value),
+                                    },
+                                  })
+                                }
+                                className="mt-2 w-full rounded-xl border border-cyan-200 bg-white px-3 py-2.5 text-sm"
+                              />
+                            </label>
+                            <label>
+                              <span className="text-xs font-medium text-slate-500">
+                                Minutes after
+                              </span>
+                              <input
+                                type="number"
+                                min="0"
+                                max="240"
+                                value={schedule.sensor_trigger?.event_window_after_minutes ?? 30}
+                                onChange={(event) =>
+                                  updateSchedule(scheduleIndex, {
+                                    sensor_trigger: {
+                                      ...(schedule.sensor_trigger as AmbulatorySensorTriggerConfig),
+                                      event_window_after_minutes: Number(event.target.value),
+                                    },
+                                  })
+                                }
+                                className="mt-2 w-full rounded-xl border border-cyan-200 bg-white px-3 py-2.5 text-sm"
+                              />
+                            </label>
+                          </>
+                        )}
+                      </div>
+
+                      <div className="grid gap-3 md:grid-cols-2">
+                        <label>
+                          <span className="text-xs font-medium text-slate-500">
+                            What the participant sees about the trigger
+                          </span>
+                          <select
+                            value={schedule.sensor_trigger?.disclosure_mode || "neutral"}
+                            onChange={(event) =>
+                              updateSchedule(scheduleIndex, {
+                                sensor_trigger: {
+                                  ...(schedule.sensor_trigger as AmbulatorySensorTriggerConfig),
+                                  disclosure_mode:
+                                    event.target.value as AmbulatorySensorDisclosureMode,
+                                },
+                              })
+                            }
+                            className="mt-2 w-full rounded-xl border border-cyan-200 bg-white px-3 py-2.5 text-sm"
+                          >
+                            <option value="neutral">Neutral — do not reveal sensor reason</option>
+                            <option value="metric">Mention the metric changed</option>
+                            <option value="exact_value">Show the observed value</option>
+                            <option value="custom">Custom explanation</option>
+                          </select>
+                        </label>
+
+                        {schedule.sensor_trigger?.disclosure_mode === "custom" && (
+                          <label>
+                            <span className="text-xs font-medium text-slate-500">
+                              Custom explanation
+                            </span>
+                            <input
+                              value={schedule.sensor_trigger?.disclosure_text || ""}
+                              onChange={(event) =>
+                                updateSchedule(scheduleIndex, {
+                                  sensor_trigger: {
+                                    ...(schedule.sensor_trigger as AmbulatorySensorTriggerConfig),
+                                    disclosure_text: event.target.value,
+                                  },
+                                })
+                              }
+                              className="mt-2 w-full rounded-xl border border-cyan-200 bg-white px-3 py-2.5 text-sm"
+                            />
+                          </label>
+                        )}
+                      </div>
+
+                      <div className="rounded-xl border border-slate-200 bg-white p-3">
+                        <p className="text-xs font-semibold text-slate-700">
+                          Android phase 1
+                        </p>
+                        <p className="mt-1 text-xs leading-5 text-slate-500">
+                          Supported first: heart rate, steps, sleep duration and exercise-session events from Health Connect. The participant grants each Health Connect permission on their Android device.
+                        </p>
+                      </div>
+                    </div>
+                  )}
+
                   {eventLike && (
                     <div className="mt-4 rounded-2xl border border-cyan-100 bg-cyan-50/50 p-4">
                       <div className="grid gap-3 md:grid-cols-2">
@@ -2879,7 +3527,50 @@ export function AmbulatoryProtocolBuilder({
                     </div>
                   )}
 
-                  {!eventLike && (
+                  {sensorLike && (
+                    <div className="mt-4 rounded-2xl border border-slate-200 bg-slate-50/60 p-4">
+                      <p className="text-sm font-semibold text-slate-800">
+                        Trigger action
+                      </p>
+                      <p className="mt-1 text-xs leading-5 text-slate-500">
+                        When the Android companion confirms the sensor rule, it creates a PsyLattice prompt and shows this assessment notification.
+                      </p>
+                      <div className="mt-4 grid gap-3 md:grid-cols-2">
+                        <label>
+                          <span className="text-xs font-medium text-slate-500">
+                            Notification title
+                          </span>
+                          <input
+                            value={schedule.notification_title || "PsyLattice check-in"}
+                            onChange={(event) =>
+                              updateSchedule(scheduleIndex, {
+                                notification_enabled: true,
+                                notification_title: event.target.value,
+                              })
+                            }
+                            className="mt-2 w-full rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm"
+                          />
+                        </label>
+                        <label>
+                          <span className="text-xs font-medium text-slate-500">
+                            Notification message
+                          </span>
+                          <input
+                            value={schedule.notification_body || "A study check-in is ready."}
+                            onChange={(event) =>
+                              updateSchedule(scheduleIndex, {
+                                notification_enabled: true,
+                                notification_body: event.target.value,
+                              })
+                            }
+                            className="mt-2 w-full rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm"
+                          />
+                        </label>
+                      </div>
+                    </div>
+                  )}
+
+                  {!eventLike && !sensorLike && (
                     <div className="mt-4 rounded-2xl border border-slate-200 bg-slate-50/50 p-4">
                       <label className="flex items-start gap-3">
                         <input
@@ -3052,6 +3743,16 @@ export function AmbulatoryProtocolBuilder({
           className="rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm font-semibold text-slate-700"
         >
           + Event-contingent check-in
+        </button>
+
+        <button
+          type="button"
+          onClick={() =>
+            addSchedule("sensor_trigger")
+          }
+          className="rounded-xl border border-cyan-200 bg-white px-4 py-2.5 text-sm font-semibold text-cyan-900"
+        >
+          + Sensor-contingent check-in
         </button>
       </div>
 

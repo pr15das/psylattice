@@ -2510,6 +2510,11 @@ export default function ParticipantStudyPage() {
   const [loadingAmbulatoryDashboard, setLoadingAmbulatoryDashboard] =
     useState(false);
   const [ambulatoryMessage, setAmbulatoryMessage] = useState("");
+
+  const [mobilePairingCode, setMobilePairingCode] = useState("");
+  const [mobilePairingExpiresAt, setMobilePairingExpiresAt] = useState("");
+  const [creatingMobilePairing, setCreatingMobilePairing] = useState(false);
+  const [mobilePairingStatus, setMobilePairingStatus] = useState("");
   const [activeAmbulatoryCheckin, setActiveAmbulatoryCheckin] =
     useState<ActiveAmbulatoryCheckin | null>(null);
   const [ambulatoryResponses, setAmbulatoryResponses] = useState<
@@ -3081,6 +3086,41 @@ export default function ParticipantStudyPage() {
     );
 
     setSavingEmailReminder(false);
+  }
+
+  async function createAndroidPairingCode() {
+    if (!sessionToken || creatingMobilePairing) {
+      return;
+    }
+
+    setCreatingMobilePairing(true);
+    setMobilePairingStatus("");
+
+    const supabase = createClient();
+
+    const { data, error } = await supabase.rpc(
+      "psylattice_create_mobile_pairing_code",
+      {
+        p_session_token: sessionToken,
+      }
+    );
+
+    if (error || !data?.ok) {
+      setMobilePairingStatus(
+        error?.message ||
+          data?.error ||
+          "A companion pairing code could not be created."
+      );
+      setCreatingMobilePairing(false);
+      return;
+    }
+
+    setMobilePairingCode(String(data.code || ""));
+    setMobilePairingExpiresAt(String(data.expires_at || ""));
+    setMobilePairingStatus(
+      "Enter this one-time code in the PsyLattice Android companion."
+    );
+    setCreatingMobilePairing(false);
   }
 
   async function startAmbulatoryCheckin(
@@ -4329,6 +4369,12 @@ export default function ParticipantStudyPage() {
           )
         : 0;
 
+    const hasSensorContingentSampling =
+      (ambulatoryConfig?.protocol || []).some(
+        (schedule) =>
+          schedule.trigger_type === "sensor_trigger"
+      );
+
     const now = Date.now();
 
     function promptState(
@@ -4468,6 +4514,62 @@ export default function ParticipantStudyPage() {
               </div>
             )}
           </Card>
+
+          {hasSensorContingentSampling && (
+            <Card
+              title="Android companion"
+              description="This study uses Health Connect sensor-contingent sampling."
+            >
+              <div className="grid gap-4 lg:grid-cols-[1fr_auto] lg:items-center">
+                <div>
+                  <p className="text-sm font-medium text-slate-800">
+                    Pair this study with the PsyLattice Android companion
+                  </p>
+                  <p className="mt-2 max-w-2xl text-xs leading-5 text-slate-500">
+                    The companion requests only the Health Connect data types configured by the research team. Sensor rules are evaluated on the participant&apos;s Android device and can create an ambulatory check-in when a configured event occurs.
+                  </p>
+
+                  {mobilePairingCode && (
+                    <div className="mt-4 inline-flex flex-col rounded-2xl border border-cyan-200 bg-cyan-50 px-5 py-4">
+                      <span className="text-[10px] font-semibold uppercase tracking-[0.16em] text-cyan-800">
+                        One-time pairing code
+                      </span>
+                      <span className="mt-2 font-mono text-2xl font-semibold tracking-[0.22em] text-slate-950">
+                        {mobilePairingCode}
+                      </span>
+                      {mobilePairingExpiresAt && (
+                        <span className="mt-2 text-[11px] text-slate-500">
+                          Expires {new Date(mobilePairingExpiresAt).toLocaleTimeString([], {
+                            hour: "2-digit",
+                            minute: "2-digit",
+                          })}
+                        </span>
+                      )}
+                    </div>
+                  )}
+
+                  {mobilePairingStatus && (
+                    <p className="mt-3 text-xs text-slate-500">
+                      {mobilePairingStatus}
+                    </p>
+                  )}
+                </div>
+
+                <button
+                  type="button"
+                  onClick={() => void createAndroidPairingCode()}
+                  disabled={creatingMobilePairing}
+                  className="rounded-xl bg-slate-950 px-5 py-3 text-sm font-semibold text-white disabled:opacity-50"
+                >
+                  {creatingMobilePairing
+                    ? "Creating..."
+                    : mobilePairingCode
+                      ? "Create new code"
+                      : "Pair Android companion"}
+                </button>
+              </div>
+            </Card>
+          )}
 
           <Card
             title="Today's scheduled check-ins"

@@ -1330,6 +1330,162 @@ function triggerLabel(
   }`;
 }
 
+type BuilderVisualTheme = {
+  label: string;
+  card: string;
+  badge: string;
+  number: string;
+  soft: string;
+  accent: string;
+};
+
+/**
+ * PsyLattice builder visual language.
+ *
+ * Deliberately stays inside the product palette: slate / ink / cyan.
+ * Blocks are separated with hierarchy, border treatment, surface tone and
+ * badges instead of assigning a different rainbow colour to every type.
+ */
+function ambulatoryBlockTheme(type: AmbulatoryBlockType): BuilderVisualTheme {
+  const themes: Record<AmbulatoryBlockType, BuilderVisualTheme> = {
+    slider: {
+      label: "Slider / rating",
+      card: "border-cyan-200 border-l-cyan-600 bg-white",
+      badge: "bg-cyan-50 text-cyan-800 ring-1 ring-cyan-200",
+      number: "bg-cyan-50 text-cyan-800",
+      soft: "bg-cyan-50/45 border-cyan-100",
+      accent: "text-cyan-700",
+    },
+    single_choice: {
+      label: "Single choice",
+      card: "border-slate-200 border-l-cyan-400 bg-slate-50/45",
+      badge: "bg-white text-cyan-800 ring-1 ring-cyan-200",
+      number: "bg-white text-cyan-800 ring-1 ring-cyan-100",
+      soft: "bg-white border-slate-200",
+      accent: "text-cyan-700",
+    },
+    multiple_choice: {
+      label: "Multiple choice",
+      card: "border-slate-300 border-l-cyan-700 bg-white",
+      badge: "bg-cyan-100 text-cyan-900 ring-1 ring-cyan-200",
+      number: "bg-cyan-100 text-cyan-900",
+      soft: "bg-slate-50/60 border-slate-200",
+      accent: "text-cyan-800",
+    },
+    yes_no: {
+      label: "Yes / No",
+      card: "border-slate-200 border-l-slate-900 bg-white",
+      badge: "bg-slate-950 text-white",
+      number: "bg-slate-950 text-white",
+      soft: "bg-slate-50 border-slate-200",
+      accent: "text-slate-800",
+    },
+    number: {
+      label: "Number",
+      card: "border-slate-200 border-l-slate-500 bg-slate-50/55",
+      badge: "bg-slate-100 text-slate-700 ring-1 ring-slate-200",
+      number: "bg-slate-100 text-slate-700",
+      soft: "bg-white border-slate-200",
+      accent: "text-slate-700",
+    },
+    short_text: {
+      label: "Short text",
+      card: "border-slate-200 border-l-cyan-500 bg-white",
+      badge: "bg-white text-cyan-800 ring-1 ring-cyan-200",
+      number: "bg-cyan-50 text-cyan-800",
+      soft: "bg-slate-50/55 border-slate-200",
+      accent: "text-cyan-700",
+    },
+    long_text: {
+      label: "Long text",
+      card: "border-slate-300 border-l-cyan-800 bg-slate-50/30",
+      badge: "bg-cyan-950 text-cyan-50",
+      number: "bg-cyan-950 text-cyan-50",
+      soft: "bg-white border-slate-200",
+      accent: "text-cyan-900",
+    },
+    instruction: {
+      label: "Instruction",
+      card: "border-dashed border-slate-300 border-l-slate-500 bg-slate-50",
+      badge: "bg-slate-100 text-slate-700 ring-1 ring-slate-200",
+      number: "bg-slate-100 text-slate-700",
+      soft: "bg-white border-dashed border-slate-200",
+      accent: "text-slate-600",
+    },
+    activity: {
+      label: "Activity",
+      card: "border-cyan-200 border-l-cyan-600 bg-cyan-50/25",
+      badge: "bg-cyan-50 text-cyan-800 ring-1 ring-cyan-200",
+      number: "bg-cyan-50 text-cyan-800",
+      soft: "bg-white border-cyan-100",
+      accent: "text-cyan-700",
+    },
+    questionnaire: {
+      label: "Questionnaire",
+      card: "border-cyan-200 border-l-slate-950 bg-cyan-50/35",
+      badge: "bg-slate-950 text-white",
+      number: "bg-slate-950 text-white",
+      soft: "bg-white border-cyan-100",
+      accent: "text-slate-900",
+    },
+    time_duration: {
+      label: "Time / duration",
+      card: "border-slate-200 border-l-slate-600 bg-white",
+      badge: "bg-slate-100 text-slate-700 ring-1 ring-slate-200",
+      number: "bg-slate-100 text-slate-700",
+      soft: "bg-slate-50/60 border-slate-200",
+      accent: "text-slate-700",
+    },
+    mood: {
+      label: "Mood / emotion",
+      card: "border-cyan-200 border-l-cyan-500 bg-cyan-50/20",
+      badge: "bg-white text-cyan-800 ring-1 ring-cyan-200",
+      number: "bg-cyan-50 text-cyan-800",
+      soft: "bg-white border-cyan-100",
+      accent: "text-cyan-700",
+    },
+  };
+
+  return themes[type];
+}
+
+function ambulatoryTriggerTheme(trigger: AmbulatoryTriggerType) {
+  const themes: Record<AmbulatoryTriggerType, { card: string; badge: string; icon: string }> = {
+    fixed_time: {
+      card: "border-slate-200 border-l-cyan-500 bg-white",
+      badge: "bg-cyan-50 text-cyan-800 ring-1 ring-cyan-200",
+      icon: "●",
+    },
+    random_window: {
+      card: "border-slate-200 border-l-cyan-400 bg-slate-50/45",
+      badge: "bg-white text-cyan-800 ring-1 ring-cyan-200",
+      icon: "◆",
+    },
+    interval: {
+      card: "border-slate-300 border-l-slate-600 bg-white",
+      badge: "bg-slate-100 text-slate-700 ring-1 ring-slate-200",
+      icon: "↻",
+    },
+    event_contingent: {
+      card: "border-cyan-200 border-l-cyan-700 bg-cyan-50/25",
+      badge: "bg-cyan-700 text-white",
+      icon: "⚡",
+    },
+    participant_initiated: {
+      card: "border-slate-200 border-l-cyan-300 bg-white",
+      badge: "bg-white text-cyan-800 ring-1 ring-cyan-300",
+      icon: "+",
+    },
+    sensor_trigger: {
+      card: "border-cyan-200 border-l-slate-950 bg-cyan-50/40",
+      badge: "bg-slate-950 text-white",
+      icon: "◉",
+    },
+  };
+  return themes[trigger];
+}
+
+
 export function AmbulatoryProtocolBuilder({
   protocol,
   onChange,
@@ -2072,18 +2228,17 @@ export function AmbulatoryProtocolBuilder({
     childEdge: AmbulatoryConditionalChild | null
   ): ReactNode {
     const nested = parent !== null;
+    const blockTheme = ambulatoryBlockTheme(item.type);
 
     return (
       <div
         key={item.key}
-        className={`rounded-2xl border p-4 ${
-          nested
-            ? "border-cyan-200 bg-white"
-            : "border-slate-200 bg-slate-50/40"
+        className={`rounded-2xl border border-l-4 p-4 shadow-sm ${blockTheme.card} ${
+          nested ? "ml-6 ring-1 ring-cyan-200/80" : ""
         }`}
       >
         {parent && childEdge && (
-          <div className="mb-4 rounded-xl border border-cyan-100 bg-cyan-50/70 p-4">
+          <div className="mb-4 rounded-xl border border-cyan-200 bg-cyan-50/70 p-4">
             <p className="text-[10px] font-semibold uppercase tracking-[0.12em] text-cyan-800">
               Conditional block
             </p>
@@ -2108,6 +2263,10 @@ export function AmbulatoryProtocolBuilder({
 
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div className="flex flex-wrap items-center gap-2">
+            <span className={`rounded-full px-2.5 py-1 text-[10px] font-bold uppercase tracking-[0.1em] ${blockTheme.badge}`}>
+              {blockTheme.label}
+            </span>
+
             <select
               value={item.type}
               onChange={(event) =>
@@ -2653,7 +2812,7 @@ export function AmbulatoryProtocolBuilder({
 
         {(item.conditionalChildren || [])
           .length > 0 && (
-          <div className="mt-5 border-l-2 border-cyan-200 pl-4">
+          <div className="mt-5 border-l-2 border-cyan-300 pl-5">
             <div className="mb-3">
               <p className="text-xs font-semibold uppercase tracking-[0.1em] text-cyan-800">
                 Nested under {item.prompt}
@@ -2664,7 +2823,7 @@ export function AmbulatoryProtocolBuilder({
               </p>
             </div>
 
-            <div className="space-y-4">
+            <div className="space-y-6">
               {(
                 item.conditionalChildren ||
                 []
@@ -2718,16 +2877,18 @@ export function AmbulatoryProtocolBuilder({
 
           const sensorLike =
             trigger === "sensor_trigger";
+          const scheduleTheme = ambulatoryTriggerTheme(trigger);
 
           return (
             <section
               key={schedule.key}
-              className="rounded-2xl border border-slate-200 bg-white p-5"
+              className={`rounded-3xl border border-l-4 p-5 shadow-sm ${scheduleTheme.card}`}
             >
               <div className="flex flex-col justify-between gap-4 xl:flex-row xl:items-start">
                 <div className="min-w-0 flex-1">
                   <div className="flex flex-wrap items-center gap-2">
-                    <span className="rounded-full bg-slate-950 px-3 py-1 text-[10px] font-semibold uppercase tracking-[0.12em] text-white">
+                    <span className={`rounded-full px-3 py-1 text-[10px] font-semibold uppercase tracking-[0.12em] ${scheduleTheme.badge}`}>
+                      <span className="mr-1">{scheduleTheme.icon}</span>
                       {sensorLike
                         ? "Sensor contingent"
                         : eventLike
@@ -2988,7 +3149,7 @@ export function AmbulatoryProtocolBuilder({
                   )}
 
                   {sensorLike && (
-                    <div className="mt-4 space-y-4 rounded-2xl border border-cyan-200 bg-cyan-50/40 p-4">
+                    <div className="mt-4 space-y-4 rounded-2xl border border-cyan-200 bg-cyan-50/45 p-4">
                       <div>
                         <p className="text-sm font-semibold text-cyan-950">
                           Health Connect sensor trigger
@@ -3689,32 +3850,98 @@ export function AmbulatoryProtocolBuilder({
                 )}
               </div>
 
-              <div className="mt-5 flex flex-wrap items-center gap-2 border-t border-slate-100 pt-4">
-                <span className="text-xs font-medium text-slate-500">
-                  Add block:
-                </span>
+              <div className="mt-5 border-t border-slate-100 pt-4">
+                <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                  <div>
+                    <p className="text-xs font-semibold text-slate-700">
+                      Add another block
+                    </p>
+                    <p className="mt-0.5 text-[11px] text-slate-400">
+                      Choose the response or content type to add to this check-in.
+                    </p>
+                  </div>
 
-                {blockTypes.map(
-                  ([value, label]) => (
-                    <button
-                      key={value}
-                      type="button"
-                      disabled={
-                        countTreeItems(
-                          schedule.items
-                        ) >= 80
-                      }
-                      onClick={() =>
-                        addRootItem(
-                          scheduleIndex,
-                          value
-                        )
-                      }
-                      className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-slate-600 hover:border-cyan-200 hover:bg-cyan-50 disabled:opacity-40"
-                    >
-                      + {label}
-                    </button>
-                  )
+                  <select
+                    defaultValue=""
+                    disabled={
+                      countTreeItems(
+                        schedule.items
+                      ) >= 80
+                    }
+                    onChange={(event) => {
+                      const value =
+                        event.target
+                          .value as AmbulatoryBlockType;
+
+                      if (!value) return;
+
+                      addRootItem(
+                        scheduleIndex,
+                        value
+                      );
+
+                      event.currentTarget.value =
+                        "";
+                    }}
+                    className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm font-medium text-slate-700 shadow-sm outline-none transition focus:border-cyan-400 focus:ring-2 focus:ring-cyan-100 disabled:cursor-not-allowed disabled:bg-slate-50 disabled:text-slate-400 sm:w-[260px]"
+                    aria-label="Add block"
+                  >
+                    <option value="" disabled>
+                      + Add block…
+                    </option>
+
+                    <optgroup label="Questions">
+                      <option value="slider">
+                        Slider / rating
+                      </option>
+                      <option value="single_choice">
+                        Single choice
+                      </option>
+                      <option value="multiple_choice">
+                        Multiple choice
+                      </option>
+                      <option value="yes_no">
+                        Yes / No
+                      </option>
+                      <option value="number">
+                        Number
+                      </option>
+                      <option value="mood">
+                        Mood / emotion
+                      </option>
+                    </optgroup>
+
+                    <optgroup label="Written responses">
+                      <option value="short_text">
+                        Short text
+                      </option>
+                      <option value="long_text">
+                        Long text
+                      </option>
+                    </optgroup>
+
+                    <optgroup label="Study blocks">
+                      <option value="time_duration">
+                        Time / duration
+                      </option>
+                      <option value="activity">
+                        Activity
+                      </option>
+                      <option value="questionnaire">
+                        Questionnaire library
+                      </option>
+                      <option value="instruction">
+                        Instruction / information
+                      </option>
+                    </optgroup>
+                  </select>
+                </div>
+
+                {countTreeItems(schedule.items) >=
+                  80 && (
+                  <p className="mt-2 text-[11px] text-amber-700">
+                    This check-in has reached the 80-block limit.
+                  </p>
                 )}
               </div>
             </section>

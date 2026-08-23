@@ -401,6 +401,13 @@ export default function FollowupManager({
 
       return rows[0]?.id || "";
     });
+
+    // If there are no studies with Follow-up enabled, there is no
+    // selected study and loadStudyFollowups() will never run. Clear the
+    // initial loading state here so the proper empty state is shown.
+    if (rows.length === 0) {
+      setLoading(false);
+    }
   }
 
   async function loadStudyFollowups(studyId: string) {

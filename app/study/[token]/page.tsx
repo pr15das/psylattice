@@ -3118,7 +3118,7 @@ export default function ParticipantStudyPage() {
     setMobilePairingCode(String(data.code || ""));
     setMobilePairingExpiresAt(String(data.expires_at || ""));
     setMobilePairingStatus(
-      "Enter this one-time code in the PsyLattice Android companion."
+      "Enter this one-time code in the PsyLattice mobile app."
     );
     setCreatingMobilePairing(false);
   }
@@ -4515,18 +4515,24 @@ export default function ParticipantStudyPage() {
             )}
           </Card>
 
-          {hasSensorContingentSampling && (
+          {ambulatoryConfig?.enabled && (
             <Card
-              title="Android companion"
-              description="This study uses Health Connect sensor-contingent sampling."
+              title="PsyLattice mobile app"
+              description={
+                hasSensorContingentSampling
+                  ? "Use PsyLattice as your study dashboard, receive study reminders, and connect the Health Connect data required by this protocol."
+                  : "Use PsyLattice as your study dashboard and receive ambulatory study reminders on your Android phone."
+              }
             >
               <div className="grid gap-4 lg:grid-cols-[1fr_auto] lg:items-center">
                 <div>
                   <p className="text-sm font-medium text-slate-800">
-                    Pair this study with the PsyLattice Android companion
+                    Connect this study to the PsyLattice mobile app
                   </p>
                   <p className="mt-2 max-w-2xl text-xs leading-5 text-slate-500">
-                    The companion requests only the Health Connect data types configured by the research team. Sensor rules are evaluated on the participant&apos;s Android device and can create an ambulatory check-in when a configured event occurs.
+                    Use the mobile app to see today&apos;s study check-ins, receive native reminders, and access event-contingent activities. {hasSensorContingentSampling
+                      ? " This study also contains Health Connect sensor rules. PsyLattice requests only the health-data permissions required by the research protocol."
+                      : " This study does not require Health Connect data."}
                   </p>
 
                   {mobilePairingCode && (
@@ -4565,7 +4571,7 @@ export default function ParticipantStudyPage() {
                     ? "Creating..."
                     : mobilePairingCode
                       ? "Create new code"
-                      : "Pair Android companion"}
+                      : "Connect mobile app"}
                 </button>
               </div>
             </Card>

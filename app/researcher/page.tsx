@@ -3190,7 +3190,7 @@ function StudyBuilder({
 
                     <div className="mt-4 space-y-4">
                       {consentItems.map((item, index) => (
-                        <div key={item.id} className="rounded-2xl border border-slate-200 p-5">
+                        <div key={item.id} className="rounded-2xl border border-slate-200 bg-white p-5">
                           <div className="flex flex-wrap items-center justify-between gap-3">
                             <p className="text-sm font-semibold">Consent item {index + 1}</p>
                             <div className="flex gap-2">
@@ -4148,6 +4148,25 @@ function QuestionnaireLibrary({
     redistribution_note: string | null;
     owner_user_id: string | null;
     source_type: "system" | "researcher_created" | "imported";
+    publication_scope: "private" | "published";
+    access_mode: "owner_only" | "free" | "request";
+    publisher_display_name: string | null;
+    publisher_affiliation: string | null;
+    publisher_url: string | null;
+    published_at: string | null;
+    my_access_status?: "pending" | "approved" | "denied" | "revoked" | null;
+  };
+
+  type QuestionnaireAccessRequest = {
+    id: string;
+    questionnaire_id: string;
+    requester_user_id: string;
+    requester_display_name: string;
+    requester_affiliation: string | null;
+    message: string | null;
+    status: "pending" | "approved" | "denied" | "revoked";
+    created_at: string;
+    reviewed_at: string | null;
   };
 
   type QuestionnaireVersion = {
@@ -4280,6 +4299,10 @@ function QuestionnaireLibrary({
   const [detailLoading, setDetailLoading] = useState(false);
   const [copiedReferenceId, setCopiedReferenceId] = useState("");
   const [currentUserId, setCurrentUserId] = useState("");
+  const [currentUserDisplayName, setCurrentUserDisplayName] = useState("Researcher");
+  const [accessRequests, setAccessRequests] = useState<QuestionnaireAccessRequest[]>([]);
+  const [accessRequestMessage, setAccessRequestMessage] = useState("");
+  const [accessBusy, setAccessBusy] = useState(false);
 
   const [builderOpen, setBuilderOpen] = useState(false);
   const [savingCustomQuestionnaire, setSavingCustomQuestionnaire] =
@@ -4306,6 +4329,10 @@ function QuestionnaireLibrary({
   const [builderMissingRule, setBuilderMissingRule] = useState("complete_case");
   const [builderRandomizeItems, setBuilderRandomizeItems] = useState(false);
   const [builderRightsConfirmed, setBuilderRightsConfirmed] = useState(false);
+  const [builderPublicationMode, setBuilderPublicationMode] = useState<"private" | "free" | "restricted">("private");
+  const [builderPublisherName, setBuilderPublisherName] = useState("");
+  const [builderPublisherAffiliation, setBuilderPublisherAffiliation] = useState("");
+  const [builderPublisherUrl, setBuilderPublisherUrl] = useState("");
   const [builderMediaUploadState, setBuilderMediaUploadState] = useState<Record<string, string>>({});
   const [builderMediaPreviews, setBuilderMediaPreviews] = useState<Record<string, string>>({});
 
@@ -4378,31 +4405,224 @@ function QuestionnaireLibrary({
       }
 
       setCurrentUserId(user.id);
+      const displayName = String(
+        user.user_metadata?.full_name ||
+          user.user_metadata?.name ||
+          "Researcher"
+      ).trim() || "Researcher";
+      setCurrentUserDisplayName(displayName);
 
-      const { data, error } = await supabase
-        .from("questionnaires")
-        .select(
-          "id, slug, name, acronym, category, description, constructs, population, item_count, estimated_minutes, languages, administration_mode, recall_period, self_available, researcher_available, license_status, license_summary, license_source_url, commercial_use_note, modification_note, redistribution_note, owner_user_id, source_type"
-        )
-        .eq("researcher_available", true)
-        .eq("status", "active")
-        .order("name", { ascending: true });
+      const [questionnaireResult, accessResult] = await Promise.all([
+        supabase
+          .from("questionnaires")
+          .select(
+            "id, slug, name, acronym, category, description, constructs, population, item_count, estimated_minutes, languages, administration_mode, recall_period, self_available, researcher_available, license_status, license_summary, license_source_url, commercial_use_note, modification_note, redistribution_note, owner_user_id, source_type, publication_scope, access_mode, publisher_display_name, publisher_affiliation, publisher_url, published_at"
+          )
+          .eq("researcher_available", true)
+          .eq("status", "active")
+          .order("name", { ascending: true }),
+        supabase
+          .from("questionnaire_access_requests")
+          .select("questionnaire_id, status")
+          .eq("requester_user_id", user.id),
+      ]);
 
-      if (error) {
-        console.error("Could not load researcher questionnaire library:", error);
+      if (questionnaireResult.error) {
+        console.error("Could not load researcher questionnaire library:", questionnaireResult.error);
         setLibraryError(
-          "The questionnaire library could not be loaded. Make sure the questionnaire database setup has been run in Supabase."
+          "The questionnaire library could not be loaded. Make sure the questionnaire publishing migration has been run in Supabase."
         );
         setLoading(false);
         return;
       }
 
-      setQuestionnaires((data || []) as Questionnaire[]);
+      const accessByQuestionnaire = new Map<string, Questionnaire["my_access_status"]>();
+      if (!accessResult.error) {
+        for (const row of accessResult.data || []) {
+          accessByQuestionnaire.set(
+            String(row.questionnaire_id),
+            row.status as Questionnaire["my_access_status"]
+          );
+        }
+      }
+
+      setQuestionnaires(
+        ((questionnaireResult.data || []) as Questionnaire[]).map((questionnaire) => ({
+          ...questionnaire,
+          my_access_status: accessByQuestionnaire.get(questionnaire.id) || null,
+        }))
+      );
       setLoading(false);
     }
 
     void loadLibrary();
   }, []);
+
+  function questionnaireCanUse(questionnaire: Questionnaire) {
+    if (!questionnaire.owner_user_id) return true;
+    if (questionnaire.owner_user_id === currentUserId) return true;
+    if (questionnaire.publication_scope !== "published") return false;
+    if (questionnaire.access_mode === "free") return true;
+    return (
+      questionnaire.access_mode === "request" &&
+      questionnaire.my_access_status === "approved"
+    );
+  }
+
+  function questionnairePublicationLabel(questionnaire: Questionnaire) {
+    if (questionnaire.owner_user_id === currentUserId) {
+      if (questionnaire.publication_scope !== "published") return "Private";
+      return questionnaire.access_mode === "free"
+        ? "Published · free to use"
+        : "Published · permission required";
+    }
+
+    if (questionnaire.source_type !== "researcher_created") return "PsyLattice catalogue";
+    if (questionnaire.access_mode === "free") return "Free to use";
+    if (questionnaire.my_access_status === "approved") return "Access granted";
+    if (questionnaire.my_access_status === "pending") return "Access requested";
+    return "Permission required";
+  }
+
+  async function loadQuestionnaireAccessRequests(questionnaireId: string) {
+    const supabase = createClient();
+    const { data, error } = await supabase
+      .from("questionnaire_access_requests")
+      .select(
+        "id, questionnaire_id, requester_user_id, requester_display_name, requester_affiliation, message, status, created_at, reviewed_at"
+      )
+      .eq("questionnaire_id", questionnaireId)
+      .order("created_at", { ascending: false });
+
+    if (!error) {
+      setAccessRequests((data || []) as QuestionnaireAccessRequest[]);
+    }
+  }
+
+  async function requestQuestionnaireAccess(questionnaire: Questionnaire) {
+    if (accessBusy || questionnaire.owner_user_id === currentUserId) return;
+    setAccessBusy(true);
+    setLibraryError("");
+
+    try {
+      const supabase = createClient();
+      const { data, error } = await supabase.rpc(
+        "psylattice_request_questionnaire_access",
+        {
+          p_questionnaire_id: questionnaire.id,
+          p_requester_display_name: currentUserDisplayName,
+          p_requester_affiliation: null,
+          p_message: accessRequestMessage.trim() || null,
+        }
+      );
+
+      if (error || !data?.ok) {
+        throw error || new Error(data?.error || "The access request could not be sent.");
+      }
+
+      const next = { ...questionnaire, my_access_status: "pending" as const };
+      setQuestionnaires((previous) =>
+        previous.map((item) => (item.id === questionnaire.id ? next : item))
+      );
+      setSelectedQuestionnaire(next);
+      setAccessRequestMessage("");
+    } catch (error) {
+      setLibraryError(
+        error instanceof Error ? error.message : "The access request could not be sent."
+      );
+    } finally {
+      setAccessBusy(false);
+    }
+  }
+
+  async function reviewQuestionnaireAccess(
+    requestId: string,
+    decision: "approved" | "denied" | "revoked"
+  ) {
+    if (accessBusy || !selectedQuestionnaire) return;
+    setAccessBusy(true);
+    setLibraryError("");
+
+    try {
+      const supabase = createClient();
+      const { data, error } = await supabase.rpc(
+        "psylattice_review_questionnaire_access",
+        {
+          p_request_id: requestId,
+          p_decision: decision,
+        }
+      );
+
+      if (error || !data?.ok) {
+        throw error || new Error(data?.error || "The access request could not be updated.");
+      }
+
+      await loadQuestionnaireAccessRequests(selectedQuestionnaire.id);
+    } catch (error) {
+      setLibraryError(
+        error instanceof Error ? error.message : "The access request could not be updated."
+      );
+    } finally {
+      setAccessBusy(false);
+    }
+  }
+
+  async function updateQuestionnairePublication(
+    questionnaire: Questionnaire,
+    mode: "private" | "free" | "restricted"
+  ) {
+    if (accessBusy || questionnaire.owner_user_id !== currentUserId) return;
+    setAccessBusy(true);
+    setLibraryError("");
+
+    const publicationScope = mode === "private" ? "private" : "published";
+    const accessMode =
+      mode === "private" ? "owner_only" : mode === "free" ? "free" : "request";
+
+    try {
+      const supabase = createClient();
+      const { data, error } = await supabase
+        .from("questionnaires")
+        .update({
+          publication_scope: publicationScope,
+          access_mode: accessMode,
+          publisher_display_name:
+            questionnaire.publisher_display_name || currentUserDisplayName,
+          published_at: publicationScope === "published" ? new Date().toISOString() : null,
+        })
+        .eq("id", questionnaire.id)
+        .eq("owner_user_id", currentUserId)
+        .select(
+          "id, slug, name, acronym, category, description, constructs, population, item_count, estimated_minutes, languages, administration_mode, recall_period, self_available, researcher_available, license_status, license_summary, license_source_url, commercial_use_note, modification_note, redistribution_note, owner_user_id, source_type, publication_scope, access_mode, publisher_display_name, publisher_affiliation, publisher_url, published_at"
+        )
+        .single();
+
+      if (error || !data) {
+        throw error || new Error("Publication settings could not be updated.");
+      }
+
+      const updated = {
+        ...(data as Questionnaire),
+        my_access_status: questionnaire.my_access_status || null,
+      };
+      setQuestionnaires((previous) =>
+        previous.map((item) => (item.id === questionnaire.id ? updated : item))
+      );
+      setSelectedQuestionnaire(updated);
+
+      if (updated.access_mode === "request") {
+        await loadQuestionnaireAccessRequests(updated.id);
+      } else {
+        setAccessRequests([]);
+      }
+    } catch (error) {
+      setLibraryError(
+        error instanceof Error ? error.message : "Publication settings could not be updated."
+      );
+    } finally {
+      setAccessBusy(false);
+    }
+  }
 
   async function openQuestionnaire(questionnaire: Questionnaire) {
     setSelectedQuestionnaire(questionnaire);
@@ -4410,9 +4630,21 @@ function QuestionnaireLibrary({
     setItems([]);
     setResources([]);
     setReferences([]);
+    setAccessRequests([]);
+    setAccessRequestMessage("");
     setDetailLoading(true);
     setLibraryError("");
     setCopiedReferenceId("");
+
+    const isOwner = questionnaire.owner_user_id === currentUserId;
+    if (isOwner && questionnaire.access_mode === "request") {
+      void loadQuestionnaireAccessRequests(questionnaire.id);
+    }
+
+    if (!questionnaireCanUse(questionnaire)) {
+      setDetailLoading(false);
+      return;
+    }
 
     const supabase = createClient();
 
@@ -4441,7 +4673,6 @@ function QuestionnaireLibrary({
     ]);
 
     if (versionResult.error) {
-      console.error("Could not load questionnaire version:", versionResult.error);
       setLibraryError("This questionnaire's administration information could not be loaded.");
       setDetailLoading(false);
       return;
@@ -4464,19 +4695,9 @@ function QuestionnaireLibrary({
         .eq("version_id", version.id)
         .order("position", { ascending: true });
 
-      if (itemError) {
-        console.error("Could not load questionnaire items:", itemError);
-      } else {
+      if (!itemError) {
         setItems((itemData || []) as QuestionnaireItem[]);
       }
-    }
-
-    if (resourceResult.error) {
-      console.error("Could not load questionnaire resources:", resourceResult.error);
-    }
-
-    if (referenceResult.error) {
-      console.error("Could not load questionnaire references:", referenceResult.error);
     }
 
     setDetailLoading(false);
@@ -4810,6 +5031,10 @@ function QuestionnaireLibrary({
     setBuilderMissingRule("complete_case");
     setBuilderRandomizeItems(false);
     setBuilderRightsConfirmed(false);
+    setBuilderPublicationMode("private");
+    setBuilderPublisherName(currentUserDisplayName);
+    setBuilderPublisherAffiliation("");
+    setBuilderPublisherUrl("");
     setBuilderMediaUploadState({});
     Object.values(builderMediaPreviews).forEach((url) => URL.revokeObjectURL(url));
     setBuilderMediaPreviews({});
@@ -4846,6 +5071,90 @@ function QuestionnaireLibrary({
 
   function itemTypeLabel(type: string) {
     return itemTypeDefinitions.find((item) => item.value === type)?.label || type;
+  }
+
+  function questionnaireItemTheme(type: string) {
+    const group = itemTypeDefinitions.find((item) => item.value === type)?.group || "Advanced";
+
+    // Keep the questionnaire builder inside the PsyLattice brand palette.
+    // Distinction comes from surface tone, border treatment and badge weight,
+    // rather than a different hue for every response format.
+    const themes: Record<string, { card: string; badge: string; number: string; soft: string; accent: string }> = {
+      Ratings: {
+        card: "border-cyan-200 border-l-cyan-600 bg-white",
+        badge: "bg-cyan-50 text-cyan-800 ring-1 ring-cyan-200",
+        number: "bg-cyan-50 text-cyan-800",
+        soft: "border-cyan-100 bg-cyan-50/40",
+        accent: "text-cyan-700",
+      },
+      Choice: {
+        card: "border-slate-200 border-l-cyan-400 bg-slate-50/45",
+        badge: "bg-white text-cyan-800 ring-1 ring-cyan-200",
+        number: "bg-white text-cyan-800 ring-1 ring-cyan-100",
+        soft: "border-slate-200 bg-white",
+        accent: "text-cyan-700",
+      },
+      Psychometric: {
+        card: "border-slate-300 border-l-slate-950 bg-white",
+        badge: "bg-slate-950 text-white",
+        number: "bg-slate-950 text-white",
+        soft: "border-slate-200 bg-slate-50/60",
+        accent: "text-slate-900",
+      },
+      Comparative: {
+        card: "border-slate-200 border-l-slate-600 bg-slate-50/45",
+        badge: "bg-slate-100 text-slate-700 ring-1 ring-slate-200",
+        number: "bg-slate-100 text-slate-700",
+        soft: "border-slate-200 bg-white",
+        accent: "text-slate-700",
+      },
+      Matrix: {
+        card: "border-cyan-200 border-l-cyan-800 bg-cyan-50/25",
+        badge: "bg-cyan-950 text-cyan-50",
+        number: "bg-cyan-950 text-cyan-50",
+        soft: "border-cyan-100 bg-white",
+        accent: "text-cyan-900",
+      },
+      "Text & data": {
+        card: "border-slate-200 border-l-cyan-500 bg-white",
+        badge: "bg-white text-cyan-800 ring-1 ring-cyan-200",
+        number: "bg-cyan-50 text-cyan-800",
+        soft: "border-slate-200 bg-slate-50/55",
+        accent: "text-cyan-700",
+      },
+      Uploads: {
+        card: "border-dashed border-cyan-300 border-l-cyan-700 bg-cyan-50/20",
+        badge: "bg-cyan-50 text-cyan-800 ring-1 ring-cyan-200",
+        number: "bg-cyan-50 text-cyan-800",
+        soft: "border-dashed border-cyan-200 bg-white",
+        accent: "text-cyan-700",
+      },
+      Content: {
+        card: "border-dashed border-slate-300 border-l-slate-500 bg-slate-50",
+        badge: "bg-slate-100 text-slate-700 ring-1 ring-slate-200",
+        number: "bg-slate-100 text-slate-700",
+        soft: "border-dashed border-slate-200 bg-white",
+        accent: "text-slate-600",
+      },
+      Advanced: {
+        card: "border-slate-300 border-l-slate-800 bg-slate-50/60",
+        badge: "bg-slate-800 text-white",
+        number: "bg-slate-800 text-white",
+        soft: "border-slate-200 bg-white",
+        accent: "text-slate-800",
+      },
+    };
+
+    return themes[group] || themes.Advanced;
+  }
+
+  function questionnairePageTheme(_index: number) {
+    // Pages are navigation/structure, so they deliberately use one neutral
+    // treatment. This keeps them visually distinct from answerable items.
+    return {
+      card: "border-slate-300 border-l-slate-950 bg-slate-50/70",
+      badge: "bg-slate-950 text-white",
+    };
   }
 
   function builderMediaAccept(type: string) {
@@ -4995,34 +5304,62 @@ function QuestionnaireLibrary({
     );
   }
 
-  function addBuilderItem(blockId?: string) {
+  function addBuilderItem(blockId?: string, itemType = "likert") {
     if (builderItems.length >= 500) return;
-    setBuilderItems((previous) => [
-      ...previous,
-      makeDefaultItem(previous.length + 1, blockId),
-    ]);
+    setBuilderItems((previous) => {
+      const targetBlockId = blockId || builderBlocks[0]?.id || "";
+      const base = makeDefaultItem(previous.length + 1, targetBlockId);
+      const contentOnly = contentItemTypes.has(itemType);
+      const nextItem: BuilderItem = {
+        ...base,
+        item_type: itemType,
+        required: contentOnly ? false : base.required,
+        reverse_scored: contentOnly ? false : base.reverse_scored,
+        options: optionItemTypes.has(itemType)
+          ? defaultOptionsForType(itemType)
+          : [],
+      };
+
+      const targetBlockIndex = builderBlocks.findIndex(
+        (block) => block.id === targetBlockId
+      );
+      const insertAt = previous.findIndex((item) => {
+        const itemBlockIndex = builderBlocks.findIndex(
+          (block) => block.id === item.block_id
+        );
+        return itemBlockIndex > targetBlockIndex;
+      });
+
+      if (insertAt < 0) return [...previous, nextItem];
+      const next = [...previous];
+      next.splice(insertAt, 0, nextItem);
+      return next;
+    });
   }
 
   function duplicateBuilderItem(id: string) {
     setBuilderItems((previous) => {
-      const source = previous.find((item) => item.id === id);
-      if (!source || previous.length >= 500) return previous;
-      return [
-        ...previous,
-        {
-          ...source,
-          id: makeBuilderId("item"),
-          key: `${source.key || "q"}_copy_${previous.length + 1}`,
-          options: source.options.map((option) => ({
-            ...option,
-            id: makeBuilderId("option"),
-          })),
-          logic_rules: source.logic_rules.map((rule) => ({
-            ...rule,
-            id: makeBuilderId("logic"),
-          })),
-        },
-      ];
+      const sourceIndex = previous.findIndex((item) => item.id === id);
+      const source = previous[sourceIndex];
+      if (!source || sourceIndex < 0 || previous.length >= 500) return previous;
+
+      const duplicate: BuilderItem = {
+        ...source,
+        id: makeBuilderId("item"),
+        key: `${source.key || "q"}_copy_${previous.length + 1}`,
+        options: source.options.map((option) => ({
+          ...option,
+          id: makeBuilderId("option"),
+        })),
+        logic_rules: source.logic_rules.map((rule) => ({
+          ...rule,
+          id: makeBuilderId("logic"),
+        })),
+      };
+
+      const next = [...previous];
+      next.splice(sourceIndex + 1, 0, duplicate);
+      return next;
     });
   }
 
@@ -5046,13 +5383,29 @@ function QuestionnaireLibrary({
     });
   }
 
-  function moveBuilderItem(id: string, direction: -1 | 1) {
-    const index = builderItems.findIndex((item) => item.id === id);
-    const target = index + direction;
-    if (index < 0 || target < 0 || target >= builderItems.length) return;
+  function moveBuilderItemWithinBlock(id: string, direction: -1 | 1) {
+    const sourceIndex = builderItems.findIndex((item) => item.id === id);
+    if (sourceIndex < 0) return;
 
+    const source = builderItems[sourceIndex];
+    const siblingIndexes = builderItems
+      .map((item, index) => ({ item, index }))
+      .filter((entry) => entry.item.block_id === source.block_id)
+      .map((entry) => entry.index);
+
+    const localIndex = siblingIndexes.indexOf(sourceIndex);
+    const targetLocalIndex = localIndex + direction;
+    if (
+      localIndex < 0 ||
+      targetLocalIndex < 0 ||
+      targetLocalIndex >= siblingIndexes.length
+    ) {
+      return;
+    }
+
+    const targetIndex = siblingIndexes[targetLocalIndex];
     const next = [...builderItems];
-    [next[index], next[target]] = [next[target], next[index]];
+    [next[sourceIndex], next[targetIndex]] = [next[targetIndex], next[sourceIndex]];
 
     const issue = firstLogicOrderIssue(next);
     if (issue) {
@@ -5121,17 +5474,19 @@ function QuestionnaireLibrary({
 
   function addBuilderBlock() {
     const number = builderBlocks.length + 1;
+    const blockId = makeBuilderId("block");
     setBuilderBlocks((previous) => [
       ...previous,
       {
-        id: makeBuilderId("block"),
+        id: blockId,
         key: `block_${number}`,
-        title: `Block ${number}`,
+        title: `Section ${number}`,
         instructions: "",
         randomize_items: false,
         page_break_after: true,
       },
     ]);
+    addBuilderItem(blockId, "likert");
   }
 
   function updateBuilderBlock(id: string, patch: Partial<BuilderBlock>) {
@@ -5144,12 +5499,34 @@ function QuestionnaireLibrary({
 
   function removeBuilderBlock(id: string) {
     if (builderBlocks.length <= 1) return;
-    const fallback = builderBlocks.find((block) => block.id !== id)?.id || "";
-    setBuilderBlocks((previous) => previous.filter((block) => block.id !== id));
+    const block = builderBlocks.find((candidate) => candidate.id === id);
+    const itemCount = builderItems.filter((item) => item.block_id === id).length;
+    const confirmed =
+      itemCount === 0 ||
+      window.confirm(
+        `Remove ${block?.title || "this block"} and its ${itemCount} item${
+          itemCount === 1 ? "" : "s"
+        }?`
+      );
+    if (!confirmed) return;
+
+    const removedKeys = new Set(
+      builderItems
+        .filter((item) => item.block_id === id)
+        .map((item) => item.key.trim())
+        .filter(Boolean)
+    );
+
+    setBuilderBlocks((previous) => previous.filter((candidate) => candidate.id !== id));
     setBuilderItems((previous) =>
-      previous.map((item) =>
-        item.block_id === id ? { ...item, block_id: fallback } : item
-      )
+      previous
+        .filter((item) => item.block_id !== id)
+        .map((item) => ({
+          ...item,
+          logic_rules: item.logic_rules.filter(
+            (rule) => !removedKeys.has(rule.source_key.trim())
+          ),
+        }))
     );
   }
 
@@ -5299,7 +5676,7 @@ function QuestionnaireLibrary({
       .filter((candidate) => !contentItemTypes.has(candidate.item_type));
 
     return (
-      <div className="mt-5 rounded-2xl border border-slate-200 bg-white p-4">
+      <div className="mt-5 rounded-2xl border border-cyan-200 bg-cyan-50/40 p-4">
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div>
             <p className="text-sm font-medium">Display logic / branching</p>
@@ -5326,7 +5703,7 @@ function QuestionnaireLibrary({
 
         {item.logic_rules.length > 0 && (
           <>
-            <div className="mt-4 flex flex-wrap items-center gap-3 rounded-xl bg-slate-50 p-3">
+            <div className="mt-4 flex flex-wrap items-center gap-3 rounded-xl border border-cyan-100 bg-white p-3">
               <span className="text-xs font-medium text-slate-500">Show this item when</span>
               <select
                 value={item.logic_mode}
@@ -5356,8 +5733,8 @@ function QuestionnaireLibrary({
                     key={rule.id}
                     className={`rounded-xl border p-3 ${
                       invalidSource
-                        ? "border-amber-200 bg-amber-50/60"
-                        : "border-slate-200 bg-slate-50/40"
+                        ? "border-cyan-300 bg-cyan-50/60"
+                        : "border-slate-200 bg-white"
                     }`}
                   >
                     <div className="mb-2 flex items-center justify-between gap-3">
@@ -5471,6 +5848,242 @@ function QuestionnaireLibrary({
     );
   }
 
+
+  function renderBuilderItemEditor(item: BuilderItem, index: number) {
+    return (
+      <div key={item.id} className={`rounded-2xl border border-l-4 p-5 ${questionnaireItemTheme(item.item_type).card}`}>
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div className="flex items-center gap-3"><div className={`flex h-9 w-9 items-center justify-center rounded-xl text-xs font-semibold ${questionnaireItemTheme(item.item_type).number}`}>{index + 1}</div><div><div className="flex flex-wrap items-center gap-2"><p className="text-sm font-semibold">{item.key || `Item ${index + 1}`}</p><span className={`rounded-full px-2 py-0.5 text-[10px] font-bold ${questionnaireItemTheme(item.item_type).badge}`}>{itemTypeLabel(item.item_type)}</span></div><p className="mt-1 text-[11px] font-medium text-slate-500">{itemTypeDefinitions.find((definition) => definition.value === item.item_type)?.group || "Advanced"}</p></div></div>
+          <div className="flex gap-2"><button type="button" onClick={() => moveBuilderItemWithinBlock(item.id, -1)} className="rounded-lg border border-slate-200 px-2 py-1 text-xs">↑</button><button type="button" onClick={() => moveBuilderItemWithinBlock(item.id, 1)} className="rounded-lg border border-slate-200 px-2 py-1 text-xs">↓</button><button type="button" onClick={() => duplicateBuilderItem(item.id)} className="rounded-lg border border-slate-200 px-2 py-1 text-xs">Duplicate</button><button type="button" onClick={() => removeBuilderItem(item.id)} disabled={builderItems.length <= 1} className="rounded-lg border border-red-200 px-2 py-1 text-xs text-red-700 disabled:opacity-30">Remove</button></div>
+        </div>
+      
+        <div className="mt-4 grid gap-3 md:grid-cols-[160px_1fr]">
+          <label><span className="text-xs text-slate-500">Item key</span><input value={item.key} onChange={(event) => updateBuilderItem(item.id, { key: event.target.value })} className="mt-1 w-full rounded-xl border border-slate-200 px-3 py-2.5 text-sm" /></label>
+          <label><span className="text-xs text-slate-500">Response / content type</span><select value={item.item_type} onChange={(event) => changeBuilderItemType(item.id, event.target.value)} className="mt-1 w-full rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm">{Array.from(new Set(itemTypeDefinitions.map((definition) => definition.group))).map((group) => <optgroup key={group} label={group}>{itemTypeDefinitions.filter((definition) => definition.group === group).map((definition) => <option key={definition.value} value={definition.value}>{definition.label}</option>)}</optgroup>)}</select></label>
+          
+        </div>
+      
+        <label className="mt-4 block"><span className="text-sm font-medium">{contentItemTypes.has(item.item_type) ? "Content / heading" : "Question / statement"}</span><textarea value={item.prompt} onChange={(event) => updateBuilderItem(item.id, { prompt: event.target.value })} rows={2} className="mt-2 w-full rounded-xl border border-slate-200 px-4 py-3 text-sm" /></label>
+        <label className="mt-3 block"><span className="text-xs text-slate-500">Help text / secondary instructions</span><input value={item.help_text} onChange={(event) => updateBuilderItem(item.id, { help_text: event.target.value })} className="mt-1 w-full rounded-xl border border-slate-200 px-3 py-2.5 text-sm" /></label>
+      
+        {!contentItemTypes.has(item.item_type) && (
+          <div className="mt-4 grid gap-3 sm:grid-cols-3">
+            <label><span className="text-xs text-slate-500">Subscale</span><input value={item.subscale} onChange={(event) => updateBuilderItem(item.id, { subscale: event.target.value })} className="mt-1 w-full rounded-xl border border-slate-200 px-3 py-2.5 text-sm" /></label>
+            <label className="flex items-center gap-2 rounded-xl border border-slate-200 px-4 py-3 text-sm sm:self-end"><input type="checkbox" checked={item.required} onChange={(event) => updateBuilderItem(item.id, { required: event.target.checked })} />Required</label>
+            <label className="flex items-center gap-2 rounded-xl border border-slate-200 px-4 py-3 text-sm sm:self-end"><input type="checkbox" checked={item.reverse_scored} onChange={(event) => updateBuilderItem(item.id, { reverse_scored: event.target.checked })} />Reverse scored</label>
+          </div>
+        )}
+      
+        {optionItemTypes.has(item.item_type) && (
+          <div className={`mt-5 rounded-2xl border p-4 ${questionnaireItemTheme(item.item_type).soft}`}>
+            <div className="flex items-center justify-between gap-3"><div><p className="text-sm font-medium">Response options</p><p className="mt-1 text-xs text-slate-400">Participant label, numeric code/score and optional weight are stored separately.</p></div><button type="button" onClick={() => addBuilderOption(item.id)} className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs font-semibold">+ Option</button></div>
+            <div className="mt-3 space-y-3">
+              {item.options.map((option) => {
+                const optionUploadKey = `${item.id}:${option.id}`;
+                return (
+                  <div key={option.id} className="rounded-xl border border-slate-200 bg-white p-3">
+                    <div className="grid gap-2 sm:grid-cols-[1fr_90px_90px_auto]">
+                      <input value={option.label} onChange={(event) => updateBuilderOption(item.id, option.id, { label: event.target.value })} className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm" />
+                      <input type="number" value={option.value} onChange={(event) => updateBuilderOption(item.id, option.id, { value: Number(event.target.value) })} className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm" title="Numeric code / score" />
+                      <input type="number" step="0.01" value={option.weight} onChange={(event) => updateBuilderOption(item.id, option.id, { weight: Number(event.target.value) })} className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm" title="Weight" />
+                      <button type="button" onClick={() => removeBuilderOption(item.id, option.id)} className="rounded-lg border border-red-200 bg-white px-3 py-2 text-xs text-red-700">×</button>
+                    </div>
+      
+                    {item.item_type === "image_choice" && (
+                      <div className="mt-3 rounded-xl bg-slate-50 p-3">
+                        <div className="flex flex-wrap items-center gap-3">
+                          <label
+                            htmlFor={`option-media-${item.id}-${option.id}`}
+                            className={`cursor-pointer rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-50 ${
+                              builderMediaUploadState[optionUploadKey] === "Uploading..."
+                                ? "pointer-events-none opacity-60"
+                                : ""
+                            }`}
+                          >
+                            {builderMediaUploadState[optionUploadKey] === "Uploading..."
+                              ? "Uploading image..."
+                              : option.media_url
+                                ? "Replace option image"
+                                : "Upload option image"}
+                          </label>
+                          <input
+                            id={`option-media-${item.id}-${option.id}`}
+                            type="file"
+                            accept="image/*"
+                            className="sr-only"
+                            disabled={builderMediaUploadState[optionUploadKey] === "Uploading..."}
+                            onChange={async (event) => {
+                              const input = event.currentTarget;
+                              const file = input.files?.[0];
+                              if (!file) return;
+                              await uploadBuilderMedia(file, item.id, option.id);
+                              input.value = "";
+                            }}
+                          />
+                          {builderMediaUploadState[optionUploadKey] && (
+                            <span
+                              className={`text-xs ${
+                                builderMediaUploadState[optionUploadKey].startsWith("Error:")
+                                  ? "font-medium text-red-700"
+                                  : builderMediaUploadState[optionUploadKey] === "Uploaded"
+                                    ? "font-medium text-emerald-700"
+                                    : "text-slate-500"
+                              }`}
+                            >
+                              {builderMediaUploadState[optionUploadKey]}
+                            </span>
+                          )}
+                          {option.media_url && (
+                            <button
+                              type="button"
+                              onClick={() => {
+                                updateBuilderOption(item.id, option.id, { media_url: "", media_mime_type: "" });
+                                setBuilderMediaPreviews((previous) => {
+                                  const next = { ...previous };
+                                  if (next[optionUploadKey]) URL.revokeObjectURL(next[optionUploadKey]);
+                                  delete next[optionUploadKey];
+                                  return next;
+                                });
+                              }}
+                              className="text-xs font-semibold text-red-700"
+                            >
+                              Remove image
+                            </button>
+                          )}
+                        </div>
+                        {builderMediaPreviews[optionUploadKey] ? (
+                          // eslint-disable-next-line @next/next/no-img-element
+                          <img src={builderMediaPreviews[optionUploadKey]} alt="" className="mt-3 max-h-40 rounded-xl border border-slate-200 object-contain" />
+                        ) : option.media_url ? (
+                          <p className="mt-2 text-xs text-emerald-700">Stored private option image attached.</p>
+                        ) : null}
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+            <label className="mt-3 flex items-center gap-2 text-sm"><input type="checkbox" checked={item.randomize_options} onChange={(event) => updateBuilderItem(item.id, { randomize_options: event.target.checked })} />Randomize option order</label>
+          </div>
+        )}
+      
+        {numericItemTypes.has(item.item_type) && (
+          <div className="mt-5 grid gap-3 rounded-2xl bg-slate-50 p-4 sm:grid-cols-3"><label><span className="text-xs text-slate-500">Minimum</span><input type="number" value={item.numeric_min} onChange={(event) => updateBuilderItem(item.id, { numeric_min: Number(event.target.value) })} className="mt-1 w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm" /></label><label><span className="text-xs text-slate-500">Maximum</span><input type="number" value={item.numeric_max} onChange={(event) => updateBuilderItem(item.id, { numeric_max: Number(event.target.value) })} className="mt-1 w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm" /></label><label><span className="text-xs text-slate-500">Step</span><input type="number" step="0.01" value={item.numeric_step} onChange={(event) => updateBuilderItem(item.id, { numeric_step: Number(event.target.value) })} className="mt-1 w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm" /></label><label><span className="text-xs text-slate-500">Left / low anchor</span><input value={item.left_anchor} onChange={(event) => updateBuilderItem(item.id, { left_anchor: event.target.value })} className="mt-1 w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm" /></label><label><span className="text-xs text-slate-500">Right / high anchor</span><input value={item.right_anchor} onChange={(event) => updateBuilderItem(item.id, { right_anchor: event.target.value })} className="mt-1 w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm" /></label></div>
+        )}
+      
+        {(item.item_type === "multiple_choice" || item.item_type === "checklist" || item.item_type === "ranking" || item.item_type === "best_worst") && (
+          <div className="mt-4 grid gap-3 sm:grid-cols-2"><label><span className="text-xs text-slate-500">Minimum selections</span><input type="number" min={0} value={item.min_selections} onChange={(event) => updateBuilderItem(item.id, { min_selections: Number(event.target.value) })} className="mt-1 w-full rounded-xl border border-slate-200 px-3 py-2.5 text-sm" /></label><label><span className="text-xs text-slate-500">Maximum selections</span><input type="number" min={0} value={item.max_selections} onChange={(event) => updateBuilderItem(item.id, { max_selections: Number(event.target.value) })} className="mt-1 w-full rounded-xl border border-slate-200 px-3 py-2.5 text-sm" /></label></div>
+        )}
+      
+        {textItemTypes.has(item.item_type) && (
+          <div className="mt-4 grid gap-3 sm:grid-cols-2"><label><span className="text-xs text-slate-500">Maximum words</span><input type="number" min={0} value={item.max_words} onChange={(event) => updateBuilderItem(item.id, { max_words: Number(event.target.value) })} className="mt-1 w-full rounded-xl border border-slate-200 px-3 py-2.5 text-sm" /></label><label><span className="text-xs text-slate-500">Maximum characters</span><input type="number" min={0} value={item.max_characters} onChange={(event) => updateBuilderItem(item.id, { max_characters: Number(event.target.value) })} className="mt-1 w-full rounded-xl border border-slate-200 px-3 py-2.5 text-sm" /></label></div>
+        )}
+      
+        {item.item_type === "thurstone" && <label className="mt-4 block"><span className="text-xs font-medium text-slate-500">Hidden Thurstone statement scale value</span><input type="number" step="0.01" value={item.thurstone_weight} onChange={(event) => updateBuilderItem(item.id, { thurstone_weight: Number(event.target.value) })} className="mt-1 w-full rounded-xl border border-slate-200 px-3 py-2.5 text-sm" /></label>}
+        {item.item_type === "constant_sum" && <label className="mt-4 block"><span className="text-xs font-medium text-slate-500">Required allocation total</span><input type="number" value={item.constant_sum_target} onChange={(event) => updateBuilderItem(item.id, { constant_sum_target: Number(event.target.value) })} className="mt-1 w-full rounded-xl border border-slate-200 px-3 py-2.5 text-sm" /></label>}
+        {matrixItemTypes.has(item.item_type) && <label className="mt-4 block"><span className="text-xs font-medium text-slate-500">Matrix rows — one per line</span><textarea value={item.matrix_rows} onChange={(event) => updateBuilderItem(item.id, { matrix_rows: event.target.value })} className="mt-1 min-h-28 w-full rounded-xl border border-slate-200 px-3 py-2.5 text-sm" /></label>}
+        {item.item_type !== "divider" && (
+          <div className="mt-4 rounded-2xl border border-slate-200 bg-slate-50 p-4">
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <div>
+                <p className="text-sm font-medium text-slate-800">{builderMediaLabel(item.item_type)}</p>
+                <p className="mt-1 text-xs leading-5 text-slate-500">Stored privately. Participants receive only a temporary signed viewing URL.</p>
+              </div>
+              <div>
+                <label
+                  htmlFor={`question-media-${item.id}`}
+                  className={`cursor-pointer rounded-xl bg-slate-950 px-4 py-2.5 text-xs font-semibold text-white hover:bg-slate-800 ${
+                    builderMediaUploadState[item.id] === "Uploading..."
+                      ? "pointer-events-none opacity-60"
+                      : ""
+                  }`}
+                >
+                  {builderMediaUploadState[item.id] === "Uploading..."
+                    ? "Uploading media..."
+                    : item.media_url
+                      ? "Replace media"
+                      : "Upload media"}
+                </label>
+                <input
+                  id={`question-media-${item.id}`}
+                  type="file"
+                  accept={builderMediaAccept(item.item_type)}
+                  className="sr-only"
+                  disabled={builderMediaUploadState[item.id] === "Uploading..."}
+                  onChange={async (event) => {
+                    const input = event.currentTarget;
+                    const file = input.files?.[0];
+                    if (!file) return;
+                    await uploadBuilderMedia(file, item.id);
+                    input.value = "";
+                  }}
+                />
+              </div>
+            </div>
+      
+            {builderMediaUploadState[item.id] && (
+              <p
+                className={`mt-2 text-xs ${
+                  builderMediaUploadState[item.id].startsWith("Error:")
+                    ? "font-medium text-red-700"
+                    : builderMediaUploadState[item.id] === "Uploaded"
+                      ? "font-medium text-emerald-700"
+                      : "text-slate-500"
+                }`}
+              >
+                {builderMediaUploadState[item.id]}
+              </p>
+            )}
+      
+            {builderMediaPreviews[item.id] && item.media_mime_type.startsWith("image/") && (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img src={builderMediaPreviews[item.id]} alt="" className="mt-3 max-h-64 rounded-xl border border-slate-200 object-contain" />
+            )}
+            {builderMediaPreviews[item.id] && item.media_mime_type.startsWith("audio/") && (
+              <audio controls src={builderMediaPreviews[item.id]} className="mt-3 w-full" />
+            )}
+            {builderMediaPreviews[item.id] && item.media_mime_type.startsWith("video/") && (
+              <video controls src={builderMediaPreviews[item.id]} className="mt-3 max-h-80 w-full rounded-xl border border-slate-200" />
+            )}
+            {!builderMediaPreviews[item.id] && item.media_url.startsWith("storage://") && (
+              <p className="mt-2 text-xs text-emerald-700">Stored private media attached.</p>
+            )}
+      
+            <div className="mt-3 grid gap-2 sm:grid-cols-[1fr_auto]">
+              <input
+                value={item.media_url}
+                onChange={(event) => updateBuilderItem(item.id, { media_url: event.target.value, media_mime_type: "" })}
+                placeholder="Or paste an https:// media URL"
+                className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-xs"
+              />
+              {item.media_url && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    updateBuilderItem(item.id, { media_url: "", media_mime_type: "" });
+                    setBuilderMediaPreviews((previous) => {
+                      const next = { ...previous };
+                      if (next[item.id]) URL.revokeObjectURL(next[item.id]);
+                      delete next[item.id];
+                      return next;
+                    });
+                  }}
+                  className="rounded-xl border border-red-200 bg-white px-3 py-2 text-xs font-semibold text-red-700"
+                >
+                  Remove
+                </button>
+              )}
+            </div>
+          </div>
+        )}
+      
+        {renderLogicBuilder(item, index)}
+      
+        {item.item_type === "custom" && <label className="mt-4 block"><span className="text-xs font-medium text-slate-500">Custom item configuration / implementation notes</span><textarea value={item.custom_config_notes} onChange={(event) => updateBuilderItem(item.id, { custom_config_notes: event.target.value })} placeholder="Describe any format not represented above. The database stores this as structured extension metadata for a future renderer/plugin." className="mt-1 min-h-28 w-full rounded-xl border border-slate-200 px-3 py-2.5 text-sm" /></label>}
+      </div>
+    );
+  }
+
   async function saveCustomQuestionnaire() {
     if (savingCustomQuestionnaire) return;
     setBuilderError("");
@@ -5559,6 +6172,12 @@ function QuestionnaireLibrary({
     if (builderScoringMethod === "custom_formula" && !builderScoringFormula.trim()) {
       return setBuilderError("Enter the custom scoring formula or algorithm notes.");
     }
+    if (builderPublicationMode !== "private" && !builderPublisherName.trim()) {
+      return setBuilderError("Add the publisher / author name before publishing this questionnaire to PsyLattice.");
+    }
+    if (builderPublisherUrl.trim() && !/^https?:\/\//i.test(builderPublisherUrl.trim())) {
+      return setBuilderError("Publisher profile / website must start with http:// or https://.");
+    }
     if (!builderRightsConfirmed) {
       return setBuilderError("Confirm that you created this content or have the rights required to use it.");
     }
@@ -5585,6 +6204,13 @@ function QuestionnaireLibrary({
         new Set(builderLanguages.split(",").map((language) => language.trim()).filter(Boolean))
       );
       const scorableItems = builderItems.filter((item) => !contentItemTypes.has(item.item_type));
+      const publicationScope = builderPublicationMode === "private" ? "private" : "published";
+      const accessMode =
+        builderPublicationMode === "private"
+          ? "owner_only"
+          : builderPublicationMode === "free"
+            ? "free"
+            : "request";
 
       const { data: createdQuestionnaire, error: questionnaireError } = await supabase
         .from("questionnaires")
@@ -5609,11 +6235,24 @@ function QuestionnaireLibrary({
             "Created in this researcher's PsyLattice workspace. The researcher confirmed that they created the content or hold the rights required to use it. PsyLattice does not independently verify authorship or third-party permissions.",
           commercial_use_note: "Rights depend on the content entered by the researcher and any underlying third-party material.",
           modification_note: "The researcher controls this custom instrument. Modifications should create a new version after deployment.",
-          redistribution_note: "Distribution rights depend on the researcher's ownership or permission for the entered content.",
+          redistribution_note:
+            accessMode === "free"
+              ? "The owner has published this questionnaire for free research use in PsyLattice. Any external redistribution still depends on the owner's stated terms."
+              : accessMode === "request"
+                ? "The owner has published the questionnaire metadata in PsyLattice but requires approval before other researchers can use the questionnaire content."
+                : "Private researcher-owned questionnaire. Not shared with other PsyLattice researchers.",
           owner_user_id: user.id,
           source_type: "researcher_created",
+          publication_scope: publicationScope,
+          access_mode: accessMode,
+          publisher_display_name:
+            builderPublisherName.trim() || currentUserDisplayName,
+          publisher_affiliation: builderPublisherAffiliation.trim() || null,
+          publisher_url: builderPublisherUrl.trim() || null,
+          published_at:
+            publicationScope === "published" ? new Date().toISOString() : null,
         })
-        .select("id, slug, name, acronym, category, description, constructs, population, item_count, estimated_minutes, languages, administration_mode, recall_period, self_available, researcher_available, license_status, license_summary, license_source_url, commercial_use_note, modification_note, redistribution_note, owner_user_id, source_type")
+        .select("id, slug, name, acronym, category, description, constructs, population, item_count, estimated_minutes, languages, administration_mode, recall_period, self_available, researcher_available, license_status, license_summary, license_source_url, commercial_use_note, modification_note, redistribution_note, owner_user_id, source_type, publication_scope, access_mode, publisher_display_name, publisher_affiliation, publisher_url, published_at")
         .single();
 
       if (questionnaireError || !createdQuestionnaire) throw questionnaireError || new Error("The questionnaire could not be created.");
@@ -5743,7 +6382,13 @@ function QuestionnaireLibrary({
 
       const typedQuestionnaire = createdQuestionnaire as Questionnaire;
       setQuestionnaires((previous) => [...previous, typedQuestionnaire].sort((a, b) => a.name.localeCompare(b.name)));
-      setBuilderSuccess("Universal questionnaire created and added to your research library.");
+      setBuilderSuccess(
+        publicationScope === "published"
+          ? accessMode === "free"
+            ? "Questionnaire published to PsyLattice and available for other researchers to use."
+            : "Questionnaire published to PsyLattice. Other researchers can discover it and request access."
+          : "Questionnaire saved privately to your research library."
+      );
       setBuilderOpen(false);
       resetCustomBuilder();
       await openQuestionnaire(typedQuestionnaire);
@@ -5807,7 +6452,9 @@ function QuestionnaireLibrary({
     (item) => !item.self_available
   ).length;
   const customQuestionnaireCount = questionnaires.filter(
-    (item) => item.source_type === "researcher_created"
+    (item) =>
+      item.source_type === "researcher_created" &&
+      item.owner_user_id === currentUserId
   ).length;
 
   if (builderOpen) {
@@ -5877,259 +6524,195 @@ function QuestionnaireLibrary({
               </div>
             </Panel>
 
-            <Panel title="Blocks & pages" description="Create sections, page breaks and block-level randomisation.">
-              <div className="space-y-4">
-                {builderBlocks.map((block, index) => (
-                  <div key={block.id} className="rounded-2xl border border-slate-200 p-5">
-                    <div className="flex items-center justify-between gap-3"><p className="text-sm font-semibold">Block {index + 1}</p><button type="button" onClick={() => removeBuilderBlock(block.id)} disabled={builderBlocks.length <= 1} className="text-xs font-semibold text-red-600 disabled:opacity-30">Remove</button></div>
-                    <div className="mt-4 grid gap-3 sm:grid-cols-2">
-                      <label><span className="text-xs text-slate-500">Block key</span><input value={block.key} onChange={(event) => updateBuilderBlock(block.id, { key: event.target.value })} className="mt-1 w-full rounded-xl border border-slate-200 px-3 py-2.5 text-sm" /></label>
-                      <label><span className="text-xs text-slate-500">Title</span><input value={block.title} onChange={(event) => updateBuilderBlock(block.id, { title: event.target.value })} className="mt-1 w-full rounded-xl border border-slate-200 px-3 py-2.5 text-sm" /></label>
-                    </div>
-                    <textarea value={block.instructions} onChange={(event) => updateBuilderBlock(block.id, { instructions: event.target.value })} placeholder="Optional block instructions" className="mt-3 min-h-20 w-full rounded-xl border border-slate-200 px-3 py-2.5 text-sm" />
-                    <div className="mt-3 flex flex-wrap gap-4 text-sm"><label className="flex items-center gap-2"><input type="checkbox" checked={block.randomize_items} onChange={(event) => updateBuilderBlock(block.id, { randomize_items: event.target.checked })} />Randomize items in this block</label><label className="flex items-center gap-2"><input type="checkbox" checked={block.page_break_after} onChange={(event) => updateBuilderBlock(block.id, { page_break_after: event.target.checked })} />Page break after block</label></div>
-                  </div>
-                ))}
-              </div>
-              <button type="button" onClick={addBuilderBlock} className="mt-4 rounded-xl border border-slate-200 px-4 py-2.5 text-sm font-semibold">+ Add block / page</button>
-            </Panel>
-
-            <Panel title="Items & content" description="Every item can use a different response type. Use {{item_key}} in later wording to pipe a previous response.">
+            <Panel
+              title="Questionnaire structure"
+              description="Build the questionnaire the way participants experience it: blocks contain their own questions and content."
+            >
               <div className="space-y-5">
-                {builderItems.map((item, index) => (
-                  <div key={item.id} className="rounded-2xl border border-slate-200 p-5">
-                    <div className="flex flex-wrap items-center justify-between gap-3">
-                      <div className="flex items-center gap-3"><div className="flex h-9 w-9 items-center justify-center rounded-xl bg-slate-100 text-xs font-semibold">{index + 1}</div><div><p className="text-sm font-semibold">{item.key || `Item ${index + 1}`}</p><p className="text-xs text-slate-400">{itemTypeLabel(item.item_type)}</p></div></div>
-                      <div className="flex gap-2"><button type="button" onClick={() => moveBuilderItem(item.id, -1)} className="rounded-lg border border-slate-200 px-2 py-1 text-xs">↑</button><button type="button" onClick={() => moveBuilderItem(item.id, 1)} className="rounded-lg border border-slate-200 px-2 py-1 text-xs">↓</button><button type="button" onClick={() => duplicateBuilderItem(item.id)} className="rounded-lg border border-slate-200 px-2 py-1 text-xs">Duplicate</button><button type="button" onClick={() => removeBuilderItem(item.id)} disabled={builderItems.length <= 1} className="rounded-lg border border-red-200 px-2 py-1 text-xs text-red-700 disabled:opacity-30">Remove</button></div>
-                    </div>
+                {builderBlocks.map((block, blockIndex) => {
+                  const blockItems = builderItems.filter(
+                    (item) => item.block_id === block.id
+                  );
 
-                    <div className="mt-4 grid gap-3 md:grid-cols-[160px_1fr_220px]">
-                      <label><span className="text-xs text-slate-500">Item key</span><input value={item.key} onChange={(event) => updateBuilderItem(item.id, { key: event.target.value })} className="mt-1 w-full rounded-xl border border-slate-200 px-3 py-2.5 text-sm" /></label>
-                      <label><span className="text-xs text-slate-500">Response / content type</span><select value={item.item_type} onChange={(event) => changeBuilderItemType(item.id, event.target.value)} className="mt-1 w-full rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm">{Array.from(new Set(itemTypeDefinitions.map((definition) => definition.group))).map((group) => <optgroup key={group} label={group}>{itemTypeDefinitions.filter((definition) => definition.group === group).map((definition) => <option key={definition.value} value={definition.value}>{definition.label}</option>)}</optgroup>)}</select></label>
-                      <label><span className="text-xs text-slate-500">Block / page</span><select value={item.block_id} onChange={(event) => updateBuilderItem(item.id, { block_id: event.target.value })} className="mt-1 w-full rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm">{builderBlocks.map((block) => <option key={block.id} value={block.id}>{block.title || block.key}</option>)}</select></label>
-                    </div>
+                  return (
+                    <section
+                      key={block.id}
+                      className={`overflow-hidden rounded-3xl border border-l-4 shadow-sm ${questionnairePageTheme(blockIndex).card}`}
+                    >
+                      <div className="border-b border-slate-200/80 bg-white/75 p-5">
+                        <div className="flex flex-col justify-between gap-4 lg:flex-row lg:items-start">
+                          <div className="min-w-0 flex-1">
+                            <div className="flex flex-wrap items-center gap-2">
+                              <span
+                                className={`rounded-full px-2.5 py-1 text-[10px] font-bold uppercase tracking-[0.1em] ${questionnairePageTheme(blockIndex).badge}`}
+                              >
+                                Block {blockIndex + 1}
+                              </span>
+                              <span className="text-xs font-medium text-slate-400">
+                                {blockItems.length} item{blockItems.length === 1 ? "" : "s"}
+                              </span>
+                            </div>
 
-                    <label className="mt-4 block"><span className="text-sm font-medium">{contentItemTypes.has(item.item_type) ? "Content / heading" : "Question / statement"}</span><textarea value={item.prompt} onChange={(event) => updateBuilderItem(item.id, { prompt: event.target.value })} rows={2} className="mt-2 w-full rounded-xl border border-slate-200 px-4 py-3 text-sm" /></label>
-                    <label className="mt-3 block"><span className="text-xs text-slate-500">Help text / secondary instructions</span><input value={item.help_text} onChange={(event) => updateBuilderItem(item.id, { help_text: event.target.value })} className="mt-1 w-full rounded-xl border border-slate-200 px-3 py-2.5 text-sm" /></label>
-
-                    {!contentItemTypes.has(item.item_type) && (
-                      <div className="mt-4 grid gap-3 sm:grid-cols-3">
-                        <label><span className="text-xs text-slate-500">Subscale</span><input value={item.subscale} onChange={(event) => updateBuilderItem(item.id, { subscale: event.target.value })} className="mt-1 w-full rounded-xl border border-slate-200 px-3 py-2.5 text-sm" /></label>
-                        <label className="flex items-center gap-2 rounded-xl border border-slate-200 px-4 py-3 text-sm sm:self-end"><input type="checkbox" checked={item.required} onChange={(event) => updateBuilderItem(item.id, { required: event.target.checked })} />Required</label>
-                        <label className="flex items-center gap-2 rounded-xl border border-slate-200 px-4 py-3 text-sm sm:self-end"><input type="checkbox" checked={item.reverse_scored} onChange={(event) => updateBuilderItem(item.id, { reverse_scored: event.target.checked })} />Reverse scored</label>
-                      </div>
-                    )}
-
-                    {optionItemTypes.has(item.item_type) && (
-                      <div className="mt-5 rounded-2xl bg-slate-50 p-4">
-                        <div className="flex items-center justify-between gap-3"><div><p className="text-sm font-medium">Response options</p><p className="mt-1 text-xs text-slate-400">Participant label, numeric code/score and optional weight are stored separately.</p></div><button type="button" onClick={() => addBuilderOption(item.id)} className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs font-semibold">+ Option</button></div>
-                        <div className="mt-3 space-y-3">
-                          {item.options.map((option) => {
-                            const optionUploadKey = `${item.id}:${option.id}`;
-                            return (
-                              <div key={option.id} className="rounded-xl border border-slate-200 bg-white p-3">
-                                <div className="grid gap-2 sm:grid-cols-[1fr_90px_90px_auto]">
-                                  <input value={option.label} onChange={(event) => updateBuilderOption(item.id, option.id, { label: event.target.value })} className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm" />
-                                  <input type="number" value={option.value} onChange={(event) => updateBuilderOption(item.id, option.id, { value: Number(event.target.value) })} className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm" title="Numeric code / score" />
-                                  <input type="number" step="0.01" value={option.weight} onChange={(event) => updateBuilderOption(item.id, option.id, { weight: Number(event.target.value) })} className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm" title="Weight" />
-                                  <button type="button" onClick={() => removeBuilderOption(item.id, option.id)} className="rounded-lg border border-red-200 bg-white px-3 py-2 text-xs text-red-700">×</button>
-                                </div>
-
-                                {item.item_type === "image_choice" && (
-                                  <div className="mt-3 rounded-xl bg-slate-50 p-3">
-                                    <div className="flex flex-wrap items-center gap-3">
-                                      <label
-                                        htmlFor={`option-media-${item.id}-${option.id}`}
-                                        className={`cursor-pointer rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-50 ${
-                                          builderMediaUploadState[optionUploadKey] === "Uploading..."
-                                            ? "pointer-events-none opacity-60"
-                                            : ""
-                                        }`}
-                                      >
-                                        {builderMediaUploadState[optionUploadKey] === "Uploading..."
-                                          ? "Uploading image..."
-                                          : option.media_url
-                                            ? "Replace option image"
-                                            : "Upload option image"}
-                                      </label>
-                                      <input
-                                        id={`option-media-${item.id}-${option.id}`}
-                                        type="file"
-                                        accept="image/*"
-                                        className="sr-only"
-                                        disabled={builderMediaUploadState[optionUploadKey] === "Uploading..."}
-                                        onChange={async (event) => {
-                                          const input = event.currentTarget;
-                                          const file = input.files?.[0];
-                                          if (!file) return;
-                                          await uploadBuilderMedia(file, item.id, option.id);
-                                          input.value = "";
-                                        }}
-                                      />
-                                      {builderMediaUploadState[optionUploadKey] && (
-                                        <span
-                                          className={`text-xs ${
-                                            builderMediaUploadState[optionUploadKey].startsWith("Error:")
-                                              ? "font-medium text-red-700"
-                                              : builderMediaUploadState[optionUploadKey] === "Uploaded"
-                                                ? "font-medium text-emerald-700"
-                                                : "text-slate-500"
-                                          }`}
-                                        >
-                                          {builderMediaUploadState[optionUploadKey]}
-                                        </span>
-                                      )}
-                                      {option.media_url && (
-                                        <button
-                                          type="button"
-                                          onClick={() => {
-                                            updateBuilderOption(item.id, option.id, { media_url: "", media_mime_type: "" });
-                                            setBuilderMediaPreviews((previous) => {
-                                              const next = { ...previous };
-                                              if (next[optionUploadKey]) URL.revokeObjectURL(next[optionUploadKey]);
-                                              delete next[optionUploadKey];
-                                              return next;
-                                            });
-                                          }}
-                                          className="text-xs font-semibold text-red-700"
-                                        >
-                                          Remove image
-                                        </button>
-                                      )}
-                                    </div>
-                                    {builderMediaPreviews[optionUploadKey] ? (
-                                      // eslint-disable-next-line @next/next/no-img-element
-                                      <img src={builderMediaPreviews[optionUploadKey]} alt="" className="mt-3 max-h-40 rounded-xl border border-slate-200 object-contain" />
-                                    ) : option.media_url ? (
-                                      <p className="mt-2 text-xs text-emerald-700">Stored private option image attached.</p>
-                                    ) : null}
-                                  </div>
-                                )}
-                              </div>
-                            );
-                          })}
-                        </div>
-                        <label className="mt-3 flex items-center gap-2 text-sm"><input type="checkbox" checked={item.randomize_options} onChange={(event) => updateBuilderItem(item.id, { randomize_options: event.target.checked })} />Randomize option order</label>
-                      </div>
-                    )}
-
-                    {numericItemTypes.has(item.item_type) && (
-                      <div className="mt-5 grid gap-3 rounded-2xl bg-slate-50 p-4 sm:grid-cols-3"><label><span className="text-xs text-slate-500">Minimum</span><input type="number" value={item.numeric_min} onChange={(event) => updateBuilderItem(item.id, { numeric_min: Number(event.target.value) })} className="mt-1 w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm" /></label><label><span className="text-xs text-slate-500">Maximum</span><input type="number" value={item.numeric_max} onChange={(event) => updateBuilderItem(item.id, { numeric_max: Number(event.target.value) })} className="mt-1 w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm" /></label><label><span className="text-xs text-slate-500">Step</span><input type="number" step="0.01" value={item.numeric_step} onChange={(event) => updateBuilderItem(item.id, { numeric_step: Number(event.target.value) })} className="mt-1 w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm" /></label><label><span className="text-xs text-slate-500">Left / low anchor</span><input value={item.left_anchor} onChange={(event) => updateBuilderItem(item.id, { left_anchor: event.target.value })} className="mt-1 w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm" /></label><label><span className="text-xs text-slate-500">Right / high anchor</span><input value={item.right_anchor} onChange={(event) => updateBuilderItem(item.id, { right_anchor: event.target.value })} className="mt-1 w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm" /></label></div>
-                    )}
-
-                    {(item.item_type === "multiple_choice" || item.item_type === "checklist" || item.item_type === "ranking" || item.item_type === "best_worst") && (
-                      <div className="mt-4 grid gap-3 sm:grid-cols-2"><label><span className="text-xs text-slate-500">Minimum selections</span><input type="number" min={0} value={item.min_selections} onChange={(event) => updateBuilderItem(item.id, { min_selections: Number(event.target.value) })} className="mt-1 w-full rounded-xl border border-slate-200 px-3 py-2.5 text-sm" /></label><label><span className="text-xs text-slate-500">Maximum selections</span><input type="number" min={0} value={item.max_selections} onChange={(event) => updateBuilderItem(item.id, { max_selections: Number(event.target.value) })} className="mt-1 w-full rounded-xl border border-slate-200 px-3 py-2.5 text-sm" /></label></div>
-                    )}
-
-                    {textItemTypes.has(item.item_type) && (
-                      <div className="mt-4 grid gap-3 sm:grid-cols-2"><label><span className="text-xs text-slate-500">Maximum words</span><input type="number" min={0} value={item.max_words} onChange={(event) => updateBuilderItem(item.id, { max_words: Number(event.target.value) })} className="mt-1 w-full rounded-xl border border-slate-200 px-3 py-2.5 text-sm" /></label><label><span className="text-xs text-slate-500">Maximum characters</span><input type="number" min={0} value={item.max_characters} onChange={(event) => updateBuilderItem(item.id, { max_characters: Number(event.target.value) })} className="mt-1 w-full rounded-xl border border-slate-200 px-3 py-2.5 text-sm" /></label></div>
-                    )}
-
-                    {item.item_type === "thurstone" && <label className="mt-4 block"><span className="text-xs font-medium text-slate-500">Hidden Thurstone statement scale value</span><input type="number" step="0.01" value={item.thurstone_weight} onChange={(event) => updateBuilderItem(item.id, { thurstone_weight: Number(event.target.value) })} className="mt-1 w-full rounded-xl border border-slate-200 px-3 py-2.5 text-sm" /></label>}
-                    {item.item_type === "constant_sum" && <label className="mt-4 block"><span className="text-xs font-medium text-slate-500">Required allocation total</span><input type="number" value={item.constant_sum_target} onChange={(event) => updateBuilderItem(item.id, { constant_sum_target: Number(event.target.value) })} className="mt-1 w-full rounded-xl border border-slate-200 px-3 py-2.5 text-sm" /></label>}
-                    {matrixItemTypes.has(item.item_type) && <label className="mt-4 block"><span className="text-xs font-medium text-slate-500">Matrix rows — one per line</span><textarea value={item.matrix_rows} onChange={(event) => updateBuilderItem(item.id, { matrix_rows: event.target.value })} className="mt-1 min-h-28 w-full rounded-xl border border-slate-200 px-3 py-2.5 text-sm" /></label>}
-                    {item.item_type !== "divider" && (
-                      <div className="mt-4 rounded-2xl border border-slate-200 bg-slate-50 p-4">
-                        <div className="flex flex-wrap items-center justify-between gap-3">
-                          <div>
-                            <p className="text-sm font-medium text-slate-800">{builderMediaLabel(item.item_type)}</p>
-                            <p className="mt-1 text-xs leading-5 text-slate-500">Stored privately. Participants receive only a temporary signed viewing URL.</p>
-                          </div>
-                          <div>
-                            <label
-                              htmlFor={`question-media-${item.id}`}
-                              className={`cursor-pointer rounded-xl bg-slate-950 px-4 py-2.5 text-xs font-semibold text-white hover:bg-slate-800 ${
-                                builderMediaUploadState[item.id] === "Uploading..."
-                                  ? "pointer-events-none opacity-60"
-                                  : ""
-                              }`}
-                            >
-                              {builderMediaUploadState[item.id] === "Uploading..."
-                                ? "Uploading media..."
-                                : item.media_url
-                                  ? "Replace media"
-                                  : "Upload media"}
-                            </label>
                             <input
-                              id={`question-media-${item.id}`}
-                              type="file"
-                              accept={builderMediaAccept(item.item_type)}
-                              className="sr-only"
-                              disabled={builderMediaUploadState[item.id] === "Uploading..."}
-                              onChange={async (event) => {
-                                const input = event.currentTarget;
-                                const file = input.files?.[0];
-                                if (!file) return;
-                                await uploadBuilderMedia(file, item.id);
-                                input.value = "";
-                              }}
+                              value={block.title}
+                              onChange={(event) =>
+                                updateBuilderBlock(block.id, {
+                                  title: event.target.value,
+                                })
+                              }
+                              placeholder={`Section ${blockIndex + 1} title`}
+                              className="mt-3 w-full border-0 bg-transparent p-0 text-lg font-semibold text-slate-950 outline-none placeholder:text-slate-400"
+                            />
+
+                            <textarea
+                              value={block.instructions}
+                              onChange={(event) =>
+                                updateBuilderBlock(block.id, {
+                                  instructions: event.target.value,
+                                })
+                              }
+                              placeholder="Optional instructions shown before the questions in this block"
+                              rows={2}
+                              className="mt-2 w-full resize-y rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm text-slate-600"
                             />
                           </div>
+
+                          <button
+                            type="button"
+                            onClick={() => removeBuilderBlock(block.id)}
+                            disabled={builderBlocks.length <= 1}
+                            className="shrink-0 text-xs font-semibold text-red-600 disabled:opacity-30"
+                          >
+                            Remove block
+                          </button>
                         </div>
 
-                        {builderMediaUploadState[item.id] && (
-                          <p
-                            className={`mt-2 text-xs ${
-                              builderMediaUploadState[item.id].startsWith("Error:")
-                                ? "font-medium text-red-700"
-                                : builderMediaUploadState[item.id] === "Uploaded"
-                                  ? "font-medium text-emerald-700"
-                                  : "text-slate-500"
-                            }`}
-                          >
-                            {builderMediaUploadState[item.id]}
-                          </p>
+                        <details className="mt-4 rounded-xl border border-slate-200 bg-slate-50/70 px-4 py-3">
+                          <summary className="cursor-pointer text-xs font-semibold text-slate-600">
+                            Block settings
+                          </summary>
+                          <div className="mt-3 grid gap-3 md:grid-cols-2">
+                            <label>
+                              <span className="text-xs text-slate-500">Block key</span>
+                              <input
+                                value={block.key}
+                                onChange={(event) =>
+                                  updateBuilderBlock(block.id, {
+                                    key: event.target.value,
+                                  })
+                                }
+                                className="mt-1 w-full rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm"
+                              />
+                            </label>
+                            <div className="space-y-2 pt-1 text-sm">
+                              <label className="flex items-center gap-2">
+                                <input
+                                  type="checkbox"
+                                  checked={block.randomize_items}
+                                  onChange={(event) =>
+                                    updateBuilderBlock(block.id, {
+                                      randomize_items: event.target.checked,
+                                    })
+                                  }
+                                />
+                                Randomize items in this block
+                              </label>
+                              <label className="flex items-center gap-2">
+                                <input
+                                  type="checkbox"
+                                  checked={block.page_break_after}
+                                  onChange={(event) =>
+                                    updateBuilderBlock(block.id, {
+                                      page_break_after: event.target.checked,
+                                    })
+                                  }
+                                />
+                                Page break after this block
+                              </label>
+                            </div>
+                          </div>
+                        </details>
+                      </div>
+
+                      <div className="space-y-4 bg-slate-50/45 p-5">
+                        {blockItems.length > 0 ? (
+                          blockItems.map((item) =>
+                            renderBuilderItemEditor(
+                              item,
+                              builderItems.findIndex(
+                                (candidate) => candidate.id === item.id
+                              )
+                            )
+                          )
+                        ) : (
+                          <div className="rounded-2xl border border-dashed border-slate-300 bg-white px-5 py-7 text-center">
+                            <p className="text-sm font-medium text-slate-700">
+                              This block is empty
+                            </p>
+                            <p className="mt-1 text-xs text-slate-400">
+                              Add the first question or content element below.
+                            </p>
+                          </div>
                         )}
 
-                        {builderMediaPreviews[item.id] && item.media_mime_type.startsWith("image/") && (
-                          // eslint-disable-next-line @next/next/no-img-element
-                          <img src={builderMediaPreviews[item.id]} alt="" className="mt-3 max-h-64 rounded-xl border border-slate-200 object-contain" />
-                        )}
-                        {builderMediaPreviews[item.id] && item.media_mime_type.startsWith("audio/") && (
-                          <audio controls src={builderMediaPreviews[item.id]} className="mt-3 w-full" />
-                        )}
-                        {builderMediaPreviews[item.id] && item.media_mime_type.startsWith("video/") && (
-                          <video controls src={builderMediaPreviews[item.id]} className="mt-3 max-h-80 w-full rounded-xl border border-slate-200" />
-                        )}
-                        {!builderMediaPreviews[item.id] && item.media_url.startsWith("storage://") && (
-                          <p className="mt-2 text-xs text-emerald-700">Stored private media attached.</p>
-                        )}
-
-                        <div className="mt-3 grid gap-2 sm:grid-cols-[1fr_auto]">
-                          <input
-                            value={item.media_url}
-                            onChange={(event) => updateBuilderItem(item.id, { media_url: event.target.value, media_mime_type: "" })}
-                            placeholder="Or paste an https:// media URL"
-                            className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-xs"
-                          />
-                          {item.media_url && (
-                            <button
-                              type="button"
-                              onClick={() => {
-                                updateBuilderItem(item.id, { media_url: "", media_mime_type: "" });
-                                setBuilderMediaPreviews((previous) => {
-                                  const next = { ...previous };
-                                  if (next[item.id]) URL.revokeObjectURL(next[item.id]);
-                                  delete next[item.id];
-                                  return next;
-                                });
+                        <div className="rounded-2xl border border-dashed border-cyan-200 bg-white p-4">
+                          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                            <div>
+                              <p className="text-sm font-semibold text-slate-800">
+                                Add to {block.title || `Block ${blockIndex + 1}`}
+                              </p>
+                              <p className="mt-1 text-xs text-slate-400">
+                                Choose a question or content type. It will be created inside this block.
+                              </p>
+                            </div>
+                            <select
+                              value=""
+                              disabled={builderItems.length >= 500}
+                              onChange={(event) => {
+                                const type = event.target.value;
+                                if (type) addBuilderItem(block.id, type);
                               }}
-                              className="rounded-xl border border-red-200 bg-white px-3 py-2 text-xs font-semibold text-red-700"
+                              className="min-w-[230px] rounded-xl border border-cyan-200 bg-white px-3 py-2.5 text-sm font-medium text-slate-700 outline-none focus:border-cyan-700 disabled:opacity-40"
                             >
-                              Remove
-                            </button>
-                          )}
+                              <option value="">+ Add question / content…</option>
+                              {Array.from(
+                                new Set(
+                                  itemTypeDefinitions.map(
+                                    (definition) => definition.group
+                                  )
+                                )
+                              ).map((group) => (
+                                <optgroup key={group} label={group}>
+                                  {itemTypeDefinitions
+                                    .filter(
+                                      (definition) => definition.group === group
+                                    )
+                                    .map((definition) => (
+                                      <option
+                                        key={definition.value}
+                                        value={definition.value}
+                                      >
+                                        {definition.label}
+                                      </option>
+                                    ))}
+                                </optgroup>
+                              ))}
+                            </select>
+                          </div>
                         </div>
                       </div>
-                    )}
-
-                    {renderLogicBuilder(item, index)}
-
-                    {item.item_type === "custom" && <label className="mt-4 block"><span className="text-xs font-medium text-slate-500">Custom item configuration / implementation notes</span><textarea value={item.custom_config_notes} onChange={(event) => updateBuilderItem(item.id, { custom_config_notes: event.target.value })} placeholder="Describe any format not represented above. The database stores this as structured extension metadata for a future renderer/plugin." className="mt-1 min-h-28 w-full rounded-xl border border-slate-200 px-3 py-2.5 text-sm" /></label>}
-                  </div>
-                ))}
+                    </section>
+                  );
+                })}
               </div>
-              <button type="button" onClick={() => addBuilderItem()} disabled={builderItems.length >= 500} className="mt-5 rounded-xl bg-slate-950 px-4 py-2.5 text-sm font-semibold text-white disabled:opacity-40">+ Add item / content</button>
+
+              <button
+                type="button"
+                onClick={addBuilderBlock}
+                className="mt-5 w-full rounded-2xl border border-dashed border-slate-300 bg-white px-5 py-3.5 text-sm font-semibold text-slate-700 hover:border-cyan-300 hover:bg-cyan-50/30"
+              >
+                + Add another block / page
+              </button>
             </Panel>
 
             <Panel title="Scoring, missing data & randomisation" description="Store the scoring plan without implying that a new measure has been validated.">
@@ -6155,13 +6738,112 @@ function QuestionnaireLibrary({
               <div className="space-y-3 text-sm text-slate-600">{["Item-specific response formats", "Blocks/pages and page breaks", "Branching / display logic", "Piping via {{item_key}}", "Option and block randomisation", "Subscales and reverse scoring", "Weighted / Thurstone scoring metadata", "Missing-data rules", "Matrices, ranking, Q-sort and allocation", "Text, numeric, date/time and uploads", "Media/stimulus metadata", "Custom/future item configuration"].map((capability) => <div key={capability} className="flex gap-2"><span className="mt-0.5 text-emerald-700"><CheckIcon /></span><span>{capability}</span></div>)}</div>
             </Panel>
 
+            <Panel
+              title="Publication & ownership"
+              description="Keep the questionnaire private, publish it freely, or let other researchers request permission to use it."
+            >
+              <div className="space-y-3">
+                {[
+                  {
+                    value: "private" as const,
+                    title: "Private · my library only",
+                    text: "Only you can see and use the questionnaire. You can publish it later.",
+                  },
+                  {
+                    value: "free" as const,
+                    title: "Publish · free to use",
+                    text: "All PsyLattice researchers can discover and use the questionnaire in their studies.",
+                  },
+                  {
+                    value: "restricted" as const,
+                    title: "Publish · permission required",
+                    text: "Researchers can discover the questionnaire and publisher, but must request access before using its content.",
+                  },
+                ].map((option) => (
+                  <label
+                    key={option.value}
+                    className={`flex cursor-pointer items-start gap-3 rounded-2xl border p-4 transition ${
+                      builderPublicationMode === option.value
+                        ? "border-cyan-300 bg-cyan-50/60"
+                        : "border-slate-200 bg-white hover:border-slate-300"
+                    }`}
+                  >
+                    <input
+                      type="radio"
+                      name="questionnaire-publication"
+                      value={option.value}
+                      checked={builderPublicationMode === option.value}
+                      onChange={() => setBuilderPublicationMode(option.value)}
+                      className="mt-1"
+                    />
+                    <span>
+                      <span className="block text-sm font-semibold text-slate-900">
+                        {option.title}
+                      </span>
+                      <span className="mt-1 block text-xs leading-5 text-slate-500">
+                        {option.text}
+                      </span>
+                    </span>
+                  </label>
+                ))}
+              </div>
+
+              {builderPublicationMode !== "private" && (
+                <div className="mt-5 rounded-2xl border border-slate-200 bg-slate-50/70 p-4">
+                  <p className="text-xs font-semibold uppercase tracking-[0.12em] text-slate-500">
+                    Publisher details shown in the PsyLattice library
+                  </p>
+                  <div className="mt-3 space-y-3">
+                    <label className="block">
+                      <span className="text-xs font-medium text-slate-600">
+                        Publisher / author name
+                      </span>
+                      <input
+                        value={builderPublisherName}
+                        onChange={(event) => setBuilderPublisherName(event.target.value)}
+                        placeholder="Your name, lab, group or organisation"
+                        className="mt-1 w-full rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm"
+                      />
+                    </label>
+                    <label className="block">
+                      <span className="text-xs font-medium text-slate-600">
+                        Affiliation · optional
+                      </span>
+                      <input
+                        value={builderPublisherAffiliation}
+                        onChange={(event) =>
+                          setBuilderPublisherAffiliation(event.target.value)
+                        }
+                        placeholder="University, lab, organisation"
+                        className="mt-1 w-full rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm"
+                      />
+                    </label>
+                    <label className="block">
+                      <span className="text-xs font-medium text-slate-600">
+                        Publisher profile / website · optional
+                      </span>
+                      <input
+                        value={builderPublisherUrl}
+                        onChange={(event) => setBuilderPublisherUrl(event.target.value)}
+                        placeholder="https://…"
+                        className="mt-1 w-full rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm"
+                      />
+                    </label>
+                  </div>
+                  <p className="mt-3 text-xs leading-5 text-slate-400">
+                    Ownership remains attached to your PsyLattice account. Publishing changes visibility and access, not ownership.
+                  </p>
+                </div>
+              )}
+            </Panel>
+
             <Panel title="Rights confirmation">
-              <label className="flex items-start gap-3 rounded-2xl border border-amber-200 bg-amber-50 p-5"><input type="checkbox" checked={builderRightsConfirmed} onChange={(event) => setBuilderRightsConfirmed(event.target.checked)} className="mt-1" /><span className="text-sm leading-6 text-amber-900">I confirm that I created this instrument content, or I have the permission/licence required to reproduce and digitally administer it.</span></label>
+              <label className="flex items-start gap-3 rounded-2xl border border-orange-300 bg-orange-50/90 p-5"><input type="checkbox" checked={builderRightsConfirmed} onChange={(event) => setBuilderRightsConfirmed(event.target.checked)} className="mt-1" /><span className="text-sm leading-6 text-amber-900">I confirm that I created this instrument content, or I have the permission/licence required to reproduce and digitally administer it.</span></label>
               <p className="mt-4 text-xs leading-5 text-slate-400">PsyLattice records this confirmation but does not independently verify third-party rights.</p>
             </Panel>
 
             <Panel title="Save instrument">
-              <button type="button" onClick={() => void saveCustomQuestionnaire()} disabled={savingCustomQuestionnaire} className="w-full rounded-xl bg-slate-950 px-5 py-3 text-sm font-semibold text-white disabled:opacity-50">{savingCustomQuestionnaire ? "Saving instrument..." : "Save to research library"}</button>
+              <button type="button" onClick={() => void saveCustomQuestionnaire()} disabled={savingCustomQuestionnaire} className="w-full rounded-xl bg-slate-950 px-5 py-3 text-sm font-semibold text-white disabled:opacity-50">{savingCustomQuestionnaire ? "Saving instrument..." : builderPublicationMode === "private" ? "Save privately" : builderPublicationMode === "free" ? "Publish free to PsyLattice" : "Publish with permission required"}</button>
               <button type="button" onClick={() => { setBuilderOpen(false); resetCustomBuilder(); }} disabled={savingCustomQuestionnaire} className="mt-2 w-full rounded-xl border border-slate-200 px-5 py-3 text-sm font-semibold text-slate-600 disabled:opacity-50">Cancel</button>
             </Panel>
           </div>
@@ -6214,7 +6896,11 @@ function QuestionnaireLibrary({
                 <Status type="accent">Research use</Status>
 
                 {selectedQuestionnaire.source_type === "researcher_created" && (
-                  <Status type="accent">Your custom questionnaire</Status>
+                  <Status type="accent">
+                    {selectedQuestionnaire.owner_user_id === currentUserId
+                      ? "You own this questionnaire"
+                      : questionnairePublicationLabel(selectedQuestionnaire)}
+                  </Status>
                 )}
 
                 <Status
@@ -6265,7 +6951,263 @@ function QuestionnaireLibrary({
           </div>
         </div>
 
-        {detailLoading ? (
+        {selectedQuestionnaire.source_type === "researcher_created" && (
+          <Panel
+            title={
+              selectedQuestionnaire.owner_user_id === currentUserId
+                ? "Publication & ownership"
+                : "Publisher & access"
+            }
+            description={
+              selectedQuestionnaire.owner_user_id === currentUserId
+                ? "You remain the owner. Change how other PsyLattice researchers can discover and use this questionnaire."
+                : "Researcher-published questionnaire metadata and access terms."
+            }
+          >
+            <div className="grid gap-5 lg:grid-cols-[1fr_auto] lg:items-start">
+              <div>
+                <p className="text-xs font-semibold uppercase tracking-[0.12em] text-slate-400">
+                  Publisher
+                </p>
+                <p className="mt-2 text-base font-semibold text-slate-900">
+                  {selectedQuestionnaire.publisher_display_name || "Researcher publisher"}
+                </p>
+                {selectedQuestionnaire.publisher_affiliation && (
+                  <p className="mt-1 text-sm text-slate-500">
+                    {selectedQuestionnaire.publisher_affiliation}
+                  </p>
+                )}
+                {selectedQuestionnaire.publisher_url && (
+                  <a
+                    href={selectedQuestionnaire.publisher_url}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="mt-2 inline-flex text-sm font-semibold text-cyan-800"
+                  >
+                    Publisher profile ↗
+                  </a>
+                )}
+                <p className="mt-3 text-xs leading-5 text-slate-400">
+                  Ownership is attached to the publisher's PsyLattice account.
+                </p>
+              </div>
+
+              <Status
+                type={
+                  selectedQuestionnaire.access_mode === "free"
+                    ? "success"
+                    : selectedQuestionnaire.publication_scope === "published"
+                      ? "warning"
+                      : "neutral"
+                }
+              >
+                {questionnairePublicationLabel(selectedQuestionnaire)}
+              </Status>
+            </div>
+
+            {selectedQuestionnaire.owner_user_id === currentUserId ? (
+              <>
+                <div className="mt-5 grid gap-2 sm:grid-cols-3">
+                  {[
+                    ["private", "Private"],
+                    ["free", "Publish free"],
+                    ["restricted", "Require permission"],
+                  ].map(([mode, label]) => {
+                    const active =
+                      mode === "private"
+                        ? selectedQuestionnaire.publication_scope !== "published"
+                        : mode === "free"
+                          ? selectedQuestionnaire.publication_scope === "published" &&
+                            selectedQuestionnaire.access_mode === "free"
+                          : selectedQuestionnaire.publication_scope === "published" &&
+                            selectedQuestionnaire.access_mode === "request";
+
+                    return (
+                      <button
+                        key={mode}
+                        type="button"
+                        disabled={accessBusy || active}
+                        onClick={() =>
+                          void updateQuestionnairePublication(
+                            selectedQuestionnaire,
+                            mode as "private" | "free" | "restricted"
+                          )
+                        }
+                        className={`rounded-xl border px-3 py-2.5 text-xs font-semibold transition disabled:cursor-default ${
+                          active
+                            ? "border-cyan-300 bg-cyan-50 text-cyan-900"
+                            : "border-slate-200 bg-white text-slate-600 hover:border-slate-300"
+                        }`}
+                      >
+                        {label}
+                      </button>
+                    );
+                  })}
+                </div>
+
+                {selectedQuestionnaire.access_mode === "request" &&
+                  selectedQuestionnaire.publication_scope === "published" && (
+                    <div className="mt-5 border-t border-slate-100 pt-5">
+                      <div className="flex items-center justify-between gap-3">
+                        <div>
+                          <p className="text-sm font-semibold text-slate-800">
+                            Access requests
+                          </p>
+                          <p className="mt-1 text-xs text-slate-400">
+                            Approve researchers before they can open the questionnaire content.
+                          </p>
+                        </div>
+                        <span className="text-xs font-medium text-slate-400">
+                          {accessRequests.length}
+                        </span>
+                      </div>
+
+                      <div className="mt-3 space-y-3">
+                        {accessRequests.length === 0 ? (
+                          <div className="rounded-xl bg-slate-50 px-4 py-3 text-sm text-slate-500">
+                            No access requests yet.
+                          </div>
+                        ) : (
+                          accessRequests.map((request) => (
+                            <div
+                              key={request.id}
+                              className="rounded-xl border border-slate-200 bg-white p-4"
+                            >
+                              <div className="flex flex-col justify-between gap-3 sm:flex-row sm:items-start">
+                                <div>
+                                  <p className="text-sm font-semibold text-slate-800">
+                                    {request.requester_display_name || "Researcher"}
+                                  </p>
+                                  {request.requester_affiliation && (
+                                    <p className="mt-1 text-xs text-slate-500">
+                                      {request.requester_affiliation}
+                                    </p>
+                                  )}
+                                  {request.message && (
+                                    <p className="mt-2 text-sm leading-6 text-slate-600">
+                                      {request.message}
+                                    </p>
+                                  )}
+                                </div>
+                                <Status
+                                  type={
+                                    request.status === "approved"
+                                      ? "success"
+                                      : request.status === "pending"
+                                        ? "warning"
+                                        : "neutral"
+                                  }
+                                >
+                                  {request.status}
+                                </Status>
+                              </div>
+
+                              <div className="mt-3 flex flex-wrap gap-2">
+                                {request.status !== "approved" && (
+                                  <button
+                                    type="button"
+                                    disabled={accessBusy}
+                                    onClick={() =>
+                                      void reviewQuestionnaireAccess(
+                                        request.id,
+                                        "approved"
+                                      )
+                                    }
+                                    className="rounded-lg bg-slate-950 px-3 py-2 text-xs font-semibold text-white disabled:opacity-50"
+                                  >
+                                    Approve
+                                  </button>
+                                )}
+                                {request.status === "approved" ? (
+                                  <button
+                                    type="button"
+                                    disabled={accessBusy}
+                                    onClick={() =>
+                                      void reviewQuestionnaireAccess(
+                                        request.id,
+                                        "revoked"
+                                      )
+                                    }
+                                    className="rounded-lg border border-slate-200 px-3 py-2 text-xs font-semibold text-slate-600 disabled:opacity-50"
+                                  >
+                                    Revoke
+                                  </button>
+                                ) : request.status === "pending" ? (
+                                  <button
+                                    type="button"
+                                    disabled={accessBusy}
+                                    onClick={() =>
+                                      void reviewQuestionnaireAccess(
+                                        request.id,
+                                        "denied"
+                                      )
+                                    }
+                                    className="rounded-lg border border-slate-200 px-3 py-2 text-xs font-semibold text-slate-600 disabled:opacity-50"
+                                  >
+                                    Decline
+                                  </button>
+                                ) : null}
+                              </div>
+                            </div>
+                          ))
+                        )}
+                      </div>
+                    </div>
+                  )}
+              </>
+            ) : !questionnaireCanUse(selectedQuestionnaire) ? (
+              <div className="mt-5 rounded-2xl border border-cyan-100 bg-cyan-50/60 p-5">
+                <p className="font-semibold text-cyan-950">
+                  Permission is required to use this questionnaire
+                </p>
+                <p className="mt-2 text-sm leading-6 text-cyan-900/75">
+                  You can review the public metadata and publisher details. The questionnaire items, scoring and administration content stay hidden until the owner approves your request.
+                </p>
+                {selectedQuestionnaire.my_access_status === "pending" ? (
+                  <div className="mt-4 rounded-xl bg-white px-4 py-3 text-sm font-medium text-slate-600">
+                    Your access request is pending.
+                  </div>
+                ) : (
+                  <>
+                    <textarea
+                      value={accessRequestMessage}
+                      onChange={(event) =>
+                        setAccessRequestMessage(event.target.value)
+                      }
+                      rows={3}
+                      placeholder="Optional note to the publisher about how you plan to use the questionnaire"
+                      className="mt-4 w-full rounded-xl border border-cyan-200 bg-white px-3 py-2.5 text-sm"
+                    />
+                    <button
+                      type="button"
+                      disabled={accessBusy}
+                      onClick={() =>
+                        void requestQuestionnaireAccess(selectedQuestionnaire)
+                      }
+                      className="mt-3 rounded-xl bg-slate-950 px-4 py-2.5 text-sm font-semibold text-white disabled:opacity-50"
+                    >
+                      {accessBusy ? "Sending request…" : "Request access"}
+                    </button>
+                  </>
+                )}
+              </div>
+            ) : (
+              <div className="mt-5 rounded-xl bg-emerald-50 px-4 py-3 text-sm font-medium text-emerald-800">
+                {selectedQuestionnaire.access_mode === "free"
+                  ? "The publisher allows free research use in PsyLattice."
+                  : "The publisher has granted your account access."}
+              </div>
+            )}
+          </Panel>
+        )}
+
+        {!questionnaireCanUse(selectedQuestionnaire) ? (
+          <Panel title="Questionnaire content locked">
+            <p className="text-sm leading-6 text-slate-500">
+              The publisher has made this questionnaire discoverable, but its items, scoring and administration content require approval.
+            </p>
+          </Panel>
+        ) : detailLoading ? (
           <Panel title="Questionnaire details">
             <p className="text-sm text-slate-500">
               Loading administration, scoring and research resources...
@@ -6376,7 +7318,7 @@ function QuestionnaireLibrary({
               description="Item wording and response coding stored for the current version."
             >
               {selectedQuestionnaire.license_status === "restricted" ? (
-                <div className="rounded-2xl border border-amber-200 bg-amber-50 p-5">
+                <div className="rounded-2xl border border-orange-300 bg-orange-50/90 p-5">
                   <p className="font-medium text-amber-900">
                     Item text is hidden for this restricted measure.
                   </p>
@@ -6685,9 +7627,9 @@ function QuestionnaireLibrary({
           detail="Not exposed in the Self workspace"
         />
         <StatCard
-          label="Custom questionnaires"
+          label="Your questionnaires"
           value={loading ? "..." : String(customQuestionnaireCount)}
-          detail="Created in your research workspace"
+          detail="Owned by your PsyLattice account"
         />
       </div>
 
@@ -6771,7 +7713,19 @@ function QuestionnaireLibrary({
 
                   {!item.self_available && <Status>Research only</Status>}
                   {item.source_type === "researcher_created" && (
-                    <Status type="accent">Your questionnaire</Status>
+                    <Status
+                      type={
+                        item.owner_user_id === currentUserId ||
+                        item.access_mode === "free" ||
+                        item.my_access_status === "approved"
+                          ? "accent"
+                          : "warning"
+                      }
+                    >
+                      {item.owner_user_id === currentUserId
+                        ? questionnairePublicationLabel(item)
+                        : questionnairePublicationLabel(item)}
+                    </Status>
                   )}
                 </div>
 
@@ -6788,6 +7742,16 @@ function QuestionnaireLibrary({
               <p className="mt-3 text-sm leading-6 text-slate-500">
                 {item.description}
               </p>
+
+              {item.source_type === "researcher_created" &&
+                item.publisher_display_name && (
+                  <p className="mt-3 text-xs font-medium text-slate-400">
+                    Published by {item.publisher_display_name}
+                    {item.publisher_affiliation
+                      ? ` · ${item.publisher_affiliation}`
+                      : ""}
+                  </p>
+                )}
 
               <div className="mt-4 flex flex-wrap gap-2">
                 {item.constructs.slice(0, 4).map((construct) => (
@@ -6833,7 +7797,9 @@ function QuestionnaireLibrary({
                   onClick={() => void openQuestionnaire(item)}
                   className="rounded-xl bg-slate-950 px-4 py-2.5 text-sm font-semibold text-white"
                 >
-                  View research details
+                  {questionnaireCanUse(item)
+                    ? "View research details"
+                    : "View & request access"}
                 </button>
 
                 {item.license_source_url && (
@@ -6865,10 +7831,10 @@ function QuestionnaireLibrary({
               Build an original measure for your research.
             </p>
             <p className="mt-2 max-w-3xl text-sm leading-6 text-slate-500">
-              Create questionnaire metadata, participant instructions, a numeric
-              response scale, item wording, subscales, reverse-scored items and
-              scoring notes. Custom questionnaires remain in your researcher
-              library and are not automatically exposed in the Self workspace.
+              Build blocks with their questions inside them, configure scoring and
+              branching, then choose whether the questionnaire stays private or is
+              published to the PsyLattice research catalogue. Published questionnaires
+              keep their original owner and publisher details.
             </p>
           </div>
 
@@ -6882,7 +7848,7 @@ function QuestionnaireLibrary({
         </div>
       </Panel>
 
-      <div className="rounded-2xl border border-amber-200 bg-amber-50 p-5">
+      <div className="rounded-2xl border border-orange-300 bg-orange-50/90 p-5">
         <p className="font-medium text-amber-900">
           Questionnaire licensing safeguard
         </p>
@@ -7019,20 +7985,44 @@ function AmbulatoryBuilder({
 
     const supabase = createClient();
 
-    const { data, error } = await supabase.rpc(
+    let { data, error } = await supabase.rpc(
       "psylattice_get_study_ambulatory_v3",
       {
         p_study_id: studyId,
       }
     );
 
+    // During local development / hot reload, a Supabase request can occasionally
+    // be interrupted while the component is remounting. Retry once before
+    // treating the protocol as unavailable. Keep handled API failures out of
+    // Next.js' intrusive development error overlay.
     if (error) {
-      console.error(
+      await new Promise((resolve) => setTimeout(resolve, 250));
+
+      const retry = await supabase.rpc(
+        "psylattice_get_study_ambulatory_v3",
+        {
+          p_study_id: studyId,
+        }
+      );
+
+      data = retry.data;
+      error = retry.error;
+    }
+
+    if (error) {
+      console.warn(
         "Could not load research ambulatory protocol:",
-        error
+        {
+          message: error.message,
+          details: error.details,
+          hint: error.hint,
+          code: error.code,
+        }
       );
       setErrorMessage(
-        "The ambulatory protocol could not be loaded. Run the V3 ambulatory migration first."
+        error.message ||
+          "The ambulatory protocol could not be loaded. Please try reloading the saved protocol."
       );
       setLoading(false);
       return;
@@ -8464,7 +9454,7 @@ function ParticipantLinks() {
             )}
 
             {linkKind === "live" && (
-              <label className="flex items-start gap-3 rounded-xl border border-amber-200 bg-amber-50 p-4">
+              <label className="flex items-start gap-3 rounded-xl border border-orange-300 bg-orange-50/90 p-4">
                 <input
                   type="checkbox"
                   checked={activationConfirmed}
@@ -12045,7 +13035,7 @@ function DataDashboard({
               )}
 
               {selectedStudy?.components?.ambulatory && (
-                <div className="rounded-xl border border-amber-200 bg-amber-50 p-4">
+                <div className="rounded-xl border border-orange-300 bg-orange-50/90 p-4">
                   <p className="text-sm font-medium text-amber-950">
                     Ambulatory component configured
                   </p>
@@ -13330,7 +14320,7 @@ function ExportData() {
                 </div>
               </label>
 
-              <label className="flex items-start gap-3 rounded-xl border border-amber-200 bg-amber-50 p-4">
+              <label className="flex items-start gap-3 rounded-xl border border-orange-300 bg-orange-50/90 p-4">
                 <input
                   type="checkbox"
                   checked={includeDirectIdentifiers}

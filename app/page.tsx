@@ -28,6 +28,7 @@ import {
   Search,
   ShieldCheck,
   Sparkles,
+  Smartphone,
   Stethoscope,
   Target,
   Users,
@@ -612,8 +613,246 @@ const pricingContent = {
   },
 } as const;
 
+const ANDROID_BETA_FILE_ID = "1hzWlv_JGRLd047m0dd2pqoSmjKlQ9Mha";
+const ANDROID_BETA_URL = `https://drive.google.com/uc?export=download&id=${ANDROID_BETA_FILE_ID}`;
+const ANDROID_BETA_DRIVE_URL =
+  "https://drive.google.com/file/d/1hzWlv_JGRLd047m0dd2pqoSmjKlQ9Mha/view?usp=drive_web";
+
 function CheckMark() {
   return <Check className="h-4 w-4 shrink-0" strokeWidth={1.9} />;
+}
+
+function MobileEcosystemVisual() {
+  const modes = [
+    {
+      id: "health",
+      icon: HeartPulse,
+      label: "Health Connect",
+      title: "Permission-based health context",
+      description:
+        "Sleep, activity and supported physiological context can feed configured Android workflows.",
+      screenTitle: "Health context",
+      screenMeta: "Health Connect active",
+      screenBody: "Permission-based signals can add real-world context to supported research and monitoring workflows.",
+      statOne: "Sleep",
+      statTwo: "Activity",
+      badge: "Connected",
+    },
+    {
+      id: "wearables",
+      icon: Watch,
+      label: "Wearable context",
+      title: "Supported wearable-derived data",
+      description:
+        "Bring supported wearable-derived data into configured research workflows through Android Health Connect.",
+      screenTitle: "Wearable context",
+      screenMeta: "Synced through Health Connect",
+      screenBody: "Keep wearable context alongside the psychological measurements that give it meaning.",
+      statOne: "Steps",
+      statTwo: "Sleep",
+      badge: "Permission active",
+    },
+    {
+      id: "research",
+      icon: Microscope,
+      label: "Research",
+      title: "Ambulatory and longitudinal studies",
+      description:
+        "EMA / ESM protocols, participant prompts and repeated follow-up stay connected across time.",
+      screenTitle: "EMA / ESM protocol",
+      screenMeta: "3 prompts today",
+      screenBody: "Repeated check-ins capture experiences closer to when they happen instead of relying only on recall.",
+      statOne: "91%",
+      statTwo: "14 days",
+      badge: "Study active",
+    },
+    {
+      id: "care",
+      icon: Stethoscope,
+      label: "Connected care",
+      title: "Follow-up beyond the session",
+      description:
+        "Appointments, secure messages and authorised longitudinal context stay available in the same account.",
+      screenTitle: "Connected follow-up",
+      screenMeta: "Next appointment · 25 Aug",
+      screenBody: "Keep appointments, secure communication and authorised progress connected between sessions.",
+      statOne: "1 appt",
+      statTwo: "2 messages",
+      badge: "Connected",
+    },
+  ] as const;
+
+  const [activeModeId, setActiveModeId] = useState<(typeof modes)[number]["id"]>("research");
+  const activeMode = modes.find((mode) => mode.id === activeModeId) ?? modes[2];
+
+  const leftModes = modes.slice(0, 2);
+  const rightModes = modes.slice(2);
+
+  return (
+    <div className="relative mx-auto w-full max-w-[590px] py-3">
+      <div className="pointer-events-none absolute left-1/2 top-1/2 h-[410px] w-[410px] -translate-x-1/2 -translate-y-1/2 rounded-full bg-cyan-200/35 blur-3xl" />
+
+      <div className="relative grid items-center gap-5 sm:grid-cols-[1fr_230px_1fr]">
+        <div className="space-y-3 sm:text-right">
+          {leftModes.map((mode) => {
+            const Icon = mode.icon;
+            const selected = mode.id === activeModeId;
+            return (
+              <button
+                key={mode.id}
+                type="button"
+                onClick={() => setActiveModeId(mode.id)}
+                className={`w-full rounded-2xl border p-4 text-left shadow-sm backdrop-blur transition duration-200 sm:text-right ${
+                  selected
+                    ? "border-cyan-300 bg-white shadow-[0_12px_30px_-22px_rgba(8,145,178,.55)]"
+                    : "border-slate-200 bg-white/90 hover:border-cyan-200 hover:bg-white"
+                }`}
+              >
+                <div className="flex items-center gap-3 sm:flex-row-reverse">
+                  <div
+                    className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-xl transition ${
+                      selected ? "bg-cyan-100 text-cyan-900" : "bg-cyan-50 text-cyan-800"
+                    }`}
+                  >
+                    <Icon className="h-5 w-5" />
+                  </div>
+                  <div className="min-w-0">
+                    <div className="flex items-center gap-2 sm:justify-end">
+                      <p
+                        className={`text-[10px] font-semibold uppercase tracking-[0.14em] ${
+                          selected ? "text-cyan-900" : "text-slate-800"
+                        }`}
+                      >
+                        {mode.label}
+                      </p>
+                      {selected && <span className="h-1.5 w-1.5 rounded-full bg-cyan-600" />}
+                    </div>
+                    <p className="mt-1 text-xs leading-5 text-slate-500">{mode.description}</p>
+                  </div>
+                </div>
+              </button>
+            );
+          })}
+        </div>
+
+        <div className="relative mx-auto w-[220px] rounded-[38px] border-[7px] border-slate-950 bg-slate-950 p-2 shadow-[0_32px_80px_-30px_rgba(15,23,42,.58)]">
+          <div className="absolute left-1/2 top-2 h-4 w-20 -translate-x-1/2 rounded-full bg-slate-950" />
+          <div className="overflow-hidden rounded-[28px] bg-[#f7faf9]">
+            <div className="flex items-center justify-between border-b border-slate-200 bg-white px-3 pb-2 pt-5">
+              <div className="flex items-center gap-2">
+                <PsyLatticeLogo size={22} />
+              </div>
+              <BellRing className="h-3.5 w-3.5 text-slate-500" />
+            </div>
+
+            <div className="p-3">
+              <div key={activeMode.id} className="rounded-2xl bg-slate-950 p-3 text-white">
+                <p className="text-[7px] font-semibold uppercase tracking-[0.15em] text-cyan-300">
+                  {activeMode.label}
+                </p>
+                <p className="mt-1 text-sm font-semibold">{activeMode.screenTitle}</p>
+                <p className="mt-1 text-[8px] leading-4 text-slate-300">{activeMode.screenBody}</p>
+              </div>
+
+              <div className="mt-2.5 grid grid-cols-2 gap-2">
+                <div className="rounded-xl border border-slate-200 bg-white p-2.5">
+                  <Activity className="h-3.5 w-3.5 text-cyan-700" />
+                  <p className="mt-2 text-[9px] font-semibold text-slate-800">{activeMode.statOne}</p>
+                  <p className="mt-0.5 text-[7px] text-slate-400">{activeMode.label}</p>
+                </div>
+                <div className="rounded-xl border border-slate-200 bg-white p-2.5">
+                  <HeartPulse className="h-3.5 w-3.5 text-cyan-700" />
+                  <p className="mt-2 text-[9px] font-semibold text-slate-800">{activeMode.statTwo}</p>
+                  <p className="mt-0.5 text-[7px] text-slate-400">Current context</p>
+                </div>
+              </div>
+
+              <div className="mt-2.5 rounded-xl border border-cyan-100 bg-cyan-50/80 p-2.5">
+                <div className="flex items-center justify-between gap-2">
+                  <p className="text-[8px] font-semibold text-cyan-900">{activeMode.title}</p>
+                  <span className="shrink-0 rounded-full bg-white px-1.5 py-0.5 text-[6px] font-semibold text-cyan-700">
+                    {activeMode.badge}
+                  </span>
+                </div>
+                <p className="mt-1 text-[7px] leading-3 text-cyan-800/70">{activeMode.screenMeta}</p>
+              </div>
+
+              <div className="mt-3 flex items-center justify-around rounded-2xl border border-slate-200 bg-white px-2 py-2 shadow-sm">
+                {modes.map((mode) => {
+                  const Icon = mode.icon;
+                  const selected = mode.id === activeModeId;
+                  return (
+                    <button
+                      key={mode.id}
+                      type="button"
+                      onClick={() => setActiveModeId(mode.id)}
+                      aria-label={`Show ${mode.label}`}
+                      className={`flex h-7 w-7 items-center justify-center rounded-lg transition ${
+                        selected ? "bg-cyan-50 text-cyan-800" : "text-slate-400 hover:bg-slate-50 hover:text-slate-600"
+                      }`}
+                    >
+                      <Icon className="h-3.5 w-3.5" />
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div className="space-y-3">
+          {rightModes.map((mode) => {
+            const Icon = mode.icon;
+            const selected = mode.id === activeModeId;
+            return (
+              <button
+                key={mode.id}
+                type="button"
+                onClick={() => setActiveModeId(mode.id)}
+                className={`w-full rounded-2xl border p-4 text-left shadow-sm backdrop-blur transition duration-200 ${
+                  selected
+                    ? "border-cyan-300 bg-white shadow-[0_12px_30px_-22px_rgba(8,145,178,.55)]"
+                    : "border-slate-200 bg-white/90 hover:border-cyan-200 hover:bg-white"
+                }`}
+              >
+                <div className="flex items-center gap-3">
+                  <div
+                    className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-xl transition ${
+                      selected ? "bg-cyan-100 text-cyan-900" : "bg-slate-950 text-cyan-200"
+                    }`}
+                  >
+                    <Icon className="h-5 w-5" />
+                  </div>
+                  <div className="min-w-0">
+                    <div className="flex items-center gap-2">
+                      <p
+                        className={`text-[10px] font-semibold uppercase tracking-[0.14em] ${
+                          selected ? "text-cyan-900" : "text-slate-800"
+                        }`}
+                      >
+                        {mode.label}
+                      </p>
+                      {selected && <span className="h-1.5 w-1.5 rounded-full bg-cyan-600" />}
+                    </div>
+                    <p className="mt-1 text-xs leading-5 text-slate-500">{mode.description}</p>
+                  </div>
+                </div>
+              </button>
+            );
+          })}
+        </div>
+      </div>
+
+      <div className="relative mt-6 flex flex-wrap justify-center gap-2">
+        <span className="rounded-full border border-emerald-200 bg-emerald-50 px-3 py-1.5 text-[10px] font-semibold text-emerald-800">
+          Android beta · available now
+        </span>
+        <span className="rounded-full border border-slate-200 bg-white px-3 py-1.5 text-[10px] font-semibold text-slate-500">
+          iPhone + Apple Health + Apple Watch · coming soon
+        </span>
+      </div>
+    </div>
+  );
 }
 
 function HeroWorkspaceStage({
@@ -2818,6 +3057,9 @@ export default function Home() {
             <a href="#platform" className="transition hover:text-slate-950">
               Platform
             </a>
+            <a href="#mobile" className="transition hover:text-slate-950">
+              Mobile
+            </a>
             <a href="#research" className="transition hover:text-slate-950">
               Research
             </a>
@@ -2887,6 +3129,15 @@ export default function Home() {
             </p>
 
             <div className="mt-6 flex flex-wrap items-center gap-3">
+              <a
+                href="#mobile"
+                className="inline-flex items-center gap-2 rounded-full border border-emerald-200 bg-emerald-50 px-4 py-2 text-xs font-semibold text-emerald-900 transition hover:border-emerald-300"
+              >
+                <Smartphone className="h-3.5 w-3.5" />
+                Android beta available
+                <ArrowRight className="h-3.5 w-3.5" />
+              </a>
+
               <Link
                 href="/self?screen=ai"
                 className="inline-flex items-center gap-2 rounded-full border border-cyan-200 bg-cyan-50 px-4 py-2 text-xs font-semibold text-cyan-900 transition hover:border-cyan-300"
@@ -2957,6 +3208,136 @@ export default function Home() {
               activeWorkspace={heroWorkspace}
               onChange={setHeroWorkspace}
             />
+          </div>
+        </div>
+      </section>
+
+      {/* PsyLattice Mobile */}
+      <section
+        id="mobile"
+        className="scroll-mt-24 border-y border-slate-200 bg-[#eef5f4] py-20 lg:py-28"
+      >
+        <div className="mx-auto max-w-7xl px-6 lg:px-8">
+          <div className="grid items-center gap-14 lg:grid-cols-[.9fr_1.1fr] lg:gap-16">
+            <div>
+              <div className="inline-flex items-center gap-2 rounded-full border border-emerald-200 bg-white px-3.5 py-2 text-[11px] font-semibold text-emerald-800 shadow-sm">
+                <span className="h-2 w-2 rounded-full bg-emerald-500" />
+                Android beta available now
+              </div>
+
+              <p className="mt-7 text-xs font-semibold uppercase tracking-[0.18em] text-cyan-800">
+                PsyLattice Mobile
+              </p>
+              <h2 className="mt-4 max-w-2xl text-4xl font-semibold tracking-[-0.045em] sm:text-5xl">
+                Psychological measurement,
+                <span className="text-cyan-800"> beyond the browser.</span>
+              </h2>
+              <p className="mt-6 max-w-2xl text-lg leading-8 text-slate-600">
+                PsyLattice Mobile is designed for the moments that desktop research cannot capture:
+                repeated real-world assessment, longitudinal follow-up, connected wearable context
+                and participant workflows that travel with the person.
+              </p>
+
+              <div className="mt-7 flex flex-wrap gap-3">
+                <a
+                  href={ANDROID_BETA_URL}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="inline-flex items-center gap-2 rounded-xl bg-slate-950 px-6 py-3.5 text-sm font-semibold text-white transition hover:bg-slate-800"
+                >
+                  <FileDown className="h-4 w-4" />
+                  Download Android Beta
+                </a>
+                <a
+                  href={ANDROID_BETA_DRIVE_URL}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="inline-flex items-center gap-2 rounded-xl border border-slate-300 bg-white px-6 py-3.5 text-sm font-semibold text-slate-700 transition hover:border-slate-400"
+                >
+                  Open in Google Drive
+                  <ArrowRight className="h-4 w-4" />
+                </a>
+              </div>
+
+              <p className="mt-3 max-w-xl text-[11px] leading-5 text-slate-400">
+                Beta distribution currently uses a signed APK outside Google Play. Android may ask
+                you to allow installation from your browser or file manager. Only install PsyLattice
+                from the official link on this website.
+              </p>
+
+              <div className="mt-9 grid gap-3 sm:grid-cols-2">
+                {[
+                  {
+                    icon: Activity,
+                    title: "Ambulatory / EMA / ESM",
+                    text: "Schedule repeated check-ins across everyday contexts instead of relying on a single retrospective snapshot.",
+                  },
+                  {
+                    icon: HeartPulse,
+                    title: "Android Health Connect",
+                    text: "Use permission-based supported health data as contextual input for configured mobile research workflows.",
+                  },
+                  {
+                    icon: Workflow,
+                    title: "Longitudinal research",
+                    text: "Keep repeated assessments, follow-up waves, prompts and participant activity connected across time.",
+                  },
+                  {
+                    icon: BellRing,
+                    title: "Mobile follow-up",
+                    text: "Bring study reminders, appointments and secure communication closer to the participant or client.",
+                  },
+                ].map((item) => {
+                  const Icon = item.icon;
+                  return (
+                    <div
+                      key={item.title}
+                      className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm"
+                    >
+                      <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-cyan-50 text-cyan-800">
+                        <Icon className="h-4 w-4" />
+                      </div>
+                      <h3 className="mt-3 text-sm font-semibold text-slate-900">{item.title}</h3>
+                      <p className="mt-1.5 text-xs leading-5 text-slate-500">{item.text}</p>
+                    </div>
+                  );
+                })}
+              </div>
+
+              <div className="mt-5 rounded-2xl border border-slate-200 bg-white/75 p-4">
+                <div className="flex items-start gap-3">
+                  <Smartphone className="mt-0.5 h-4 w-4 shrink-0 text-slate-700" />
+                  <div>
+                    <p className="text-xs font-semibold text-slate-800">
+                      iPhone, Apple Health &amp; Apple Watch support is coming next.
+                    </p>
+                    <p className="mt-1 text-[11px] leading-5 text-slate-500">
+                      The current beta is Android-first. The iOS companion and Apple ecosystem
+                      integration are planned, not yet available in this release.
+                    </p>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <div>
+              <MobileEcosystemVisual />
+            </div>
+          </div>
+
+          <div className="mt-14 grid gap-4 rounded-[28px] border border-slate-200 bg-slate-950 p-5 text-white sm:grid-cols-4 sm:p-6">
+            {[
+              ["01", "Measure in context", "Repeated self-report while experiences are happening."],
+              ["02", "Connect permitted data", "Health Connect adds optional contextual signals to supported Android workflows."],
+              ["03", "Follow over time", "Longitudinal protocols keep days, phases and follow-up linked."],
+              ["04", "Bring it back to the workspace", "Research and clinical views remain structured around role and permission."],
+            ].map(([number, title, description]) => (
+              <div key={number} className="rounded-2xl border border-white/10 bg-white/[0.04] p-4">
+                <p className="text-[10px] font-semibold text-cyan-300">{number}</p>
+                <p className="mt-2 text-sm font-semibold">{title}</p>
+                <p className="mt-2 text-xs leading-5 text-slate-400">{description}</p>
+              </div>
+            ))}
           </div>
         </div>
       </section>
@@ -3783,6 +4164,17 @@ export default function Home() {
                   </a>
                   <a href="#platform" className="block hover:text-slate-950">
                     Clinical
+                  </a>
+                  <a href="#mobile" className="block hover:text-slate-950">
+                    Mobile
+                  </a>
+                  <a
+                    href={ANDROID_BETA_URL}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="block font-medium text-cyan-800 hover:text-cyan-700"
+                  >
+                    Android Beta ↓
                   </a>
                 </div>
               </div>

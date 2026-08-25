@@ -6,6 +6,7 @@ import {
   Activity,
   BarChart3,
   BookOpen,
+  BrainCircuit,
   CalendarClock,
   Database,
   FileDown,
@@ -21,6 +22,14 @@ import { createClient } from "@/lib/supabase/client";
 import PsyLatticeLogo from "@/components/PsyLatticeLogo";
 import AccountSwitcher from "@/components/AccountSwitcher";
 import FollowupManager from "@/components/FollowupManager";
+import ResearchAiAssistant from "@/components/ResearchAiAssistant";
+import CognitiveLab from "../../components/CognitiveLab";
+import {
+  buildCognitiveAttachmentAnalysis,
+  compareConditions,
+  type CognitiveAttachmentAnalysis,
+  type PairedComparison,
+} from "@/lib/research/cognitiveAnalysis";
 import {
   AmbulatoryProtocolBuilder,
   defaultAmbulatoryProtocol,
@@ -36,6 +45,7 @@ type Screen =
   | "studies"
   | "builder"
   | "library"
+  | "cognitive"
   | "ambulatory"
   | "followup"
   | "participants"
@@ -55,6 +65,7 @@ const navigation: {
   { id: "studies", label: "Studies", group: "Research" },
   { id: "builder", label: "Study Builder", group: "Research" },
   { id: "library", label: "Questionnaire Library", group: "Research" },
+  { id: "cognitive", label: "Cognitive Lab", group: "Research" },
   { id: "ambulatory", label: "Ambulatory Assessment", group: "Research" },
   { id: "followup", label: "Follow-up Manager", group: "Research" },
   { id: "participants", label: "Participants", group: "Research" },
@@ -73,6 +84,7 @@ const sidebarIcons: Record<Screen, LucideIcon> = {
   studies: FlaskConical,
   builder: Workflow,
   library: BookOpen,
+  cognitive: BrainCircuit,
   ambulatory: Activity,
   followup: CalendarClock,
   participants: Users,
@@ -441,7 +453,7 @@ function Dashboard({
         </div>
       )}
 
-      <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+      <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-5">
         <StatCard
           label="Active studies"
           value={loadingDashboard ? "..." : String(activeStudies.length)}
@@ -1585,6 +1597,7 @@ function StudyBuilder({
     consent: boolean;
     demographics: boolean;
     baseline: boolean;
+    cognitive: boolean;
     ambulatory: boolean;
     followup: boolean;
     wearables: boolean;
@@ -1672,6 +1685,37 @@ function StudyBuilder({
     version_label: string;
     measurement_point: "baseline" | "followup";
     required: boolean;
+    position?: number;
+  };
+
+  type StudyCognitiveCatalogueItem = {
+    id: string;
+    title: string;
+    description: string;
+    domain: string;
+    tags: string[] | null;
+    published_version_id: string | null;
+    published_version_label: string | null;
+    published_version_number: number | null;
+  };
+
+  type StudyCognitiveTaskDraft = {
+    id: string;
+    task_id: string;
+    version_id: string;
+    title: string;
+    description: string;
+    domain: string;
+    version_label: string;
+    required: boolean;
+    administration_mode: "once" | "scheduled" | "repeated" | "conditional";
+    position?: number;
+  };
+
+  type BaselineFlowItem = {
+    id: string;
+    kind: "demographics" | "measure" | "cognitive";
+    ref_id: string;
   };
 
   const makeId = (prefix: string) =>
@@ -1708,6 +1752,16 @@ function StudyBuilder({
   const [measureSearch, setMeasureSearch] = useState("");
   const [studyMeasures, setStudyMeasures] = useState<StudyMeasureDraft[]>([]);
 
+  const [cognitiveCatalogue, setCognitiveCatalogue] = useState<StudyCognitiveCatalogueItem[]>([]);
+  const [loadingCognitiveCatalogue, setLoadingCognitiveCatalogue] = useState(true);
+  const [cognitiveCatalogueError, setCognitiveCatalogueError] = useState("");
+  const [cognitiveSearch, setCognitiveSearch] = useState("");
+  const [studyCognitiveTasks, setStudyCognitiveTasks] = useState<StudyCognitiveTaskDraft[]>([]);
+  const [baselineFlow, setBaselineFlow] = useState<BaselineFlowItem[]>([
+    { id: "flow-demographics", kind: "demographics", ref_id: "demographics" },
+  ]);
+  const [existingStudyConfig, setExistingStudyConfig] = useState<Record<string, any>>({});
+
   const [title, setTitle] = useState("Untitled research study");
   const [description, setDescription] = useState("");
   const [design, setDesign] = useState("Cross-sectional survey");
@@ -1717,6 +1771,7 @@ function StudyBuilder({
     consent: true,
     demographics: true,
     baseline: true,
+    cognitive: false,
     ambulatory: false,
     followup: false,
     wearables: false,
@@ -1846,12 +1901,16 @@ function StudyBuilder({
   const steps = [
     { key: "overview", label: "Overview" },
     { key: "components", label: "Study components" },
+    { key: "flow", label: "Study flow" },
     ...(components.consent ? [{ key: "consent", label: "Consent" }] : []),
     ...(components.demographics
       ? [{ key: "demographics", label: "Demographics" }]
       : []),
     ...(components.baseline
       ? [{ key: "measures", label: "Baseline measures" }]
+      : []),
+    ...(components.cognitive
+      ? [{ key: "cognitive", label: "Cognitive tasks" }]
       : []),
     ...(components.ambulatory
       ? [{ key: "ambulatory", label: "Ambulatory" }]
@@ -1875,6 +1934,7 @@ function StudyBuilder({
     activeStepKey,
     components.ambulatory,
     components.baseline,
+    components.cognitive,
     components.consent,
     components.demographics,
     components.followup,
@@ -1979,6 +2039,79 @@ function StudyBuilder({
   }, []);
 
   useEffect(() => {
+    async function loadCognitiveCatalogue() {
+      setLoadingCognitiveCatalogue(true);
+      setCognitiveCatalogueError("");
+
+      const supabase = createClient();
+      const { data: { user }, error: userError } = await supabase.auth.getUser();
+
+      if (userError || !user) {
+        setCognitiveCatalogueError("Your cognitive task library could not be loaded.");
+        setLoadingCognitiveCatalogue(false);
+        return;
+      }
+
+      const { data: taskData, error: taskError } = await supabase
+        .from("cognitive_tasks")
+        .select("id,title,description,domain,tags,status,updated_at")
+        .eq("owner_user_id", user.id)
+        .neq("status", "archived")
+        .order("updated_at", { ascending: false });
+
+      if (taskError) {
+        console.error("Could not load Cognitive Task Library:", taskError);
+        setCognitiveCatalogueError("Your cognitive task library could not be loaded.");
+        setLoadingCognitiveCatalogue(false);
+        return;
+      }
+
+      const tasks = taskData || [];
+      const taskIds = tasks.map((task) => task.id);
+      let versionRows: Array<{ id: string; task_id: string; version_label: string; version_number: number; status: string }> = [];
+
+      if (taskIds.length > 0) {
+        const { data: versionData, error: versionError } = await supabase
+          .from("cognitive_task_versions")
+          .select("id,task_id,version_label,version_number,status")
+          .in("task_id", taskIds)
+          .in("status", ["published", "locked"])
+          .order("version_number", { ascending: false });
+
+        if (versionError) {
+          console.error("Could not load published cognitive task versions:", versionError);
+          setCognitiveCatalogueError("Study-ready cognitive task versions could not be loaded.");
+          setLoadingCognitiveCatalogue(false);
+          return;
+        }
+        versionRows = (versionData || []) as typeof versionRows;
+      }
+
+      const latestPublished = new Map<string, (typeof versionRows)[number]>();
+      versionRows.forEach((version) => {
+        if (!latestPublished.has(version.task_id)) latestPublished.set(version.task_id, version);
+      });
+
+      setCognitiveCatalogue(tasks.map((task: any) => {
+        const version = latestPublished.get(task.id);
+        return {
+          id: task.id,
+          title: task.title,
+          description: task.description || "",
+          domain: task.domain || "general",
+          tags: Array.isArray(task.tags) ? task.tags : [],
+          published_version_id: version?.id || null,
+          published_version_label: version?.version_label || null,
+          published_version_number: version?.version_number ?? null,
+        };
+      }));
+      setLoadingCognitiveCatalogue(false);
+    }
+
+    void loadCognitiveCatalogue();
+  }, []);
+
+  useEffect(() => {
     if (!initialStudyId) {
       setFollowupWaveSummary({
         count: 0,
@@ -2058,6 +2191,7 @@ function StudyBuilder({
       const [
         studyResult,
         measuresResult,
+        cognitiveResult,
         demographicsResult,
         consentVersionResult,
         protocolResult,
@@ -2065,7 +2199,7 @@ function StudyBuilder({
         supabase
           .from("research_studies")
           .select(
-            "id, title, participant_description, design, target_sample_size, components"
+            "id, title, participant_description, design, target_sample_size, components, study_config"
           )
           .eq("id", initialStudyId)
           .eq("owner_user_id", user.id)
@@ -2079,6 +2213,13 @@ function StudyBuilder({
           .eq("study_id", initialStudyId)
           .eq("owner_user_id", user.id)
           .is("followup_wave_id", null)
+          .order("position", { ascending: true }),
+
+        supabase
+          .from("study_cognitive_tasks")
+          .select("id,task_id,version_id,position,required,administration_mode,cognitive_tasks(title,description,domain),cognitive_task_versions(version_label,version_number,status)")
+          .eq("study_id", initialStudyId)
+          .eq("owner_user_id", user.id)
           .order("position", { ascending: true }),
 
         supabase
@@ -2131,7 +2272,10 @@ function StudyBuilder({
       const savedStudy = studyResult.data;
       const savedComponents =
         (savedStudy.components || {}) as Partial<StudyComponents>;
+      const savedStudyConfig =
+        (savedStudy.study_config || {}) as Record<string, any>;
 
+      setExistingStudyConfig(savedStudyConfig);
       setStudyId(savedStudy.id);
       setTitle(savedStudy.title || "Untitled research study");
       setDescription(savedStudy.participant_description || "");
@@ -2143,6 +2287,7 @@ function StudyBuilder({
         consent: savedComponents.consent ?? true,
         demographics: savedComponents.demographics ?? true,
         baseline: savedComponents.baseline ?? true,
+        cognitive: savedComponents.cognitive ?? false,
         ambulatory: savedComponents.ambulatory ?? false,
         followup: savedComponents.followup ?? false,
         wearables: savedComponents.wearables ?? false,
@@ -2176,7 +2321,64 @@ function StudyBuilder({
                 "Saved version",
               measurement_point: "baseline",
               required: row.required !== false,
+              position: Number(row.position || 0),
             }))
+        );
+      }
+
+      if (!cognitiveResult.error) {
+        setStudyCognitiveTasks(
+          (cognitiveResult.data || []).map((row: any) => ({
+            id: row.id,
+            task_id: row.task_id,
+            version_id: row.version_id,
+            title: row.cognitive_tasks?.title || "Cognitive task",
+            description: row.cognitive_tasks?.description || "",
+            domain: row.cognitive_tasks?.domain || "general",
+            version_label: row.cognitive_task_versions?.version_label || "Published version",
+            required: row.required !== false,
+            administration_mode: ["scheduled", "repeated", "conditional"].includes(row.administration_mode)
+              ? row.administration_mode
+              : "once",
+            position: Number(row.position || 0),
+          }))
+        );
+      }
+
+      {
+        const legacyFlow = Number(savedStudyConfig.baseline_flow_schema || 0) !== 1;
+        const flowRows: Array<{ position: number; item: BaselineFlowItem }> = [];
+        let legacyPosition = 1;
+
+        if (savedComponents.demographics ?? true) {
+          flowRows.push({
+            position: legacyFlow
+              ? legacyPosition++
+              : Number(savedStudyConfig.demographics_position || 1),
+            item: { id: "flow-demographics", kind: "demographics", ref_id: "demographics" },
+          });
+        }
+
+        (measuresResult.data || [])
+          .filter((row: any) => row.measurement_point === "baseline")
+          .forEach((row: any) => {
+            flowRows.push({
+              position: legacyFlow ? legacyPosition++ : Number(row.position || legacyPosition++),
+              item: { id: `flow-${row.id}`, kind: "measure", ref_id: row.id },
+            });
+          });
+
+        (cognitiveResult.data || []).forEach((row: any) => {
+          flowRows.push({
+            position: legacyFlow ? legacyPosition++ : Number(row.position || legacyPosition++),
+            item: { id: `flow-${row.id}`, kind: "cognitive", ref_id: row.id },
+          });
+        });
+
+        setBaselineFlow(
+          flowRows
+            .sort((a, b) => a.position - b.position)
+            .map((row) => row.item)
         );
       }
 
@@ -2312,6 +2514,93 @@ function StudyBuilder({
     );
   }, [components.baseline]);
 
+  useEffect(() => {
+    if (!components.cognitive) setStudyCognitiveTasks([]);
+  }, [components.cognitive]);
+
+  useEffect(() => {
+    setBaselineFlow((previous) => {
+      const withoutDemographics = previous.filter((item) => item.kind !== "demographics");
+      if (!components.demographics) return withoutDemographics;
+      const existing = previous.find((item) => item.kind === "demographics");
+      return existing
+        ? previous
+        : [{ id: "flow-demographics", kind: "demographics", ref_id: "demographics" }, ...previous];
+    });
+  }, [components.demographics]);
+
+  useEffect(() => {
+    setBaselineFlow((previous) =>
+      previous.filter(
+        (item) =>
+          item.kind !== "measure" || studyMeasures.some((measure) => measure.id === item.ref_id)
+      )
+    );
+  }, [studyMeasures]);
+
+  useEffect(() => {
+    setBaselineFlow((previous) =>
+      previous.filter(
+        (item) =>
+          item.kind !== "cognitive" || studyCognitiveTasks.some((task) => task.id === item.ref_id)
+      )
+    );
+  }, [studyCognitiveTasks]);
+
+  function addStudyCognitiveTask(task: StudyCognitiveCatalogueItem) {
+    setStudyError("");
+    setSaveMessage("");
+
+    if (!task.published_version_id) {
+      setStudyError(`${task.title} is still a draft. Open Cognitive Lab and mark a tested version Ready for studies first.`);
+      return;
+    }
+
+    const localId = makeId("cognitive");
+    setStudyCognitiveTasks((previous) => [
+      ...previous,
+      {
+        id: localId,
+        task_id: task.id,
+        version_id: task.published_version_id as string,
+        title: task.title,
+        description: task.description,
+        domain: task.domain,
+        version_label: task.published_version_label || "Published version",
+        required: true,
+        administration_mode: "once",
+      },
+    ]);
+    setBaselineFlow((previous) => [
+      ...previous,
+      { id: `flow-${localId}`, kind: "cognitive", ref_id: localId },
+    ]);
+  }
+
+  function updateStudyCognitiveTask(id: string, patch: Partial<StudyCognitiveTaskDraft>) {
+    setStudyCognitiveTasks((previous) => previous.map((item) => item.id === id ? { ...item, ...patch } : item));
+  }
+
+  function removeStudyCognitiveTask(id: string) {
+    setStudyCognitiveTasks((previous) => previous.filter((item) => item.id !== id));
+    setBaselineFlow((previous) => previous.filter((item) => !(item.kind === "cognitive" && item.ref_id === id)));
+  }
+
+  function moveBaselineFlowItem(refId: string, direction: -1 | 1) {
+    setBaselineFlow((previous) => {
+      const index = previous.findIndex((item) => item.ref_id === refId);
+      const target = index + direction;
+      if (index < 0 || target < 0 || target >= previous.length) return previous;
+      const next = [...previous];
+      [next[index], next[target]] = [next[target], next[index]];
+      return next;
+    });
+  }
+
+  function moveStudyCognitiveTask(id: string, direction: -1 | 1) {
+    moveBaselineFlowItem(id, direction);
+  }
+
   function addStudyMeasure(
     questionnaire: StudyMeasureCatalogueItem,
     measurementPoint: "baseline" | "followup"
@@ -2326,25 +2615,12 @@ function StudyBuilder({
       return;
     }
 
-    const alreadyAdded = studyMeasures.some(
-      (measure) =>
-        measure.questionnaire_version_id === questionnaire.current_version_id &&
-        measure.measurement_point === measurementPoint
-    );
-
-    if (alreadyAdded) {
-      setSaveMessage(
-        `${questionnaire.name} is already selected for ${
-          measurementPoint === "baseline" ? "baseline" : "follow-up"
-        }.`
-      );
-      return;
-    }
+    const localId = makeId("measure");
 
     setStudyMeasures((previous) => [
       ...previous,
       {
-        id: makeId("measure"),
+        id: localId,
         questionnaire_id: questionnaire.id,
         questionnaire_version_id: questionnaire.current_version_id as string,
         name: questionnaire.name,
@@ -2357,27 +2633,24 @@ function StudyBuilder({
         required: true,
       },
     ]);
+
+    if (measurementPoint === "baseline") {
+      setBaselineFlow((previous) => [
+        ...previous,
+        { id: `flow-${localId}`, kind: "measure", ref_id: localId },
+      ]);
+    }
   }
 
   function removeStudyMeasure(id: string) {
     setStudyMeasures((previous) =>
       previous.filter((measure) => measure.id !== id)
     );
+    setBaselineFlow((previous) => previous.filter((item) => !(item.kind === "measure" && item.ref_id === id)));
   }
 
   function moveStudyMeasure(id: string, direction: -1 | 1) {
-    setStudyMeasures((previous) => {
-      const index = previous.findIndex((measure) => measure.id === id);
-      const target = index + direction;
-
-      if (index < 0 || target < 0 || target >= previous.length) {
-        return previous;
-      }
-
-      const next = [...previous];
-      [next[index], next[target]] = [next[target], next[index]];
-      return next;
-    });
+    moveBaselineFlowItem(id, direction);
   }
 
   function updateStudyMeasure(
@@ -2696,6 +2969,27 @@ function StudyBuilder({
     );
   }
 
+  function flowPosition(kind: BaselineFlowItem["kind"], refId: string, fallback: number) {
+    const index = baselineFlow.findIndex(
+      (item) => item.kind === kind && item.ref_id === refId
+    );
+    return index >= 0 ? index + 1 : Math.max(1, fallback);
+  }
+
+  function removeBaselineFlowEntry(item: BaselineFlowItem) {
+    if (item.kind === "demographics") {
+      setComponents((previous) => ({ ...previous, demographics: false }));
+      return;
+    }
+
+    if (item.kind === "measure") {
+      removeStudyMeasure(item.ref_id);
+      return;
+    }
+
+    removeStudyCognitiveTask(item.ref_id);
+  }
+
   async function saveStudyDraft(): Promise<string | null> {
     if (savingStudy) return null;
     setStudyError("");
@@ -2750,7 +3044,12 @@ function StudyBuilder({
         status: "draft",
         components,
         study_config: {
-          builder_version: "universal-v1",
+          ...existingStudyConfig,
+          builder_version: "universal-v2",
+          baseline_flow_schema: 1,
+          demographics_position: components.demographics
+            ? flowPosition("demographics", "demographics", 1)
+            : null,
         },
         updated_at: new Date().toISOString(),
       };
@@ -2804,7 +3103,7 @@ function StudyBuilder({
               questionnaire_id: measure.questionnaire_id,
               questionnaire_version_id: measure.questionnaire_version_id,
               measurement_point: measure.measurement_point,
-              position: index + 1,
+              position: flowPosition("measure", measure.id, index + 1),
               required: measure.required,
               config: {
                 source_type: measure.source_type,
@@ -2818,6 +3117,33 @@ function StudyBuilder({
         if (measuresError) {
           throw measuresError;
         }
+      }
+
+      const { error: deleteCognitiveError } = await supabase
+        .from("study_cognitive_tasks")
+        .delete()
+        .eq("study_id", savedStudyId)
+        .eq("owner_user_id", user.id);
+
+      if (deleteCognitiveError) throw deleteCognitiveError;
+
+      if (components.cognitive && studyCognitiveTasks.length > 0) {
+        const { error: cognitiveError } = await supabase
+          .from("study_cognitive_tasks")
+          .insert(
+            studyCognitiveTasks.map((item, index) => ({
+              study_id: savedStudyId,
+              owner_user_id: user.id,
+              task_id: item.task_id,
+              version_id: item.version_id,
+              position: flowPosition("cognitive", item.id, index + 1),
+              required: item.required,
+              administration_mode: item.administration_mode,
+              schedule_config: {},
+              condition_config: {},
+            }))
+          );
+        if (cognitiveError) throw cognitiveError;
       }
 
       const { error: deleteDemographicQuestionsError } = await supabase
@@ -2981,6 +3307,7 @@ function StudyBuilder({
     { key: "consent", title: "Consent", text: "PsyLattice consent, external consent, or documented alternative." },
     { key: "demographics", title: "Participant demographics", text: "Preset or custom demographic fields, including optional open-response fields." },
     { key: "baseline", title: "Baseline / questionnaires", text: "One or more library or custom research instruments." },
+    { key: "cognitive", title: "Cognitive tasks", text: "Reusable tasks from your personal Cognitive Task Library, pinned to a frozen study-ready version." },
     { key: "ambulatory", title: "Ambulatory / EMA / ESM", text: "Repeated real-world assessments. Completely optional." },
     { key: "followup", title: "Follow-up assessments", text: "Post-study or later follow-up measurement points." },
     { key: "wearables", title: "Wearables", text: "Optional device-derived data with appropriate consent." },
@@ -3002,6 +3329,15 @@ function StudyBuilder({
       questionnaire.description,
       questionnaire.source_type,
     ]
+      .join(" ")
+      .toLowerCase()
+      .includes(query);
+  });
+
+  const filteredCognitiveCatalogue = cognitiveCatalogue.filter((task) => {
+    const query = cognitiveSearch.trim().toLowerCase();
+    if (!query) return true;
+    return [task.title, task.description, task.domain, ...(task.tags || [])]
       .join(" ")
       .toLowerCase()
       .includes(query);
@@ -3105,7 +3441,7 @@ function StudyBuilder({
           {currentStep.key === "components" && (
             <div>
               <p className="text-sm leading-6 text-slate-500">
-                Select only the components that belong to this protocol. Ambulatory assessment is not required.
+                Select the kinds of elements that belong to this protocol. You can add multiple questionnaires and cognitive tasks, then arrange their participant order in Study flow.
               </p>
 
               <div className="mt-5 grid gap-3 sm:grid-cols-2">
@@ -3129,6 +3465,80 @@ function StudyBuilder({
                     <p className="mt-2 text-sm leading-6 text-slate-500">{component.text}</p>
                   </button>
                 ))}
+              </div>
+            </div>
+          )}
+
+          {currentStep.key === "flow" && (
+            <div className="space-y-5">
+              <div className="rounded-2xl border border-cyan-100 bg-cyan-50/60 p-5">
+                <p className="font-medium text-cyan-950">Participant study flow</p>
+                <p className="mt-2 text-sm leading-6 text-cyan-900/75">
+                  Reposition questionnaires, demographics and cognitive tasks into the exact order participants should encounter them. The same questionnaire or cognitive task may be added more than once when your design requires repeated administration.
+                </p>
+              </div>
+
+              {components.consent && consentMethod === "psylattice" && (
+                <div className="rounded-2xl border border-emerald-200 bg-emerald-50/60 p-4">
+                  <div className="flex items-center justify-between gap-3">
+                    <div>
+                      <p className="text-sm font-semibold text-emerald-950">1. Consent</p>
+                      <p className="mt-1 text-xs text-emerald-800/70">Locked before research data collection.</p>
+                    </div>
+                    <Status type="success">Locked first</Status>
+                  </div>
+                </div>
+              )}
+
+              {baselineFlow.length === 0 ? (
+                <div className="rounded-2xl border border-dashed border-slate-300 bg-slate-50 p-6 text-center">
+                  <p className="font-medium">No baseline study elements yet</p>
+                  <p className="mt-2 text-sm text-slate-500">Add questionnaires or cognitive tasks, or enable demographics.</p>
+                </div>
+              ) : (
+                <div className="space-y-3">
+                  {baselineFlow.map((item, index) => {
+                    const measure = item.kind === "measure" ? studyMeasures.find((candidate) => candidate.id === item.ref_id) : null;
+                    const cognitive = item.kind === "cognitive" ? studyCognitiveTasks.find((candidate) => candidate.id === item.ref_id) : null;
+                    const label = item.kind === "demographics"
+                      ? "Participant demographics"
+                      : item.kind === "measure"
+                        ? `${measure?.name || "Questionnaire"}${measure?.acronym ? ` (${measure.acronym})` : ""}`
+                        : cognitive?.title || "Cognitive task";
+                    const detail = item.kind === "demographics"
+                      ? `${demographicQuestions.length} configured field${demographicQuestions.length === 1 ? "" : "s"}`
+                      : item.kind === "measure"
+                        ? `Questionnaire · ${measure?.version_label || "Pinned version"}`
+                        : `Cognitive task · ${cognitive?.version_label || "Pinned version"}`;
+                    const displayNumber = index + 1 + (components.consent && consentMethod === "psylattice" ? 1 : 0);
+                    return (
+                      <div key={item.id} className="rounded-2xl border border-slate-200 bg-white p-4">
+                        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                          <div className="min-w-0">
+                            <div className="flex flex-wrap items-center gap-2">
+                              <span className="flex h-7 w-7 items-center justify-center rounded-full bg-slate-950 text-[11px] font-semibold text-white">{displayNumber}</span>
+                              <p className="font-medium">{label}</p>
+                              <Status type={item.kind === "cognitive" ? "success" : "neutral"}>
+                                {item.kind === "demographics" ? "Demographics" : item.kind === "measure" ? "Questionnaire" : "Cognitive"}
+                              </Status>
+                            </div>
+                            <p className="mt-1 pl-9 text-xs text-slate-500">{detail}</p>
+                          </div>
+                          <div className="flex shrink-0 gap-2">
+                            <button type="button" onClick={() => moveBaselineFlowItem(item.ref_id, -1)} disabled={index === 0} className="rounded-lg border border-slate-200 px-3 py-2 text-xs font-semibold disabled:opacity-30">↑</button>
+                            <button type="button" onClick={() => moveBaselineFlowItem(item.ref_id, 1)} disabled={index === baselineFlow.length - 1} className="rounded-lg border border-slate-200 px-3 py-2 text-xs font-semibold disabled:opacity-30">↓</button>
+                            <button type="button" onClick={() => removeBaselineFlowEntry(item)} className="rounded-lg border border-red-200 px-3 py-2 text-xs font-semibold text-red-700">Remove</button>
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+
+              <div className="grid gap-3 sm:grid-cols-2">
+                <button type="button" onClick={() => { setComponents((previous) => ({ ...previous, baseline: true })); setActiveStepKey("measures"); }} className="rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm font-semibold text-slate-700">+ Add questionnaire</button>
+                <button type="button" onClick={() => { setComponents((previous) => ({ ...previous, cognitive: true })); setActiveStepKey("cognitive"); }} className="rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm font-semibold text-slate-700">+ Add cognitive task</button>
               </div>
             </div>
           )}
@@ -3712,12 +4122,12 @@ function StudyBuilder({
                 ) : filteredMeasureCatalogue.length > 0 ? (
                   <div className="mt-5 grid gap-3">
                     {filteredMeasureCatalogue.map((questionnaire) => {
-                      const baselineAdded = studyMeasures.some(
+                      const baselineCount = studyMeasures.filter(
                         (measure) =>
                           measure.questionnaire_version_id ===
                             questionnaire.current_version_id &&
                           measure.measurement_point === "baseline"
-                      );
+                      ).length;
 
                       return (
                         <div
@@ -3772,10 +4182,7 @@ function StudyBuilder({
                               {components.baseline && (
                                 <button
                                   type="button"
-                                  disabled={
-                                    !questionnaire.current_version_id ||
-                                    baselineAdded
-                                  }
+                                  disabled={!questionnaire.current_version_id}
                                   onClick={() =>
                                     addStudyMeasure(
                                       questionnaire,
@@ -3783,14 +4190,14 @@ function StudyBuilder({
                                     )
                                   }
                                   className={`rounded-xl px-4 py-2.5 text-sm font-semibold ${
-                                    baselineAdded
-                                      ? "border border-emerald-200 bg-emerald-50 text-emerald-700"
+                                    baselineCount > 0
+                                      ? "border border-cyan-200 bg-cyan-50 text-cyan-900"
                                       : "bg-slate-950 text-white"
                                   } disabled:cursor-not-allowed disabled:opacity-60`}
                                 >
-                                  {baselineAdded
-                                    ? "✓ Baseline added"
-                                    : "+ Add to baseline"}
+                                  {baselineCount > 0
+                                    ? `+ Add again (${baselineCount})`
+                                    : "+ Add to study"}
                                 </button>
                               )}
 
@@ -3808,6 +4215,109 @@ function StudyBuilder({
                       Researcher Questionnaire Library also appear here
                       automatically.
                     </p>
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
+
+          {currentStep.key === "cognitive" && (
+            <div className="space-y-5">
+              <div className="rounded-2xl border border-cyan-100 bg-cyan-50/60 p-5">
+                <p className="font-medium text-cyan-950">Cognitive tasks from your personal library</p>
+                <p className="mt-2 text-sm leading-6 text-cyan-900/75">
+                  Study Builder pins a published task version. If you later edit that task in Cognitive Lab, this study does not change unless you deliberately replace the pinned version.
+                </p>
+              </div>
+
+              <div className="rounded-2xl border border-slate-200 bg-white p-5">
+                <div>
+                  <p className="font-medium">Selected cognitive tasks</p>
+                  <p className="mt-1 text-sm text-slate-500">{studyCognitiveTasks.length} task{studyCognitiveTasks.length === 1 ? "" : "s"} in this study</p>
+                </div>
+
+                {studyCognitiveTasks.length === 0 ? (
+                  <div className="mt-4 rounded-xl bg-slate-50 p-4 text-sm text-slate-500">No cognitive tasks selected yet.</div>
+                ) : (
+                  <div className="mt-4 space-y-3">
+                    {studyCognitiveTasks.map((item, index) => (
+                      <div key={item.id} className="rounded-2xl border border-slate-200 p-4">
+                        <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+                          <div className="min-w-0">
+                            <div className="flex flex-wrap items-center gap-2">
+                              <p className="font-medium">{item.title}</p>
+                              <Status type="success">{item.version_label}</Status>
+                            </div>
+                            <p className="mt-1 text-xs capitalize text-slate-400">{item.domain.replaceAll("_", " ")}</p>
+                            {item.description && <p className="mt-2 line-clamp-2 text-sm leading-6 text-slate-500">{item.description}</p>}
+                          </div>
+                          <div className="flex shrink-0 gap-2">
+                            <button type="button" onClick={() => moveStudyCognitiveTask(item.id, -1)} disabled={index === 0} className="rounded-lg border border-slate-200 px-2.5 py-1.5 text-xs disabled:opacity-30">↑</button>
+                            <button type="button" onClick={() => moveStudyCognitiveTask(item.id, 1)} disabled={index === studyCognitiveTasks.length - 1} className="rounded-lg border border-slate-200 px-2.5 py-1.5 text-xs disabled:opacity-30">↓</button>
+                            <button type="button" onClick={() => removeStudyCognitiveTask(item.id)} className="rounded-lg border border-red-200 px-2.5 py-1.5 text-xs text-red-700">Remove</button>
+                          </div>
+                        </div>
+                        <div className="mt-4 grid gap-3 sm:grid-cols-2">
+                          <button type="button" onClick={() => updateStudyCognitiveTask(item.id, { required: !item.required })} className={`rounded-xl border px-3 py-2.5 text-xs font-semibold ${item.required ? "border-cyan-200 bg-cyan-50 text-cyan-900" : "border-slate-200 bg-white text-slate-600"}`}>
+                            {item.required ? "✓ Required" : "Optional"}
+                          </button>
+                          <select value={item.administration_mode} onChange={(event) => updateStudyCognitiveTask(item.id, { administration_mode: event.target.value as StudyCognitiveTaskDraft["administration_mode"] })} className="rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-xs">
+                            <option value="once">Run once</option>
+                            <option value="repeated">Repeated</option>
+                            <option value="scheduled">Scheduled</option>
+                            <option value="conditional">Conditional</option>
+                          </select>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+
+              <div className="rounded-2xl border border-slate-200 bg-white p-5">
+                <div className="flex flex-col justify-between gap-3 sm:flex-row sm:items-end">
+                  <label className="block flex-1">
+                    <span className="text-sm font-medium">Browse My Cognitive Tasks</span>
+                    <input value={cognitiveSearch} onChange={(event) => setCognitiveSearch(event.target.value)} placeholder="Search task, domain or description" className="mt-2 w-full rounded-xl border border-slate-200 px-4 py-3 text-sm" />
+                  </label>
+                  <div className="rounded-full bg-slate-100 px-3 py-2 text-xs font-medium text-slate-500">
+                    {loadingCognitiveCatalogue ? "Loading..." : `${filteredCognitiveCatalogue.length} in library`}
+                  </div>
+                </div>
+
+                {cognitiveCatalogueError && <div className="mt-4 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">{cognitiveCatalogueError}</div>}
+
+                {loadingCognitiveCatalogue ? (
+                  <p className="mt-5 text-sm text-slate-500">Loading your Cognitive Task Library...</p>
+                ) : filteredCognitiveCatalogue.length > 0 ? (
+                  <div className="mt-5 grid gap-3">
+                    {filteredCognitiveCatalogue.map((task) => {
+                      const addedCount = task.published_version_id
+                        ? studyCognitiveTasks.filter((item) => item.version_id === task.published_version_id).length
+                        : 0;
+                      return (
+                        <div key={task.id} className="rounded-2xl border border-slate-200 p-5">
+                          <div className="flex flex-col justify-between gap-4 lg:flex-row lg:items-center">
+                            <div className="min-w-0">
+                              <div className="flex flex-wrap items-center gap-2">
+                                <p className="font-medium">{task.title}</p>
+                                {task.published_version_id ? <Status type="success">Ready for studies</Status> : <Status type="warning">Draft only</Status>}
+                              </div>
+                              <p className="mt-1 text-xs capitalize text-slate-400">{task.domain.replaceAll("_", " ")}{task.published_version_label ? ` · ${task.published_version_label}` : ""}</p>
+                              {task.description && <p className="mt-2 line-clamp-2 text-sm leading-6 text-slate-500">{task.description}</p>}
+                            </div>
+                            <button type="button" disabled={!task.published_version_id} onClick={() => addStudyCognitiveTask(task)} className={`shrink-0 rounded-xl px-4 py-2.5 text-sm font-semibold ${addedCount > 0 ? "border border-cyan-200 bg-cyan-50 text-cyan-900" : "bg-slate-950 text-white"} disabled:cursor-not-allowed disabled:opacity-60`}>
+                              {!task.published_version_id ? "Publish in Cognitive Lab first" : addedCount > 0 ? `+ Add again (${addedCount})` : "+ Add to study"}
+                            </button>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                ) : (
+                  <div className="mt-5 rounded-2xl bg-slate-50 p-5">
+                    <p className="font-medium">No cognitive tasks found</p>
+                    <p className="mt-2 text-sm leading-6 text-slate-500">Create or clone a task in Cognitive Lab, test it in Preview/Pilot, then mark a version Ready for studies.</p>
                   </div>
                 )}
               </div>
@@ -4038,7 +4548,7 @@ function StudyBuilder({
               <div className="rounded-2xl border border-emerald-100 bg-emerald-50 p-5">
                 <p className="font-medium text-emerald-900">Builder review</p>
                 <p className="mt-2 text-sm leading-6 text-emerald-800">
-                  This draft records the selected study components, configurable demographics, pinned questionnaire versions, consent, and optional ambulatory protocol. Use a TEST participant link before live recruitment and verify the full participant experience against the approved protocol.
+                  This draft records the selected study components, configurable demographics, pinned questionnaire versions, pinned cognitive-task versions, consent, and optional ambulatory protocol. Use a TEST participant link before live recruitment and verify the full participant experience against the approved protocol.
                 </p>
               </div>
               <button type="button" onClick={() => void saveStudyDraft()} disabled={savingStudy} className="rounded-xl bg-slate-950 px-5 py-3 text-sm font-semibold text-white disabled:opacity-50">
@@ -4097,7 +4607,7 @@ function StudyBuilder({
               <p>Consent content must match the approved ethics protocol; PsyLattice does not decide whether a consent waiver or optional component is ethically sufficient.</p>
               <p>Demographic fields can include direct identifiers, but collect names, email addresses or similarly identifying data only when the approved protocol and data-management plan require them.</p>
               <p>Ambulatory scheduling is optional and should only be enabled when it belongs to the research design.</p>
-              <p>Once participant deployment is connected, published questionnaire and consent versions will be immutable for historical reproducibility.</p>
+              <p>Published questionnaire, consent and cognitive-task versions are pinned for historical reproducibility; later library edits do not silently alter an existing study. Study flow order is saved separately from the content of each element.</p>
             </div>
           </Panel>
         </div>
@@ -9661,6 +10171,9 @@ type ResearchDatasetType =
   | "questionnaire_responses"
   | "participant_uploads"
   | "questionnaire_scores"
+  | "cognitive_sessions"
+  | "cognitive_trials"
+  | "cognitive_participant_summary"
   | "consent"
   | "ambulatory_checkins"
   | "ambulatory_responses"
@@ -9847,6 +10360,51 @@ type ResearchDataAmbulatoryResponse = {
   answered_at: string;
 };
 
+type ResearchDataCognitiveAttachment = {
+  id: string;
+  task_id: string;
+  version_id: string;
+  position: number;
+  required: boolean;
+  administration_mode: string;
+  title: string;
+  short_title: string | null;
+  domain: string;
+  version_label: string;
+  version_number: number;
+};
+
+type ResearchDataCognitiveSession = {
+  id: string;
+  task_id: string;
+  version_id: string;
+  study_cognitive_task_id: string | null;
+  participant_id: string | null;
+  participant_session_id: string | null;
+  session_mode: string;
+  status: string;
+  device_info: Record<string, unknown>;
+  timing_quality: Record<string, unknown>;
+  summary_scores: Record<string, unknown>;
+  started_at: string | null;
+  completed_at: string | null;
+  created_at: string;
+};
+
+type ResearchDataCognitiveTrial = {
+  id: string;
+  session_id: string;
+  block_key: string | null;
+  trial_index: number;
+  condition_label: string | null;
+  stimulus_payload: Record<string, unknown>;
+  response_payload: Record<string, unknown>;
+  correct: boolean | null;
+  reaction_time_ms: number | null;
+  timing: Record<string, unknown>;
+  created_at: string;
+};
+
 type ResearchDataFollowupWave = {
   id: string;
   name: string;
@@ -9881,6 +10439,9 @@ type ResearchDataBundle = {
   ambulatoryPrompts: ResearchDataAmbulatoryPrompt[];
   ambulatoryCheckins: ResearchDataAmbulatoryCheckin[];
   ambulatoryResponses: ResearchDataAmbulatoryResponse[];
+  cognitiveAttachments: ResearchDataCognitiveAttachment[];
+  cognitiveSessions: ResearchDataCognitiveSession[];
+  cognitiveTrials: ResearchDataCognitiveTrial[];
   followupWaves: ResearchDataFollowupWave[];
   exportLogs: ResearchDataExportLog[];
 };
@@ -9920,6 +10481,9 @@ const emptyResearchDataBundle: ResearchDataBundle = {
   ambulatoryPrompts: [],
   ambulatoryCheckins: [],
   ambulatoryResponses: [],
+  cognitiveAttachments: [],
+  cognitiveSessions: [],
+  cognitiveTrials: [],
   followupWaves: [],
   exportLogs: [],
 };
@@ -9930,6 +10494,9 @@ const researchDatasetLabels: Record<ResearchDatasetType, string> = {
   questionnaire_responses: "Questionnaire responses — long format",
   participant_uploads: "Participant uploads — files & media",
   questionnaire_scores: "Questionnaire scores — long format",
+  cognitive_sessions: "Cognitive task sessions",
+  cognitive_trials: "Cognitive trials — raw data",
+  cognitive_participant_summary: "Cognitive participant summaries",
   consent: "Consent records",
   ambulatory_checkins: "Ambulatory check-ins — one row per check-in",
   ambulatory_responses: "Ambulatory responses — one row per item response",
@@ -10174,6 +10741,7 @@ function useResearchDataWorkspace() {
         ambulatoryPromptResult,
         ambulatoryCheckinResult,
         ambulatoryResponseResult,
+        cognitiveAttachmentResult,
         followupWaveResult,
         exportLogResult,
       ] = await Promise.all([
@@ -10266,6 +10834,14 @@ function useResearchDataWorkspace() {
           .order("answered_at", { ascending: false }),
 
         supabase
+          .from("study_cognitive_tasks")
+          .select(
+            "id, task_id, version_id, position, required, administration_mode, cognitive_tasks(title,short_title,domain), cognitive_task_versions(version_label,version_number)"
+          )
+          .eq("study_id", selectedStudyId)
+          .order("position", { ascending: true }),
+
+        supabase
           .from("study_followup_waves")
           .select("id, name, position, status")
           .eq("study_id", selectedStudyId)
@@ -10293,6 +10869,7 @@ function useResearchDataWorkspace() {
         ambulatoryPromptResult,
         ambulatoryCheckinResult,
         ambulatoryResponseResult,
+        cognitiveAttachmentResult,
         followupWaveResult,
       ];
 
@@ -10379,6 +10956,65 @@ function useResearchDataWorkspace() {
         }
       }
 
+      const cognitiveAttachments: ResearchDataCognitiveAttachment[] =
+        (cognitiveAttachmentResult.data || []).map((row: any) => ({
+          id: String(row.id),
+          task_id: String(row.task_id),
+          version_id: String(row.version_id),
+          position: Number(row.position || 0),
+          required: Boolean(row.required),
+          administration_mode: String(row.administration_mode || "once"),
+          title: String(row.cognitive_tasks?.title || "Cognitive task"),
+          short_title: row.cognitive_tasks?.short_title || null,
+          domain: String(row.cognitive_tasks?.domain || "general"),
+          version_label: String(row.cognitive_task_versions?.version_label || "Published version"),
+          version_number: Number(row.cognitive_task_versions?.version_number || 1),
+        }));
+
+      let cognitiveSessions: ResearchDataCognitiveSession[] = [];
+      let cognitiveTrials: ResearchDataCognitiveTrial[] = [];
+
+      const cognitiveAttachmentIds = cognitiveAttachments.map((item) => item.id);
+      if (cognitiveAttachmentIds.length > 0) {
+        const { data: sessionData, error: cognitiveSessionError } = await supabase
+          .from("cognitive_task_sessions")
+          .select(
+            "id, task_id, version_id, study_cognitive_task_id, participant_id, participant_session_id, session_mode, status, device_info, timing_quality, summary_scores, started_at, completed_at, created_at"
+          )
+          .in("study_cognitive_task_id", cognitiveAttachmentIds)
+          .eq("session_mode", "study")
+          .order("created_at", { ascending: false });
+
+        if (cognitiveSessionError) {
+          console.error("Could not load study cognitive sessions:", cognitiveSessionError);
+          setError("Some cognitive-task study data could not be loaded.");
+          setLoading(false);
+          return;
+        }
+
+        cognitiveSessions = (sessionData || []) as ResearchDataCognitiveSession[];
+        const cognitiveSessionIds = cognitiveSessions.map((session) => session.id);
+
+        if (cognitiveSessionIds.length > 0) {
+          const { data: trialData, error: cognitiveTrialError } = await supabase
+            .from("cognitive_trial_results")
+            .select(
+              "id, session_id, block_key, trial_index, condition_label, stimulus_payload, response_payload, correct, reaction_time_ms, timing, created_at"
+            )
+            .in("session_id", cognitiveSessionIds)
+            .order("trial_index", { ascending: true });
+
+          if (cognitiveTrialError) {
+            console.error("Could not load cognitive trial data:", cognitiveTrialError);
+            setError("Some cognitive-task trial data could not be loaded.");
+            setLoading(false);
+            return;
+          }
+
+          cognitiveTrials = (trialData || []) as ResearchDataCognitiveTrial[];
+        }
+      }
+
       setBundle({
         participants:
           (participantResult.data || []) as ResearchDataParticipant[],
@@ -10403,6 +11039,9 @@ function useResearchDataWorkspace() {
           (ambulatoryCheckinResult.data || []) as ResearchDataAmbulatoryCheckin[],
         ambulatoryResponses:
           (ambulatoryResponseResult.data || []) as ResearchDataAmbulatoryResponse[],
+        cognitiveAttachments,
+        cognitiveSessions,
+        cognitiveTrials,
         followupWaves:
           (followupWaveResult.data || []) as ResearchDataFollowupWave[],
         exportLogs: exportLogResult.error
@@ -10507,6 +11146,90 @@ function researchQuestionnaireForMeasure(
   );
 }
 
+
+function researchCognitiveAttachmentForId(
+  bundle: ResearchDataBundle,
+  id: string | null | undefined
+) {
+  if (!id) return null;
+  return bundle.cognitiveAttachments.find((item) => item.id === id) || null;
+}
+
+function researchCognitiveSessionForTrial(
+  bundle: ResearchDataBundle,
+  trial: ResearchDataCognitiveTrial
+) {
+  return bundle.cognitiveSessions.find((session) => session.id === trial.session_id) || null;
+}
+
+function researchNumber(value: unknown): number | null {
+  const numeric = typeof value === "number" ? value : Number(value);
+  return Number.isFinite(numeric) ? numeric : null;
+}
+
+function researchMedian(values: number[]) {
+  if (values.length === 0) return null;
+  const sorted = [...values].sort((a, b) => a - b);
+  const middle = Math.floor(sorted.length / 2);
+  return sorted.length % 2
+    ? sorted[middle]
+    : (sorted[middle - 1] + sorted[middle]) / 2;
+}
+
+function researchMean(values: number[]) {
+  if (values.length === 0) return null;
+  return values.reduce((sum, value) => sum + value, 0) / values.length;
+}
+
+function researchCognitiveParticipantSummary(
+  bundle: ResearchDataBundle,
+  participantId: string,
+  attachmentId: string
+) {
+  const session = [...bundle.cognitiveSessions]
+    .filter(
+      (candidate) =>
+        candidate.participant_id === participantId &&
+        candidate.study_cognitive_task_id === attachmentId &&
+        candidate.session_mode === "study"
+    )
+    .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())[0] || null;
+
+  if (!session) {
+    return { session: null, trials: [] as ResearchDataCognitiveTrial[], accuracy: null, meanRt: null, medianRt: null, omissions: 0 };
+  }
+
+  const trials = bundle.cognitiveTrials.filter((trial) => trial.session_id === session.id);
+  const scorable = trials.filter((trial) => trial.correct !== null);
+  const correct = scorable.filter((trial) => trial.correct === true).length;
+  const rts = trials
+    .map((trial) => researchNumber(trial.reaction_time_ms))
+    .filter((value): value is number => value !== null);
+  const omissions = trials.filter((trial) => {
+    const response = trial.response_payload?.response;
+    return response === null || response === undefined || response === "";
+  }).length;
+
+  return {
+    session,
+    trials,
+    accuracy: scorable.length > 0 ? correct / scorable.length : null,
+    meanRt: researchMean(rts),
+    medianRt: researchMedian(rts),
+    omissions,
+  };
+}
+
+function researchCognitiveAnalysisVariables(attachment: ResearchDataCognitiveAttachment) {
+  const base = researchStatVariable("cog", attachment.position, attachment.short_title || attachment.title);
+  return {
+    completed: `${base}_completed`,
+    accuracy: `${base}_accuracy`,
+    meanRt: `${base}_mean_rt_ms`,
+    medianRt: `${base}_median_rt_ms`,
+    omissions: `${base}_omissions`,
+  };
+}
 
 type ResearchParticipantSummaryQuestionnaireField = {
   source: string;
@@ -11435,6 +12158,12 @@ function researchBuildRows(
       const demographics = bundle.demographicResponses.filter(
         (response) => response.participant_id === participant.id
       );
+      const completedCognitive = bundle.cognitiveSessions.filter(
+        (session) =>
+          session.participant_id === participant.id &&
+          session.session_mode === "study" &&
+          session.status === "completed"
+      );
 
       const row: ResearchTableRow = {
         ...participantBase(participant),
@@ -11445,6 +12174,7 @@ function researchBuildRows(
         consented: consent?.consented ?? false,
         session_count: sessions.length,
         completed_questionnaires: completedMeasures.length,
+        completed_cognitive_tasks: completedCognitive.length,
       };
 
       // Every configured questionnaire item becomes its own participant-level
@@ -12007,6 +12737,117 @@ function researchBuildRows(
     return rows;
   }
 
+  if (datasetType === "cognitive_sessions") {
+    return bundle.cognitiveSessions
+      .filter(
+        (session) =>
+          session.participant_id && participantIds.has(session.participant_id)
+      )
+      .flatMap((session) => {
+        const participant = session.participant_id
+          ? researchParticipantForId(bundle, session.participant_id)
+          : null;
+        const attachment = researchCognitiveAttachmentForId(
+          bundle,
+          session.study_cognitive_task_id
+        );
+        if (!participant || !attachment) return [];
+        const summary = session.summary_scores || {};
+        const timing = session.timing_quality || {};
+        const device = session.device_info || {};
+        return [{
+          participant: identityMap.get(participant.id) || "",
+          is_test: participant.is_test,
+          administration_position: attachment.position,
+          cognitive_task: attachment.title,
+          version: attachment.version_label,
+          required: attachment.required,
+          session_status: session.status,
+          trials: researchNumber(summary.trials) ?? "",
+          scorable_trials: researchNumber(summary.scorable_trials) ?? "",
+          correct_trials: researchNumber(summary.correct_trials) ?? "",
+          accuracy: researchNumber(summary.accuracy) ?? "",
+          mean_rt_ms: researchNumber(summary.mean_rt_ms) ?? "",
+          median_rt_ms: researchNumber(summary.median_rt_ms) ?? "",
+          response_observations: researchNumber(summary.response_observations) ?? "",
+          refresh_hz: researchNumber(timing.refresh_hz) ?? researchNumber(device.refresh_hz) ?? "",
+          refresh_stability: researchNumber(timing.refresh_stability) ?? "",
+          visibility_interruptions: researchNumber(timing.visibility_interruptions) ?? "",
+          cognitive_session_id: session.id,
+          participant_session_id: session.participant_session_id || "",
+          started_at: session.started_at || "",
+          completed_at: session.completed_at || "",
+          condition_summary_json: researchValueText(summary.conditions || {}),
+          timing_quality_json: researchValueText(timing),
+          device_info_json: researchValueText(device),
+        }];
+      });
+  }
+
+  if (datasetType === "cognitive_trials") {
+    return bundle.cognitiveTrials.flatMap((trial) => {
+      const session = researchCognitiveSessionForTrial(bundle, trial);
+      if (!session?.participant_id || !participantIds.has(session.participant_id)) return [];
+      const participant = researchParticipantForId(bundle, session.participant_id);
+      const attachment = researchCognitiveAttachmentForId(bundle, session.study_cognitive_task_id);
+      if (!participant || !attachment) return [];
+      const response = trial.response_payload || {};
+      const stimulus = trial.stimulus_payload || {};
+      return [{
+        participant: identityMap.get(participant.id) || "",
+        is_test: participant.is_test,
+        administration_position: attachment.position,
+        cognitive_task: attachment.title,
+        version: attachment.version_label,
+        cognitive_session_id: session.id,
+        block_key: trial.block_key || "",
+        trial_index: trial.trial_index,
+        condition: trial.condition_label || "",
+        response: response.response ?? "",
+        correct_response: response.correct_response ?? "",
+        correct: trial.correct ?? "",
+        reaction_time_ms: trial.reaction_time_ms ?? "",
+        stimulus_variables_json: researchValueText(stimulus.variables || {}),
+        stimulus_payload_json: researchValueText(stimulus),
+        response_payload_json: researchValueText(response),
+        timing_json: researchValueText(trial.timing || {}),
+        recorded_at: trial.created_at,
+      }];
+    });
+  }
+
+  if (datasetType === "cognitive_participant_summary") {
+    const rows: ResearchTableRow[] = [];
+    for (const participant of participants) {
+      for (const attachment of [...bundle.cognitiveAttachments].sort((a, b) => a.position - b.position)) {
+        const summary = researchCognitiveParticipantSummary(bundle, participant.id, attachment.id);
+        const scores = summary.session?.summary_scores || {};
+        const timing = summary.session?.timing_quality || {};
+        rows.push({
+          participant: identityMap.get(participant.id) || "",
+          is_test: participant.is_test,
+          administration_position: attachment.position,
+          cognitive_task: attachment.title,
+          version: attachment.version_label,
+          required: attachment.required,
+          completed: summary.session?.status === "completed",
+          session_status: summary.session?.status || "not_started",
+          trials: summary.trials.length,
+          scorable_trials: summary.trials.filter((trial) => trial.correct !== null).length,
+          accuracy: summary.accuracy ?? researchNumber(scores.accuracy) ?? "",
+          mean_rt_ms: summary.meanRt ?? researchNumber(scores.mean_rt_ms) ?? "",
+          median_rt_ms: summary.medianRt ?? researchNumber(scores.median_rt_ms) ?? "",
+          omissions: summary.omissions,
+          refresh_hz: researchNumber(timing.refresh_hz) ?? "",
+          refresh_stability: researchNumber(timing.refresh_stability) ?? "",
+          visibility_interruptions: researchNumber(timing.visibility_interruptions) ?? "",
+          completed_at: summary.session?.completed_at || "",
+        });
+      }
+    }
+    return rows;
+  }
+
   if (datasetType === "consent") {
     return bundle.consents
       .filter((consent) => participantIds.has(consent.participant_id))
@@ -12110,6 +12951,16 @@ function researchBuildRows(
       }
     }
 
+    for (const attachment of bundle.cognitiveAttachments) {
+      const variables = researchCognitiveAnalysisVariables(attachment);
+      const summary = researchCognitiveParticipantSummary(bundle, participant.id, attachment.id);
+      row[variables.completed] = summary.session?.status === "completed" ? 1 : 0;
+      row[variables.accuracy] = summary.accuracy ?? "";
+      row[variables.meanRt] = summary.meanRt ?? "";
+      row[variables.medianRt] = summary.medianRt ?? "";
+      row[variables.omissions] = summary.session ? summary.omissions : "";
+    }
+
     return row;
   });
 }
@@ -12163,6 +13014,13 @@ function researchBuildCodebook(
         type: "Integer",
         source: "study_measure_sessions",
         notes: "Number of completed questionnaire sessions.",
+      },
+      {
+        variable: "completed_cognitive_tasks",
+        label: "Completed cognitive task administrations",
+        type: "Integer",
+        source: "cognitive_task_sessions",
+        notes: "Number of completed study-mode cognitive task administrations.",
       },
       ...questionnaireFields.map((field) => ({
         variable: field.source,
@@ -12449,6 +13307,56 @@ function researchBuildCodebook(
     }));
   }
 
+  if (datasetType === "cognitive_sessions") {
+    return [
+      ["participant", "Participant", "text", "study_participants", "Pseudonymous or export-scoped anonymous participant identifier."],
+      ["is_test", "Test participation flag", "boolean", "study_participants", "TRUE identifies test participation."],
+      ["administration_position", "Study-flow administration position", "integer", "study_cognitive_tasks", "Distinguishes repeated uses of the same cognitive task."],
+      ["cognitive_task", "Cognitive task", "text", "cognitive_tasks", "Task title pinned into the study."],
+      ["version", "Pinned task version", "text", "cognitive_task_versions", "Frozen study-ready version used for this administration."],
+      ["session_status", "Cognitive session status", "categorical", "cognitive_task_sessions", "Study-mode execution status."],
+      ["accuracy", "Accuracy proportion", "numeric 0-1", "summary_scores", "Correct / scorable trials; blank when the task has no scorable trials."],
+      ["mean_rt_ms", "Mean reaction time", "milliseconds", "summary_scores", "Mean of recorded reaction times."],
+      ["median_rt_ms", "Median reaction time", "milliseconds", "summary_scores", "Median of recorded reaction times."],
+      ["refresh_hz", "Effective refresh rate", "Hz", "timing_quality", "Display refresh rate used for frame-aware task timing."],
+      ["refresh_stability", "Refresh stability", "proportion", "timing_quality", "Runner refresh-sampling stability diagnostic."],
+      ["condition_summary_json", "Condition summaries", "JSON", "summary_scores", "Deterministic per-condition trial count, accuracy and mean RT summaries."],
+      ["timing_quality_json", "Timing diagnostics", "JSON", "cognitive_task_sessions", "Lossless browser/display timing diagnostics."],
+    ].map(([variable, label, type, source, notes]) => ({ variable, label, type, source, notes }));
+  }
+
+  if (datasetType === "cognitive_trials") {
+    return [
+      ["participant", "Participant", "text", "study_participants", "Pseudonymous or export-scoped anonymous participant identifier."],
+      ["administration_position", "Study-flow administration position", "integer", "study_cognitive_tasks", "Distinguishes repeated task administrations."],
+      ["cognitive_task", "Cognitive task", "text", "cognitive_tasks", "Task title."],
+      ["block_key", "Block key", "text", "cognitive_trial_results", "Task block identifier."],
+      ["trial_index", "Trial index", "integer", "cognitive_trial_results", "Zero-based execution index stored by the runner."],
+      ["condition", "Condition label", "text", "cognitive_trial_results", "Trial condition configured by the task definition."],
+      ["response", "Participant response", "text/JSON", "response_payload", "Raw normalized participant response."],
+      ["correct_response", "Correct response", "text/JSON", "response_payload", "Resolved correct answer for the executed trial."],
+      ["correct", "Correctness", "boolean/null", "cognitive_trial_results", "NULL means the trial was not scorable."],
+      ["reaction_time_ms", "Reaction time", "milliseconds", "cognitive_trial_results", "RT relative to the configured response anchor."],
+      ["stimulus_variables_json", "Trial variables", "JSON", "stimulus_payload", "Lossless Trial Table variables for the executed trial."],
+      ["timing_json", "Component timing", "JSON", "cognitive_trial_results", "Per-component requested/actual timing and frame diagnostics."],
+    ].map(([variable, label, type, source, notes]) => ({ variable, label, type, source, notes }));
+  }
+
+  if (datasetType === "cognitive_participant_summary") {
+    return [
+      ["participant", "Participant", "text", "study_participants", "Pseudonymous or export-scoped anonymous participant identifier."],
+      ["administration_position", "Study-flow administration position", "integer", "study_cognitive_tasks", "Identifies the task placement in this study."],
+      ["cognitive_task", "Cognitive task", "text", "cognitive_tasks", "Task title."],
+      ["completed", "Completed administration", "binary", "derived", "1/TRUE when the study-mode task session is completed."],
+      ["trials", "Recorded trials", "integer", "derived", "Number of stored raw trial rows."],
+      ["accuracy", "Accuracy proportion", "numeric 0-1", "derived", "Correct / scorable trials."],
+      ["mean_rt_ms", "Mean reaction time", "milliseconds", "derived", "Mean participant RT across recorded RT trials."],
+      ["median_rt_ms", "Median reaction time", "milliseconds", "derived", "Median participant RT across recorded RT trials."],
+      ["omissions", "Omitted responses", "integer", "derived", "Trials with no participant response value."],
+      ["refresh_hz", "Effective refresh rate", "Hz", "timing_quality", "Display refresh rate used for the session."],
+    ].map(([variable, label, type, source, notes]) => ({ variable, label, type, source, notes }));
+  }
+
   if (datasetType === "consent") {
     return [
       ...common,
@@ -12543,6 +13451,18 @@ function researchBuildCodebook(
       });
     }
   );
+
+  for (const attachment of bundle.cognitiveAttachments) {
+    const variables = researchCognitiveAnalysisVariables(attachment);
+    const baseNotes = `Cognitive task administration ${attachment.position}: ${attachment.title} · ${attachment.version_label}`;
+    rows.push(
+      { variable: variables.completed, label: `${attachment.title} — completed`, type: "Binary numeric (0/1)", source: "cognitive_task_sessions", notes: baseNotes },
+      { variable: variables.accuracy, label: `${attachment.title} — accuracy`, type: "Numeric proportion", source: "cognitive_trial_results", notes: `${baseNotes} · Correct / scorable trials.` },
+      { variable: variables.meanRt, label: `${attachment.title} — mean RT (ms)`, type: "Numeric milliseconds", source: "cognitive_trial_results", notes: baseNotes },
+      { variable: variables.medianRt, label: `${attachment.title} — median RT (ms)`, type: "Numeric milliseconds", source: "cognitive_trial_results", notes: baseNotes },
+      { variable: variables.omissions, label: `${attachment.title} — omissions`, type: "Integer", source: "cognitive_trial_results", notes: baseNotes }
+    );
+  }
 
   return rows;
 }
@@ -12711,6 +13631,498 @@ function ResearchAmbulatoryDataPanel({
   );
 }
 
+function ResearchCognitiveDataPanel({
+  bundle,
+  includeTestData = false,
+}: {
+  bundle: ResearchDataBundle;
+  includeTestData?: boolean;
+}) {
+  const participants = bundle.participants.filter(
+    (participant) =>
+      participant.status !== "withdrawn" &&
+      (includeTestData || !participant.is_test)
+  );
+  const participantIds = new Set(participants.map((participant) => participant.id));
+
+  if (bundle.cognitiveAttachments.length === 0) {
+    return null;
+  }
+
+  const attachments = [...bundle.cognitiveAttachments].sort((a, b) => a.position - b.position);
+
+  return (
+    <Panel
+      title="Cognitive task results"
+      description="Study-level descriptive performance calculated from stored participant trial data. TEST participants are excluded from these cards."
+    >
+      <div className="space-y-5">
+        {attachments.map((attachment) => {
+          const sessions = bundle.cognitiveSessions.filter(
+            (session) =>
+              session.study_cognitive_task_id === attachment.id &&
+              session.participant_id &&
+              participantIds.has(session.participant_id) &&
+              session.session_mode === "study"
+          );
+          const completedSessions = sessions.filter((session) => session.status === "completed");
+          const sessionIds = new Set(completedSessions.map((session) => session.id));
+          const trials = bundle.cognitiveTrials.filter((trial) => sessionIds.has(trial.session_id));
+          const scorable = trials.filter((trial) => trial.correct !== null);
+          const correct = scorable.filter((trial) => trial.correct === true).length;
+          const rts = trials
+            .map((trial) => researchNumber(trial.reaction_time_ms))
+            .filter((value): value is number => value !== null);
+          const omissions = trials.filter((trial) => {
+            const response = trial.response_payload?.response;
+            return response === null || response === undefined || response === "";
+          }).length;
+          const conditionLabels = Array.from(new Set(trials.map((trial) => trial.condition_label || "Unlabelled")));
+
+          return (
+            <div key={attachment.id} className="rounded-2xl border border-slate-200 bg-white p-5">
+              <div className="flex flex-wrap items-start justify-between gap-3">
+                <div>
+                  <p className="text-[10px] font-semibold uppercase tracking-[0.15em] text-cyan-700">Administration {attachment.position}</p>
+                  <h3 className="mt-1 text-lg font-semibold text-slate-950">{attachment.title}</h3>
+                  <p className="mt-1 text-xs text-slate-500">{attachment.version_label} · {attachment.domain.replaceAll("_", " ")} · {attachment.required ? "Required" : "Optional"}</p>
+                </div>
+                <Status type={completedSessions.length > 0 ? "success" : "neutral"}>
+                  {completedSessions.length} completed
+                </Status>
+              </div>
+
+              <div className="mt-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
+                <StatCard label="Completion" value={`${completedSessions.length}/${participants.length}`} detail="Live participants" />
+                <StatCard label="Accuracy" value={scorable.length ? `${Math.round((correct / scorable.length) * 1000) / 10}%` : "—"} detail={`${scorable.length} scorable trials`} />
+                <StatCard label="Mean RT" value={rts.length ? `${Math.round((researchMean(rts) || 0) * 10) / 10} ms` : "—"} detail={`${rts.length} RT observations`} />
+                <StatCard label="Median RT" value={rts.length ? `${Math.round((researchMedian(rts) || 0) * 10) / 10} ms` : "—"} detail="Across stored trials" />
+                <StatCard label="Omissions" value={String(omissions)} detail={`${trials.length} recorded trials`} />
+              </div>
+
+              {conditionLabels.length > 0 && (
+                <div className="mt-4 overflow-x-auto rounded-xl border border-slate-200">
+                  <table className="w-full min-w-[620px] text-left text-xs">
+                    <thead className="bg-slate-50 text-slate-500">
+                      <tr>
+                        <th className="px-4 py-3 font-semibold">Condition</th>
+                        <th className="px-4 py-3 font-semibold">Trials</th>
+                        <th className="px-4 py-3 font-semibold">Accuracy</th>
+                        <th className="px-4 py-3 font-semibold">Mean RT</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-100">
+                      {conditionLabels.slice(0, 12).map((condition) => {
+                        const rows = trials.filter((trial) => (trial.condition_label || "Unlabelled") === condition);
+                        const scored = rows.filter((trial) => trial.correct !== null);
+                        const conditionCorrect = scored.filter((trial) => trial.correct === true).length;
+                        const conditionRts = rows.map((trial) => researchNumber(trial.reaction_time_ms)).filter((value): value is number => value !== null);
+                        return (
+                          <tr key={condition}>
+                            <td className="px-4 py-3 font-medium text-slate-800">{condition}</td>
+                            <td className="px-4 py-3 text-slate-600">{rows.length}</td>
+                            <td className="px-4 py-3 text-slate-600">{scored.length ? `${Math.round((conditionCorrect / scored.length) * 1000) / 10}%` : "—"}</td>
+                            <td className="px-4 py-3 text-slate-600">{conditionRts.length ? `${Math.round((researchMean(conditionRts) || 0) * 10) / 10} ms` : "—"}</td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+
+              <p className="mt-3 text-[11px] leading-5 text-slate-400">
+                Descriptive summaries only. Inferential statistics and AI interpretation will be added on top of these stored deterministic results, not instead of them.
+              </p>
+            </div>
+          );
+        })}
+      </div>
+    </Panel>
+  );
+}
+
+
+function researchFormatEstimate(value: number | null, digits = 2) {
+  if (value === null || !Number.isFinite(value)) return "—";
+  return value.toFixed(digits);
+}
+
+function researchFormatP(value: number | null) {
+  if (value === null || !Number.isFinite(value)) return "—";
+  if (value < 0.001) return "< .001";
+  return `= ${value.toFixed(3).replace(/^0/, "")}`;
+}
+
+function researchFormatCi(
+  ci: [number, number] | null,
+  digits = 2,
+  suffix = ""
+) {
+  if (!ci) return "—";
+  return `[${ci[0].toFixed(digits)}, ${ci[1].toFixed(digits)}]${suffix}`;
+}
+
+function ResearchPairedComparisonCard({
+  title,
+  comparison,
+  scale = 1,
+  unit = "",
+  note,
+}: {
+  title: string;
+  comparison: PairedComparison;
+  scale?: number;
+  unit?: string;
+  note: string;
+}) {
+  const difference = comparison.difference === null ? null : comparison.difference * scale;
+  const meanA = comparison.meanA === null ? null : comparison.meanA * scale;
+  const meanB = comparison.meanB === null ? null : comparison.meanB * scale;
+  const ci = comparison.ci95
+    ? ([comparison.ci95[0] * scale, comparison.ci95[1] * scale] as [number, number])
+    : null;
+  const enoughPairs = comparison.n >= 3 && comparison.t !== null;
+
+  return (
+    <div className="rounded-2xl border border-slate-200 bg-white p-5">
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <p className="text-[10px] font-semibold uppercase tracking-[0.15em] text-cyan-700">
+            Paired participant-level comparison
+          </p>
+          <h4 className="mt-1 text-base font-semibold text-slate-950">{title}</h4>
+        </div>
+        <Status type={enoughPairs ? "success" : "neutral"}>
+          n = {comparison.n} paired
+        </Status>
+      </div>
+
+      <div className="mt-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+        <StatCard
+          label={comparison.conditionA}
+          value={meanA === null ? "—" : `${researchFormatEstimate(meanA, 2)}${unit}`}
+          detail="Participant-level mean"
+        />
+        <StatCard
+          label={comparison.conditionB}
+          value={meanB === null ? "—" : `${researchFormatEstimate(meanB, 2)}${unit}`}
+          detail="Participant-level mean"
+        />
+        <StatCard
+          label={`${comparison.conditionB} − ${comparison.conditionA}`}
+          value={difference === null ? "—" : `${difference >= 0 ? "+" : ""}${researchFormatEstimate(difference, 2)}${unit}`}
+          detail={`95% CI ${researchFormatCi(ci, 2, unit)}`}
+        />
+        <StatCard
+          label="Effect size"
+          value={comparison.cohenDz === null ? "—" : `dz = ${researchFormatEstimate(comparison.cohenDz, 2)}`}
+          detail="Cohen’s dz for paired differences"
+        />
+      </div>
+
+      {enoughPairs ? (
+        <div className="mt-4 rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-xs leading-6 text-slate-600">
+          <span className="font-semibold text-slate-900">
+            t({comparison.df}) = {researchFormatEstimate(comparison.t, 3)}, p {researchFormatP(comparison.pTwoSided)}
+          </span>
+          <span className="text-slate-400"> · </span>
+          {note}
+        </div>
+      ) : (
+        <div className="mt-4 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-xs leading-5 text-amber-800">
+          At least 3 participants with usable data in both selected conditions are required before PsyLattice displays this paired inferential test.
+        </div>
+      )}
+    </div>
+  );
+}
+
+function ResearchCognitiveAnalysisPanel({
+  bundle,
+}: {
+  bundle: ResearchDataBundle;
+}) {
+  const attachments = [...bundle.cognitiveAttachments].sort(
+    (a, b) => a.position - b.position
+  );
+  const [selectedAttachmentId, setSelectedAttachmentId] = useState(
+    attachments[0]?.id || ""
+  );
+  const [includeTestData, setIncludeTestData] = useState(false);
+  const selectedAttachment =
+    attachments.find((attachment) => attachment.id === selectedAttachmentId) ||
+    attachments[0] ||
+    null;
+
+  const analysis: CognitiveAttachmentAnalysis | null = selectedAttachment
+    ? buildCognitiveAttachmentAnalysis({
+        attachment: selectedAttachment,
+        participants: bundle.participants,
+        sessions: bundle.cognitiveSessions,
+        trials: bundle.cognitiveTrials,
+        includeTestData,
+      })
+    : null;
+
+  const [conditionA, setConditionA] = useState("");
+  const [conditionB, setConditionB] = useState("");
+
+  useEffect(() => {
+    if (!analysis) {
+      setConditionA("");
+      setConditionB("");
+      return;
+    }
+    setConditionA((current) =>
+      analysis.conditionLabels.includes(current)
+        ? current
+        : analysis.conditionLabels[0] || ""
+    );
+    setConditionB((current) =>
+      analysis.conditionLabels.includes(current) && current !== analysis.conditionLabels[0]
+        ? current
+        : analysis.conditionLabels[1] || ""
+    );
+  }, [selectedAttachmentId, analysis?.conditionLabels.join("|")]);
+
+  if (attachments.length === 0 || !analysis || !selectedAttachment) {
+    return null;
+  }
+
+  const comparison =
+    conditionA && conditionB && conditionA !== conditionB
+      ? compareConditions(analysis, conditionA, conditionB)
+      : null;
+
+  const participantById = new Map(
+    bundle.participants.map((participant) => [participant.id, participant])
+  );
+  const warningCount = analysis.qualityFlags.filter(
+    (flag) => flag.severity === "warning"
+  ).length;
+  const reviewCount = analysis.qualityFlags.filter(
+    (flag) => flag.severity === "review"
+  ).length;
+
+  return (
+    <Panel
+      title="Study analysis"
+      description="Deterministic participant-level cognitive analysis. PsyLattice calculates these statistics directly from stored study data; no AI is used for the numbers."
+    >
+      <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
+        <label className="min-w-[280px] flex-1">
+          <span className="text-xs font-semibold text-slate-600">Cognitive task administration</span>
+          <select
+            value={selectedAttachment.id}
+            onChange={(event) => setSelectedAttachmentId(event.target.value)}
+            className="mt-2 w-full rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm"
+          >
+            {attachments.map((attachment) => (
+              <option key={attachment.id} value={attachment.id}>
+                {attachment.position}. {attachment.title} · {attachment.version_label}
+              </option>
+            ))}
+          </select>
+        </label>
+
+        <div className="flex flex-wrap items-center gap-2">
+          <button
+            type="button"
+            onClick={() => setIncludeTestData((current) => !current)}
+            className={`rounded-full border px-3 py-1.5 text-xs font-semibold transition ${
+              includeTestData
+                ? "border-amber-200 bg-amber-50 text-amber-800"
+                : "border-slate-200 bg-white text-slate-500"
+            }`}
+          >
+            {includeTestData ? "TEST data included" : "Include TEST data"}
+          </button>
+          <Status type="neutral">
+            {analysis.completedParticipantCount}/{analysis.participantCount} completed
+          </Status>
+          <Status type={warningCount > 0 ? "warning" : "success"}>
+            {warningCount} warning{warningCount === 1 ? "" : "s"}
+          </Status>
+          <Status type={reviewCount > 0 ? "warning" : "success"}>
+            {reviewCount} review flag{reviewCount === 1 ? "" : "s"}
+          </Status>
+        </div>
+      </div>
+
+      <div className="mt-5 overflow-x-auto rounded-2xl border border-slate-200">
+        <table className="w-full min-w-[820px] text-left text-xs">
+          <thead className="bg-slate-50 text-slate-500">
+            <tr>
+              <th className="px-4 py-3 font-semibold">Condition</th>
+              <th className="px-4 py-3 font-semibold">Participants</th>
+              <th className="px-4 py-3 font-semibold">Mean accuracy</th>
+              <th className="px-4 py-3 font-semibold">95% CI</th>
+              <th className="px-4 py-3 font-semibold">Mean RT</th>
+              <th className="px-4 py-3 font-semibold">95% CI</th>
+              <th className="px-4 py-3 font-semibold">Omissions</th>
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-slate-100">
+            {analysis.conditionSummaries.map((summary) => (
+              <tr key={summary.condition}>
+                <td className="px-4 py-3 font-semibold text-slate-800">{summary.condition}</td>
+                <td className="px-4 py-3 text-slate-600">{summary.participants}</td>
+                <td className="px-4 py-3 text-slate-600">
+                  {summary.meanAccuracy === null
+                    ? "—"
+                    : `${researchFormatEstimate(summary.meanAccuracy * 100, 1)}%`}
+                </td>
+                <td className="px-4 py-3 text-slate-500">
+                  {summary.accuracyCi95
+                    ? researchFormatCi(
+                        [summary.accuracyCi95[0] * 100, summary.accuracyCi95[1] * 100],
+                        1,
+                        "%"
+                      )
+                    : "—"}
+                </td>
+                <td className="px-4 py-3 text-slate-600">
+                  {summary.meanRt === null
+                    ? "—"
+                    : `${researchFormatEstimate(summary.meanRt, 1)} ms`}
+                </td>
+                <td className="px-4 py-3 text-slate-500">
+                  {researchFormatCi(summary.rtCi95, 1, " ms")}
+                </td>
+                <td className="px-4 py-3 text-slate-600">{summary.omissions}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+
+      {analysis.conditionLabels.length >= 2 && (
+        <div className="mt-5 space-y-4">
+          <div className="rounded-2xl border border-cyan-100 bg-cyan-50/40 p-4">
+            <p className="text-sm font-semibold text-cyan-950">Compare two conditions</p>
+            <p className="mt-1 text-xs leading-5 text-cyan-900/70">
+              PsyLattice matches the same participants across both conditions and compares their participant-level condition summaries.
+            </p>
+            <div className="mt-3 grid gap-3 sm:grid-cols-2">
+              <label>
+                <span className="text-[10px] font-semibold uppercase tracking-[0.13em] text-cyan-800">Condition A</span>
+                <select
+                  value={conditionA}
+                  onChange={(event) => {
+                    const next = event.target.value;
+                    setConditionA(next);
+                    if (next === conditionB) {
+                      setConditionB(analysis.conditionLabels.find((item) => item !== next) || "");
+                    }
+                  }}
+                  className="mt-1.5 w-full rounded-xl border border-cyan-100 bg-white px-3 py-2.5 text-sm"
+                >
+                  {analysis.conditionLabels.map((condition) => (
+                    <option key={condition} value={condition} disabled={condition === conditionB}>
+                      {condition}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <label>
+                <span className="text-[10px] font-semibold uppercase tracking-[0.13em] text-cyan-800">Condition B</span>
+                <select
+                  value={conditionB}
+                  onChange={(event) => {
+                    const next = event.target.value;
+                    setConditionB(next);
+                    if (next === conditionA) {
+                      setConditionA(analysis.conditionLabels.find((item) => item !== next) || "");
+                    }
+                  }}
+                  className="mt-1.5 w-full rounded-xl border border-cyan-100 bg-white px-3 py-2.5 text-sm"
+                >
+                  {analysis.conditionLabels.map((condition) => (
+                    <option key={condition} value={condition} disabled={condition === conditionA}>
+                      {condition}
+                    </option>
+                  ))}
+                </select>
+              </label>
+            </div>
+          </div>
+
+          {comparison && (
+            <div className="grid gap-4 xl:grid-cols-2">
+              <ResearchPairedComparisonCard
+                title="Reaction time"
+                comparison={comparison.rt}
+                unit=" ms"
+                note={`Positive differences mean ${conditionB} was slower than ${conditionA}. The test uses each participant’s mean RT within each condition.`}
+              />
+              <ResearchPairedComparisonCard
+                title="Accuracy"
+                comparison={comparison.accuracy}
+                scale={100}
+                unit=" pp"
+                note={`Positive differences mean higher accuracy in ${conditionB}. This is a paired t-test on participant accuracy proportions; because proportions are bounded, interpret it as an initial participant-level inferential summary rather than a substitute for a trial-level binomial model.`}
+              />
+            </div>
+          )}
+        </div>
+      )}
+
+      <div className="mt-5 rounded-2xl border border-slate-200 bg-slate-50/60 p-5">
+        <div className="flex flex-wrap items-start justify-between gap-3">
+          <div>
+            <p className="text-[10px] font-semibold uppercase tracking-[0.15em] text-slate-500">Data quality</p>
+            <h4 className="mt-1 text-base font-semibold text-slate-950">Review flags — never automatic exclusions</h4>
+            <p className="mt-1 max-w-3xl text-xs leading-5 text-slate-500">
+              Flags identify sessions worth inspecting. PsyLattice does not remove participants or trials automatically; the researcher retains the exclusion decision and the raw record remains exportable.
+            </p>
+          </div>
+          <Status type={analysis.qualityFlags.length ? "warning" : "success"}>
+            {analysis.qualityFlags.length} flag{analysis.qualityFlags.length === 1 ? "" : "s"}
+          </Status>
+        </div>
+
+        {analysis.qualityFlags.length === 0 ? (
+          <div className="mt-4 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-xs text-emerald-800">
+            No built-in review flags were triggered for the current live participant sessions.
+          </div>
+        ) : (
+          <div className="mt-4 space-y-2">
+            {analysis.qualityFlags.slice(0, 24).map((flag, index) => {
+              const participant = participantById.get(flag.participantId);
+              return (
+                <div
+                  key={`${flag.sessionId}-${flag.code}-${index}`}
+                  className="flex flex-col gap-2 rounded-xl border border-slate-200 bg-white px-4 py-3 sm:flex-row sm:items-start sm:justify-between"
+                >
+                  <div>
+                    <p className="text-xs font-semibold text-slate-900">
+                      {participant?.public_id || `Participant ${flag.participantId.slice(0, 8)}`} · {flag.label}
+                    </p>
+                    <p className="mt-1 text-[11px] leading-5 text-slate-500">{flag.detail}</p>
+                  </div>
+                  <Status type={flag.severity === "warning" ? "warning" : "neutral"}>
+                    {flag.severity}
+                  </Status>
+                </div>
+              );
+            })}
+            {analysis.qualityFlags.length > 24 && (
+              <p className="pt-2 text-xs text-slate-400">
+                Showing the first 24 flags. Participant-level cognitive exports retain the complete session/timing information for further review.
+              </p>
+            )}
+          </div>
+        )}
+      </div>
+
+      <div className="mt-5 rounded-xl border border-slate-200 bg-white px-4 py-3 text-[11px] leading-5 text-slate-500">
+        <span className="font-semibold text-slate-700">Analysis boundary:</span> the current engine provides participant-level descriptive summaries, 95% confidence intervals, paired t-tests for selected two-condition contrasts, Cohen’s dz, and transparent quality flags. It does not automatically choose a complex statistical model or claim that a hypothesis is supported. Trial-level mixed models, regression, questionnaire–cognitive associations and preregistered analysis plans are later analysis modules.
+      </div>
+    </Panel>
+  );
+}
+
 function DataDashboard({
   changeScreen,
 }: {
@@ -12745,6 +14157,14 @@ function DataDashboard({
   const completedLiveMeasureSessions = bundle.measureSessions.filter(
     (session) =>
       liveParticipantIds.has(session.participant_id) &&
+      session.status === "completed"
+  );
+
+  const completedLiveCognitiveSessions = bundle.cognitiveSessions.filter(
+    (session) =>
+      Boolean(session.participant_id) &&
+      liveParticipantIds.has(session.participant_id as string) &&
+      session.session_mode === "study" &&
       session.status === "completed"
   );
 
@@ -12958,6 +14378,12 @@ function DataDashboard({
               : String(completedLiveMeasureSessions.length)
           }
           detail="Completed live measure sessions"
+        />
+
+        <StatCard
+          label="Cognitive task runs"
+          value={loading ? "..." : String(completedLiveCognitiveSessions.length)}
+          detail="Completed live study administrations"
         />
 
         <StatCard
@@ -13657,6 +15083,17 @@ function DataExplorer() {
           </p>
         )}
       </Panel>
+
+      <ResearchCognitiveDataPanel bundle={bundle} />
+
+      <ResearchCognitiveAnalysisPanel bundle={bundle} />
+
+      {selectedStudy && (
+        <ResearchAiAssistant
+          studyId={selectedStudy.id}
+          studyTitle={selectedStudy.title}
+        />
+      )}
 
       {selectedStudy?.components?.ambulatory && (
         <ResearchAmbulatoryDataPanel
@@ -15106,6 +16543,9 @@ export default function ResearcherWorkspace() {
           />
         );
 
+      case "cognitive":
+        return <CognitiveLab />;
+
       case "ambulatory":
         return (
           <AmbulatoryBuilder
@@ -15163,6 +16603,8 @@ export default function ResearcherWorkspace() {
       "Build a complete study workflow from protocol design to participant deployment.",
     library:
       "Search the research catalogue, review administration and scoring, open manuals and official resources, and verify questionnaire usage rights.",
+    cognitive:
+      "Create reusable cognitive task definitions, start from PsyLattice templates, and prepare versioned tasks for experiments and longitudinal research.",
     ambulatory:
       "Design repeated real-world EMA and ESM assessment protocols.",
     followup:
@@ -15302,7 +16744,7 @@ export default function ResearcherWorkspace() {
                             : undefined
                         }
                         aria-label={item.label}
-                        className={`flex w-full items-center rounded-xl py-2.5 text-sm transition ${
+                        className={`relative flex w-full items-center rounded-xl py-2.5 text-sm transition ${
                           sidebarCollapsed
                             ? "justify-center px-2"
                             : "gap-3 px-3 text-left"
@@ -15327,7 +16769,25 @@ export default function ResearcherWorkspace() {
                         </span>
 
                         {!sidebarCollapsed && (
-                          <span className="min-w-0 truncate">{item.label}</span>
+                          <div className="flex min-w-0 flex-1 items-center gap-2">
+                            <span className="min-w-0 truncate">{item.label}</span>
+                            {item.id === "cognitive" && (
+                              <span className="ml-auto inline-flex shrink-0 items-center overflow-hidden rounded-full border border-cyan-200 bg-cyan-50 text-[8px] font-bold uppercase tracking-[0.12em] text-cyan-800">
+                                <span className="px-1.5 py-0.5">New</span>
+                                <span className="h-3 w-px bg-cyan-200" aria-hidden="true" />
+                                <span className="px-1.5 py-0.5">Beta</span>
+                              </span>
+                            )}
+                          </div>
+                        )}
+
+                        {sidebarCollapsed && item.id === "cognitive" && (
+                          <span
+                            className="absolute right-1 top-1 flex h-3.5 min-w-3.5 items-center justify-center rounded-full border border-white bg-cyan-600 px-0.5 text-[7px] font-bold uppercase leading-none text-white shadow-sm"
+                            aria-hidden="true"
+                          >
+                            β
+                          </span>
                         )}
                       </button>
                     );

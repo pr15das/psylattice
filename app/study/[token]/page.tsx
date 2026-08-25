@@ -5,6 +5,7 @@ import { useEffect, useState, type ReactNode } from "react";
 import { useParams } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import PsyLatticeLogo from "@/components/PsyLatticeLogo";
+import CognitiveStudyRunner, { type StudyCognitiveDefinition } from "@/components/CognitiveStudyRunner";
 import {
   ambulatoryVisibleItems,
   cleanHiddenAmbulatoryResponses,
@@ -154,6 +155,7 @@ type PublicStudyPayload = {
     participant_description: string | null;
     design: string | null;
     components: Record<string, boolean>;
+    updated_at?: string | null;
   };
   link?: {
     id: string;
@@ -167,6 +169,28 @@ type PublicStudyPayload = {
   demographics?: PublicDemographicQuestion[];
   measures?: PublicMeasure[];
 };
+
+type PublicStudyCognitiveTask = {
+  study_cognitive_task_id: string;
+  task_id: string;
+  version_id: string;
+  position: number;
+  required: boolean;
+  administration_mode: "once" | "scheduled" | "repeated" | "conditional";
+  completed: boolean;
+  skipped: boolean;
+  definition: StudyCognitiveDefinition;
+};
+
+type PublicBaselineFlowConfig = {
+  schema: number;
+  demographics_position: number | null;
+};
+
+type BaselineFlowEntry =
+  | { kind: "demographics"; position: number }
+  | { kind: "measure"; position: number; study_measure_id: string }
+  | { kind: "cognitive"; position: number; study_cognitive_task_id: string };
 
 type PublicAmbulatoryConfig = {
   ok: boolean;
@@ -2455,6 +2479,7 @@ export default function ParticipantStudyPage() {
   const [payload, setPayload] = useState<PublicStudyPayload | null>(null);
   const [loading, setLoading] = useState(true);
   const [pageError, setPageError] = useState("");
+  const [testProtocolResetNotice, setTestProtocolResetNotice] = useState("");
 
   const [participantCode, setParticipantCode] = useState("");
   const [sessionToken, setSessionToken] = useState("");
@@ -2481,11 +2506,21 @@ export default function ParticipantStudyPage() {
   >({});
   const [savingMeasure, setSavingMeasure] = useState(false);
 
+  const [studyCognitiveTasks, setStudyCognitiveTasks] = useState<PublicStudyCognitiveTask[]>([]);
+  const [currentCognitiveIndex, setCurrentCognitiveIndex] = useState(0);
+  const [cognitiveRunnerOpen, setCognitiveRunnerOpen] = useState(false);
+  const [loadingCognitiveTasks, setLoadingCognitiveTasks] = useState(false);
+  const [studyFlowConfig, setStudyFlowConfig] = useState<PublicBaselineFlowConfig>({
+    schema: 0,
+    demographics_position: null,
+  });
+
   const [phase, setPhase] = useState<
     | "landing"
     | "consent"
     | "demographics"
     | "measures"
+    | "cognitive"
     | "study_dashboard"
     | "ambulatory_checkin"
     | "followup_contact"
@@ -2541,6 +2576,198 @@ export default function ParticipantStudyPage() {
   const demographicsIncluded =
     Boolean(payload?.study?.components?.demographics) &&
     demographicQuestions.length > 0;
+
+  const currentCognitiveTask =
+    studyCognitiveTasks[currentCognitiveIndex] || null;
+
+  async function loadStudyCognitiveTasks(activeSessionToken: string) {
+    const emptyResult = {
+      tasks: [] as PublicStudyCognitiveTask[],
+      flowConfig: { schema: 0, demographics_position: null } as PublicBaselineFlowConfig,
+    };
+
+    if (!activeSessionToken) return emptyResult;
+    setLoadingCognitiveTasks(true);
+    const supabase = createClient();
+    const { data, error } = await supabase.rpc(
+      "psylattice_public_study_cognitive_tasks",
+      { p_token: token, p_session_token: activeSessionToken }
+    );
+    setLoadingCognitiveTasks(false);
+
+    if (error || !data?.ok) {
+      console.error("Could not load study cognitive tasks:", error, data);
+      setPageError(
+        error?.message ||
+          (typeof data?.error === "string" ? data.error : "") ||
+          "The cognitive tasks for this study could not be loaded."
+      );
+      return emptyResult;
+    }
+
+    const tasks = Array.isArray(data.tasks)
+      ? (data.tasks as PublicStudyCognitiveTask[])
+      : [];
+    const flowConfig: PublicBaselineFlowConfig = {
+      schema: Number(data.flow_config?.schema || 0),
+      demographics_position:
+        data.flow_config?.demographics_position == null
+          ? null
+          : Number(data.flow_config.demographics_position),
+    };
+
+    setStudyCognitiveTasks(tasks);
+    setStudyFlowConfig(flowConfig);
+    const firstPending = tasks.findIndex((task) => !task.completed && !task.skipped);
+    setCurrentCognitiveIndex(firstPending >= 0 ? firstPending : 0);
+    return { tasks, flowConfig };
+  }
+
+  function firstPendingCognitiveIndex(tasks: PublicStudyCognitiveTask[]) {
+    return tasks.findIndex((task) => !task.completed && !task.skipped);
+  }
+
+  function orderedBaselineFlow(
+    tasks: PublicStudyCognitiveTask[] = studyCognitiveTasks,
+    flowConfig: PublicBaselineFlowConfig = studyFlowConfig,
+    studyPayload: PublicStudyPayload | null = payload
+  ): BaselineFlowEntry[] {
+    const measures = (studyPayload?.measures || [])
+      .filter((measure) => measure.measurement_point === "baseline")
+      .sort((a, b) => a.position - b.position);
+    const hasDemographics =
+      Boolean(studyPayload?.study?.components?.demographics) &&
+      Array.isArray(studyPayload?.demographics) &&
+      (studyPayload?.demographics || []).length > 0;
+
+    if (flowConfig.schema === 1) {
+      const entries: BaselineFlowEntry[] = [];
+      if (hasDemographics) {
+        entries.push({
+          kind: "demographics",
+          position: Math.max(1, Number(flowConfig.demographics_position || 1)),
+        });
+      }
+      measures.forEach((measure) =>
+        entries.push({
+          kind: "measure",
+          position: Math.max(1, Number(measure.position || 1)),
+          study_measure_id: measure.study_measure_id,
+        })
+      );
+      tasks.forEach((task) =>
+        entries.push({
+          kind: "cognitive",
+          position: Math.max(1, Number(task.position || 1)),
+          study_cognitive_task_id: task.study_cognitive_task_id,
+        })
+      );
+      return entries.sort((a, b) => a.position - b.position);
+    }
+
+    let position = 1;
+    const legacy: BaselineFlowEntry[] = [];
+    if (hasDemographics) legacy.push({ kind: "demographics", position: position++ });
+    measures.forEach((measure) =>
+      legacy.push({ kind: "measure", position: position++, study_measure_id: measure.study_measure_id })
+    );
+    [...tasks]
+      .sort((a, b) => a.position - b.position)
+      .forEach((task) =>
+        legacy.push({ kind: "cognitive", position: position++, study_cognitive_task_id: task.study_cognitive_task_id })
+      );
+    return legacy;
+  }
+
+  function nextPendingBaselineEntry({
+    tasks = studyCognitiveTasks,
+    flowConfig = studyFlowConfig,
+    completedIds = completedMeasureIds,
+    demographicsDone = demographicsSaved,
+    studyPayload = payload,
+  }: {
+    tasks?: PublicStudyCognitiveTask[];
+    flowConfig?: PublicBaselineFlowConfig;
+    completedIds?: string[];
+    demographicsDone?: boolean;
+    studyPayload?: PublicStudyPayload | null;
+  } = {}) {
+    return orderedBaselineFlow(tasks, flowConfig, studyPayload).find((entry) => {
+      if (entry.kind === "demographics") return !demographicsDone;
+      if (entry.kind === "measure") return !completedIds.includes(entry.study_measure_id);
+      const task = tasks.find(
+        (candidate) => candidate.study_cognitive_task_id === entry.study_cognitive_task_id
+      );
+      return Boolean(task && !task.completed && !task.skipped);
+    });
+  }
+
+  async function continueBaselineFlow({
+    tasksOverride,
+    flowConfigOverride,
+    completedIdsOverride,
+    demographicsSavedOverride,
+    sessionTokenOverride,
+    studyPayloadOverride,
+  }: {
+    tasksOverride?: PublicStudyCognitiveTask[];
+    flowConfigOverride?: PublicBaselineFlowConfig;
+    completedIdsOverride?: string[];
+    demographicsSavedOverride?: boolean;
+    sessionTokenOverride?: string;
+    studyPayloadOverride?: PublicStudyPayload | null;
+  } = {}) {
+    const tasks = tasksOverride || studyCognitiveTasks;
+    const flowConfig = flowConfigOverride || studyFlowConfig;
+    const completedIds = completedIdsOverride || completedMeasureIds;
+    const demographicsDone = demographicsSavedOverride === undefined
+      ? demographicsSaved
+      : demographicsSavedOverride;
+    const studyPayload = studyPayloadOverride || payload;
+
+    const next = nextPendingBaselineEntry({
+      tasks,
+      flowConfig,
+      completedIds,
+      demographicsDone,
+      studyPayload,
+    });
+
+    if (next?.kind === "demographics") {
+      setPhase("demographics");
+      return;
+    }
+
+    if (next?.kind === "measure") {
+      const measures = (studyPayload?.measures || [])
+        .filter((measure) => measure.measurement_point === "baseline")
+        .sort((a, b) => a.position - b.position);
+      const index = measures.findIndex(
+        (measure) => measure.study_measure_id === next.study_measure_id
+      );
+      if (index >= 0) setCurrentMeasureIndex(index);
+      setCurrentMeasurePage(0);
+      setMeasureAnswers({});
+      setPhase("measures");
+      return;
+    }
+
+    if (next?.kind === "cognitive") {
+      const index = tasks.findIndex(
+        (task) => task.study_cognitive_task_id === next.study_cognitive_task_id
+      );
+      if (index >= 0) setCurrentCognitiveIndex(index);
+      setCognitiveRunnerOpen(false);
+      setPhase("cognitive");
+      return;
+    }
+
+    if (ambulatoryConfig?.enabled) {
+      await enterAmbulatoryStudy(sessionTokenOverride);
+    } else {
+      await completeParticipation(sessionTokenOverride);
+    }
+  }
 
   useEffect(() => {
     async function loadStudy() {
@@ -2638,10 +2865,56 @@ export default function ParticipantStudyPage() {
           });
 
         if (!resumeError && resumeData?.ok) {
+          // TEST links are used while researchers iterate on a protocol. If the
+          // study was saved after this browser session began, do not trust old
+          // consent/demographic completion flags from the previous draft.
+          const { data: freshnessData, error: freshnessError } = await supabase.rpc(
+            "psylattice_test_participant_session_freshness",
+            {
+              p_token: token,
+              p_session_token: storedSession,
+            }
+          );
+
+          if (
+            !freshnessError &&
+            freshnessData?.ok &&
+            freshnessData?.is_test &&
+            freshnessData?.stale
+          ) {
+            window.localStorage.removeItem(`psylattice-study-${token}`);
+            setSessionToken("");
+            setPublicId("");
+            setCompletedMeasureIds([]);
+            setStudyCognitiveTasks([]);
+            setCurrentCognitiveIndex(0);
+            setCognitiveRunnerOpen(false);
+            setCurrentMeasureIndex(0);
+            setCurrentMeasurePage(0);
+            setMeasureAnswers({});
+            setConsentAnswers({});
+            setDemographicAnswers({});
+            setDemographicsSaved(false);
+            setTestProtocolResetNotice(
+              "This TEST protocol changed since your previous run, so PsyLattice cleared the old test session. Begin the study again to test the current consent, demographics, questionnaires, and cognitive tasks."
+            );
+            setPhase("landing");
+            setLoading(false);
+            return;
+          }
+
           const resumedCompletedIds =
             Array.isArray(resumeData.completed_measure_ids)
               ? resumeData.completed_measure_ids.map(String)
               : [];
+
+          const {
+            tasks: resumedCognitiveTasks,
+            flowConfig: resumedFlowConfig,
+          } = await loadStudyCognitiveTasks(storedSession);
+          const allCognitiveResolved = resumedCognitiveTasks.every(
+            (task) => task.completed || task.skipped
+          );
 
           const resumedBaselineIds =
             (studyPayload.measures || [])
@@ -2654,11 +2927,21 @@ export default function ParticipantStudyPage() {
                   String(measure.study_measure_id)
               );
 
-          const resumedBaselineComplete =
-            resumedBaselineIds.length > 0 &&
+          const questionnairesComplete =
             resumedBaselineIds.every((id) =>
               resumedCompletedIds.includes(id)
             );
+          const demographicsResolved =
+            !Boolean(studyPayload.study?.components?.demographics) ||
+            !Array.isArray(studyPayload.demographics) ||
+            studyPayload.demographics.length === 0 ||
+            Boolean(resumeData.demographics_saved);
+          const hasBaselineWork =
+            resumedBaselineIds.length > 0 ||
+            resumedCognitiveTasks.length > 0 ||
+            (Array.isArray(studyPayload.demographics) && studyPayload.demographics.length > 0);
+          const resumedBaselineComplete =
+            hasBaselineWork && questionnairesComplete && allCognitiveResolved && demographicsResolved;
 
           // TEST links are commonly reused while a questionnaire is being
           // edited. Once the prior TEST baseline is complete, silently
@@ -2677,6 +2960,9 @@ export default function ParticipantStudyPage() {
             setSessionToken("");
             setPublicId("");
             setCompletedMeasureIds([]);
+            setStudyCognitiveTasks([]);
+            setCurrentCognitiveIndex(0);
+            setCognitiveRunnerOpen(false);
             setCurrentMeasureIndex(0);
             setCurrentMeasurePage(0);
             setMeasureAnswers({});
@@ -2759,71 +3045,50 @@ export default function ParticipantStudyPage() {
           const consentRequired =
             studyPayload.consent?.consent_method === "psylattice";
 
-          const demographicsRequired =
-            Boolean(studyPayload.study?.components?.demographics) &&
-            Array.isArray(studyPayload.demographics) &&
-            studyPayload.demographics.length > 0;
-
-          setDemographicsSaved(
-            Boolean(resumeData.demographics_saved)
-          );
+          setDemographicsSaved(Boolean(resumeData.demographics_saved));
 
           if (consentRequired && !resumeData.consent_saved) {
             setPhase("consent");
-          } else if (
-            demographicsRequired &&
-            !resumeData.demographics_saved
-          ) {
-            setPhase("demographics");
           } else {
-            const completedIds =
-              Array.isArray(
-                resumeData.completed_measure_ids
-              )
-                ? resumeData.completed_measure_ids.map(
-                    String
-                  )
-                : [];
+            const next = nextPendingBaselineEntry({
+              tasks: resumedCognitiveTasks,
+              flowConfig: resumedFlowConfig,
+              completedIds: resumedCompletedIds,
+              demographicsDone: Boolean(resumeData.demographics_saved),
+              studyPayload,
+            });
 
-            const baselineIds =
-              (studyPayload.measures || [])
-                .filter(
-                  (measure) =>
-                    measure.measurement_point ===
-                    "baseline"
-                )
-                .map(
-                  (measure) =>
-                    measure.study_measure_id
-                );
-
-            const baselineComplete =
-              baselineIds.every((id) =>
-                completedIds.includes(id)
+            if (next?.kind === "demographics") {
+              setPhase("demographics");
+            } else if (next?.kind === "measure") {
+              const orderedMeasures = (studyPayload.measures || [])
+                .filter((measure) => measure.measurement_point === "baseline")
+                .sort((a, b) => a.position - b.position);
+              const index = orderedMeasures.findIndex(
+                (measure) => measure.study_measure_id === next.study_measure_id
               );
-
-            if (
-              hasAmbulatory &&
-              baselineComplete
-            ) {
-              const { error: enterError } =
-                await supabase.rpc(
-                  "psylattice_enter_ambulatory_study",
-                  {
-                    p_session_token:
-                      storedSession,
-                  }
-                );
-
+              if (index >= 0) setCurrentMeasureIndex(index);
+              setCurrentMeasurePage(0);
+              setPhase("measures");
+            } else if (next?.kind === "cognitive") {
+              const index = resumedCognitiveTasks.findIndex(
+                (task) => task.study_cognitive_task_id === next.study_cognitive_task_id
+              );
+              if (index >= 0) setCurrentCognitiveIndex(index);
+              setCognitiveRunnerOpen(false);
+              setPhase("cognitive");
+            } else if (hasAmbulatory) {
+              const { error: enterError } = await supabase.rpc(
+                "psylattice_enter_ambulatory_study",
+                { p_session_token: storedSession }
+              );
               if (!enterError) {
-                setPhase(
-                  "study_dashboard"
-                );
+                setPhase("study_dashboard");
               } else {
-                setPhase("measures");
+                setPageError("The longitudinal study dashboard could not be opened.");
               }
             } else {
-              setPhase("measures");
+              await completeParticipation(storedSession);
             }
           }
         } else {
@@ -2903,8 +3168,9 @@ export default function ParticipantStudyPage() {
     }
   }
 
-  async function enterAmbulatoryStudy() {
-    if (!sessionToken) {
+  async function enterAmbulatoryStudy(sessionTokenOverride?: string) {
+    const activeSessionToken = sessionTokenOverride || sessionToken;
+    if (!activeSessionToken) {
       return;
     }
 
@@ -2913,7 +3179,7 @@ export default function ParticipantStudyPage() {
     const { data, error } = await supabase.rpc(
       "psylattice_enter_ambulatory_study",
       {
-        p_session_token: sessionToken,
+        p_session_token: activeSessionToken,
       }
     );
 
@@ -3430,6 +3696,7 @@ export default function ParticipantStudyPage() {
 
   async function startParticipation() {
     if (!payload?.link || starting) return;
+    setTestProtocolResetNotice("");
 
     if (
       payload.link.access_mode === "participant_code" &&
@@ -3471,6 +3738,9 @@ export default function ParticipantStudyPage() {
     // questionnaire progress. This is especially important for reusable TEST
     // links after a previous completed run.
     setCompletedMeasureIds([]);
+    setStudyCognitiveTasks([]);
+    setCurrentCognitiveIndex(0);
+    setCognitiveRunnerOpen(false);
     setCurrentMeasureIndex(0);
     setCurrentMeasurePage(0);
     setMeasureAnswers({});
@@ -3481,6 +3751,9 @@ export default function ParticipantStudyPage() {
     setSessionToken(newSessionToken);
     setPublicId(String(data.public_id || ""));
 
+    const { tasks: newCognitiveTasks, flowConfig: newFlowConfig } =
+      await loadStudyCognitiveTasks(newSessionToken);
+
     if (typeof window !== "undefined") {
       window.localStorage.setItem(
         `psylattice-study-${token}`,
@@ -3490,10 +3763,15 @@ export default function ParticipantStudyPage() {
 
     if (payload.consent?.consent_method === "psylattice") {
       setPhase("consent");
-    } else if (demographicsIncluded) {
-      setPhase("demographics");
     } else {
-      setPhase("measures");
+      await continueBaselineFlow({
+        tasksOverride: newCognitiveTasks,
+        flowConfigOverride: newFlowConfig,
+        completedIdsOverride: [],
+        demographicsSavedOverride: false,
+        sessionTokenOverride: newSessionToken,
+        studyPayloadOverride: payload,
+      });
     }
 
     setStarting(false);
@@ -3601,7 +3879,7 @@ export default function ParticipantStudyPage() {
       return;
     }
 
-    setPhase(demographicsIncluded ? "demographics" : "measures");
+    await continueBaselineFlow();
     setSavingConsent(false);
   }
 
@@ -3668,7 +3946,7 @@ export default function ParticipantStudyPage() {
     }
 
     setDemographicsSaved(true);
-    setPhase("measures");
+    await continueBaselineFlow({ demographicsSavedOverride: true });
     setSavingDemographics(false);
   }
 
@@ -3781,6 +4059,41 @@ export default function ParticipantStudyPage() {
     }
   }
 
+  async function continueAfterQuestionnaires(
+    taskOverride?: PublicStudyCognitiveTask[]
+  ) {
+    await continueBaselineFlow({ tasksOverride: taskOverride });
+  }
+
+  async function handleCognitiveTaskComplete(result?: { skipped?: boolean }) {
+    if (!currentCognitiveTask) return;
+
+    const updated = studyCognitiveTasks.map((task) =>
+      task.study_cognitive_task_id === currentCognitiveTask.study_cognitive_task_id
+        ? {
+            ...task,
+            completed: !result?.skipped,
+            skipped: Boolean(result?.skipped),
+          }
+        : task
+    );
+
+    setStudyCognitiveTasks(updated);
+    setCognitiveRunnerOpen(false);
+
+    await continueBaselineFlow({ tasksOverride: updated });
+  }
+
+  async function syncCognitiveTaskStateAfterExit() {
+    setCognitiveRunnerOpen(false);
+    if (!sessionToken) return;
+    const { tasks: refreshed, flowConfig } = await loadStudyCognitiveTasks(sessionToken);
+    await continueBaselineFlow({
+      tasksOverride: refreshed,
+      flowConfigOverride: flowConfig,
+    });
+  }
+
   async function saveCurrentMeasure() {
     if (!currentMeasure || !sessionToken || savingMeasure) return;
 
@@ -3856,30 +4169,14 @@ export default function ParticipantStudyPage() {
     setCompletedMeasureIds(nextCompleted);
     setMeasureAnswers({});
 
-    const nextIndex = baselineMeasures.findIndex(
-      (measure, index) =>
-        index > currentMeasureIndex &&
-        !nextCompleted.includes(measure.study_measure_id)
-    );
-
-    if (nextIndex >= 0) {
-      setCurrentMeasureIndex(nextIndex);
-      setCurrentMeasurePage(0);
-      setSavingMeasure(false);
-      return;
-    }
-
-    if (ambulatoryConfig?.enabled) {
-      await enterAmbulatoryStudy();
-    } else {
-      await completeParticipation();
-    }
+    await continueBaselineFlow({ completedIdsOverride: nextCompleted });
 
     setSavingMeasure(false);
   }
 
-  async function completeParticipation() {
-    if (!sessionToken) return;
+  async function completeParticipation(sessionTokenOverride?: string) {
+    const activeSessionToken = sessionTokenOverride || sessionToken;
+    if (!activeSessionToken) return;
 
     if (
       demographicsIncluded &&
@@ -3895,8 +4192,8 @@ export default function ParticipantStudyPage() {
     const supabase = createClient();
 
     const { data, error } = await supabase.rpc(
-      "psylattice_complete_participation",
-      { p_session_token: sessionToken }
+      "psylattice_complete_participation_with_cognitive",
+      { p_session_token: activeSessionToken }
     );
 
     if (error || !data?.ok) {
@@ -3912,6 +4209,16 @@ export default function ParticipantStudyPage() {
         error,
         data
       );
+
+      if (completionMessage.toLowerCase().includes("cognitive task")) {
+        const { tasks: refreshed } = await loadStudyCognitiveTasks(activeSessionToken);
+        const pendingIndex = firstPendingCognitiveIndex(refreshed);
+        if (pendingIndex >= 0) setCurrentCognitiveIndex(pendingIndex);
+        setCognitiveRunnerOpen(false);
+        setPageError("Please complete every required cognitive task before finishing the study.");
+        setPhase("cognitive");
+        return;
+      }
 
       if (
         completionMessage
@@ -3988,6 +4295,15 @@ export default function ParticipantStudyPage() {
                 and should not be treated as study observations. After a TEST
                 baseline is completed, reopening this link starts a fresh test
                 run so edited questionnaires are not skipped as already complete.
+              </p>
+            </div>
+          )}
+
+          {testProtocolResetNotice && (
+            <div className="rounded-2xl border border-cyan-200 bg-cyan-50 px-5 py-4">
+              <p className="font-medium text-cyan-950">Current protocol loaded</p>
+              <p className="mt-1 text-sm leading-6 text-cyan-900/80">
+                {testProtocolResetNotice}
               </p>
             </div>
           )}
@@ -5470,6 +5786,107 @@ export default function ParticipantStudyPage() {
     );
   }
 
+  if (phase === "cognitive") {
+    if (cognitiveRunnerOpen && currentCognitiveTask) {
+      return (
+        <CognitiveStudyRunner
+          token={token}
+          participantSessionToken={sessionToken}
+          studyCognitiveTaskId={currentCognitiveTask.study_cognitive_task_id}
+          definition={currentCognitiveTask.definition}
+          required={currentCognitiveTask.required}
+          onComplete={(result) => void handleCognitiveTaskComplete(result)}
+          onExit={() => void syncCognitiveTaskStateAfterExit()}
+        />
+      );
+    }
+
+    if (loadingCognitiveTasks) {
+      return (
+        <Shell>
+          <Card title="Loading cognitive task">
+            <p className="text-sm text-slate-500">Preparing the next study task…</p>
+          </Card>
+        </Shell>
+      );
+    }
+
+    if (!currentCognitiveTask) {
+      return (
+        <Shell>
+          <Card title="Cognitive tasks complete">
+            <button
+              type="button"
+              onClick={() => void continueAfterQuestionnaires()}
+              className="rounded-xl bg-slate-950 px-5 py-3 text-sm font-semibold text-white"
+            >
+              Continue study
+            </button>
+          </Card>
+        </Shell>
+      );
+    }
+
+    const completedCount = studyCognitiveTasks.filter(
+      (task) => task.completed || task.skipped
+    ).length;
+
+    return (
+      <Shell>
+        <div className="space-y-5">
+          {payload.link.is_test_link && (
+            <div className="rounded-2xl border border-amber-200 bg-amber-50 px-5 py-3 text-xs text-amber-800">
+              TEST participation · Participant ID {publicId}
+            </div>
+          )}
+          {pageError && <ErrorBox text={pageError} />}
+          <div className="rounded-2xl border border-slate-200 bg-white p-4">
+            <div className="flex items-center justify-between gap-4 text-xs text-slate-500">
+              <span>Cognitive task {currentCognitiveIndex + 1} of {studyCognitiveTasks.length}</span>
+              <span>{completedCount} completed</span>
+            </div>
+            <div className="mt-3 h-2 overflow-hidden rounded-full bg-slate-100">
+              <div
+                className="h-full rounded-full bg-cyan-700"
+                style={{
+                  width: `${studyCognitiveTasks.length > 0 ? Math.round((completedCount / studyCognitiveTasks.length) * 100) : 0}%`,
+                }}
+              />
+            </div>
+          </div>
+          <Card title={currentCognitiveTask.definition.task.title || "Cognitive task"}>
+            <p className="text-sm leading-6 text-slate-600">
+              {currentCognitiveTask.definition.task.description ||
+                "This study includes a browser-based cognitive task."}
+            </p>
+            <div className="mt-4 flex flex-wrap gap-2 text-xs">
+              <span className="rounded-full bg-slate-100 px-3 py-1.5 font-semibold text-slate-600">
+                {currentCognitiveTask.definition.version.version_label}
+              </span>
+              <span className={`rounded-full px-3 py-1.5 font-semibold ${
+                currentCognitiveTask.required
+                  ? "bg-cyan-50 text-cyan-800"
+                  : "bg-slate-100 text-slate-600"
+              }`}>
+                {currentCognitiveTask.required ? "Required" : "Optional"}
+              </span>
+            </div>
+            <p className="mt-4 text-xs leading-5 text-slate-500">
+              Before the task starts, PsyLattice will check this device and calibrate display timing. Use a keyboard when the task instructions ask for key responses.
+            </p>
+            <button
+              type="button"
+              onClick={() => { setPageError(""); setCognitiveRunnerOpen(true); }}
+              className="mt-5 rounded-xl bg-slate-950 px-5 py-3 text-sm font-semibold text-white"
+            >
+              Start cognitive task
+            </button>
+          </Card>
+        </div>
+      </Shell>
+    );
+  }
+
   if (phase === "followup_contact") {
     return (
       <Shell>
@@ -5590,16 +6007,14 @@ export default function ParticipantStudyPage() {
           >
             <button
               type="button"
-              onClick={() =>
-                ambulatoryConfig?.enabled
-                  ? void enterAmbulatoryStudy()
-                  : void completeParticipation()
-              }
+              onClick={() => void continueAfterQuestionnaires()}
               className="rounded-xl bg-slate-950 px-5 py-3 text-sm font-semibold text-white"
             >
-              {ambulatoryConfig?.enabled
-                ? "Open study dashboard"
-                : "Complete study"}
+              {studyCognitiveTasks.some((task) => !task.completed && !task.skipped)
+                ? "Continue to cognitive task"
+                : ambulatoryConfig?.enabled
+                  ? "Open study dashboard"
+                  : "Complete study"}
             </button>
           </Card>
         </Shell>

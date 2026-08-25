@@ -931,6 +931,403 @@ function MobileEcosystemVisual() {
   );
 }
 
+
+function UpcomingCapabilitiesShowcase() {
+  const upcoming = [
+    {
+      id: "cognitive",
+      icon: Brain,
+      eyebrow: "Cognitive Lab",
+      title: "Run real cognitive experiments inside PsyLattice.",
+      description:
+        "Template-based and custom cognitive tasks will let researchers combine questionnaires, EMA and cognitive performance in one study pipeline.",
+      points: [
+        "Template library for Stroop, Flanker, Go/No-Go, N-back, PVT and more.",
+        "Trial-level reaction time, accuracy and timing-ready exports.",
+        "Practice blocks, randomisation, feedback, counterbalancing and adaptive flow.",
+      ],
+      chips: ["Task Builder", "Reaction time", "Templates", "Longitudinal cognition"],
+      statA: "10+ launch templates",
+      statB: "Trial-level exports",
+      accent: "from-violet-500/20 via-cyan-100 to-white",
+      panelTint: "border-violet-200 bg-violet-50/85 text-violet-900",
+      illustration: (
+        <div className="space-y-3">
+          <div className="rounded-2xl border border-slate-200 bg-white p-3 shadow-sm">
+            <div className="flex items-center justify-between gap-3 border-b border-slate-200 pb-2.5">
+              <div>
+                <p className="text-[10px] font-semibold uppercase tracking-[0.15em] text-violet-800">
+                  Task Builder
+                </p>
+                <p className="mt-1 text-xs font-semibold text-slate-900">Emotional Stroop · draft</p>
+              </div>
+              <span className="rounded-full border border-violet-200 bg-violet-50 px-2.5 py-1 text-[9px] font-semibold text-violet-800">
+                Preview
+              </span>
+            </div>
+            <div className="mt-3 grid gap-2">
+              {[
+                ["Fixation", "500 ms"],
+                ["Word stimulus", "max 1500 ms"],
+                ["Response keys", "R · G · B · Y"],
+                ["Feedback", "practice only"],
+              ].map(([label, meta]) => (
+                <div key={label} className="flex items-center justify-between rounded-xl border border-slate-200 bg-slate-50 px-3 py-2.5">
+                  <p className="text-[11px] font-semibold text-slate-800">{label}</p>
+                  <p className="text-[10px] text-slate-500">{meta}</p>
+                </div>
+              ))}
+            </div>
+          </div>
+          <div className="grid grid-cols-2 gap-3">
+            <div className="rounded-2xl border border-slate-200 bg-white p-3 shadow-sm">
+              <FlaskConical className="h-4 w-4 text-violet-700" />
+              <p className="mt-2 text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-500">Trial table</p>
+              <p className="mt-1 text-xs font-semibold text-slate-900">Conditions + correct responses</p>
+            </div>
+            <div className="rounded-2xl border border-slate-200 bg-white p-3 shadow-sm">
+              <BarChart3 className="h-4 w-4 text-cyan-700" />
+              <p className="mt-2 text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-500">Outputs</p>
+              <p className="mt-1 text-xs font-semibold text-slate-900">RT, accuracy & summary scores</p>
+            </div>
+          </div>
+        </div>
+      ),
+    },
+    {
+      id: "device-data",
+      icon: Database,
+      eyebrow: "Device-based collection",
+      title: "Broader device and sensor-aware study workflows.",
+      description:
+        "PsyLattice will expand contextual data collection while remaining selective about what is actually stored and used in research workflows.",
+      points: [
+        "Health Connect today, with Apple Health / HealthKit support planned on iPhone.",
+        "Event-based and windowed data capture instead of default raw-data warehousing.",
+        "Use contextual signals to trigger EMA, follow-up, or future cognitive tasks.",
+      ],
+      chips: ["Health Connect", "HealthKit", "Event windows", "Context triggers"],
+      statA: "Selective storage",
+      statB: "Cross-device design",
+      accent: "from-cyan-500/20 via-sky-100 to-white",
+      panelTint: "border-cyan-200 bg-cyan-50/85 text-cyan-900",
+      illustration: (
+        <div className="space-y-3">
+          <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
+            <div className="grid gap-3 sm:grid-cols-[1fr_auto_1fr_auto_1fr] sm:items-center">
+              <div className="rounded-2xl border border-slate-200 bg-slate-50 px-3 py-3 text-center">
+                <Watch className="mx-auto h-5 w-5 text-cyan-700" />
+                <p className="mt-2 text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-500">Wearable</p>
+              </div>
+              <ArrowRight className="mx-auto hidden h-4 w-4 text-slate-300 sm:block" />
+              <div className="rounded-2xl border border-cyan-200 bg-cyan-50 px-3 py-3 text-center">
+                <HeartPulse className="mx-auto h-5 w-5 text-cyan-800" />
+                <p className="mt-2 text-[10px] font-semibold uppercase tracking-[0.14em] text-cyan-800">Health layer</p>
+              </div>
+              <ArrowRight className="mx-auto hidden h-4 w-4 text-slate-300 sm:block" />
+              <div className="rounded-2xl border border-slate-200 bg-white px-3 py-3 text-center shadow-sm">
+                <Workflow className="mx-auto h-5 w-5 text-slate-800" />
+                <p className="mt-2 text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-500">Study rule</p>
+              </div>
+            </div>
+          </div>
+          <div className="rounded-2xl border border-slate-200 bg-white p-3 shadow-sm">
+            <div className="flex items-center justify-between">
+              <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-500">Storage strategy</p>
+              <span className="rounded-full border border-emerald-200 bg-emerald-50 px-2.5 py-1 text-[9px] font-semibold text-emerald-800">Lean by default</span>
+            </div>
+            <div className="mt-3 grid grid-cols-2 gap-2">
+              <div className="rounded-xl border border-slate-200 bg-slate-50 p-3">
+                <p className="text-[10px] font-semibold text-slate-800">Trigger event only</p>
+                <p className="mt-1 text-[10px] leading-4 text-slate-500">Small, practical, privacy-conscious.</p>
+              </div>
+              <div className="rounded-xl border border-slate-200 bg-slate-50 p-3">
+                <p className="text-[10px] font-semibold text-slate-800">Event window</p>
+                <p className="mt-1 text-[10px] leading-4 text-slate-500">Keep useful context when the study truly needs it.</p>
+              </div>
+            </div>
+          </div>
+        </div>
+      ),
+    },
+    {
+      id: "ios",
+      icon: Smartphone,
+      eyebrow: "Apple ecosystem",
+      title: "Native iPhone app with Apple Health context.",
+      description:
+        "The next major mobile step is a native iPhone experience so participants and self users are not limited to Android.",
+      points: [
+        "Native iPhone workspace shell aligned with Self, Research and Clinical.",
+        "Apple Health / HealthKit access for steps, sleep, heart rate and workouts.",
+        "Clear path to iPhone research participation and clinician-connected follow-up.",
+      ],
+      chips: ["iPhone app", "Apple Health", "HealthKit", "TestFlight beta"],
+      statA: "iPhone participant support",
+      statB: "Apple Health integration",
+      accent: "from-slate-300/30 via-slate-100 to-white",
+      panelTint: "border-slate-300 bg-slate-100/85 text-slate-900",
+      illustration: (
+        <div className="space-y-3">
+          <div className="rounded-[28px] border border-slate-200 bg-white p-4 shadow-sm">
+            <div className="flex flex-wrap items-center gap-2">
+              <span className="inline-flex items-center gap-2 rounded-full border border-slate-200 bg-slate-50 px-3 py-1.5 text-[10px] font-semibold text-slate-700">
+                <svg viewBox="0 0 24 24" className="h-3.5 w-3.5 fill-current" aria-hidden="true">
+                  <path d="M16.37 12.61c.02 2.43 2.13 3.24 2.15 3.25-.02.06-.34 1.18-1.12 2.34-.67 1-1.36 2-2.46 2.02-1.08.02-1.43-.64-2.67-.64-1.24 0-1.62.62-2.65.66-1.06.04-1.88-1.06-2.55-2.06-1.37-1.98-2.42-5.59-1.01-8.05.7-1.22 1.95-2 3.31-2.02 1.03-.02 2 .7 2.67.7.67 0 1.92-.87 3.24-.74.55.02 2.08.22 3.06 1.65-.08.05-1.82 1.06-1.8 2.89Zm-2.19-6.86c.56-.68.95-1.63.85-2.57-.81.03-1.79.54-2.37 1.22-.52.6-.98 1.57-.86 2.49.9.07 1.82-.46 2.38-1.14Z" />
+                </svg>
+                Apple support coming up
+              </span>
+              <span className="inline-flex items-center gap-2 rounded-full border border-cyan-200 bg-cyan-50 px-3 py-1.5 text-[10px] font-semibold text-cyan-800">
+                <HeartPulse className="h-3.5 w-3.5" />
+                Apple Health / HealthKit
+              </span>
+            </div>
+
+            <div className="mt-4 rounded-[26px] border border-slate-200 bg-[radial-gradient(circle_at_top_left,rgba(207,250,254,.9),rgba(255,255,255,1)_55%)] p-4">
+              <div className="flex items-start justify-between gap-4">
+                <div>
+                  <div className="flex items-center gap-2">
+                    <svg viewBox="0 0 24 24" className="h-4 w-4 fill-slate-900" aria-hidden="true">
+                      <path d="M16.37 12.61c.02 2.43 2.13 3.24 2.15 3.25-.02.06-.34 1.18-1.12 2.34-.67 1-1.36 2-2.46 2.02-1.08.02-1.43-.64-2.67-.64-1.24 0-1.62.62-2.65.66-1.06.04-1.88-1.06-2.55-2.06-1.37-1.98-2.42-5.59-1.01-8.05.7-1.22 1.95-2 3.31-2.02 1.03-.02 2 .7 2.67.7.67 0 1.92-.87 3.24-.74.55.02 2.08.22 3.06 1.65-.08.05-1.82 1.06-1.8 2.89Zm-2.19-6.86c.56-.68.95-1.63.85-2.57-.81.03-1.79.54-2.37 1.22-.52.6-.98 1.57-.86 2.49.9.07 1.82-.46 2.38-1.14Z" />
+                    </svg>
+                    <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-500">iPhone app</p>
+                  </div>
+                  <p className="mt-2 text-lg font-semibold text-slate-950">PsyLattice on iPhone</p>
+                  <p className="mt-1 text-xs leading-5 text-slate-500">A clean native shell for Self, Research and Clinical—designed for Apple Health-enabled real-world follow-up.</p>
+                </div>
+                <span className="rounded-full border border-slate-200 bg-white px-2.5 py-1 text-[9px] font-semibold text-slate-600">Soon</span>
+              </div>
+
+              <div className="mt-4 grid gap-3 sm:grid-cols-3">
+                <div className="rounded-2xl border border-slate-200 bg-white p-3 shadow-sm">
+                  <HeartPulse className="h-4 w-4 text-cyan-700" />
+                  <p className="mt-2 text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-500">Health</p>
+                  <p className="mt-1 text-xs font-semibold text-slate-900">Heart rate + sleep</p>
+                </div>
+                <div className="rounded-2xl border border-slate-200 bg-white p-3 shadow-sm">
+                  <Activity className="h-4 w-4 text-cyan-700" />
+                  <p className="mt-2 text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-500">Activity</p>
+                  <p className="mt-1 text-xs font-semibold text-slate-900">Steps, workouts, movement</p>
+                </div>
+                <div className="rounded-2xl border border-slate-200 bg-slate-950 p-3 text-white shadow-sm">
+                  <Smartphone className="h-4 w-4 text-cyan-300" />
+                  <p className="mt-2 text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-400">Use case</p>
+                  <p className="mt-1 text-xs font-semibold">Cross-platform participant support</p>
+                </div>
+              </div>
+            </div>
+          </div>
+          <div className="rounded-2xl border border-slate-200 bg-white p-3 shadow-sm">
+            <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-500">Distribution path</p>
+            <p className="mt-2 text-xs font-semibold text-slate-900">Build now, test free on your own iPhone, then move to TestFlight when ready.</p>
+          </div>
+        </div>
+      ),
+    },
+    {
+      id: "wear-os",
+      icon: Watch,
+      eyebrow: "Wrist-based experiences",
+      title: "Wear OS and Apple Watch companion experiences.",
+      description:
+        "Short prompts and contextual study interactions can eventually extend from the phone to the wrist, making PsyLattice even more real-world.",
+      points: [
+        "Quick responses, reminders and micro-interactions on the wrist.",
+        "Useful for ambulatory and longitudinal research with less disruption.",
+        "Complements—not replaces—the phone-based PsyLattice experience.",
+      ],
+      chips: ["Wear OS", "Apple Watch", "Micro-prompts", "Real-world research"],
+      statA: "Wrist prompts",
+      statB: "Companion workflows",
+      accent: "from-amber-400/20 via-white to-cyan-100",
+      panelTint: "border-amber-200 bg-amber-50/90 text-amber-900",
+      illustration: (
+        <div className="space-y-3">
+          <div className="grid gap-3 sm:grid-cols-2">
+            <div className="rounded-[28px] border border-slate-200 bg-white p-4 shadow-sm">
+              <div className="flex items-center justify-between gap-3">
+                <span className="inline-flex items-center gap-2 rounded-full border border-slate-200 bg-slate-50 px-3 py-1.5 text-[10px] font-semibold text-slate-700">
+                  <Watch className="h-3.5 w-3.5" />
+                  Wear OS
+                </span>
+                <span className="text-[9px] font-semibold uppercase tracking-[0.14em] text-slate-400">Google ecosystem</span>
+              </div>
+              <div className="mt-4 rounded-[24px] border border-slate-200 bg-[linear-gradient(180deg,#f8fbfb_0%,#ffffff_100%)] p-4">
+                <div className="flex items-center gap-2 text-slate-700">
+                  <div className="flex h-9 w-9 items-center justify-center rounded-full bg-slate-950 text-white shadow-sm">
+                    <Watch className="h-4 w-4" />
+                  </div>
+                  <div>
+                    <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-500">Wrist companion</p>
+                    <p className="text-sm font-semibold text-slate-900">Quick micro-prompts on Wear OS</p>
+                  </div>
+                </div>
+                <div className="mt-4 rounded-2xl bg-slate-950 p-4 text-white shadow-sm">
+                  <div className="flex items-center justify-between">
+                    <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-cyan-300">Prompt</p>
+                    <span className="rounded-full bg-white/10 px-2 py-1 text-[8px] font-semibold text-slate-200">2 sec response</span>
+                  </div>
+                  <p className="mt-2 text-sm font-semibold">Stress check-in</p>
+                  <div className="mt-3 grid grid-cols-5 gap-1.5">
+                    {[1,2,3,4,5].map((n) => (
+                      <div key={n} className={`rounded-lg py-2 text-center text-[10px] font-semibold ${n === 3 ? "bg-cyan-400 text-slate-950" : "bg-white/10 text-slate-200"}`}>
+                        {n}
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              </div>
+            </div>
+            <div className="rounded-[28px] border border-slate-200 bg-white p-4 shadow-sm">
+              <div className="flex items-center justify-between gap-3">
+                <span className="inline-flex items-center gap-2 rounded-full border border-slate-200 bg-slate-50 px-3 py-1.5 text-[10px] font-semibold text-slate-700">
+                  <svg viewBox="0 0 24 24" className="h-3.5 w-3.5 fill-current" aria-hidden="true">
+                    <path d="M16.37 12.61c.02 2.43 2.13 3.24 2.15 3.25-.02.06-.34 1.18-1.12 2.34-.67 1-1.36 2-2.46 2.02-1.08.02-1.43-.64-2.67-.64-1.24 0-1.62.62-2.65.66-1.06.04-1.88-1.06-2.55-2.06-1.37-1.98-2.42-5.59-1.01-8.05.7-1.22 1.95-2 3.31-2.02 1.03-.02 2 .7 2.67.7.67 0 1.92-.87 3.24-.74.55.02 2.08.22 3.06 1.65-.08.05-1.82 1.06-1.8 2.89Zm-2.19-6.86c.56-.68.95-1.63.85-2.57-.81.03-1.79.54-2.37 1.22-.52.6-.98 1.57-.86 2.49.9.07 1.82-.46 2.38-1.14Z" />
+                  </svg>
+                  Apple Watch
+                </span>
+                <span className="text-[9px] font-semibold uppercase tracking-[0.14em] text-slate-400">Apple ecosystem</span>
+              </div>
+              <div className="mt-4 rounded-[24px] border border-slate-200 bg-[linear-gradient(180deg,#f8fbfb_0%,#ffffff_100%)] p-4">
+                <div className="flex items-center gap-2 text-slate-700">
+                  <div className="flex h-9 w-9 items-center justify-center rounded-full bg-slate-950 text-white shadow-sm">
+                    <svg viewBox="0 0 24 24" className="h-4 w-4 fill-current" aria-hidden="true">
+                      <path d="M16.37 12.61c.02 2.43 2.13 3.24 2.15 3.25-.02.06-.34 1.18-1.12 2.34-.67 1-1.36 2-2.46 2.02-1.08.02-1.43-.64-2.67-.64-1.24 0-1.62.62-2.65.66-1.06.04-1.88-1.06-2.55-2.06-1.37-1.98-2.42-5.59-1.01-8.05.7-1.22 1.95-2 3.31-2.02 1.03-.02 2 .7 2.67.7.67 0 1.92-.87 3.24-.74.55.02 2.08.22 3.06 1.65-.08.05-1.82 1.06-1.8 2.89Zm-2.19-6.86c.56-.68.95-1.63.85-2.57-.81.03-1.79.54-2.37 1.22-.52.6-.98 1.57-.86 2.49.9.07 1.82-.46 2.38-1.14Z" />
+                    </svg>
+                  </div>
+                  <div>
+                    <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-500">Apple support</p>
+                    <p className="text-sm font-semibold text-slate-900">Fast prompt handoff from Apple Watch</p>
+                  </div>
+                </div>
+                <div className="mt-4 rounded-2xl border border-cyan-100 bg-cyan-50 p-4 shadow-sm">
+                  <div className="flex items-center justify-between">
+                    <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-cyan-800">Prompt ready</p>
+                    <BellRing className="h-4 w-4 text-cyan-700" />
+                  </div>
+                  <p className="mt-2 text-sm font-semibold text-cyan-950">Respond on the wrist, continue on iPhone when needed.</p>
+                  <div className="mt-3 flex flex-wrap gap-2">
+                    <span className="rounded-full border border-cyan-200 bg-white px-2.5 py-1 text-[9px] font-semibold text-cyan-800">Quick answer</span>
+                    <span className="rounded-full border border-cyan-200 bg-white px-2.5 py-1 text-[9px] font-semibold text-cyan-800">Reminder</span>
+                    <span className="rounded-full border border-cyan-200 bg-white px-2.5 py-1 text-[9px] font-semibold text-cyan-800">Continue on phone</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+          <div className="rounded-2xl border border-slate-200 bg-white p-3 shadow-sm">
+            <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-500">Why this matters</p>
+            <p className="mt-2 text-xs text-slate-600">For students and early-career researchers, a wrist companion can make repeated real-world participation far easier without requiring a large custom hardware budget.</p>
+          </div>
+        </div>
+      ),
+    },
+  ] as const;
+
+  const [activeId, setActiveId] = useState<(typeof upcoming)[number]["id"]>("cognitive");
+  const active = upcoming.find((item) => item.id === activeId) ?? upcoming[0];
+
+  return (
+    <div className="relative mx-auto w-full max-w-[1180px]">
+      <div className={`pointer-events-none absolute inset-x-12 top-10 h-[360px] rounded-[56px] bg-gradient-to-br ${active.accent} blur-3xl`} />
+      <div className="relative overflow-hidden rounded-[34px] border border-slate-200 bg-white/75 p-5 shadow-[0_34px_100px_-48px_rgba(15,23,42,0.28)] backdrop-blur-xl sm:p-6 lg:p-7">
+        <div className="grid gap-8 lg:grid-cols-[.9fr_1.1fr] lg:items-start">
+          <div>
+            <div className="inline-flex items-center gap-2 rounded-full border border-cyan-200 bg-white px-3.5 py-2 text-[11px] font-semibold text-cyan-800 shadow-sm">
+              <Sparkles className="h-3.5 w-3.5" />
+              Coming next for PsyLattice Research
+            </div>
+            <h3 className="mt-5 text-3xl font-semibold tracking-[-0.04em] text-slate-950 sm:text-4xl">
+              Build the platform students and young researchers wish already existed.
+            </h3>
+            <p className="mt-4 max-w-2xl text-base leading-7 text-slate-600">
+              PsyLattice is expanding beyond questionnaires and EMA into an integrated research environment: cognitive experiments, broader device-aware workflows and companion apps that keep serious research accessible instead of institution-only.
+            </p>
+
+            <div className="mt-6 grid gap-3">
+              {upcoming.map((item) => {
+                const Icon = item.icon;
+                const selected = item.id === activeId;
+                return (
+                  <button
+                    key={item.id}
+                    type="button"
+                    onClick={() => setActiveId(item.id)}
+                    className={`w-full rounded-[24px] border p-4 text-left transition duration-200 ${
+                      selected
+                        ? "border-cyan-300 bg-white shadow-[0_16px_44px_-30px_rgba(8,145,178,.35)]"
+                        : "border-slate-200 bg-white/80 hover:border-cyan-200 hover:bg-white"
+                    }`}
+                  >
+                    <div className="flex items-start gap-3">
+                      <div className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl ${selected ? "bg-cyan-100 text-cyan-900" : "bg-slate-100 text-slate-600"}`}>
+                        <Icon className="h-5 w-5" />
+                      </div>
+                      <div>
+                        <p className={`text-[10px] font-semibold uppercase tracking-[0.14em] ${selected ? "text-cyan-900" : "text-slate-500"}`}>
+                          {item.eyebrow}
+                        </p>
+                        <p className="mt-1 text-sm font-semibold text-slate-900">{item.title}</p>
+                        <p className="mt-1.5 text-xs leading-5 text-slate-500">{item.description}</p>
+                      </div>
+                    </div>
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+
+          <div>
+            <div className="rounded-[28px] border border-slate-200 bg-[#f7faf9]/90 p-4 sm:p-5 lg:p-6">
+              <div className="flex flex-wrap items-start justify-between gap-3">
+                <div>
+                  <p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-slate-500">{active.eyebrow}</p>
+                  <h4 className="mt-2 text-2xl font-semibold tracking-[-0.03em] text-slate-950">{active.title}</h4>
+                </div>
+                <div className={`rounded-full border px-3 py-1.5 text-[10px] font-semibold ${active.panelTint}`}>
+                  Planned feature set
+                </div>
+              </div>
+
+              <div className="mt-5">{active.illustration}</div>
+
+              <div className="mt-5 grid gap-3 sm:grid-cols-2">
+                <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
+                  <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-500">Launch value</p>
+                  <p className="mt-2 text-sm font-semibold text-slate-900">{active.statA}</p>
+                </div>
+                <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
+                  <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-500">Research payoff</p>
+                  <p className="mt-2 text-sm font-semibold text-slate-900">{active.statB}</p>
+                </div>
+              </div>
+
+              <div className="mt-5 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
+                <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-500">Why it matters</p>
+                <ul className="mt-3 space-y-2.5">
+                  {active.points.map((point) => (
+                    <li key={point} className="flex items-start gap-2.5 text-sm leading-6 text-slate-600">
+                      <Check className="mt-1 h-4 w-4 shrink-0 text-cyan-700" />
+                      <span>{point}</span>
+                    </li>
+                  ))}
+                </ul>
+                <div className="mt-4 flex flex-wrap gap-2">
+                  {active.chips.map((chip) => (
+                    <span key={chip} className="rounded-full border border-slate-200 bg-slate-50 px-3 py-1.5 text-[10px] font-semibold text-slate-600">
+                      {chip}
+                    </span>
+                  ))}
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function HeroWorkspaceStage({
   activeWorkspace,
   onChange,
@@ -3139,6 +3536,9 @@ export default function Home() {
             <a href="#research" className="transition hover:text-slate-950">
               Research
             </a>
+            <a href="#coming-next" className="transition hover:text-slate-950">
+              Coming next
+            </a>
             <a href="#how-it-works" className="transition hover:text-slate-950">
               How it works
             </a>
@@ -3414,6 +3814,30 @@ export default function Home() {
                 <p className="mt-2 text-xs leading-5 text-slate-400">{description}</p>
               </div>
             ))}
+          </div>
+        </div>
+      </section>
+
+      {/* Coming next */}
+      <section
+        id="coming-next"
+        className="scroll-mt-24 border-y border-slate-200 bg-[linear-gradient(180deg,#f7faf9_0%,#eef5f4_100%)] py-20 lg:py-28"
+      >
+        <div className="mx-auto max-w-7xl px-6 lg:px-8">
+          <div className="max-w-3xl">
+            <p className="text-xs font-semibold uppercase tracking-[0.18em] text-cyan-800">
+              Upcoming research capabilities
+            </p>
+            <h2 className="mt-4 text-4xl font-semibold tracking-[-0.04em] text-slate-950 sm:text-5xl">
+              The next wave of PsyLattice is being designed as a real differentiator.
+            </h2>
+            <p className="mt-5 text-lg leading-8 text-slate-600">
+              We want PsyLattice to be the platform that ambitious students, thesis researchers and early-career labs can actually afford—without giving up serious cognitive experimentation, richer device-aware workflows and truly cross-platform participation.
+            </p>
+          </div>
+
+          <div className="mt-10">
+            <UpcomingCapabilitiesShowcase />
           </div>
         </div>
       </section>
@@ -4286,6 +4710,9 @@ export default function Home() {
                   </a>
                   <a href="#mobile" className="block hover:text-slate-950">
                     Mobile
+                  </a>
+                  <a href="#coming-next" className="block hover:text-slate-950">
+                    Coming next
                   </a>
                   <a
                     href={ANDROID_BETA_URL}

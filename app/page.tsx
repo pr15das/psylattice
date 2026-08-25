@@ -365,7 +365,7 @@ const securityItems = [
 const pricingContent = {
   India: {
     label: "India",
-    sublabel: "Launch pricing for India and Asia",
+    sublabel: "Early-access pricing for India and Asia",
     cards: [
       {
         id: "self",
@@ -416,55 +416,93 @@ const pricingContent = {
         cadence: "",
         featured: false,
         description:
-          "Researchers can explore the platform, build studies, test flows and prepare protocols without paying for an account.",
+          "Build and test research without paying. Your first live PsyLattice study is free, then choose pay-as-you-go or Researcher Pro.",
         bullets: [
-          "Questionnaire Library",
-          "Study Builder",
-          "Custom questionnaires",
-          "Preview and test study flows",
-          "No charge until you publish a live study",
+          "Questionnaire Library and Study Builder",
+          "Custom questionnaires and EMA / ESM protocols",
+          "Longitudinal follow-up and mobile workflows",
+          "Unlimited drafts and preview testing",
+          "First live study free",
         ],
         ctaLabel: "Create researcher account",
         ctaHref: "/signin",
-        note: "You only pay when you launch a live study.",
+        note: "Your first live study is on us. After that, pay per study or switch to Researcher Pro.",
       },
       {
         id: "study-standard",
-        eyebrow: "Research launch",
+        eyebrow: "Pay as you go",
         title: "Standard Study",
         price: "₹29",
         cadence: "/study",
         featured: false,
         description:
-          "For smaller live studies. Publish one real study and collect data from up to 500 participants.",
+          "For occasional research. Publish a live study and collect data from up to 500 participants.",
         bullets: [
           "Up to 500 participants",
           "Participants do not pay",
-          "Build and test the study beforehand for free",
-          "Suitable for most student and standard research projects",
+          "EMA / ESM and longitudinal workflows included",
+          "Build and test before publication for free",
         ],
-        ctaLabel: "Launch a standard study",
+        ctaLabel: "Choose Standard",
         ctaHref: "/signin",
-        note: "Best for pilots, thesis studies and medium-sized projects.",
+        note: "Applies from your second live study onward if you are not subscribed to Researcher Pro.",
       },
       {
         id: "study-large",
-        eyebrow: "Research launch",
+        eyebrow: "Pay as you go",
         title: "Large Study",
         price: "₹99",
         cadence: "/study",
         featured: false,
         description:
-          "For larger live studies. Publish one real study and collect data from up to 1,000 participants.",
+          "For larger projects. Publish a live study and collect data from up to 1,000 participants.",
         bullets: [
           "Up to 1,000 participants",
           "Participants do not pay",
-          "Build and test the study beforehand for free",
-          "Designed for larger projects and broader recruitment",
+          "EMA / ESM and longitudinal workflows included",
+          "Wearable / Health Connect research workflows included",
         ],
-        ctaLabel: "Launch a large study",
+        ctaLabel: "Choose Large",
         ctaHref: "/signin",
-        note: "Need more than 1,000 participants? Contact PsyLattice later for larger research plans.",
+        note: "Applies from your second live study onward if you are not subscribed to Researcher Pro.",
+      },
+      {
+        id: "research-pro-monthly",
+        eyebrow: "For regular researchers",
+        title: "Researcher Pro",
+        price: "₹129",
+        cadence: "/month",
+        featured: true,
+        description:
+          "For researchers who run studies regularly and do not want to pay every time they publish.",
+        bullets: [
+          "Publish multiple studies while subscribed",
+          "Up to 3 simultaneously live studies",
+          "Up to 1,000 participants per live study",
+          "EMA / ESM, longitudinal and wearable workflows included",
+        ],
+        ctaLabel: "Get Researcher Pro",
+        ctaHref: "/signin",
+        note: "Best for researchers running multiple studies throughout the year.",
+      },
+      {
+        id: "research-pro-annual",
+        eyebrow: "Best value",
+        title: "Researcher Pro Annual",
+        price: "₹999",
+        cadence: "/year",
+        featured: true,
+        description:
+          "The same Researcher Pro access at a lower effective monthly price for long-term PsyLattice users.",
+        bullets: [
+          "Everything in Researcher Pro",
+          "Equivalent to about ₹83/month",
+          "Up to 3 simultaneously live studies",
+          "No per-study publication charge while subscribed",
+        ],
+        ctaLabel: "Choose annual Pro",
+        ctaHref: "/signin",
+        note: "Save ₹549 compared with paying ₹129 every month for a full year.",
       },
       {
         id: "participants",
@@ -477,19 +515,19 @@ const pricingContent = {
           "People invited into a PsyLattice study can participate without paying for an account.",
         bullets: [
           "No subscription required",
-          "Access through study link",
+          "Access through study link or participant mobile flow",
           "Complete assigned study measures",
-          "Designed for simple participation",
+          "Research participants never pay to participate",
         ],
         ctaLabel: "Learn how studies work",
         ctaHref: "/signin",
-        note: "Research participants never need to pay to participate.",
+        note: "Participant access remains free regardless of the researcher's billing option.",
       },
     ],
   },
   europe: {
     label: "Europe",
-    sublabel: "Launch pricing for Europe",
+    sublabel: "Early-access pricing for Europe",
     cards: [
       {
         id: "self",
@@ -540,55 +578,93 @@ const pricingContent = {
         cadence: "",
         featured: false,
         description:
-          "Researchers can explore the platform, build studies, test flows and prepare protocols without paying for an account.",
+          "Build and test research without paying. Your first live PsyLattice study is free, then choose pay-as-you-go or Researcher Pro.",
         bullets: [
-          "Questionnaire Library",
-          "Study Builder",
-          "Custom questionnaires",
-          "Preview and test study flows",
-          "No charge until you publish a live study",
+          "Questionnaire Library and Study Builder",
+          "Custom questionnaires and EMA / ESM protocols",
+          "Longitudinal follow-up and mobile workflows",
+          "Unlimited drafts and preview testing",
+          "First live study free",
         ],
         ctaLabel: "Create researcher account",
         ctaHref: "/signin",
-        note: "You only pay when you launch a live study.",
+        note: "Your first live study is on us. After that, pay per study or switch to Researcher Pro.",
       },
       {
         id: "study-standard",
-        eyebrow: "Research launch",
+        eyebrow: "Pay as you go",
         title: "Standard Study",
         price: "€3.99",
         cadence: "/study",
         featured: false,
         description:
-          "For smaller live studies. Publish one real study and collect data from up to 500 participants.",
+          "For occasional research. Publish a live study and collect data from up to 500 participants.",
         bullets: [
           "Up to 500 participants",
           "Participants do not pay",
-          "Build and test the study beforehand for free",
-          "Suitable for most student and standard research projects",
+          "EMA / ESM and longitudinal workflows included",
+          "Build and test before publication for free",
         ],
-        ctaLabel: "Launch a standard study",
+        ctaLabel: "Choose Standard",
         ctaHref: "/signin",
-        note: "Best for pilots, thesis studies and medium-sized projects.",
+        note: "Applies from your second live study onward if you are not subscribed to Researcher Pro.",
       },
       {
         id: "study-large",
-        eyebrow: "Research launch",
+        eyebrow: "Pay as you go",
         title: "Large Study",
         price: "€7.99",
         cadence: "/study",
         featured: false,
         description:
-          "For larger live studies. Publish one real study and collect data from up to 1,000 participants.",
+          "For larger projects. Publish a live study and collect data from up to 1,000 participants.",
         bullets: [
           "Up to 1,000 participants",
           "Participants do not pay",
-          "Build and test the study beforehand for free",
-          "Designed for larger projects and broader recruitment",
+          "EMA / ESM and longitudinal workflows included",
+          "Wearable / Health Connect research workflows included",
         ],
-        ctaLabel: "Launch a large study",
+        ctaLabel: "Choose Large",
         ctaHref: "/signin",
-        note: "Need more than 1,000 participants? Contact PsyLattice later for larger research plans.",
+        note: "Applies from your second live study onward if you are not subscribed to Researcher Pro.",
+      },
+      {
+        id: "research-pro-monthly",
+        eyebrow: "For regular researchers",
+        title: "Researcher Pro",
+        price: "€9.99",
+        cadence: "/month",
+        featured: true,
+        description:
+          "For researchers who run studies regularly and do not want to pay every time they publish.",
+        bullets: [
+          "Publish multiple studies while subscribed",
+          "Up to 3 simultaneously live studies",
+          "Up to 1,000 participants per live study",
+          "EMA / ESM, longitudinal and wearable workflows included",
+        ],
+        ctaLabel: "Get Researcher Pro",
+        ctaHref: "/signin",
+        note: "Best for researchers running multiple studies throughout the year.",
+      },
+      {
+        id: "research-pro-annual",
+        eyebrow: "Best value",
+        title: "Researcher Pro Annual",
+        price: "€79.99",
+        cadence: "/year",
+        featured: true,
+        description:
+          "The same Researcher Pro access at a lower effective monthly price for long-term PsyLattice users.",
+        bullets: [
+          "Everything in Researcher Pro",
+          "Equivalent to about €6.67/month",
+          "Up to 3 simultaneously live studies",
+          "No per-study publication charge while subscribed",
+        ],
+        ctaLabel: "Choose annual Pro",
+        ctaHref: "/signin",
+        note: "Save €39.89 compared with paying €9.99 every month for a full year.",
       },
       {
         id: "participants",
@@ -601,13 +677,13 @@ const pricingContent = {
           "People invited into a PsyLattice study can participate without paying for an account.",
         bullets: [
           "No subscription required",
-          "Access through study link",
+          "Access through study link or participant mobile flow",
           "Complete assigned study measures",
-          "Designed for simple participation",
+          "Research participants never pay to participate",
         ],
         ctaLabel: "Learn how studies work",
         ctaHref: "/signin",
-        note: "Research participants never need to pay to participate.",
+        note: "Participant access remains free regardless of the researcher's billing option.",
       },
     ],
   },
@@ -3771,8 +3847,9 @@ export default function Home() {
                 Our unbeatable pricing.
               </h2>
               <p className="mt-5 text-lg leading-8 text-slate-600">
-                Individuals subscribe to Self, clinicians can join for free,
-                and researchers only pay when they publish a live study.
+                Individuals subscribe to Self, clinicians can join for free, and researchers
+                build for free, publish their first live study free, then choose pay-as-you-go
+                or Researcher Pro.
               </p>
             </div>
 
@@ -3832,7 +3909,7 @@ export default function Home() {
                     {isResearcher && (
                       <div className="absolute -top-3 left-1/2 -translate-x-1/2">
                         <span className="whitespace-nowrap rounded-full bg-cyan-950 px-4 py-1.5 text-[11px] font-semibold uppercase tracking-[0.12em] text-white">
-                          Most valuable
+                          Start here
                         </span>
                       </div>
                     )}
@@ -3881,7 +3958,7 @@ export default function Home() {
                         onClick={() => setShowResearchPricing(true)}
                         className="mt-6 flex w-full items-center justify-between rounded-xl bg-cyan-950 px-4 py-3.5 text-left text-sm font-semibold text-white transition hover:bg-cyan-900"
                       >
-                        <span>You only pay when you launch a live study</span>
+                        <span>First live study free · then pay per study or go Pro</span>
                         <ArrowRight className="ml-3 h-4 w-4 text-cyan-200" />
                       </button>
                     ) : (
@@ -3934,7 +4011,7 @@ export default function Home() {
                 <strong className="font-semibold text-slate-800">
                   Researchers:
                 </strong>{" "}
-                free until launch
+                first live study free · then PAYG or Pro
               </span>
               <span>
                 <strong className="font-semibold text-slate-800">
@@ -3976,11 +4053,11 @@ export default function Home() {
                     id="research-pricing-title"
                     className="mt-2 text-2xl font-semibold tracking-tight"
                   >
-                    Choose the size of your live study.
+                    First study free. Then choose how you want to keep researching.
                   </h3>
                   <p className="mt-2 text-sm text-slate-500">
-                    Build and test for free. Pay only when you publish for real
-                    participant data collection.
+                    Build and test for free. Your first live study is free. From your second
+                    study onward, pay per study or use Researcher Pro.
                   </p>
                 </div>
 
@@ -3994,20 +4071,43 @@ export default function Home() {
                 </button>
               </div>
 
-              <div className="grid gap-4 p-6 md:grid-cols-3 sm:p-8">
+              <div className="px-6 pt-6 sm:px-8 sm:pt-8">
+                <div className="rounded-[22px] border border-emerald-200 bg-emerald-50/80 p-5">
+                  <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                    <div>
+                      <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-emerald-800">
+                        Your first live study is on us
+                      </p>
+                      <p className="mt-2 text-sm leading-6 text-emerald-950">
+                        Create, configure and test for free, then publish your first real PsyLattice study without payment.
+                      </p>
+                    </div>
+                    <span className="w-fit rounded-full bg-white px-4 py-2 text-xs font-semibold text-emerald-800 shadow-sm">
+                      1 free study credit
+                    </span>
+                  </div>
+                </div>
+              </div>
+
+              <div className="grid gap-4 p-6 md:grid-cols-2 xl:grid-cols-4 sm:p-8">
                 {activePricing.cards
                   .filter((card) =>
-                    ["study-standard", "study-large", "participants"].includes(
-                      card.id
-                    )
+                    [
+                      "study-standard",
+                      "study-large",
+                      "research-pro-monthly",
+                      "research-pro-annual",
+                    ].includes(card.id)
                   )
                   .map((card) => (
                     <article
                       key={card.id}
-                      className={`flex flex-col rounded-[22px] border bg-white p-6 ${
-                        card.id === "study-large"
+                      className={`relative flex flex-col rounded-[22px] border bg-white p-6 ${
+                        card.id === "research-pro-monthly"
                           ? "border-cyan-300 shadow-lg shadow-cyan-100/50"
-                          : "border-slate-200"
+                          : card.id === "research-pro-annual"
+                            ? "border-emerald-300 shadow-lg shadow-emerald-100/50"
+                            : "border-slate-200"
                       }`}
                     >
                       <div className="flex items-start justify-between gap-3">
@@ -4020,9 +4120,14 @@ export default function Home() {
                           </h4>
                         </div>
 
-                        {card.id === "study-large" && (
+                        {card.id === "research-pro-monthly" && (
                           <span className="rounded-full bg-cyan-950 px-3 py-1 text-[10px] font-semibold text-white">
-                            1,000 participants
+                            Regular use
+                          </span>
+                        )}
+                        {card.id === "research-pro-annual" && (
+                          <span className="rounded-full bg-emerald-700 px-3 py-1 text-[10px] font-semibold text-white">
+                            Best value
                           </span>
                         )}
                       </div>
@@ -4063,19 +4168,19 @@ export default function Home() {
                           {card.note}
                         </div>
 
-                        {card.id !== "participants" && (
-                          <Link
-                            href={card.ctaHref}
-                            className={`mt-4 inline-flex w-full items-center justify-center gap-2 rounded-xl px-5 py-3 text-sm font-semibold transition ${
-                              card.id === "study-large"
-                                ? "bg-cyan-950 text-white hover:bg-cyan-900"
+                        <Link
+                          href={card.ctaHref}
+                          className={`mt-4 inline-flex w-full items-center justify-center gap-2 rounded-xl px-5 py-3 text-sm font-semibold transition ${
+                            card.id === "research-pro-monthly"
+                              ? "bg-cyan-950 text-white hover:bg-cyan-900"
+                              : card.id === "research-pro-annual"
+                                ? "bg-emerald-700 text-white hover:bg-emerald-600"
                                 : "bg-slate-950 text-white hover:bg-slate-800"
-                            }`}
-                          >
-                            {card.ctaLabel}
-                            <ArrowRight className="h-4 w-4" />
-                          </Link>
-                        )}
+                          }`}
+                        >
+                          {card.ctaLabel}
+                          <ArrowRight className="h-4 w-4" />
+                        </Link>
 
                         <p className="mt-3 text-[11px] leading-5 text-slate-400">
                           By continuing, you agree to the{" "}
@@ -4090,6 +4195,20 @@ export default function Home() {
                       </div>
                     </article>
                   ))}
+              </div>
+
+              <div className="mx-6 mb-6 rounded-2xl border border-slate-200 bg-white px-5 py-4 sm:mx-8 sm:mb-8">
+                <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                  <div>
+                    <p className="text-sm font-semibold text-slate-900">Study participants remain free</p>
+                    <p className="mt-1 text-xs leading-5 text-slate-500">
+                      Participants never need a paid PsyLattice subscription to take part in a study.
+                    </p>
+                  </div>
+                  <span className="w-fit rounded-full bg-slate-100 px-3 py-1.5 text-[10px] font-semibold text-slate-600">
+                    Participant access · Free
+                  </span>
+                </div>
               </div>
 
               <div className="border-t border-slate-200 px-6 py-5 sm:px-8">

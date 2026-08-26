@@ -3,6 +3,11 @@
 :root {
   --background: #ffffff;
   --foreground: #171717;
+
+  /* PsyLattice inline alert system */
+  --pl-alert-red: #f43f5e;
+  --pl-alert-red-rule: #fb7185;
+  --pl-alert-text: #475569;
 }
 
 @theme inline {
@@ -24,6 +29,166 @@ body {
   color: var(--foreground);
   font-family: Arial, Helvetica, sans-serif;
 }
+
+/* =========================================================
+   PSYLATTICE GLOBAL ERROR / WARNING LANGUAGE
+   ---------------------------------------------------------
+   Errors are signals, not cards:
+   red vertical rule -> outlined warning mark -> message.
+   ========================================================= */
+
+/*
+  Older PsyLattice screens use Tailwind red/rose background utilities
+  for error containers. Convert those old alert cards globally without
+  changing destructive buttons, badges, or ordinary red text.
+*/
+:where(div, section, article, aside)[class*="bg-red-50"],
+:where(div, section, article, aside)[class*="bg-red-100"],
+:where(div, section, article, aside)[class*="bg-rose-50"],
+:where(div, section, article, aside)[class*="bg-rose-100"] {
+  position: relative !important;
+  min-height: 42px;
+  margin-left: 0 !important;
+
+  padding: 10px 12px 10px 48px !important;
+
+  border: 0 !important;
+  border-left: 3px solid var(--pl-alert-red-rule) !important;
+  border-radius: 0 !important;
+
+  background: transparent !important;
+  box-shadow: none !important;
+
+  color: var(--pl-alert-text) !important;
+
+  --tw-text-opacity: 1 !important;
+}
+
+/* Outlined warning symbol */
+:where(div, section, article, aside)[class*="bg-red-50"]::before,
+:where(div, section, article, aside)[class*="bg-red-100"]::before,
+:where(div, section, article, aside)[class*="bg-rose-50"]::before,
+:where(div, section, article, aside)[class*="bg-rose-100"]::before {
+  content: "!";
+
+  position: absolute;
+  left: 15px;
+  top: 50%;
+
+  width: 22px;
+  height: 22px;
+
+  transform: translateY(-50%);
+
+  display: grid;
+  place-items: center;
+
+  box-sizing: border-box;
+
+  border: 1.8px solid var(--pl-alert-red);
+  border-radius: 9999px;
+
+  background: transparent;
+  color: var(--pl-alert-red);
+
+  font-family:
+    ui-sans-serif,
+    system-ui,
+    -apple-system,
+    BlinkMacSystemFont,
+    "Segoe UI",
+    sans-serif;
+
+  font-size: 12px;
+  font-weight: 750;
+  line-height: 1;
+}
+
+/*
+  Some existing alerts put text-red-* on their direct child instead of
+  the container. Force alert copy back to the neutral PsyLattice text.
+*/
+:where(div, section, article, aside)[class*="bg-red-50"]
+  > :where(p, span, small, strong),
+:where(div, section, article, aside)[class*="bg-red-100"]
+  > :where(p, span, small, strong),
+:where(div, section, article, aside)[class*="bg-rose-50"]
+  > :where(p, span, small, strong),
+:where(div, section, article, aside)[class*="bg-rose-100"]
+  > :where(p, span, small, strong) {
+  color: var(--pl-alert-text) !important;
+}
+
+/*
+  Preferred class for all NEW PsyLattice error/warning messages.
+
+  Example:
+    <div className="pl-inline-error">
+      Notifications could not be loaded.
+    </div>
+*/
+.pl-inline-error,
+.pl-inline-warning {
+  position: relative;
+
+  min-height: 42px;
+
+  padding: 10px 12px 10px 48px;
+
+  border: 0;
+  border-left: 3px solid var(--pl-alert-red-rule);
+  border-radius: 0;
+
+  background: transparent;
+  box-shadow: none;
+
+  color: var(--pl-alert-text);
+
+  font-size: 0.875rem;
+  line-height: 1.5rem;
+}
+
+.pl-inline-error::before,
+.pl-inline-warning::before {
+  content: "!";
+
+  position: absolute;
+  left: 15px;
+  top: 50%;
+
+  width: 22px;
+  height: 22px;
+
+  transform: translateY(-50%);
+
+  display: grid;
+  place-items: center;
+
+  box-sizing: border-box;
+
+  border: 1.8px solid var(--pl-alert-red);
+  border-radius: 9999px;
+
+  background: transparent;
+  color: var(--pl-alert-red);
+
+  font-size: 12px;
+  font-weight: 750;
+  line-height: 1;
+}
+
+/* Keep the same minimal alert language on small screens. */
+@media (max-width: 640px) {
+  :where(div, section, article, aside)[class*="bg-red-50"],
+  :where(div, section, article, aside)[class*="bg-red-100"],
+  :where(div, section, article, aside)[class*="bg-rose-50"],
+  :where(div, section, article, aside)[class*="bg-rose-100"],
+  .pl-inline-error,
+  .pl-inline-warning {
+    padding-right: 6px !important;
+  }
+}
+
 /* =========================================================
    PSYLATTICE AI ORBIT BUTTON
    ========================================================= */

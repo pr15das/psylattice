@@ -5,6 +5,7 @@ import { useEffect, useState, type ReactNode } from "react";
 import { useParams } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import PsyLatticeLogo from "@/components/PsyLatticeLogo";
+import { InlineFeedback } from "@/components/PsyLatticeUI";
 import CognitiveStudyRunner, { type StudyCognitiveDefinition } from "@/components/CognitiveStudyRunner";
 import {
   ambulatoryVisibleItems,
@@ -287,17 +288,18 @@ type AnswerValue =
 
 function Shell({ children }: { children: ReactNode }) {
   return (
-    <main className="min-h-screen bg-slate-50 text-slate-950">
-      <header className="border-b border-slate-200 bg-white">
-        <div className="mx-auto flex max-w-5xl items-center justify-between px-5 py-4 sm:px-8">
+    <main className="min-h-screen bg-[#f6fbfc] text-slate-950">
+      <header className="px-4 pt-4 sm:px-6 sm:pt-5">
+        <div className="mx-auto flex max-w-5xl items-center justify-between rounded-full border border-slate-300/75 bg-white/95 px-4 py-3 shadow-[0_2px_5px_rgba(15,23,42,0.05),0_10px_28px_rgba(15,23,42,0.08),0_24px_58px_rgba(8,145,178,0.07)] backdrop-blur sm:px-5">
           <PsyLatticeLogo />
-          <span className="rounded-full bg-cyan-50 px-3 py-1.5 text-xs font-medium text-cyan-900">
+          <span className="inline-flex items-center gap-2 rounded-full border border-cyan-300/80 bg-[#ecfbff] px-3.5 py-1.5 text-[11px] font-semibold text-cyan-950 shadow-[0_2px_4px_rgba(15,23,42,0.04),0_7px_18px_rgba(8,145,178,0.12)]">
+            <span className="h-1.5 w-1.5 rounded-full bg-cyan-500" />
             Research participant
           </span>
         </div>
       </header>
 
-      <div className="mx-auto max-w-5xl px-5 py-8 sm:px-8 sm:py-10">
+      <div className="mx-auto max-w-5xl px-4 py-6 sm:px-6 sm:py-8 lg:py-10">
         {children}
       </div>
     </main>
@@ -314,11 +316,11 @@ function Card({
   children: ReactNode;
 }) {
   return (
-    <section className="overflow-hidden rounded-3xl border border-slate-200 bg-white">
-      <div className="border-b border-slate-100 px-5 py-5 sm:px-7">
-        <h1 className="text-xl font-semibold tracking-tight">{title}</h1>
+    <section className="overflow-hidden rounded-[28px] border border-slate-300/75 bg-white shadow-[0_2px_5px_rgba(15,23,42,0.04),0_14px_34px_rgba(15,23,42,0.08),0_34px_76px_rgba(8,145,178,0.055)]">
+      <div className="border-b border-slate-100/90 px-5 py-5 sm:px-7 sm:py-6">
+        <h1 className="text-xl font-semibold tracking-[-0.025em] text-slate-950 sm:text-[22px]">{title}</h1>
         {description && (
-          <p className="mt-2 text-sm leading-6 text-slate-500">{description}</p>
+          <p className="mt-2 max-w-3xl text-sm leading-6 text-slate-500">{description}</p>
         )}
       </div>
       <div className="p-5 sm:p-7">{children}</div>
@@ -327,11 +329,7 @@ function Card({
 }
 
 function ErrorBox({ text }: { text: string }) {
-  return (
-    <div className="rounded-2xl border border-red-200 bg-red-50 px-5 py-4 text-sm leading-6 text-red-700">
-      {text}
-    </div>
-  );
+  return <InlineFeedback tone="error">{text}</InlineFeedback>;
 }
 
 function optionValue(option: ResponseOption) {
@@ -1466,7 +1464,7 @@ function StimulusMedia({
 
   if (mediaError || !resolvedUrl) {
     return (
-      <div className={`rounded-xl border border-amber-200 bg-amber-50 text-xs text-amber-800 ${compact ? "p-3" : "p-4"}`}>
+      <div className={`rounded-xl border border-violet-200 bg-violet-50 text-xs text-violet-800 ${compact ? "p-3" : "p-4"}`}>
         {mediaError || "Media is unavailable."}
       </div>
     );
@@ -1757,7 +1755,7 @@ function QuestionInputBody({
           );
           onChange(option ? option.value : event.target.value);
         }}
-        className="w-full rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm"
+        className="w-full rounded-full border border-slate-300/80 bg-white shadow-[0_2px_4px_rgba(15,23,42,0.04),0_6px_15px_rgba(15,23,42,0.065)] px-4 py-3 text-sm"
       >
         <option value="">Choose an option...</option>
         {options.map((option, index) => (
@@ -1781,7 +1779,7 @@ function QuestionInputBody({
           return (
             <label
               key={`${item.id}-${index}`}
-              className="flex cursor-pointer items-start gap-3 rounded-xl border border-slate-200 px-4 py-3"
+              className="flex cursor-pointer items-start gap-3 rounded-full border border-slate-300/80 bg-white px-4 py-3"
             >
               <input
                 type="checkbox"
@@ -1872,7 +1870,7 @@ function QuestionInputBody({
               : Number(event.target.value)
           )
         }
-        className="w-full rounded-xl border border-slate-200 px-4 py-3 text-sm"
+        className="w-full rounded-full border border-slate-300/80 bg-white px-4 py-3 text-sm"
       />
     );
   }
@@ -1888,7 +1886,7 @@ function QuestionInputBody({
             ? config.max_characters
             : undefined
         }
-        className="w-full rounded-xl border border-slate-200 px-4 py-3 text-sm"
+        className="w-full rounded-full border border-slate-300/80 bg-white px-4 py-3 text-sm"
       />
     );
   }
@@ -1904,7 +1902,7 @@ function QuestionInputBody({
             ? config.max_characters
             : undefined
         }
-        className="w-full resize-y rounded-xl border border-slate-200 px-4 py-3 text-sm"
+        className="w-full resize-y rounded-full border border-slate-300/80 bg-white px-4 py-3 text-sm"
       />
     );
   }
@@ -1915,7 +1913,7 @@ function QuestionInputBody({
         type={type === "email" ? "email" : "text"}
         value={typeof answer === "string" ? answer : ""}
         onChange={(event) => onChange(event.target.value)}
-        className="w-full rounded-xl border border-slate-200 px-4 py-3 text-sm"
+        className="w-full rounded-full border border-slate-300/80 bg-white px-4 py-3 text-sm"
       />
     );
   }
@@ -1926,7 +1924,7 @@ function QuestionInputBody({
         type={type === "datetime" ? "datetime-local" : type}
         value={typeof answer === "string" ? answer : ""}
         onChange={(event) => onChange(event.target.value)}
-        className="rounded-xl border border-slate-200 px-4 py-3 text-sm"
+        className="rounded-full border border-slate-300/80 bg-white px-4 py-3 text-sm"
       />
     );
   }
@@ -2041,7 +2039,7 @@ function QuestionInputBody({
                   [field]: event.target.value,
                 })
               }
-              className="mt-2 w-full rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm"
+              className="mt-2 w-full rounded-full border border-slate-300/80 bg-white shadow-[0_2px_4px_rgba(15,23,42,0.04),0_6px_15px_rgba(15,23,42,0.065)] px-4 py-3 text-sm"
             >
               <option value="">Choose...</option>
               {options.map((option, index) => (
@@ -2099,7 +2097,7 @@ function QuestionInputBody({
 
         <p
           className={`mt-3 text-xs ${
-            total === target ? "text-emerald-700" : "text-slate-500"
+            total === target ? "text-cyan-700" : "text-slate-500"
           }`}
         >
           Total: {total} / {target}
@@ -2243,7 +2241,7 @@ function QuestionInputBody({
 
           {fileName && (
             <>
-              <span className="max-w-full truncate text-xs text-emerald-700">✓ {fileName}</span>
+              <span className="max-w-full truncate text-xs text-cyan-700">✓ {fileName}</span>
               <button
                 type="button"
                 onClick={() => {
@@ -2287,7 +2285,7 @@ function QuestionInputBody({
       onChange={(event) => onChange(event.target.value)}
       rows={4}
       placeholder="Enter your response..."
-      className="w-full rounded-xl border border-slate-200 px-4 py-3 text-sm"
+      className="w-full rounded-full border border-slate-300/80 bg-white px-4 py-3 text-sm"
     />
   );
 }
@@ -2313,7 +2311,7 @@ function DemographicInput({
         value={typeof answer === "string" ? answer : ""}
         onChange={(event) => onChange(event.target.value)}
         placeholder={placeholder}
-        className="w-full rounded-xl border border-slate-200 px-4 py-3 text-sm outline-none focus:border-cyan-700"
+        className="w-full rounded-full border border-slate-300/80 bg-white px-4 py-3 text-sm outline-none focus:border-cyan-700"
       />
     );
   }
@@ -2325,7 +2323,7 @@ function DemographicInput({
         value={typeof answer === "string" ? answer : ""}
         onChange={(event) => onChange(event.target.value)}
         placeholder={placeholder || "name@example.com"}
-        className="w-full rounded-xl border border-slate-200 px-4 py-3 text-sm outline-none focus:border-cyan-700"
+        className="w-full rounded-full border border-slate-300/80 bg-white px-4 py-3 text-sm outline-none focus:border-cyan-700"
       />
     );
   }
@@ -2337,7 +2335,7 @@ function DemographicInput({
         onChange={(event) => onChange(event.target.value)}
         placeholder={placeholder}
         rows={4}
-        className="w-full resize-y rounded-xl border border-slate-200 px-4 py-3 text-sm outline-none focus:border-cyan-700"
+        className="w-full resize-y rounded-full border border-slate-300/80 bg-white px-4 py-3 text-sm outline-none focus:border-cyan-700"
       />
     );
   }
@@ -2365,7 +2363,7 @@ function DemographicInput({
           )
         }
         placeholder={placeholder}
-        className="w-full rounded-xl border border-slate-200 px-4 py-3 text-sm outline-none focus:border-cyan-700"
+        className="w-full rounded-full border border-slate-300/80 bg-white px-4 py-3 text-sm outline-none focus:border-cyan-700"
       />
     );
   }
@@ -2376,7 +2374,7 @@ function DemographicInput({
         type="date"
         value={typeof answer === "string" ? answer : ""}
         onChange={(event) => onChange(event.target.value)}
-        className="rounded-xl border border-slate-200 px-4 py-3 text-sm outline-none focus:border-cyan-700"
+        className="rounded-full border border-slate-300/80 bg-white px-4 py-3 text-sm outline-none focus:border-cyan-700"
       />
     );
   }
@@ -2407,7 +2405,7 @@ function DemographicInput({
       <select
         value={typeof answer === "string" ? answer : ""}
         onChange={(event) => onChange(event.target.value)}
-        className="w-full rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm outline-none focus:border-cyan-700"
+        className="w-full rounded-full border border-slate-300/80 bg-white shadow-[0_2px_4px_rgba(15,23,42,0.04),0_6px_15px_rgba(15,23,42,0.065)] px-4 py-3 text-sm outline-none focus:border-cyan-700"
       >
         <option value="">Choose an option...</option>
         {options.map((option) => (
@@ -2430,7 +2428,7 @@ function DemographicInput({
           return (
             <label
               key={option}
-              className="flex cursor-pointer items-start gap-3 rounded-xl border border-slate-200 px-4 py-3"
+              className="flex cursor-pointer items-start gap-3 rounded-full border border-slate-300/80 bg-white px-4 py-3"
             >
               <input
                 type="checkbox"
@@ -4288,9 +4286,9 @@ export default function ParticipantStudyPage() {
       <Shell>
         <div className="space-y-5">
           {payload.link.is_test_link && (
-            <div className="rounded-2xl border border-amber-200 bg-amber-50 px-5 py-4">
-              <p className="font-medium text-amber-950">Test participation</p>
-              <p className="mt-1 text-sm leading-6 text-amber-800">
+            <div className="rounded-[22px] border border-violet-300/75 bg-[#f7f4ff] px-5 py-4 shadow-[0_2px_4px_rgba(15,23,42,0.035),0_9px_24px_rgba(109,40,217,0.09)]">
+              <p className="font-medium text-violet-950">Test participation</p>
+              <p className="mt-1 text-sm leading-6 text-violet-800">
                 Responses submitted through this link are marked as TEST data
                 and should not be treated as study observations. After a TEST
                 baseline is completed, reopening this link starts a fresh test
@@ -4300,7 +4298,7 @@ export default function ParticipantStudyPage() {
           )}
 
           {testProtocolResetNotice && (
-            <div className="rounded-2xl border border-cyan-200 bg-cyan-50 px-5 py-4">
+            <div className="rounded-[22px] border border-cyan-300/75 bg-[#ecfbff] px-5 py-4 shadow-[0_2px_4px_rgba(15,23,42,0.035),0_9px_24px_rgba(8,145,178,0.10)]">
               <p className="font-medium text-cyan-950">Current protocol loaded</p>
               <p className="mt-1 text-sm leading-6 text-cyan-900/80">
                 {testProtocolResetNotice}
@@ -4321,14 +4319,14 @@ export default function ParticipantStudyPage() {
               </p>
 
               <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-                <div className="rounded-2xl bg-slate-50 p-4">
+                <div className="rounded-[22px] border border-slate-200/80 bg-[#f8fbfc] p-4 shadow-[0_2px_4px_rgba(15,23,42,0.03),0_7px_18px_rgba(15,23,42,0.055)]">
                   <p className="text-xs text-slate-400">Questionnaires</p>
                   <p className="mt-1 font-semibold">
                     {baselineMeasures.length}
                   </p>
                 </div>
 
-                <div className="rounded-2xl bg-slate-50 p-4">
+                <div className="rounded-[22px] border border-slate-200/80 bg-[#f8fbfc] p-4 shadow-[0_2px_4px_rgba(15,23,42,0.03),0_7px_18px_rgba(15,23,42,0.055)]">
                   <p className="text-xs text-slate-400">Consent</p>
                   <p className="mt-1 font-semibold">
                     {payload.consent?.consent_method === "psylattice"
@@ -4339,7 +4337,7 @@ export default function ParticipantStudyPage() {
                   </p>
                 </div>
 
-                <div className="rounded-2xl bg-slate-50 p-4">
+                <div className="rounded-[22px] border border-slate-200/80 bg-[#f8fbfc] p-4 shadow-[0_2px_4px_rgba(15,23,42,0.03),0_7px_18px_rgba(15,23,42,0.055)]">
                   <p className="text-xs text-slate-400">Demographics</p>
                   <p className="mt-1 font-semibold">
                     {demographicQuestions.length > 0
@@ -4350,7 +4348,7 @@ export default function ParticipantStudyPage() {
                   </p>
                 </div>
 
-                <div className="rounded-2xl bg-slate-50 p-4">
+                <div className="rounded-[22px] border border-slate-200/80 bg-[#f8fbfc] p-4 shadow-[0_2px_4px_rgba(15,23,42,0.03),0_7px_18px_rgba(15,23,42,0.055)]">
                   <p className="text-xs text-slate-400">Data identity</p>
                   <p className="mt-1 font-semibold">Pseudonymous ID</p>
                 </div>
@@ -4366,7 +4364,7 @@ export default function ParticipantStudyPage() {
                     value={participantCode}
                     onChange={(event) => setParticipantCode(event.target.value)}
                     placeholder="e.g. P043"
-                    className="mt-2 w-full rounded-xl border border-slate-200 px-4 py-3 text-sm outline-none focus:border-cyan-700"
+                    className="mt-2 w-full rounded-full border border-slate-300/80 bg-white px-4 py-3 text-sm outline-none focus:border-cyan-700"
                   />
                 </label>
               )}
@@ -4375,7 +4373,7 @@ export default function ParticipantStudyPage() {
                 type="button"
                 onClick={() => void startParticipation()}
                 disabled={starting}
-                className="w-full rounded-xl bg-slate-950 px-5 py-3 text-sm font-semibold text-white disabled:opacity-50 sm:w-auto"
+                className="w-full rounded-full bg-slate-950 px-5 py-3 text-sm font-semibold text-white shadow-[0_4px_10px_rgba(15,23,42,0.18),0_12px_26px_rgba(15,23,42,0.15)] transition hover:-translate-y-px disabled:opacity-50 sm:w-auto"
               >
                 {starting ? "Starting..." : "Begin study"}
               </button>
@@ -4406,7 +4404,7 @@ export default function ParticipantStudyPage() {
             description={consent.version_label}
           >
             {consent.participant_information && (
-              <div className="mb-7 rounded-2xl bg-slate-50 p-5">
+              <div className="mb-7 rounded-[22px] border border-slate-200/80 bg-[#f8fbfc] p-5 shadow-[0_2px_4px_rgba(15,23,42,0.03),0_7px_18px_rgba(15,23,42,0.055)]">
                 <p className="whitespace-pre-wrap text-sm leading-7 text-slate-600">
                   {consent.participant_information}
                 </p>
@@ -4428,7 +4426,7 @@ export default function ParticipantStudyPage() {
                 return (
                   <div
                     key={item.id}
-                    className="rounded-2xl border border-slate-200 p-5"
+                    className="rounded-[24px] border border-slate-300/75 bg-white p-5 shadow-[0_2px_4px_rgba(15,23,42,0.04),0_9px_22px_rgba(15,23,42,0.07)]"
                   >
                     <div className="flex items-start justify-between gap-4">
                       <p className="text-sm font-medium leading-6">
@@ -4507,7 +4505,7 @@ export default function ParticipantStudyPage() {
                               ? "Your initials"
                               : "Type your name"
                           }
-                          className="w-full rounded-xl border border-slate-200 px-4 py-3 text-sm"
+                          className="w-full rounded-full border border-slate-300/80 bg-white px-4 py-3 text-sm"
                         />
                       )}
 
@@ -4525,7 +4523,7 @@ export default function ParticipantStudyPage() {
                               [item.id]: event.target.value,
                             }))
                           }
-                          className="rounded-xl border border-slate-200 px-4 py-3 text-sm"
+                          className="rounded-full border border-slate-300/80 bg-white px-4 py-3 text-sm"
                         />
                       )}
 
@@ -4565,7 +4563,7 @@ export default function ParticipantStudyPage() {
                 type="button"
                 onClick={() => void saveConsent()}
                 disabled={savingConsent}
-                className="rounded-xl bg-slate-950 px-5 py-3 text-sm font-semibold text-white disabled:opacity-50"
+                className="rounded-full bg-slate-950 px-5 py-3 text-sm font-semibold text-white shadow-[0_4px_10px_rgba(15,23,42,0.18),0_12px_26px_rgba(15,23,42,0.15)] transition hover:-translate-y-px disabled:opacity-50"
               >
                 {savingConsent ? "Saving consent..." : "Agree and continue"}
               </button>
@@ -4581,7 +4579,7 @@ export default function ParticipantStudyPage() {
       <Shell>
         <div className="space-y-5">
           {payload.link.is_test_link && (
-            <div className="rounded-2xl border border-amber-200 bg-amber-50 px-5 py-3 text-xs text-amber-800">
+            <div className="rounded-full border border-violet-300/75 bg-[#f7f4ff] px-5 py-3 shadow-[0_2px_4px_rgba(15,23,42,0.035),0_8px_20px_rgba(109,40,217,0.08)] text-xs text-violet-800">
               TEST participation · Participant ID {publicId}
             </div>
           )}
@@ -4596,7 +4594,7 @@ export default function ParticipantStudyPage() {
               {demographicQuestions.map((question) => (
                 <div
                   key={question.id}
-                  className="rounded-2xl border border-slate-200 p-5"
+                  className="rounded-[24px] border border-slate-300/75 bg-white p-5 shadow-[0_2px_4px_rgba(15,23,42,0.04),0_9px_22px_rgba(15,23,42,0.07)]"
                 >
                   <div className="flex items-start justify-between gap-4">
                     <div>
@@ -4618,7 +4616,7 @@ export default function ParticipantStudyPage() {
                         </span>
                       )}
                       {question.direct_identifier && (
-                        <span className="rounded-full bg-amber-50 px-2 py-1 text-[10px] font-medium text-amber-800">
+                        <span className="rounded-full border border-violet-300/70 bg-[#f7f4ff] px-2.5 py-1 text-[10px] font-semibold text-violet-900 shadow-[0_2px_4px_rgba(109,40,217,0.08)]">
                           Identifying data
                         </span>
                       )}
@@ -4652,7 +4650,7 @@ export default function ParticipantStudyPage() {
                 type="button"
                 onClick={() => void saveDemographics()}
                 disabled={savingDemographics}
-                className="rounded-xl bg-slate-950 px-5 py-3 text-sm font-semibold text-white disabled:opacity-50"
+                className="rounded-full bg-slate-950 px-5 py-3 text-sm font-semibold text-white shadow-[0_4px_10px_rgba(15,23,42,0.18),0_12px_26px_rgba(15,23,42,0.15)] transition hover:-translate-y-px disabled:opacity-50"
               >
                 {savingDemographics ? "Saving..." : "Save & continue"}
               </button>
@@ -4739,7 +4737,7 @@ export default function ParticipantStudyPage() {
       <Shell>
         <div className="space-y-5">
           {payload.link.is_test_link && (
-            <div className="rounded-2xl border border-amber-200 bg-amber-50 px-5 py-3 text-xs text-amber-800">
+            <div className="rounded-full border border-violet-300/75 bg-[#f7f4ff] px-5 py-3 shadow-[0_2px_4px_rgba(15,23,42,0.035),0_8px_20px_rgba(109,40,217,0.08)] text-xs text-violet-800">
               TEST longitudinal study · Participant ID {publicId}
             </div>
           )}
@@ -4749,7 +4747,7 @@ export default function ParticipantStudyPage() {
           )}
 
           {ambulatoryMessage && (
-            <div className="rounded-2xl border border-emerald-200 bg-emerald-50 px-5 py-4 text-sm text-emerald-800">
+            <div className="rounded-[22px] border border-cyan-300/75 bg-[#ecfbff] px-5 py-4 shadow-[0_2px_4px_rgba(15,23,42,0.035),0_9px_24px_rgba(8,145,178,0.10)] text-sm text-cyan-800">
               {ambulatoryMessage}
             </div>
           )}
@@ -4768,7 +4766,7 @@ export default function ParticipantStudyPage() {
             ) : (
               <div className="space-y-6">
                 <div className="grid gap-4 sm:grid-cols-3">
-                  <div className="rounded-2xl bg-slate-50 p-4">
+                  <div className="rounded-[22px] border border-slate-200/80 bg-[#f8fbfc] p-4 shadow-[0_2px_4px_rgba(15,23,42,0.03),0_7px_18px_rgba(15,23,42,0.055)]">
                     <p className="text-xs text-slate-400">
                       Study day
                     </p>
@@ -4782,7 +4780,7 @@ export default function ParticipantStudyPage() {
                     </p>
                   </div>
 
-                  <div className="rounded-2xl bg-slate-50 p-4">
+                  <div className="rounded-[22px] border border-slate-200/80 bg-[#f8fbfc] p-4 shadow-[0_2px_4px_rgba(15,23,42,0.03),0_7px_18px_rgba(15,23,42,0.055)]">
                     <p className="text-xs text-slate-400">
                       Scheduled prompts completed
                     </p>
@@ -4791,7 +4789,7 @@ export default function ParticipantStudyPage() {
                     </p>
                   </div>
 
-                  <div className="rounded-2xl bg-slate-50 p-4">
+                  <div className="rounded-[22px] border border-slate-200/80 bg-[#f8fbfc] p-4 shadow-[0_2px_4px_rgba(15,23,42,0.03),0_7px_18px_rgba(15,23,42,0.055)]">
                     <p className="text-xs text-slate-400">
                       Event reports
                     </p>
@@ -4852,7 +4850,7 @@ export default function ParticipantStudyPage() {
                   </p>
 
                   {mobilePairingCode && (
-                    <div className="mt-4 inline-flex flex-col rounded-2xl border border-cyan-200 bg-cyan-50 px-5 py-4">
+                    <div className="mt-4 inline-flex flex-col rounded-[22px] border border-cyan-300/75 bg-[#ecfbff] px-5 py-4 shadow-[0_2px_4px_rgba(15,23,42,0.035),0_9px_24px_rgba(8,145,178,0.10)]">
                       <span className="text-[10px] font-semibold uppercase tracking-[0.16em] text-cyan-800">
                         One-time pairing code
                       </span>
@@ -4881,7 +4879,7 @@ export default function ParticipantStudyPage() {
                   type="button"
                   onClick={() => void createAndroidPairingCode()}
                   disabled={creatingMobilePairing}
-                  className="rounded-xl bg-slate-950 px-5 py-3 text-sm font-semibold text-white disabled:opacity-50"
+                  className="rounded-full bg-slate-950 px-5 py-3 text-sm font-semibold text-white shadow-[0_4px_10px_rgba(15,23,42,0.18),0_12px_26px_rgba(15,23,42,0.15)] transition hover:-translate-y-px disabled:opacity-50"
                 >
                   {creatingMobilePairing
                     ? "Creating..."
@@ -4950,14 +4948,14 @@ export default function ParticipantStudyPage() {
                           className={`rounded-full px-3 py-1 text-xs font-medium ${
                             state ===
                             "Completed"
-                              ? "bg-emerald-50 text-emerald-700"
+                              ? "bg-cyan-50 text-cyan-700"
                               : state ===
                                   "Due"
-                                ? "bg-cyan-50 text-cyan-800"
+                                ? "border border-cyan-300/75 bg-[#ecfbff] text-cyan-900 shadow-[0_2px_4px_rgba(8,145,178,0.08)]"
                                 : state ===
                                     "Missed"
                                   ? "bg-slate-100 text-slate-500"
-                                  : "bg-amber-50 text-amber-700"
+                                  : "bg-violet-50 text-violet-700"
                           }`}
                         >
                           {state}
@@ -4972,7 +4970,7 @@ export default function ParticipantStudyPage() {
                                 prompt.prompt_id
                               )
                             }
-                            className="rounded-xl bg-slate-950 px-4 py-2.5 text-xs font-semibold text-white"
+                            className="rounded-full bg-slate-950 px-4 py-2.5 text-xs font-semibold text-white"
                           >
                             Start
                           </button>
@@ -5058,7 +5056,7 @@ export default function ParticipantStudyPage() {
                       )
                     }
                     placeholder="you@example.com"
-                    className="mt-2 w-full rounded-xl border border-slate-200 px-4 py-3 text-sm"
+                    className="mt-2 w-full rounded-full border border-slate-300/80 bg-white px-4 py-3 text-sm"
                   />
                 </label>
 
@@ -5124,7 +5122,7 @@ export default function ParticipantStudyPage() {
                 onClick={() =>
                   void completeAmbulatoryStudy()
                 }
-                className="mt-4 rounded-xl bg-slate-950 px-5 py-3 text-sm font-semibold text-white"
+                className="mt-4 rounded-full bg-slate-950 px-5 py-3 text-sm font-semibold text-white shadow-[0_4px_10px_rgba(15,23,42,0.18),0_12px_26px_rgba(15,23,42,0.15)] transition hover:-translate-y-px"
               >
                 Complete study
               </button>
@@ -5180,7 +5178,7 @@ export default function ParticipantStudyPage() {
                   return (
                     <div
                       key={item.key}
-                      className="rounded-2xl border border-slate-200 p-5"
+                      className="rounded-[24px] border border-slate-300/75 bg-white p-5 shadow-[0_2px_4px_rgba(15,23,42,0.04),0_9px_22px_rgba(15,23,42,0.07)]"
                     >
                       <div className="flex items-start justify-between gap-4">
                         <div>
@@ -5422,7 +5420,7 @@ export default function ParticipantStudyPage() {
                                     )
                               )
                             }
-                            className="w-48 rounded-xl border border-slate-200 px-4 py-3 text-sm"
+                            className="w-48 rounded-full border border-slate-300/80 bg-white px-4 py-3 text-sm"
                           />
 
                           {item.type ===
@@ -5449,7 +5447,7 @@ export default function ParticipantStudyPage() {
                                 .value
                             )
                           }
-                          className="mt-4 w-full rounded-xl border border-slate-200 px-4 py-3 text-sm"
+                          className="mt-4 w-full rounded-full border border-slate-300/80 bg-white px-4 py-3 text-sm"
                         />
                       )}
 
@@ -5466,7 +5464,7 @@ export default function ParticipantStudyPage() {
                                 .value
                             )
                           }
-                          className="mt-4 min-h-28 w-full rounded-xl border border-slate-200 p-4 text-sm"
+                          className="mt-4 min-h-28 w-full rounded-[20px] border border-slate-300/80 bg-white p-4 text-sm shadow-[0_2px_4px_rgba(15,23,42,0.04),0_7px_18px_rgba(15,23,42,0.065)] outline-none transition focus:border-cyan-400 focus:ring-4 focus:ring-cyan-100/70"
                         />
                       )}
 
@@ -5496,7 +5494,7 @@ export default function ParticipantStudyPage() {
                             }
                             className={`mt-4 rounded-xl px-4 py-2.5 text-sm font-semibold ${
                               value
-                                ? "bg-emerald-100 text-emerald-800"
+                                ? "bg-cyan-100 text-cyan-800"
                                 : "bg-slate-950 text-white"
                             }`}
                           >
@@ -5554,7 +5552,7 @@ export default function ParticipantStudyPage() {
                                     qid
                                   )
                                 }
-                                className="mt-4 rounded-xl bg-slate-950 px-4 py-2.5 text-sm font-semibold text-white"
+                                className="mt-4 rounded-full bg-slate-950 px-4 py-2.5 text-sm font-semibold text-white"
                               >
                                 Open questionnaire
                               </button>
@@ -5566,7 +5564,7 @@ export default function ParticipantStudyPage() {
                             [];
 
                           return (
-                            <div className="mt-4 rounded-2xl border border-cyan-100 bg-cyan-50/40 p-4">
+                            <div className="mt-4 rounded-[22px] border border-cyan-200/85 bg-[#f2fcff] p-4 shadow-[0_2px_4px_rgba(15,23,42,0.035),0_8px_20px_rgba(8,145,178,0.07)]">
                               <p className="font-semibold text-cyan-950">
                                 {detail
                                   .questionnaire
@@ -5733,7 +5731,7 @@ export default function ParticipantStudyPage() {
                               </div>
 
                               {stored.completed && (
-                                <p className="mt-4 text-sm font-semibold text-emerald-700">
+                                <p className="mt-4 text-sm font-semibold text-cyan-700">
                                   ✓ Questionnaire complete
                                 </p>
                               )}
@@ -5762,7 +5760,7 @@ export default function ParticipantStudyPage() {
                     "study_dashboard"
                   );
                 }}
-                className="rounded-xl border border-slate-200 bg-white px-5 py-3 text-sm font-semibold text-slate-600"
+                className="rounded-full border border-slate-300/80 bg-white shadow-[0_2px_4px_rgba(15,23,42,0.04),0_6px_15px_rgba(15,23,42,0.065)] px-5 py-3 text-sm font-semibold text-slate-600"
               >
                 Back to dashboard
               </button>
@@ -5773,7 +5771,7 @@ export default function ParticipantStudyPage() {
                 onClick={() =>
                   void submitAmbulatoryCheckin()
                 }
-                className="rounded-xl bg-slate-950 px-5 py-3 text-sm font-semibold text-white disabled:opacity-50"
+                className="rounded-full bg-slate-950 px-5 py-3 text-sm font-semibold text-white shadow-[0_4px_10px_rgba(15,23,42,0.18),0_12px_26px_rgba(15,23,42,0.15)] transition hover:-translate-y-px disabled:opacity-50"
               >
                 {savingAmbulatory
                   ? "Saving..."
@@ -5818,7 +5816,7 @@ export default function ParticipantStudyPage() {
             <button
               type="button"
               onClick={() => void continueAfterQuestionnaires()}
-              className="rounded-xl bg-slate-950 px-5 py-3 text-sm font-semibold text-white"
+              className="rounded-full bg-slate-950 px-5 py-3 text-sm font-semibold text-white shadow-[0_4px_10px_rgba(15,23,42,0.18),0_12px_26px_rgba(15,23,42,0.15)] transition hover:-translate-y-px"
             >
               Continue study
             </button>
@@ -5835,12 +5833,12 @@ export default function ParticipantStudyPage() {
       <Shell>
         <div className="space-y-5">
           {payload.link.is_test_link && (
-            <div className="rounded-2xl border border-amber-200 bg-amber-50 px-5 py-3 text-xs text-amber-800">
+            <div className="rounded-full border border-violet-300/75 bg-[#f7f4ff] px-5 py-3 shadow-[0_2px_4px_rgba(15,23,42,0.035),0_8px_20px_rgba(109,40,217,0.08)] text-xs text-violet-800">
               TEST participation · Participant ID {publicId}
             </div>
           )}
           {pageError && <ErrorBox text={pageError} />}
-          <div className="rounded-2xl border border-slate-200 bg-white p-4">
+          <div className="rounded-[24px] border border-slate-300/75 bg-white p-4 shadow-[0_2px_4px_rgba(15,23,42,0.04),0_9px_22px_rgba(15,23,42,0.07)]">
             <div className="flex items-center justify-between gap-4 text-xs text-slate-500">
               <span>Cognitive task {currentCognitiveIndex + 1} of {studyCognitiveTasks.length}</span>
               <span>{completedCount} completed</span>
@@ -5860,12 +5858,12 @@ export default function ParticipantStudyPage() {
                 "This study includes a browser-based cognitive task."}
             </p>
             <div className="mt-4 flex flex-wrap gap-2 text-xs">
-              <span className="rounded-full bg-slate-100 px-3 py-1.5 font-semibold text-slate-600">
+              <span className="rounded-full border border-slate-300/70 bg-white px-3 py-1.5 font-semibold text-slate-600 shadow-[0_2px_4px_rgba(15,23,42,0.04),0_5px_12px_rgba(15,23,42,0.05)]">
                 {currentCognitiveTask.definition.version.version_label}
               </span>
               <span className={`rounded-full px-3 py-1.5 font-semibold ${
                 currentCognitiveTask.required
-                  ? "bg-cyan-50 text-cyan-800"
+                  ? "border border-cyan-300/75 bg-[#ecfbff] text-cyan-900 shadow-[0_2px_4px_rgba(8,145,178,0.08)]"
                   : "bg-slate-100 text-slate-600"
               }`}>
                 {currentCognitiveTask.required ? "Required" : "Optional"}
@@ -5877,7 +5875,7 @@ export default function ParticipantStudyPage() {
             <button
               type="button"
               onClick={() => { setPageError(""); setCognitiveRunnerOpen(true); }}
-              className="mt-5 rounded-xl bg-slate-950 px-5 py-3 text-sm font-semibold text-white"
+              className="mt-5 rounded-full bg-slate-950 px-5 py-3 text-sm font-semibold text-white shadow-[0_4px_10px_rgba(15,23,42,0.18),0_12px_26px_rgba(15,23,42,0.15)] transition hover:-translate-y-px"
             >
               Start cognitive task
             </button>
@@ -5900,7 +5898,7 @@ export default function ParticipantStudyPage() {
             description="This study includes one or more later follow-up phases."
           >
             <div className="space-y-5">
-              <div className="rounded-2xl border border-cyan-100 bg-cyan-50/60 p-5">
+              <div className="rounded-[22px] border border-cyan-200/85 bg-[#ecfbff] p-5 shadow-[0_2px_4px_rgba(15,23,42,0.035),0_9px_24px_rgba(8,145,178,0.09)]">
                 <p className="font-medium text-cyan-950">
                   Your current study responses are already saved.
                 </p>
@@ -5928,11 +5926,11 @@ export default function ParticipantStudyPage() {
                     )
                   }
                   placeholder="you@example.com"
-                  className="mt-2 w-full rounded-xl border border-slate-200 px-4 py-3 text-sm outline-none focus:border-cyan-700"
+                  className="mt-2 w-full rounded-full border border-slate-300/80 bg-white px-4 py-3 text-sm outline-none focus:border-cyan-700"
                 />
               </label>
 
-              <label className="flex items-start gap-3 rounded-2xl border border-slate-200 p-4">
+              <label className="flex items-start gap-3 rounded-[24px] border border-slate-300/75 bg-white p-4 shadow-[0_2px_4px_rgba(15,23,42,0.04),0_9px_22px_rgba(15,23,42,0.07)]">
                 <input
                   type="checkbox"
                   checked={
@@ -5980,7 +5978,7 @@ export default function ParticipantStudyPage() {
                     !followupContactConsent ||
                     !followupContactEmail.trim()
                   }
-                  className="rounded-xl bg-slate-950 px-5 py-2.5 text-sm font-semibold text-white disabled:opacity-50"
+                  className="rounded-full bg-slate-950 px-5 py-2.5 text-sm font-semibold text-white shadow-[0_4px_10px_rgba(15,23,42,0.18),0_12px_26px_rgba(15,23,42,0.15)] transition hover:-translate-y-px disabled:opacity-50"
                 >
                   {savingFollowupContact
                     ? "Saving..."
@@ -6008,7 +6006,7 @@ export default function ParticipantStudyPage() {
             <button
               type="button"
               onClick={() => void continueAfterQuestionnaires()}
-              className="rounded-xl bg-slate-950 px-5 py-3 text-sm font-semibold text-white"
+              className="rounded-full bg-slate-950 px-5 py-3 text-sm font-semibold text-white shadow-[0_4px_10px_rgba(15,23,42,0.18),0_12px_26px_rgba(15,23,42,0.15)] transition hover:-translate-y-px"
             >
               {studyCognitiveTasks.some((task) => !task.completed && !task.skipped)
                 ? "Continue to cognitive task"
@@ -6060,14 +6058,14 @@ export default function ParticipantStudyPage() {
       <Shell>
         <div className="space-y-5">
           {payload.link.is_test_link && (
-            <div className="rounded-2xl border border-amber-200 bg-amber-50 px-5 py-3 text-xs text-amber-800">
+            <div className="rounded-full border border-violet-300/75 bg-[#f7f4ff] px-5 py-3 shadow-[0_2px_4px_rgba(15,23,42,0.035),0_8px_20px_rgba(109,40,217,0.08)] text-xs text-violet-800">
               TEST participation · Participant ID {publicId}
             </div>
           )}
 
           {pageError && <ErrorBox text={pageError} />}
 
-          <div className="rounded-2xl border border-slate-200 bg-white p-4">
+          <div className="rounded-[24px] border border-slate-300/75 bg-white p-4 shadow-[0_2px_4px_rgba(15,23,42,0.04),0_9px_22px_rgba(15,23,42,0.07)]">
             <div className="flex items-center justify-between gap-4 text-xs text-slate-500">
               <span>
                 Questionnaire {currentMeasureIndex + 1} of{" "}
@@ -6110,7 +6108,7 @@ export default function ParticipantStudyPage() {
             }
           >
             {currentMeasure.version.response_scale_description && (
-              <div className="mb-6 rounded-2xl bg-slate-50 p-4">
+              <div className="mb-6 rounded-[22px] border border-slate-200/80 bg-[#f8fbfc] p-4 shadow-[0_2px_4px_rgba(15,23,42,0.03),0_7px_18px_rgba(15,23,42,0.055)]">
                 <p className="text-xs font-medium text-slate-500">
                   Response guidance
                 </p>
@@ -6121,7 +6119,7 @@ export default function ParticipantStudyPage() {
             )}
 
             {hasMultiplePages && (
-              <div className="mb-6 rounded-2xl border border-cyan-100 bg-cyan-50/50 p-4">
+              <div className="mb-6 rounded-[22px] border border-cyan-200/85 bg-[#ecfbff] p-4 shadow-[0_2px_4px_rgba(15,23,42,0.035),0_8px_20px_rgba(8,145,178,0.08)]">
                 <div className="flex items-center justify-between gap-4 text-xs font-medium text-cyan-900">
                   <span>Questionnaire page {activePageIndex + 1}</span>
                   <span>{renderedPages.length} pages</span>
@@ -6152,7 +6150,7 @@ export default function ParticipantStudyPage() {
                 return (
                   <div key={item.id}>
                     {showBlockHeader && (
-                      <div className="mb-5 rounded-2xl bg-slate-50 p-4">
+                      <div className="mb-5 rounded-[22px] border border-slate-200/80 bg-[#f8fbfc] p-4 shadow-[0_2px_4px_rgba(15,23,42,0.03),0_7px_18px_rgba(15,23,42,0.055)]">
                         {block.title && (
                           <h2 className="font-semibold">{block.title}</h2>
                         )}
@@ -6168,7 +6166,7 @@ export default function ParticipantStudyPage() {
                       className={
                         item.is_content_only
                           ? ""
-                          : "rounded-2xl border border-slate-200 p-5"
+                          : "rounded-[24px] border border-slate-300/75 bg-white p-5 shadow-[0_2px_4px_rgba(15,23,42,0.04),0_9px_22px_rgba(15,23,42,0.07)]"
                       }
                     >
                       {!item.is_content_only && (
@@ -6245,7 +6243,7 @@ export default function ParticipantStudyPage() {
                       returnToPreviousMeasurePage(activePageIndex)
                     }
                     disabled={savingMeasure}
-                    className="rounded-xl border border-slate-200 bg-white px-5 py-3 text-sm font-semibold text-slate-700 disabled:opacity-50"
+                    className="rounded-full border border-slate-300/80 bg-white shadow-[0_2px_4px_rgba(15,23,42,0.04),0_6px_15px_rgba(15,23,42,0.065)] px-5 py-3 text-sm font-semibold text-slate-700 disabled:opacity-50"
                   >
                     Previous page
                   </button>
@@ -6261,7 +6259,7 @@ export default function ParticipantStudyPage() {
                     )
                   }
                   disabled={savingMeasure}
-                  className="rounded-xl bg-slate-950 px-5 py-3 text-sm font-semibold text-white disabled:opacity-50"
+                  className="rounded-full bg-slate-950 px-5 py-3 text-sm font-semibold text-white shadow-[0_4px_10px_rgba(15,23,42,0.18),0_12px_26px_rgba(15,23,42,0.15)] transition hover:-translate-y-px disabled:opacity-50"
                 >
                   {savingMeasure
                     ? "Saving..."
@@ -6292,20 +6290,20 @@ export default function ParticipantStudyPage() {
         }
       >
         <div className="space-y-5">
-          <div className="rounded-2xl bg-emerald-50 p-5">
-            <p className="font-medium text-emerald-900">
+          <div className="rounded-2xl bg-cyan-50 p-5">
+            <p className="font-medium text-cyan-900">
               {ambulatoryConfig?.enabled
                 ? "Longitudinal study complete"
                 : "Baseline session complete"}
             </p>
-            <p className="mt-2 text-sm leading-6 text-emerald-800">
+            <p className="mt-2 text-sm leading-6 text-cyan-800">
               Your pseudonymous participant ID is{" "}
               <span className="font-semibold">{publicId}</span>.
             </p>
           </div>
 
           {followupConfigured && (
-            <div className="rounded-2xl border border-cyan-100 bg-cyan-50/60 p-5">
+            <div className="rounded-[22px] border border-cyan-200/85 bg-[#ecfbff] p-5 shadow-[0_2px_4px_rgba(15,23,42,0.035),0_9px_24px_rgba(8,145,178,0.09)]">
               <p className="font-medium text-cyan-950">
                 This study includes later follow-up phases
               </p>
@@ -6324,7 +6322,7 @@ export default function ParticipantStudyPage() {
             participation or withdrawal rights.
           </p>
 
-          <div className="rounded-2xl border border-cyan-100 bg-cyan-50/60 p-5">
+          <div className="rounded-[22px] border border-cyan-200/85 bg-[#ecfbff] p-5 shadow-[0_2px_4px_rgba(15,23,42,0.035),0_9px_24px_rgba(8,145,178,0.09)]">
             <p className="font-medium text-cyan-950">
               Interested in PsyLattice beyond this study?
             </p>
@@ -6336,7 +6334,7 @@ export default function ParticipantStudyPage() {
 
             <Link
               href="/"
-              className="mt-4 inline-flex rounded-xl bg-slate-950 px-5 py-3 text-sm font-semibold text-white"
+              className="mt-4 inline-flex rounded-full bg-slate-950 px-5 py-3 text-sm font-semibold text-white shadow-[0_4px_10px_rgba(15,23,42,0.18),0_12px_26px_rgba(15,23,42,0.15)] transition hover:-translate-y-px"
             >
               Explore PsyLattice
             </Link>

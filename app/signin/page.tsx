@@ -25,7 +25,7 @@ const workspaces = [
     title: "Professional",
     label: "Clinician",
     description:
-      "Clinical tools for professional use. Additional verification may be required for certain features.",
+      "Use PsyLattice's professional workspace. Professional credentials are not verified by PsyLattice.",
   },
 ];
 
@@ -40,13 +40,6 @@ export default function SignInPage() {
   const [submitting, setSubmitting] = useState(false);
   const [authError, setAuthError] = useState("");
   const [authMessage, setAuthMessage] = useState("");
-  const [verificationEmail, setVerificationEmail] = useState<string | null>(null);
-  const [resendingVerification, setResendingVerification] = useState(false);
-  const [resendCooldown, setResendCooldown] = useState(0);
-  const [resendMessage, setResendMessage] = useState("");
-  const [resendError, setResendError] = useState("");
-  const [forgotPasswordMode, setForgotPasswordMode] = useState(false);
-  const [resetEmailSent, setResetEmailSent] = useState(false);
 
   useEffect(() => {
     async function redirectExistingSession() {
@@ -56,47 +49,18 @@ export default function SignInPage() {
         data: { user },
       } = await supabase.auth.getUser();
 
-      if (user?.email_confirmed_at) {
+      if (user) {
         router.replace("/workspace");
-        return;
-      }
-
-      if (user && !user.email_confirmed_at) {
-        await supabase.auth.signOut();
       }
     }
 
     void redirectExistingSession();
   }, [router]);
 
-  useEffect(() => {
-    if (resendCooldown <= 0) return;
-
-    const timer = window.setInterval(() => {
-      setResendCooldown((current) => {
-        if (current <= 1) {
-          window.clearInterval(timer);
-          return 0;
-        }
-
-        return current - 1;
-      });
-    }, 1000);
-
-    return () => window.clearInterval(timer);
-  }, [resendCooldown]);
-
   function switchMode(nextMode: AuthMode) {
     setMode(nextMode);
-    setVerificationEmail(null);
     setAuthError("");
     setAuthMessage("");
-    setResendMessage("");
-    setResendError("");
-    setResendCooldown(0);
-    setResendingVerification(false);
-    setForgotPasswordMode(false);
-    setResetEmailSent(false);
   }
 
   async function ensureProfile(
@@ -176,20 +140,7 @@ export default function SignInPage() {
     });
 
     if (error || !data.user) {
-      const message = error?.message || "Sign in failed.";
-
-      setAuthError(
-        message.toLowerCase().includes("email not confirmed")
-          ? "Please confirm your email address before signing in."
-          : message
-      );
-      setSubmitting(false);
-      return;
-    }
-
-    if (!data.user.email_confirmed_at) {
-      await supabase.auth.signOut();
-      setAuthError("Please confirm your email address before signing in.");
+      setAuthError(error?.message || "Sign in failed.");
       setSubmitting(false);
       return;
     }
@@ -241,7 +192,6 @@ export default function SignInPage() {
       email: normalizedEmail,
       password,
       options: {
-        emailRedirectTo: `${window.location.origin}/auth/callback`,
         data: {
           full_name: normalizedName,
           workspace_access: ["self", "researcher", "clinician"],
@@ -255,126 +205,42 @@ export default function SignInPage() {
       return;
     }
 
-    // With Supabase "Confirm email" enabled, signUp must return a user
-    // but no session. If a session is returned, the project is allowing
-    // unverified accounts to sign in, so fail closed instead of navigating.
     if (data.session) {
-      await supabase.auth.signOut();
-      setAuthError(
-        "Account creation is temporarily unavailable because email verification is not being enforced. Please try again later."
-      );
-      setSubmitting(false);
+      await ensureProfile(data.user.id, normalizedName);
+
+      router.replace("/workspace");
+      router.refresh();
       return;
     }
 
-    setVerificationEmail(normalizedEmail);
-    setAuthMessage("");
-    setPassword("");
-    setResendMessage("");
-    setResendError("");
-    setResendCooldown(60);
-    setSubmitting(false);
-  }
-
-  async function handleResendVerification() {
-    if (
-      !verificationEmail ||
-      resendingVerification ||
-      resendCooldown > 0
-    ) {
-      return;
-    }
-
-    setResendingVerification(true);
-    setResendMessage("");
-    setResendError("");
-
-    const supabase = createClient();
-
-    const { error } = await supabase.auth.resend({
-      type: "signup",
-      email: verificationEmail,
-      options: {
-        emailRedirectTo: `${window.location.origin}/auth/callback`,
-      },
-    });
-
-    if (error) {
-      setResendError(
-        "We could not resend the verification email right now. Please wait a moment and try again."
-      );
-      setResendingVerification(false);
-      return;
-    }
-
-    setResendMessage("A new verification email has been sent.");
-    setResendCooldown(60);
-    setResendingVerification(false);
-  }
-
-  async function handleForgotPassword(
-    event: React.FormEvent<HTMLFormElement>
-  ) {
-    event.preventDefault();
-
-    if (submitting) return;
-
-    setAuthError("");
-    setAuthMessage("");
-    setResetEmailSent(false);
-
-    const normalizedEmail = email.trim().toLowerCase();
-
-    if (!normalizedEmail) {
-      setAuthError("Enter your email address.");
-      return;
-    }
-
-    setSubmitting(true);
-
-    const supabase = createClient();
-
-    const { error } = await supabase.auth.resetPasswordForEmail(
-      normalizedEmail,
-      {
-        redirectTo: `${window.location.origin}/auth/confirm?next=/reset-password`,
-      }
+    setAuthMessage(
+      "Your PsyLattice account was created with access to Self, Researcher and Clinician workspaces. Confirm your email address, then sign in."
     );
 
-    if (error) {
-      setAuthError(
-        "We could not send a password reset email right now. Please try again."
-      );
-      setSubmitting(false);
-      return;
-    }
-
-    // Keep this response intentionally generic so the UI does not reveal
-    // whether a particular email address is registered.
-    setResetEmailSent(true);
+    setMode("signin");
+    setPassword("");
     setSubmitting(false);
   }
 
-
   return (
-    <main className="min-h-screen bg-slate-50 text-slate-950">
-      <header className="border-b border-slate-200 bg-white">
-        <div className="mx-auto flex max-w-7xl items-center justify-between px-5 py-4 sm:px-8 lg:px-10">
+    <main className="min-h-screen bg-[#f6fafb] text-slate-950">
+      <header className="px-4 pt-4 sm:px-6 sm:pt-5">
+        <div className="mx-auto flex max-w-7xl items-center justify-between rounded-full border border-slate-200/90 bg-white/95 px-5 py-3 shadow-[0_10px_30px_rgba(15,23,42,0.08),0_2px_8px_rgba(15,23,42,0.05)] backdrop-blur sm:px-6">
           <PsyLatticeLogo />
 
           <Link
             href="/"
-            className="text-sm font-medium text-slate-500 transition hover:text-slate-950"
+            className="rounded-full border border-slate-200 bg-white px-4 py-2 text-sm font-semibold text-slate-600 shadow-[0_5px_16px_rgba(15,23,42,0.06)] transition hover:-translate-y-0.5 hover:border-cyan-200 hover:text-cyan-900"
           >
             Back to website
           </Link>
         </div>
       </header>
 
-      <div className="mx-auto grid min-h-[calc(100vh-73px)] max-w-7xl lg:h-[calc(100vh-73px)] lg:min-h-0 lg:grid-cols-[1fr_540px] lg:overflow-hidden">
-        <section className="flex items-center px-5 py-12 sm:px-8 lg:h-full lg:overflow-hidden lg:px-10 lg:py-16">
+      <div className="mx-auto grid min-h-[calc(100vh-92px)] max-w-7xl gap-6 px-4 py-6 sm:px-6 lg:grid-cols-[1fr_520px] lg:gap-8 lg:py-8">
+        <section className="flex items-center px-2 py-8 sm:px-4 lg:py-12">
           <div className="max-w-2xl">
-            <span className="inline-flex rounded-full border border-cyan-100 bg-cyan-50 px-3 py-1.5 text-xs font-semibold text-cyan-900">
+            <span className="inline-flex rounded-full border border-cyan-200 bg-white px-4 py-2 text-xs font-semibold text-cyan-900 shadow-[0_7px_22px_rgba(8,145,178,0.12)]">
               One account · Three workspaces
             </span>
 
@@ -391,7 +257,7 @@ export default function SignInPage() {
               {workspaces.map((workspace) => (
                 <div
                   key={workspace.title}
-                  className="rounded-2xl border border-slate-200 bg-white p-4"
+                  className="rounded-[24px] border border-slate-200/90 bg-white p-4 shadow-[0_12px_28px_rgba(15,23,42,0.07),0_2px_7px_rgba(15,23,42,0.04)] transition hover:-translate-y-1 hover:border-cyan-200 hover:shadow-[0_18px_36px_rgba(15,23,42,0.10),0_3px_10px_rgba(8,145,178,0.06)]"
                 >
                   <span className="text-xs font-semibold uppercase tracking-[0.12em] text-cyan-800">
                     {workspace.title}
@@ -408,379 +274,186 @@ export default function SignInPage() {
               ))}
             </div>
 
-            <div className="mt-8 rounded-2xl border border-slate-200 bg-white p-5">
+            <div className="mt-8 rounded-[26px] border border-cyan-100 bg-white p-5 shadow-[0_12px_30px_rgba(15,23,42,0.07),0_2px_8px_rgba(8,145,178,0.05)]">
               <p className="text-sm font-medium">
-                One account, connected access
+                All three are included automatically
               </p>
               <p className="mt-2 text-sm leading-6 text-slate-500">
                 You do not create separate Self, Researcher or Clinician
-                accounts. The same login opens the workspace selector. For the
-                Clinician workspace, additional verification may be required
-                for certain professional features. Workspace access alone does
-                not represent verification of professional qualifications.
+                accounts. The same login opens a workspace selector where you
+                can enter any of the three. PsyLattice does not verify
+                professional qualifications merely because someone uses the
+                Clinician workspace.
               </p>
             </div>
           </div>
         </section>
 
-        <section className="flex items-center border-t border-slate-200 bg-white px-5 py-10 sm:px-8 lg:h-full lg:items-start lg:overflow-y-auto lg:border-l lg:border-t-0 lg:px-10">
+        <section className="flex items-center py-4 lg:items-start">
           <div className="mx-auto w-full max-w-md lg:py-8">
-            <div className="rounded-3xl border border-slate-200 bg-white p-6 shadow-[0_18px_70px_rgba(15,23,42,0.06)] sm:p-7">
-              {verificationEmail ? (
-                <div className="py-2">
-                  <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-cyan-50 text-cyan-800">
-                    <svg
-                      viewBox="0 0 24 24"
-                      fill="none"
-                      stroke="currentColor"
-                      strokeWidth="1.8"
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                      className="h-6 w-6"
-                      aria-hidden="true"
+            <div className="rounded-[30px] border border-slate-200/90 bg-white p-6 shadow-[0_24px_70px_rgba(15,23,42,0.12),0_5px_18px_rgba(8,145,178,0.06)] sm:p-7">
+              <div className="grid grid-cols-2 rounded-full border border-slate-200 bg-slate-50 p-1 shadow-inner">
+                <button
+                  type="button"
+                  onClick={() => switchMode("signin")}
+                  className={`rounded-full px-4 py-2.5 text-sm font-semibold transition ${
+                    mode === "signin"
+                      ? "bg-white text-slate-950 shadow-[0_5px_14px_rgba(15,23,42,0.10)]"
+                      : "text-slate-500"
+                  }`}
+                >
+                  Sign in
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => switchMode("signup")}
+                  className={`rounded-full px-4 py-2.5 text-sm font-semibold transition ${
+                    mode === "signup"
+                      ? "bg-white text-slate-950 shadow-[0_5px_14px_rgba(15,23,42,0.10)]"
+                      : "text-slate-500"
+                  }`}
+                >
+                  Create account
+                </button>
+              </div>
+
+              <div className="mt-7">
+                <h2 className="text-2xl font-semibold tracking-tight">
+                  {mode === "signin"
+                    ? "Sign in to PsyLattice"
+                    : "Create your PsyLattice account"}
+                </h2>
+
+                <p className="mt-2 text-sm leading-6 text-slate-500">
+                  {mode === "signin"
+                    ? "One login gives you access to all three PsyLattice workspaces."
+                    : "Your account automatically includes Self, Researcher and Clinician access."}
+                </p>
+              </div>
+
+              <div className="mt-6">
+                <p className="mb-2 text-[11px] font-semibold uppercase tracking-[0.12em] text-slate-400">
+                  {mode === "signin" ? "Available after sign in" : "Included with your account"}
+                </p>
+                <div className="grid gap-2 sm:grid-cols-3">
+                  {["Self", "Researcher", "Clinician"].map((workspace) => (
+                    <div
+                      key={workspace}
+                      className="flex items-center gap-2 rounded-full border border-cyan-200 bg-cyan-50/55 px-3 py-2.5 shadow-[0_5px_14px_rgba(8,145,178,0.07)]"
                     >
-                      <rect x="3" y="5" width="18" height="14" rx="2" />
-                      <path d="m3 7 9 6 9-6" />
-                    </svg>
-                  </div>
-
-                  <h2 className="mt-6 text-2xl font-semibold tracking-tight">
-                    Check your email
-                  </h2>
-
-                  <p className="mt-3 text-sm leading-6 text-slate-500">
-                    We sent a verification link to
-                  </p>
-
-                  <p className="mt-1 break-all text-sm font-semibold text-slate-950">
-                    {verificationEmail}
-                  </p>
-
-                  <div className="mt-6 rounded-2xl border border-cyan-100 bg-cyan-50/70 px-4 py-4">
-                    <p className="text-sm font-medium text-cyan-950">
-                      Confirm your email before signing in
-                    </p>
-                    <p className="mt-1.5 text-xs leading-5 text-cyan-900/75">
-                      Open the email from PsyLattice and click the confirmation
-                      button. Your account will remain locked until the email
-                      address is verified.
-                    </p>
-                  </div>
-
-                  <p className="mt-5 text-xs leading-5 text-slate-400">
-                    If you do not see the message, check your spam or junk folder.
-                  </p>
-
-                  {resendMessage && (
-                    <div className="mt-4 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3">
-                      <p className="text-sm leading-6 text-emerald-800">
-                        {resendMessage}
-                      </p>
+                      <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full border border-cyan-300 bg-white text-[11px] font-bold text-cyan-800 shadow-[0_2px_6px_rgba(8,145,178,0.10)]">
+                        ✓
+                      </span>
+                      <span className="text-xs font-semibold text-slate-800">
+                        {workspace}
+                      </span>
                     </div>
-                  )}
-
-                  {resendError && (
-                    <div className="mt-4 rounded-xl border border-red-200 bg-red-50 px-4 py-3">
-                      <p className="text-sm leading-6 text-red-700">
-                        {resendError}
-                      </p>
-                    </div>
-                  )}
-
-                  <button
-                    type="button"
-                    onClick={() => void handleResendVerification()}
-                    disabled={resendingVerification || resendCooldown > 0}
-                    className="mt-6 w-full rounded-xl border border-slate-200 px-5 py-3 text-sm font-semibold text-slate-700 transition hover:bg-slate-50 hover:text-slate-950 disabled:cursor-not-allowed disabled:opacity-50"
-                  >
-                    {resendingVerification
-                      ? "Sending verification email..."
-                      : resendCooldown > 0
-                        ? `Resend available in ${resendCooldown}s`
-                        : "Resend verification email"}
-                  </button>
-
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setVerificationEmail(null);
-                      setMode("signin");
-                      setAuthError("");
-                      setAuthMessage("");
-                      setResendMessage("");
-                      setResendError("");
-                      setResendCooldown(0);
-                    }}
-                    className="mt-3 w-full rounded-xl bg-slate-950 px-5 py-3.5 text-sm font-semibold text-white transition hover:bg-slate-800"
-                  >
-                    Back to sign in
-                  </button>
-
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setVerificationEmail(null);
-                      setMode("signup");
-                      setEmail("");
-                      setAuthError("");
-                      setAuthMessage("");
-                      setResendMessage("");
-                      setResendError("");
-                      setResendCooldown(0);
-                    }}
-                    className="mt-3 w-full rounded-xl border border-slate-200 px-5 py-3 text-sm font-semibold text-slate-600 transition hover:bg-slate-50 hover:text-slate-950"
-                  >
-                    Use a different email
-                  </button>
+                  ))}
                 </div>
-              ) : forgotPasswordMode ? (
-                <div className="py-2">
-                  <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-cyan-50 text-cyan-800">
-                    <svg
-                      viewBox="0 0 24 24"
-                      fill="none"
-                      stroke="currentColor"
-                      strokeWidth="1.8"
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                      className="h-6 w-6"
-                      aria-hidden="true"
-                    >
-                      <path d="M7 10V8a5 5 0 0 1 10 0v2" />
-                      <rect x="5" y="10" width="14" height="10" rx="2" />
-                      <path d="M12 14v2" />
-                    </svg>
-                  </div>
+              </div>
 
-                  <h2 className="mt-6 text-2xl font-semibold tracking-tight">
-                    Reset your password
-                  </h2>
+              <form
+                onSubmit={
+                  mode === "signin" ? handleSignIn : handleSignUp
+                }
+                className="mt-6 space-y-4"
+              >
+                {mode === "signup" && (
+                  <label className="block">
+                    <span className="text-sm font-medium">Full name</span>
+                    <input
+                      type="text"
+                      autoComplete="name"
+                      value={fullName}
+                      onChange={(event) =>
+                        setFullName(event.target.value)
+                      }
+                      placeholder="Your name"
+                      className="mt-2 w-full rounded-full border border-slate-200 bg-white px-4 py-3 text-sm shadow-[0_6px_18px_rgba(15,23,42,0.06)] outline-none transition focus:border-cyan-300 focus:ring-4 focus:ring-cyan-100/70"
+                    />
+                  </label>
+                )}
 
-                  <p className="mt-3 text-sm leading-6 text-slate-500">
-                    Enter the email address linked to your PsyLattice account.
-                    We&apos;ll send you a secure password reset link.
-                  </p>
+                <label className="block">
+                  <span className="text-sm font-medium">Email</span>
+                  <input
+                    type="email"
+                    autoComplete="email"
+                    value={email}
+                    onChange={(event) => setEmail(event.target.value)}
+                    placeholder="you@example.com"
+                    className="mt-2 w-full rounded-full border border-slate-200 bg-white px-4 py-3 text-sm shadow-[0_6px_18px_rgba(15,23,42,0.06)] outline-none transition focus:border-cyan-300 focus:ring-4 focus:ring-cyan-100/70"
+                  />
+                </label>
 
-                  <form
-                    onSubmit={handleForgotPassword}
-                    className="mt-6 space-y-4"
-                  >
-                    <label className="block">
-                      <span className="text-sm font-medium">Email</span>
-                      <input
-                        type="email"
-                        autoComplete="email"
-                        value={email}
-                        onChange={(event) => setEmail(event.target.value)}
-                        placeholder="you@example.com"
-                        className="mt-2 w-full rounded-xl border border-slate-200 px-4 py-3 text-sm outline-none transition focus:border-cyan-700 focus:ring-2 focus:ring-cyan-100"
-                      />
-                    </label>
-
-                    {authError && (
-                      <div className="rounded-xl border border-red-200 bg-red-50 px-4 py-3">
-                        <p className="text-sm leading-6 text-red-700">
-                          {authError}
-                        </p>
-                      </div>
-                    )}
-
-                    {resetEmailSent && (
-                      <div className="rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3">
-                        <p className="text-sm font-medium text-emerald-900">
-                          Check your email
-                        </p>
-                        <p className="mt-1 text-xs leading-5 text-emerald-800">
-                          If an account exists for this email address, a password
-                          reset link has been sent.
-                        </p>
-                      </div>
-                    )}
-
-                    <button
-                      type="submit"
-                      disabled={submitting}
-                      className="w-full rounded-xl bg-slate-950 px-5 py-3.5 text-sm font-semibold text-white transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-50"
-                    >
-                      {submitting ? "Sending reset link..." : "Send reset link"}
-                    </button>
-                  </form>
-
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setForgotPasswordMode(false);
-                      setResetEmailSent(false);
-                      setAuthError("");
-                      setAuthMessage("");
-                    }}
-                    className="mt-3 w-full rounded-xl border border-slate-200 px-5 py-3 text-sm font-semibold text-slate-600 transition hover:bg-slate-50 hover:text-slate-950"
-                  >
-                    Back to sign in
-                  </button>
-                </div>
-              ) : (
-                <>
-                  <div className="grid grid-cols-2 rounded-xl bg-slate-100 p-1">
-                    <button
-                      type="button"
-                      onClick={() => switchMode("signin")}
-                      className={`rounded-lg px-4 py-2.5 text-sm font-semibold transition ${
-                        mode === "signin"
-                          ? "bg-white text-slate-950 shadow-sm"
-                          : "text-slate-500"
-                      }`}
-                    >
-                      Sign in
-                    </button>
-
-                    <button
-                      type="button"
-                      onClick={() => switchMode("signup")}
-                      className={`rounded-lg px-4 py-2.5 text-sm font-semibold transition ${
-                        mode === "signup"
-                          ? "bg-white text-slate-950 shadow-sm"
-                          : "text-slate-500"
-                      }`}
-                    >
-                      Create account
-                    </button>
-                  </div>
-
-                  <div className="mt-7">
-                    <h2 className="text-2xl font-semibold tracking-tight">
-                      {mode === "signin"
-                        ? "Sign in to PsyLattice"
-                        : "Create your PsyLattice account"}
-                    </h2>
-
-                    <p className="mt-2 text-sm leading-6 text-slate-500">
-                      {mode === "signin"
-                        ? "One login gives you access to all three PsyLattice workspaces."
-                        : "Your account automatically includes Self, Researcher and Clinician access."}
-                    </p>
-                  </div>
-
-                  <form
-                    onSubmit={
-                      mode === "signin" ? handleSignIn : handleSignUp
+                <label className="block">
+                  <span className="text-sm font-medium">Password</span>
+                  <input
+                    type="password"
+                    autoComplete={
+                      mode === "signin"
+                        ? "current-password"
+                        : "new-password"
                     }
-                    className="mt-6 space-y-4"
-                  >
-                    {mode === "signup" && (
-                      <label className="block">
-                        <span className="text-sm font-medium">Full name</span>
-                        <input
-                          type="text"
-                          autoComplete="name"
-                          value={fullName}
-                          onChange={(event) =>
-                            setFullName(event.target.value)
-                          }
-                          placeholder="Your name"
-                          className="mt-2 w-full rounded-xl border border-slate-200 px-4 py-3 text-sm outline-none transition focus:border-cyan-700 focus:ring-2 focus:ring-cyan-100"
-                        />
-                      </label>
-                    )}
+                    value={password}
+                    onChange={(event) =>
+                      setPassword(event.target.value)
+                    }
+                    placeholder={
+                      mode === "signup"
+                        ? "At least 8 characters"
+                        : "Your password"
+                    }
+                    className="mt-2 w-full rounded-full border border-slate-200 bg-white px-4 py-3 text-sm shadow-[0_6px_18px_rgba(15,23,42,0.06)] outline-none transition focus:border-cyan-300 focus:ring-4 focus:ring-cyan-100/70"
+                  />
+                </label>
 
-                    <label className="block">
-                      <span className="text-sm font-medium">Email</span>
-                      <input
-                        type="email"
-                        autoComplete="email"
-                        value={email}
-                        onChange={(event) => setEmail(event.target.value)}
-                        placeholder="you@example.com"
-                        className="mt-2 w-full rounded-xl border border-slate-200 px-4 py-3 text-sm outline-none transition focus:border-cyan-700 focus:ring-2 focus:ring-cyan-100"
-                      />
-                    </label>
+                {authError && (
+                  <div className="flex items-start gap-3 px-1 py-1">
+                    <span className="mt-2 h-1.5 w-1.5 shrink-0 rounded-full bg-rose-500" />
+                    <p className="text-sm leading-6 text-rose-700">
+                      {authError}
+                    </p>
+                  </div>
+                )}
 
-                    <label className="block">
-                      <div className="flex items-center justify-between gap-4">
-                        <span className="text-sm font-medium">Password</span>
-                        {mode === "signin" && (
-                          <button
-                            type="button"
-                            onClick={() => {
-                              setForgotPasswordMode(true);
-                              setResetEmailSent(false);
-                              setAuthError("");
-                              setAuthMessage("");
-                              setPassword("");
-                            }}
-                            className="text-xs font-semibold text-cyan-800 transition hover:text-cyan-950"
-                          >
-                            Forgot password?
-                          </button>
-                        )}
-                      </div>
-                      <input
-                        type="password"
-                        autoComplete={
-                          mode === "signin"
-                            ? "current-password"
-                            : "new-password"
-                        }
-                        value={password}
-                        onChange={(event) =>
-                          setPassword(event.target.value)
-                        }
-                        placeholder={
-                          mode === "signup"
-                            ? "At least 8 characters"
-                            : "Your password"
-                        }
-                        className="mt-2 w-full rounded-xl border border-slate-200 px-4 py-3 text-sm outline-none transition focus:border-cyan-700 focus:ring-2 focus:ring-cyan-100"
-                      />
-                    </label>
+                {authMessage && (
+                  <div className="flex items-start gap-3 px-1 py-1">
+                    <span className="mt-2 h-1.5 w-1.5 shrink-0 rounded-full bg-cyan-600" />
+                    <p className="text-sm leading-6 text-cyan-900">
+                      {authMessage}
+                    </p>
+                  </div>
+                )}
 
-                    {authError && (
-                      <div className="rounded-xl border border-red-200 bg-red-50 px-4 py-3">
-                        <p className="text-sm leading-6 text-red-700">
-                          {authError}
-                        </p>
-                      </div>
-                    )}
+                <button
+                  type="submit"
+                  disabled={submitting}
+                  className="w-full rounded-full bg-slate-950 px-5 py-3.5 text-sm font-semibold text-white shadow-[0_10px_24px_rgba(15,23,42,0.20)] transition hover:-translate-y-0.5 hover:bg-cyan-950 hover:shadow-[0_14px_30px_rgba(8,145,178,0.20)] disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                  {submitting
+                    ? mode === "signin"
+                      ? "Signing in..."
+                      : "Creating account..."
+                    : mode === "signin"
+                      ? "Sign in"
+                      : "Create PsyLattice account"}
+                </button>
+              </form>
 
-                    {authMessage && (
-                      <div className="rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3">
-                        <p className="text-sm leading-6 text-emerald-800">
-                          {authMessage}
-                        </p>
-                      </div>
-                    )}
-
-                    <button
-                      type="submit"
-                      disabled={submitting}
-                      className="w-full rounded-xl bg-slate-950 px-5 py-3.5 text-sm font-semibold text-white transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-50"
-                    >
-                      {submitting
-                        ? mode === "signin"
-                          ? "Signing in..."
-                          : "Creating account..."
-                        : mode === "signin"
-                          ? "Sign in"
-                          : "Create PsyLattice account"}
-                    </button>
-                  </form>
-
-                  <p className="mt-5 text-center text-xs leading-5 text-slate-400">
-                    By continuing, you agree to PsyLattice's{" "}
-                    <Link href="/terms" className="underline">
-                      Terms
-                    </Link>{" "}
-                    and acknowledge the{" "}
-                    <Link href="/privacy" className="underline">
-                      Privacy Policy
-                    </Link>
-                    .
-                  </p>
-                </>
-              )}
+              <p className="mt-5 text-center text-xs leading-5 text-slate-400">
+                By continuing, you agree to PsyLattice's{" "}
+                <Link href="/terms" className="underline">
+                  Terms
+                </Link>{" "}
+                and acknowledge the{" "}
+                <Link href="/privacy" className="underline">
+                  Privacy Policy
+                </Link>
+                .
+              </p>
             </div>
-
-            
           </div>
         </section>
       </div>

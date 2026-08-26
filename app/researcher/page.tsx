@@ -144,7 +144,7 @@ function StatCard({
   detail: string;
 }) {
   return (
-    <div className="rounded-[22px] border border-slate-300/65 bg-white p-5 shadow-[0_4px_12px_rgba(15,23,42,0.055),0_18px_44px_rgba(15,23,42,0.085)] transition-shadow hover:shadow-[0_4px_10px_rgba(15,23,42,0.045),0_18px_40px_rgba(15,23,42,0.07)]">
+    <div className="rounded-[24px] border border-slate-300/75 bg-white p-5 shadow-[0_2px_5px_rgba(15,23,42,0.055),0_10px_26px_rgba(15,23,42,0.075),0_28px_64px_rgba(15,23,42,0.06)] transition-all duration-200 hover:-translate-y-0.5 hover:border-cyan-200/80 hover:shadow-[0_3px_7px_rgba(15,23,42,0.05),0_14px_32px_rgba(15,23,42,0.09),0_32px_72px_rgba(8,145,178,0.06)]">
       <div className="flex items-center gap-2">
         <span className="h-1.5 w-1.5 rounded-full bg-cyan-500/80" aria-hidden="true" />
         <p className="text-[11px] font-semibold uppercase tracking-[0.1em] text-slate-400">{label}</p>
@@ -167,7 +167,7 @@ function Panel({
   children: React.ReactNode;
 }) {
   return (
-    <section className="overflow-hidden rounded-[24px] border border-slate-300/65 bg-white shadow-[0_5px_14px_rgba(15,23,42,0.05),0_20px_52px_rgba(15,23,42,0.075)]">
+    <section className="overflow-hidden rounded-[26px] border border-slate-300/75 bg-white shadow-[0_2px_5px_rgba(15,23,42,0.045),0_12px_30px_rgba(15,23,42,0.075),0_34px_78px_rgba(15,23,42,0.055)]">
       <div className="border-b border-slate-100/90 px-5 py-4 sm:px-6 sm:py-5">
         <h2 className="text-[15px] font-semibold tracking-[-0.012em] text-slate-950">{title}</h2>
 
@@ -225,7 +225,7 @@ function Status({
 
   return (
     <span
-      className={`inline-flex items-center rounded-full border shadow-[0_5px_16px_rgba(15,23,42,0.075),0_1px_3px_rgba(15,23,42,0.04)] px-3 py-1 text-[11px] font-semibold shadow-[0_2px_5px_rgba(15,23,42,0.04)] ${classes[type]}`}
+      className={`inline-flex items-center rounded-full border px-3.5 py-1.5 text-[11px] font-semibold shadow-[0_2px_4px_rgba(15,23,42,0.045),0_7px_18px_rgba(15,23,42,0.085)] ${classes[type]}`}
     >
       {children}
     </span>
@@ -664,7 +664,7 @@ function Dashboard({
                 {latestStudy.design || "Study design not specified"}
               </p>
 
-              <p className="mt-2 text-xs leading-5 text-slate-400">
+              <p className="mt-2 text-xs leading-5 text-slate-500">
                 {componentSummary(latestStudy.components || {})}
               </p>
 
@@ -1195,7 +1195,7 @@ function Studies({
           <button
             type="button"
             onClick={() => editStudy("")}
-            className="rounded-xl bg-slate-950 px-5 py-3 text-sm font-semibold text-white"
+            className="rounded-full bg-slate-950 px-5 py-3 text-sm font-semibold text-white shadow-[0_4px_10px_rgba(15,23,42,0.18),0_12px_26px_rgba(15,23,42,0.15)] transition hover:-translate-y-px hover:shadow-[0_6px_14px_rgba(15,23,42,0.2),0_16px_34px_rgba(15,23,42,0.16)]"
           >
             + New study
           </button>
@@ -1438,7 +1438,7 @@ function Studies({
                 <button
                   type="button"
                   onClick={() => editStudy(selectedStudy.id)}
-                  className="rounded-xl bg-cyan-800 px-4 py-2.5 text-sm font-semibold text-white"
+                  className="rounded-full bg-cyan-800 px-4 py-2.5 text-sm font-semibold text-white shadow-[0_4px_10px_rgba(8,145,178,0.2),0_12px_26px_rgba(8,145,178,0.16)] transition hover:-translate-y-px hover:bg-cyan-900"
                 >
                   Edit study
                 </button>
@@ -1568,7 +1568,7 @@ function Studies({
                     deleteConfirmation !==
                       deleteStudyTarget.title
                   }
-                  className="rounded-xl bg-red-600 px-4 py-2.5 text-sm font-semibold text-white disabled:cursor-not-allowed disabled:opacity-40"
+                  className="rounded-full bg-rose-700 px-4 py-2.5 text-sm font-semibold text-white shadow-[0_4px_10px_rgba(190,24,93,0.18),0_12px_24px_rgba(190,24,93,0.12)] transition hover:-translate-y-px disabled:cursor-not-allowed disabled:opacity-40"
                 >
                   {deletingStudy
                     ? "Deleting..."
@@ -4421,7 +4421,7 @@ function StudyBuilder({
                     type="button"
                     onClick={() => void openUnifiedAmbulatoryBuilder()}
                     disabled={savingStudy}
-                    className="shrink-0 rounded-xl bg-slate-950 px-5 py-3 text-sm font-semibold text-white disabled:opacity-50"
+                    className="shrink-0 rounded-full bg-slate-950 px-5 py-3 text-sm font-semibold text-white shadow-[0_4px_10px_rgba(15,23,42,0.18),0_12px_26px_rgba(15,23,42,0.15)] transition hover:-translate-y-px hover:shadow-[0_6px_14px_rgba(15,23,42,0.2),0_16px_34px_rgba(15,23,42,0.16)] disabled:opacity-50"
                   >
                     {savingStudy
                       ? "Saving study..."
@@ -4522,7 +4522,7 @@ function StudyBuilder({
                   type="button"
                   onClick={() => void openFollowupManager()}
                   disabled={savingStudy}
-                  className="shrink-0 rounded-xl bg-slate-950 px-5 py-3 text-sm font-semibold text-white disabled:opacity-50"
+                  className="shrink-0 rounded-full bg-slate-950 px-5 py-3 text-sm font-semibold text-white shadow-[0_4px_10px_rgba(15,23,42,0.18),0_12px_26px_rgba(15,23,42,0.15)] transition hover:-translate-y-px hover:shadow-[0_6px_14px_rgba(15,23,42,0.2),0_16px_34px_rgba(15,23,42,0.16)] disabled:opacity-50"
                 >
                   {savingStudy
                     ? "Saving study..."
@@ -4554,7 +4554,7 @@ function StudyBuilder({
                   This draft records the selected study components, configurable demographics, pinned questionnaire versions, pinned cognitive-task versions, consent, and optional ambulatory protocol. Use a TEST participant link before live recruitment and verify the full participant experience against the approved protocol.
                 </p>
               </div>
-              <button type="button" onClick={() => void saveStudyDraft()} disabled={savingStudy} className="rounded-xl bg-slate-950 px-5 py-3 text-sm font-semibold text-white disabled:opacity-50">
+              <button type="button" onClick={() => void saveStudyDraft()} disabled={savingStudy} className="rounded-full bg-slate-950 px-5 py-3 text-sm font-semibold text-white shadow-[0_4px_10px_rgba(15,23,42,0.18),0_12px_26px_rgba(15,23,42,0.15)] transition hover:-translate-y-px hover:shadow-[0_6px_14px_rgba(15,23,42,0.2),0_16px_34px_rgba(15,23,42,0.16)] disabled:opacity-50">
                 {savingStudy ? "Saving..." : "Save study draft"}
               </button>
             </div>
@@ -7356,7 +7356,7 @@ function QuestionnaireLibrary({
             </Panel>
 
             <Panel title="Save instrument">
-              <button type="button" onClick={() => void saveCustomQuestionnaire()} disabled={savingCustomQuestionnaire} className="w-full rounded-xl bg-slate-950 px-5 py-3 text-sm font-semibold text-white disabled:opacity-50">{savingCustomQuestionnaire ? "Saving instrument..." : builderPublicationMode === "private" ? "Save privately" : builderPublicationMode === "free" ? "Publish free to PsyLattice" : "Publish with permission required"}</button>
+              <button type="button" onClick={() => void saveCustomQuestionnaire()} disabled={savingCustomQuestionnaire} className="w-full rounded-full bg-slate-950 px-5 py-3 text-sm font-semibold text-white shadow-[0_4px_10px_rgba(15,23,42,0.18),0_12px_26px_rgba(15,23,42,0.15)] transition hover:-translate-y-px hover:shadow-[0_6px_14px_rgba(15,23,42,0.2),0_16px_34px_rgba(15,23,42,0.16)] disabled:opacity-50">{savingCustomQuestionnaire ? "Saving instrument..." : builderPublicationMode === "private" ? "Save privately" : builderPublicationMode === "free" ? "Publish free to PsyLattice" : "Publish with permission required"}</button>
               <button type="button" onClick={() => { setBuilderOpen(false); resetCustomBuilder(); }} disabled={savingCustomQuestionnaire} className="mt-2 w-full rounded-xl border shadow-[0_5px_18px_rgba(15,23,42,0.06),0_1px_4px_rgba(15,23,42,0.035)] border-slate-200 px-5 py-3 text-sm font-semibold text-slate-600 disabled:opacity-50">Cancel</button>
             </Panel>
           </div>
@@ -8354,7 +8354,7 @@ function QuestionnaireLibrary({
           <button
             type="button"
             onClick={openCustomBuilder}
-            className="rounded-xl bg-slate-950 px-5 py-3 text-sm font-semibold text-white"
+            className="rounded-full bg-slate-950 px-5 py-3 text-sm font-semibold text-white shadow-[0_4px_10px_rgba(15,23,42,0.18),0_12px_26px_rgba(15,23,42,0.15)] transition hover:-translate-y-px hover:shadow-[0_6px_14px_rgba(15,23,42,0.2),0_16px_34px_rgba(15,23,42,0.16)]"
           >
             + Create questionnaire
           </button>
@@ -8807,7 +8807,7 @@ function AmbulatoryBuilder({
           type="button"
           disabled={saving || !selectedStudy}
           onClick={() => void saveProtocol()}
-          className="rounded-xl bg-slate-950 px-5 py-3 text-sm font-semibold text-white disabled:opacity-50"
+          className="rounded-full bg-slate-950 px-5 py-3 text-sm font-semibold text-white shadow-[0_4px_10px_rgba(15,23,42,0.18),0_12px_26px_rgba(15,23,42,0.15)] transition hover:-translate-y-px hover:shadow-[0_6px_14px_rgba(15,23,42,0.2),0_16px_34px_rgba(15,23,42,0.16)] disabled:opacity-50"
         >
           {saving ? "Saving..." : "Save ambulatory protocol"}
         </button>
@@ -9816,7 +9816,7 @@ function ParticipantLinks() {
             type="button"
             onClick={() => setShowCreateForm((current) => !current)}
             disabled={!selectedStudyId}
-            className="rounded-xl bg-slate-950 px-5 py-3 text-sm font-semibold text-white disabled:opacity-40"
+            className="rounded-full bg-slate-950 px-5 py-3 text-sm font-semibold text-white shadow-[0_4px_10px_rgba(15,23,42,0.18),0_12px_26px_rgba(15,23,42,0.15)] transition hover:-translate-y-px hover:shadow-[0_6px_14px_rgba(15,23,42,0.2),0_16px_34px_rgba(15,23,42,0.16)] disabled:opacity-40"
           >
             {showCreateForm ? "Close" : "+ Create participant link"}
           </button>
@@ -9994,7 +9994,7 @@ function ParticipantLinks() {
               type="button"
               onClick={() => void createRecruitmentLink()}
               disabled={creatingLink}
-              className="rounded-xl bg-slate-950 px-5 py-3 text-sm font-semibold text-white disabled:opacity-50"
+              className="rounded-full bg-slate-950 px-5 py-3 text-sm font-semibold text-white shadow-[0_4px_10px_rgba(15,23,42,0.18),0_12px_26px_rgba(15,23,42,0.15)] transition hover:-translate-y-px hover:shadow-[0_6px_14px_rgba(15,23,42,0.2),0_16px_34px_rgba(15,23,42,0.16)] disabled:opacity-50"
             >
               {creatingLink
                 ? "Creating..."
@@ -19198,7 +19198,7 @@ function ExportData() {
                 type="button"
                 onClick={() => void generateExport()}
                 disabled={exporting || loading || !selectedStudy}
-                className="flex-1 rounded-xl bg-slate-950 px-5 py-3 text-sm font-semibold text-white disabled:opacity-40"
+                className="flex-1 rounded-full bg-slate-950 px-5 py-3 text-sm font-semibold text-white shadow-[0_4px_10px_rgba(15,23,42,0.18),0_12px_26px_rgba(15,23,42,0.15)] transition hover:-translate-y-px hover:shadow-[0_6px_14px_rgba(15,23,42,0.2),0_16px_34px_rgba(15,23,42,0.16)] disabled:opacity-40"
               >
                 {exporting
                   ? "Generating..."
@@ -19651,7 +19651,129 @@ export default function ResearcherWorkspace() {
   ];
 
   return (
-    <main className="min-h-screen bg-[#f5f8f8] text-slate-950">
+    <main className="psylattice-research-ui min-h-screen bg-[#f4f8fa] text-slate-950">
+      <style>{`
+        .psylattice-research-ui {
+          --pl-cyan: #0891b2;
+          --pl-cyan-dark: #155e75;
+          --pl-lilac: #7c3aed;
+          --pl-ink: #0f172a;
+          --pl-border: rgba(148, 163, 184, .48);
+          --pl-control-shadow: 0 2px 5px rgba(15,23,42,.045), 0 8px 20px rgba(15,23,42,.075);
+          --pl-float-shadow: 0 2px 5px rgba(15,23,42,.04), 0 12px 30px rgba(15,23,42,.075), 0 30px 68px rgba(15,23,42,.05);
+        }
+
+        .psylattice-research-ui button {
+          transition: transform .18s ease, box-shadow .18s ease, border-color .18s ease, background-color .18s ease, color .18s ease;
+        }
+        .psylattice-research-ui button:not(:disabled):hover {
+          transform: translateY(-1px);
+        }
+        .psylattice-research-ui button:not(:disabled):active {
+          transform: translateY(0);
+        }
+
+        .psylattice-research-ui input:not([type=checkbox]):not([type=radio]):not([type=file]),
+        .psylattice-research-ui select {
+          border-radius: 9999px !important;
+          border-color: var(--pl-border) !important;
+          background-color: rgba(255,255,255,.96) !important;
+          box-shadow: var(--pl-control-shadow);
+          transition: border-color .18s ease, box-shadow .18s ease, transform .18s ease;
+        }
+        .psylattice-research-ui textarea {
+          border-radius: 18px !important;
+          border-color: var(--pl-border) !important;
+          background-color: rgba(255,255,255,.98) !important;
+          box-shadow: var(--pl-control-shadow);
+          transition: border-color .18s ease, box-shadow .18s ease;
+        }
+        .psylattice-research-ui input:not([type=checkbox]):not([type=radio]):not([type=file]):focus,
+        .psylattice-research-ui select:focus,
+        .psylattice-research-ui textarea:focus {
+          outline: none !important;
+          border-color: rgba(8,145,178,.62) !important;
+          box-shadow: 0 0 0 4px rgba(34,211,238,.10), 0 3px 8px rgba(15,23,42,.05), 0 12px 26px rgba(8,145,178,.10) !important;
+        }
+
+        .psylattice-research-ui [class*='rounded-xl'][class*='border'],
+        .psylattice-research-ui [class*='rounded-2xl'][class*='border'],
+        .psylattice-research-ui [class*='rounded-3xl'][class*='border'] {
+          box-shadow: 0 2px 5px rgba(15,23,42,.035), 0 9px 22px rgba(15,23,42,.06);
+        }
+        .psylattice-research-ui section[class*='rounded'][class*='border'] {
+          box-shadow: var(--pl-float-shadow);
+        }
+        .psylattice-research-ui span[class*='rounded-full'][class*='border'],
+        .psylattice-research-ui a[class*='rounded-full'][class*='border'] {
+          box-shadow: 0 2px 4px rgba(15,23,42,.04), 0 7px 18px rgba(15,23,42,.075);
+        }
+
+        .psylattice-research-ui table {
+          border-collapse: separate;
+          border-spacing: 0;
+        }
+        .psylattice-research-ui thead {
+          background: linear-gradient(180deg, rgba(248,250,252,.96), rgba(245,249,250,.92));
+        }
+        .psylattice-research-ui tbody tr {
+          transition: background-color .16s ease, box-shadow .16s ease;
+        }
+        .psylattice-research-ui tbody tr:hover {
+          background-color: rgba(236,254,255,.42);
+        }
+
+        /* Remove the familiar default Tailwind/AI status palette inside older child modules. */
+        .psylattice-research-ui [class*='bg-green-50'],
+        .psylattice-research-ui [class*='bg-emerald-50'],
+        .psylattice-research-ui [class*='bg-green-100'],
+        .psylattice-research-ui [class*='bg-emerald-100'] { background-color: #ecfbff !important; }
+        .psylattice-research-ui [class*='border-green-'],
+        .psylattice-research-ui [class*='border-emerald-'] { border-color: rgba(103,232,249,.72) !important; }
+        .psylattice-research-ui [class*='text-green-'],
+        .psylattice-research-ui [class*='text-emerald-'] { color: #0e7490 !important; }
+        .psylattice-research-ui [class*='bg-green-600'],
+        .psylattice-research-ui [class*='bg-emerald-600'],
+        .psylattice-research-ui [class*='bg-green-700'],
+        .psylattice-research-ui [class*='bg-emerald-700'] { background-color: #0e7490 !important; }
+
+        .psylattice-research-ui [class*='bg-amber-50'],
+        .psylattice-research-ui [class*='bg-orange-50'],
+        .psylattice-research-ui [class*='bg-yellow-50'],
+        .psylattice-research-ui [class*='bg-amber-100'],
+        .psylattice-research-ui [class*='bg-orange-100'],
+        .psylattice-research-ui [class*='bg-yellow-100'] { background-color: #f7f4ff !important; }
+        .psylattice-research-ui [class*='border-amber-'],
+        .psylattice-research-ui [class*='border-orange-'],
+        .psylattice-research-ui [class*='border-yellow-'] { border-color: rgba(196,181,253,.78) !important; }
+        .psylattice-research-ui [class*='text-amber-'],
+        .psylattice-research-ui [class*='text-orange-'],
+        .psylattice-research-ui [class*='text-yellow-'] { color: #6d28d9 !important; }
+        .psylattice-research-ui [class*='bg-amber-600'],
+        .psylattice-research-ui [class*='bg-orange-600'],
+        .psylattice-research-ui [class*='bg-yellow-600'] { background-color: #7c3aed !important; }
+
+        .psylattice-research-ui [class*='bg-blue-50'],
+        .psylattice-research-ui [class*='bg-sky-50'] { background-color: #effbff !important; }
+        .psylattice-research-ui [class*='border-blue-'],
+        .psylattice-research-ui [class*='border-sky-'] { border-color: rgba(103,232,249,.7) !important; }
+        .psylattice-research-ui [class*='text-blue-'],
+        .psylattice-research-ui [class*='text-sky-'] { color: #0e7490 !important; }
+
+        .psylattice-research-ui [class*='bg-red-50'],
+        .psylattice-research-ui [class*='bg-rose-50'] { background-color: #fff9fb !important; }
+
+        @media (prefers-reduced-motion: reduce) {
+          .psylattice-research-ui *,
+          .psylattice-research-ui *::before,
+          .psylattice-research-ui *::after {
+            scroll-behavior: auto !important;
+            transition-duration: .01ms !important;
+            animation-duration: .01ms !important;
+          }
+        }
+      `}</style>
+
       {/* Header */}
 
       <header className="sticky top-0 z-50 border-b border-slate-300/65 bg-white/92 shadow-[0_1px_0_rgba(15,23,42,0.04),0_12px_34px_rgba(15,23,42,0.06)] backdrop-blur-xl">
@@ -19818,13 +19940,13 @@ export default function ResearcherWorkspace() {
           {sidebarCollapsed ? (
             <div
               title="Research workspace"
-              className="mx-auto mt-8 flex h-10 w-10 items-center justify-center rounded-xl bg-slate-950 text-xs font-semibold text-cyan-200"
+              className="mx-auto mt-8 flex h-11 w-11 items-center justify-center rounded-full border border-cyan-200/80 bg-white text-xs font-semibold text-cyan-800 shadow-[0_4px_12px_rgba(8,145,178,0.13),0_12px_28px_rgba(15,23,42,0.08)]"
             >
               R
             </div>
           ) : (
-            <div className="mt-8 rounded-2xl bg-slate-950 p-4 text-white">
-              <p className="text-xs font-medium text-cyan-200">
+            <div className="mt-8 rounded-[22px] border border-cyan-200/80 bg-gradient-to-br from-white to-cyan-50/70 p-4 text-slate-800 shadow-[0_4px_14px_rgba(8,145,178,0.09),0_16px_36px_rgba(15,23,42,0.07)]">
+              <p className="text-xs font-semibold text-cyan-800">
                 Research workspace
               </p>
 
@@ -19846,7 +19968,7 @@ export default function ResearcherWorkspace() {
           }`}
         >
           <div className="mx-auto max-w-[1450px]">
-            <div className="mb-7 flex flex-col gap-3 rounded-[24px] border border-white/80 bg-white/75 px-5 py-5 shadow-[0_6px_18px_rgba(15,23,42,0.05),0_24px_58px_rgba(15,23,42,0.075)] backdrop-blur sm:px-6">
+            <div className="mb-7 flex flex-col gap-3 rounded-[28px] border border-slate-200/80 bg-white/88 px-5 py-5 shadow-[0_2px_5px_rgba(15,23,42,0.04),0_12px_32px_rgba(15,23,42,0.075),0_34px_76px_rgba(8,145,178,0.045)] backdrop-blur-xl sm:px-6">
               <div className="flex flex-wrap items-center gap-2">
                 <Status type="accent">Researcher workspace</Status>
 

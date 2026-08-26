@@ -315,16 +315,16 @@ export default function WorkspacePage() {
     "there";
 
   return (
-    <main className="min-h-screen bg-slate-50 text-slate-950">
+    <main className="min-h-screen bg-[#f6fafb] text-slate-950">
       {/* HEADER */}
-      <header className="border-b border-slate-200 bg-white">
-        <div className="mx-auto flex max-w-7xl items-center justify-between gap-4 px-5 py-4 sm:px-8 lg:px-10">
+      <header className="px-4 pt-4 sm:px-6 sm:pt-5">
+        <div className="mx-auto flex max-w-7xl items-center justify-between gap-4 rounded-full border border-slate-200/90 bg-white/95 px-5 py-3 shadow-[0_10px_30px_rgba(15,23,42,0.08),0_2px_8px_rgba(15,23,42,0.05)] backdrop-blur sm:px-6">
           <PsyLatticeLogo />
 
           <div className="flex items-center gap-3">
             <Link
               href="/"
-              className="hidden text-sm font-medium text-slate-500 transition hover:text-slate-950 sm:inline"
+              className="hidden rounded-full border border-slate-200 bg-white px-4 py-2 text-sm font-semibold text-slate-600 shadow-[0_5px_16px_rgba(15,23,42,0.06)] transition hover:-translate-y-0.5 hover:border-cyan-200 hover:text-cyan-900 sm:inline"
             >
               Website
             </Link>
@@ -337,7 +337,7 @@ export default function WorkspacePage() {
               disabled={
                 signingOut
               }
-              className="rounded-xl border border-slate-200 px-4 py-2.5 text-sm font-semibold transition hover:bg-slate-50 disabled:opacity-50"
+              className="rounded-full border border-slate-200 bg-white px-4 py-2.5 text-sm font-semibold text-slate-700 shadow-[0_5px_16px_rgba(15,23,42,0.06)] transition hover:-translate-y-0.5 hover:border-cyan-200 hover:bg-cyan-50/40 hover:text-cyan-950 disabled:opacity-50"
             >
               {signingOut
                 ? "Signing out..."
@@ -350,7 +350,7 @@ export default function WorkspacePage() {
       {/* PAGE */}
       <section className="mx-auto max-w-7xl px-5 py-10 sm:px-8 lg:px-10 lg:py-14">
         <div className="max-w-3xl">
-          <span className="inline-flex rounded-full border border-cyan-100 bg-cyan-50 px-3 py-1.5 text-xs font-semibold text-cyan-900">
+          <span className="inline-flex rounded-full border border-cyan-200 bg-white px-4 py-2 text-xs font-semibold text-cyan-900 shadow-[0_7px_22px_rgba(8,145,178,0.12)]">
             One account · Three
             workspaces
           </span>
@@ -380,8 +380,9 @@ export default function WorkspacePage() {
 
         {/* ERROR */}
         {pageError && (
-          <div className="mt-6 rounded-2xl border border-amber-200 bg-amber-50 px-5 py-4">
-            <p className="text-sm leading-6 text-amber-800">
+          <div className="mt-6 flex items-start gap-3 px-1 py-1">
+            <span className="mt-2 h-1.5 w-1.5 shrink-0 rounded-full bg-cyan-600" />
+            <p className="text-sm leading-6 text-slate-700">
               {pageError}
             </p>
           </div>
@@ -400,7 +401,7 @@ export default function WorkspacePage() {
                   key={
                     workspace.id
                   }
-                  className="flex min-h-[315px] flex-col rounded-3xl border border-slate-200 bg-white p-6 shadow-sm transition hover:-translate-y-0.5 hover:shadow-md"
+                  className="flex min-h-[315px] flex-col rounded-[30px] border border-cyan-100 bg-white p-6 shadow-[0_18px_44px_rgba(15,23,42,0.09),0_3px_10px_rgba(8,145,178,0.04)] transition hover:-translate-y-1 hover:border-cyan-200 hover:shadow-[0_24px_54px_rgba(15,23,42,0.12),0_4px_14px_rgba(8,145,178,0.06)]"
                 >
                   <span className="text-xs font-semibold uppercase tracking-[0.14em] text-cyan-800">
                     {
@@ -440,7 +441,7 @@ export default function WorkspacePage() {
                         openingWorkspace !==
                           null
                       }
-                      className="mt-4 flex w-full items-center justify-between rounded-xl bg-slate-950 px-4 py-3 text-sm font-semibold text-white transition hover:bg-slate-800 disabled:cursor-wait disabled:opacity-50"
+                      className="mt-4 flex w-full items-center justify-between rounded-full bg-slate-950 px-5 py-3 text-sm font-semibold text-white shadow-[0_10px_24px_rgba(15,23,42,0.17)] transition hover:-translate-y-0.5 hover:bg-cyan-950 hover:shadow-[0_14px_30px_rgba(8,145,178,0.14)] disabled:cursor-wait disabled:opacity-50"
                     >
                       <span>
                         {isOpening
@@ -462,7 +463,7 @@ export default function WorkspacePage() {
         </div>
 
         {/* ACCOUNT EXPLANATION */}
-        <div className="mt-6 rounded-2xl border border-slate-200 bg-white p-5">
+        <div className="mt-7 rounded-[26px] border border-cyan-100 bg-white p-5 shadow-[0_12px_30px_rgba(15,23,42,0.07),0_2px_8px_rgba(8,145,178,0.05)]">
           <p className="text-sm font-medium">
             Workspace choice is
             navigation, not an

@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
   Activity,
   BarChart3,
@@ -144,12 +144,15 @@ function StatCard({
   detail: string;
 }) {
   return (
-    <div className="rounded-2xl border border-slate-200 bg-white p-5">
-      <p className="text-xs font-medium text-slate-400">{label}</p>
+    <div className="rounded-[22px] border border-slate-300/65 bg-white p-5 shadow-[0_4px_12px_rgba(15,23,42,0.055),0_18px_44px_rgba(15,23,42,0.085)] transition-shadow hover:shadow-[0_4px_10px_rgba(15,23,42,0.045),0_18px_40px_rgba(15,23,42,0.07)]">
+      <div className="flex items-center gap-2">
+        <span className="h-1.5 w-1.5 rounded-full bg-cyan-500/80" aria-hidden="true" />
+        <p className="text-[11px] font-semibold uppercase tracking-[0.1em] text-slate-400">{label}</p>
+      </div>
 
-      <p className="mt-2 text-2xl font-semibold tracking-tight">{value}</p>
+      <p className="mt-3 text-[28px] font-semibold leading-none tracking-[-0.035em] text-slate-950">{value}</p>
 
-      <p className="mt-1 text-xs text-slate-500">{detail}</p>
+      <p className="mt-2 text-xs leading-5 text-slate-500">{detail}</p>
     </div>
   );
 }
@@ -164,18 +167,18 @@ function Panel({
   children: React.ReactNode;
 }) {
   return (
-    <section className="rounded-2xl border border-slate-200 bg-white">
-      <div className="border-b border-slate-100 px-5 py-4">
-        <h2 className="font-semibold">{title}</h2>
+    <section className="overflow-hidden rounded-[24px] border border-slate-300/65 bg-white shadow-[0_5px_14px_rgba(15,23,42,0.05),0_20px_52px_rgba(15,23,42,0.075)]">
+      <div className="border-b border-slate-100/90 px-5 py-4 sm:px-6 sm:py-5">
+        <h2 className="text-[15px] font-semibold tracking-[-0.012em] text-slate-950">{title}</h2>
 
         {description && (
-          <p className="mt-1 text-sm leading-6 text-slate-500">
+          <p className="mt-1.5 max-w-4xl text-[13px] leading-5 text-slate-500">
             {description}
           </p>
         )}
       </div>
 
-      <div className="p-5">{children}</div>
+      <div className="p-5 sm:p-6">{children}</div>
     </section>
   );
 }
@@ -214,15 +217,15 @@ function Status({
   type?: "neutral" | "success" | "warning" | "accent";
 }) {
   const classes = {
-    neutral: "bg-slate-100 text-slate-600",
-    success: "bg-emerald-50 text-emerald-700",
-    warning: "bg-amber-50 text-amber-800",
-    accent: "bg-cyan-50 text-cyan-800",
+    neutral: "border-slate-300/70 bg-white text-slate-600",
+    success: "border-cyan-300/70 bg-[#ecfbff] text-cyan-800",
+    warning: "border-violet-200/90 bg-violet-50/80 text-violet-800",
+    accent: "border-cyan-200/90 bg-cyan-50/85 text-cyan-800",
   };
 
   return (
     <span
-      className={`rounded-full px-3 py-1 text-xs font-medium ${classes[type]}`}
+      className={`inline-flex items-center rounded-full border shadow-[0_5px_16px_rgba(15,23,42,0.075),0_1px_3px_rgba(15,23,42,0.04)] px-3 py-1 text-[11px] font-semibold shadow-[0_2px_5px_rgba(15,23,42,0.04)] ${classes[type]}`}
     >
       {children}
     </span>
@@ -448,7 +451,7 @@ function Dashboard({
   return (
     <div className="space-y-5">
       {dashboardError && (
-        <div className="rounded-2xl border border-red-200 bg-red-50 px-5 py-4">
+        <div className="border-l-2 border-rose-400 bg-transparent py-1 pl-3 pr-1">
           <p className="text-sm text-red-700">{dashboardError}</p>
         </div>
       )}
@@ -502,7 +505,7 @@ function Dashboard({
               <button
                 type="button"
                 onClick={() => changeScreen("builder")}
-                className="mt-4 rounded-xl bg-slate-950 px-4 py-2.5 text-sm font-semibold text-white"
+                className="mt-4 rounded-full bg-slate-950 px-4 py-2.5 text-sm font-semibold text-white shadow-[0_5px_14px_rgba(15,23,42,0.16)]"
               >
                 Create study
               </button>
@@ -625,7 +628,7 @@ function Dashboard({
               key={item.title}
               type="button"
               onClick={() => changeScreen(item.screen)}
-              className="rounded-2xl border border-slate-200 p-5 text-left transition hover:border-slate-300 hover:bg-slate-50"
+              className="rounded-2xl border shadow-[0_8px_24px_rgba(15,23,42,0.065),0_2px_6px_rgba(15,23,42,0.035)] border-slate-200 p-5 text-left transition hover:border-slate-300 hover:bg-slate-50"
             >
               <p className="font-medium">{item.title}</p>
               <p className="mt-2 text-sm leading-6 text-slate-500">
@@ -1140,13 +1143,13 @@ function Studies({
   return (
     <div className="space-y-5">
       {studiesError && (
-        <div className="rounded-2xl border border-red-200 bg-red-50 px-5 py-4">
+        <div className="border-l-2 border-rose-400 bg-transparent py-1 pl-3 pr-1">
           <p className="text-sm text-red-700">{studiesError}</p>
         </div>
       )}
 
       {studyActionError && (
-        <div className="rounded-2xl border border-red-200 bg-red-50 px-5 py-4">
+        <div className="border-l-2 border-rose-400 bg-transparent py-1 pl-3 pr-1">
           <p className="text-sm text-red-700">
             {studyActionError}
           </p>
@@ -1154,8 +1157,8 @@ function Studies({
       )}
 
       {studyActionMessage && (
-        <div className="rounded-2xl border border-emerald-200 bg-emerald-50 px-5 py-4">
-          <p className="text-sm text-emerald-800">
+        <div className="border-l-2 border-cyan-400 bg-transparent py-1 pl-3 pr-1">
+          <p className="text-sm text-cyan-800">
             {studyActionMessage}
           </p>
         </div>
@@ -1169,10 +1172,10 @@ function Studies({
                 key={item}
                 type="button"
                 onClick={() => setFilter(item)}
-                className={`rounded-full border px-3 py-2 text-xs font-medium ${
+                className={`rounded-full border shadow-[0_5px_16px_rgba(15,23,42,0.075),0_1px_3px_rgba(15,23,42,0.04)] px-3 py-2 text-xs font-medium ${
                   filter === item
                     ? "border-cyan-700 bg-cyan-50 text-cyan-900"
-                    : "border-slate-200 bg-white text-slate-500"
+                    : "border-slate-300/70 bg-white text-slate-500"
                 }`}
               >
                 {item}
@@ -1186,7 +1189,7 @@ function Studies({
             value={search}
             onChange={(event) => setSearch(event.target.value)}
             placeholder="Search your studies..."
-            className="min-w-[260px] rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm outline-none focus:border-cyan-700"
+            className="min-w-[260px] rounded-xl border shadow-[0_5px_18px_rgba(15,23,42,0.06),0_1px_4px_rgba(15,23,42,0.035)] border-slate-300/70 bg-white px-4 py-3 text-sm shadow-[0_2px_6px_rgba(15,23,42,0.035)] outline-none focus:border-cyan-700"
           />
 
           <button
@@ -1215,7 +1218,7 @@ function Studies({
             <button
               type="button"
               onClick={() => editStudy("")}
-              className="mt-4 rounded-xl bg-slate-950 px-4 py-2.5 text-sm font-semibold text-white"
+              className="mt-4 rounded-full bg-slate-950 px-4 py-2.5 text-sm font-semibold text-white shadow-[0_5px_14px_rgba(15,23,42,0.16)]"
             >
               Create your first study
             </button>
@@ -1277,7 +1280,7 @@ function Studies({
                         )
                       }
                       aria-label={`Change status for ${study.title}`}
-                      className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-slate-700 outline-none transition focus:border-cyan-700 disabled:opacity-50"
+                      className="w-full rounded-xl border shadow-[0_5px_18px_rgba(15,23,42,0.06),0_1px_4px_rgba(15,23,42,0.035)] border-slate-300/70 bg-white px-3 py-2 text-xs font-semibold text-slate-700 outline-none transition focus:border-cyan-700 disabled:opacity-50"
                     >
                       {studyStatusOptions.map(
                         (status) => (
@@ -1350,7 +1353,7 @@ function Studies({
                     componentLabels(selectedStudy).map((label) => (
                       <span
                         key={label}
-                        className="rounded-full border border-slate-200 bg-slate-50 px-3 py-1.5 text-xs text-slate-600"
+                        className="rounded-full border shadow-[0_5px_16px_rgba(15,23,42,0.075),0_1px_3px_rgba(15,23,42,0.04)] border-slate-200 bg-slate-50 px-3 py-1.5 text-xs text-slate-600"
                       >
                         {label}
                       </span>
@@ -1392,7 +1395,7 @@ function Studies({
           </div>
 
           <div className="mt-6 border-t border-slate-100 pt-5">
-            <div className="mb-5 rounded-2xl border border-slate-200 bg-slate-50/70 p-4">
+            <div className="mb-5 rounded-2xl border shadow-[0_8px_24px_rgba(15,23,42,0.065),0_2px_6px_rgba(15,23,42,0.035)] border-slate-200 bg-slate-50/70 p-4">
               <div className="flex flex-col justify-between gap-4 md:flex-row md:items-center">
                 <div>
                   <p className="text-sm font-semibold text-slate-800">
@@ -1416,7 +1419,7 @@ function Studies({
                       event.target.value
                     )
                   }
-                  className="min-w-[190px] rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm font-semibold text-slate-700 outline-none focus:border-cyan-700 disabled:opacity-50"
+                  className="min-w-[190px] rounded-xl border shadow-[0_5px_18px_rgba(15,23,42,0.06),0_1px_4px_rgba(15,23,42,0.035)] border-slate-300/70 bg-white px-4 py-2.5 text-sm font-semibold text-slate-700 outline-none focus:border-cyan-700 disabled:opacity-50"
                 >
                   {studyStatusOptions.map((status) => (
                     <option
@@ -1443,7 +1446,7 @@ function Studies({
                 <button
                   type="button"
                   onClick={() => changeScreen("participants")}
-                  className="rounded-xl border border-slate-200 px-4 py-2.5 text-sm font-semibold"
+                  className="rounded-full border shadow-[0_5px_16px_rgba(15,23,42,0.075),0_1px_3px_rgba(15,23,42,0.04)] border-slate-300/70 bg-white px-4 py-2.5 text-sm font-semibold shadow-[0_2px_6px_rgba(15,23,42,0.04)]"
                 >
                   View participants
                 </button>
@@ -1451,7 +1454,7 @@ function Studies({
                 <button
                   type="button"
                   onClick={() => changeScreen("links")}
-                  className="rounded-xl bg-slate-950 px-4 py-2.5 text-sm font-semibold text-white"
+                  className="rounded-full bg-slate-950 px-4 py-2.5 text-sm font-semibold text-white shadow-[0_5px_14px_rgba(15,23,42,0.16)]"
                 >
                   Participant links
                 </button>
@@ -1467,7 +1470,7 @@ function Studies({
                     selectedStudy
                   );
                 }}
-                className="rounded-xl border border-red-200 bg-white px-4 py-2.5 text-sm font-semibold text-red-700 transition hover:bg-red-50"
+                className="rounded-xl border shadow-[0_5px_18px_rgba(15,23,42,0.06),0_1px_4px_rgba(15,23,42,0.035)] border-red-200 bg-white px-4 py-2.5 text-sm font-semibold text-red-700 transition hover:bg-red-50"
               >
                 Delete study
               </button>
@@ -1478,7 +1481,7 @@ function Studies({
 
       {deleteStudyTarget && (
         <div className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-950/45 p-4">
-          <div className="w-full max-w-lg rounded-3xl border border-slate-200 bg-white shadow-2xl">
+          <div className="w-full max-w-lg rounded-3xl border border-slate-300/70 bg-white shadow-2xl">
             <div className="border-b border-slate-100 px-6 py-5">
               <p className="text-lg font-semibold text-slate-950">
                 Delete study permanently?
@@ -1491,7 +1494,7 @@ function Studies({
             </div>
 
             <div className="space-y-5 p-6">
-              <div className="rounded-2xl border border-red-100 bg-red-50 p-4">
+              <div className="rounded-2xl border shadow-[0_8px_24px_rgba(15,23,42,0.065),0_2px_6px_rgba(15,23,42,0.035)] border-red-100 bg-red-50 p-4">
                 <p className="text-sm font-semibold text-red-800">
                   {deleteStudyTarget.title}
                 </p>
@@ -1538,7 +1541,7 @@ function Studies({
                   }
                   placeholder={deleteStudyTarget.title}
                   autoFocus
-                  className="mt-2 w-full rounded-xl border border-slate-200 px-4 py-3 text-sm outline-none focus:border-red-400"
+                  className="mt-2 w-full rounded-xl border shadow-[0_5px_18px_rgba(15,23,42,0.06),0_1px_4px_rgba(15,23,42,0.035)] border-slate-200 px-4 py-3 text-sm outline-none focus:border-red-400"
                 />
               </label>
 
@@ -1550,7 +1553,7 @@ function Studies({
                     setDeleteConfirmation("");
                   }}
                   disabled={deletingStudy}
-                  className="rounded-xl border border-slate-200 px-4 py-2.5 text-sm font-semibold text-slate-600 disabled:opacity-50"
+                  className="rounded-full border shadow-[0_5px_16px_rgba(15,23,42,0.075),0_1px_3px_rgba(15,23,42,0.04)] border-slate-300/70 bg-white px-4 py-2.5 text-sm font-semibold shadow-[0_2px_6px_rgba(15,23,42,0.04)] text-slate-600 disabled:opacity-50"
                 >
                   Cancel
                 </button>
@@ -3355,7 +3358,7 @@ function StudyBuilder({
               key={step.key}
               type="button"
               onClick={() => setActiveStepKey(step.key)}
-              className={`rounded-full border px-3 py-2 text-xs font-medium ${
+              className={`rounded-full border shadow-[0_5px_16px_rgba(15,23,42,0.075),0_1px_3px_rgba(15,23,42,0.04)] px-3 py-2 text-xs font-medium ${
                 currentStep.key === step.key
                   ? "border-cyan-700 bg-cyan-50 text-cyan-800"
                   : "border-slate-200 text-slate-500"
@@ -3369,10 +3372,10 @@ function StudyBuilder({
 
       {(studyError || saveMessage) && (
         <div
-          className={`rounded-2xl border px-5 py-4 ${
+          className={`rounded-2xl border shadow-[0_8px_24px_rgba(15,23,42,0.065),0_2px_6px_rgba(15,23,42,0.035)] px-5 py-4 ${
             studyError
               ? "border-red-200 bg-red-50 text-red-700"
-              : "border-emerald-200 bg-emerald-50 text-emerald-800"
+              : "border-cyan-300/70 bg-[#ecfbff] text-cyan-900"
           }`}
         >
           <p className="text-sm">{studyError || saveMessage}</p>
@@ -3391,7 +3394,7 @@ function StudyBuilder({
                 <input
                   value={title}
                   onChange={(event) => setTitle(event.target.value)}
-                  className="mt-2 w-full rounded-xl border border-slate-200 px-4 py-3 text-sm outline-none focus:border-cyan-700"
+                  className="mt-2 w-full rounded-xl border shadow-[0_5px_18px_rgba(15,23,42,0.06),0_1px_4px_rgba(15,23,42,0.035)] border-slate-200 px-4 py-3 text-sm outline-none focus:border-cyan-700"
                 />
               </label>
 
@@ -3401,7 +3404,7 @@ function StudyBuilder({
                   value={description}
                   onChange={(event) => setDescription(event.target.value)}
                   placeholder="Explain what participants will be asked to do."
-                  className="mt-2 min-h-28 w-full rounded-xl border border-slate-200 px-4 py-3 text-sm outline-none focus:border-cyan-700"
+                  className="mt-2 min-h-28 w-full rounded-xl border shadow-[0_5px_18px_rgba(15,23,42,0.06),0_1px_4px_rgba(15,23,42,0.035)] border-slate-200 px-4 py-3 text-sm outline-none focus:border-cyan-700"
                 />
               </label>
 
@@ -3411,7 +3414,7 @@ function StudyBuilder({
                   <select
                     value={design}
                     onChange={(event) => setDesign(event.target.value)}
-                    className="mt-2 w-full rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm"
+                    className="mt-2 w-full rounded-xl border shadow-[0_5px_18px_rgba(15,23,42,0.06),0_1px_4px_rgba(15,23,42,0.035)] border-slate-300/70 bg-white px-4 py-3 text-sm shadow-[0_2px_6px_rgba(15,23,42,0.035)]"
                   >
                     <option>Cross-sectional survey</option>
                     <option>Longitudinal</option>
@@ -3431,7 +3434,7 @@ function StudyBuilder({
                     min={1}
                     value={targetSampleSize}
                     onChange={(event) => setTargetSampleSize(Number(event.target.value))}
-                    className="mt-2 w-full rounded-xl border border-slate-200 px-4 py-3 text-sm"
+                    className="mt-2 w-full rounded-xl border shadow-[0_5px_18px_rgba(15,23,42,0.06),0_1px_4px_rgba(15,23,42,0.035)] border-slate-200 px-4 py-3 text-sm"
                   />
                 </label>
               </div>
@@ -3450,10 +3453,10 @@ function StudyBuilder({
                     key={component.key}
                     type="button"
                     onClick={() => toggleComponent(component.key)}
-                    className={`rounded-2xl border p-5 text-left transition ${
+                    className={`rounded-2xl border shadow-[0_8px_24px_rgba(15,23,42,0.065),0_2px_6px_rgba(15,23,42,0.035)] p-5 text-left transition ${
                       components[component.key]
                         ? "border-cyan-200 bg-cyan-50/60"
-                        : "border-slate-200 bg-white hover:bg-slate-50"
+                        : "border-slate-300/70 bg-white hover:bg-slate-50"
                     }`}
                   >
                     <div className="flex items-center justify-between gap-3">
@@ -3471,7 +3474,7 @@ function StudyBuilder({
 
           {currentStep.key === "flow" && (
             <div className="space-y-5">
-              <div className="rounded-2xl border border-cyan-100 bg-cyan-50/60 p-5">
+              <div className="rounded-2xl border shadow-[0_8px_24px_rgba(15,23,42,0.065),0_2px_6px_rgba(15,23,42,0.035)] border-cyan-100 bg-cyan-50/60 p-5">
                 <p className="font-medium text-cyan-950">Participant study flow</p>
                 <p className="mt-2 text-sm leading-6 text-cyan-900/75">
                   Reposition questionnaires, demographics and cognitive tasks into the exact order participants should encounter them. The same questionnaire or cognitive task may be added more than once when your design requires repeated administration.
@@ -3479,11 +3482,11 @@ function StudyBuilder({
               </div>
 
               {components.consent && consentMethod === "psylattice" && (
-                <div className="rounded-2xl border border-emerald-200 bg-emerald-50/60 p-4">
+                <div className="rounded-2xl border shadow-[0_8px_24px_rgba(15,23,42,0.065),0_2px_6px_rgba(15,23,42,0.035)] border-cyan-200 bg-cyan-50/60 p-4">
                   <div className="flex items-center justify-between gap-3">
                     <div>
-                      <p className="text-sm font-semibold text-emerald-950">1. Consent</p>
-                      <p className="mt-1 text-xs text-emerald-800/70">Locked before research data collection.</p>
+                      <p className="text-sm font-semibold text-cyan-950">1. Consent</p>
+                      <p className="mt-1 text-xs text-cyan-800/70">Locked before research data collection.</p>
                     </div>
                     <Status type="success">Locked first</Status>
                   </div>
@@ -3491,7 +3494,7 @@ function StudyBuilder({
               )}
 
               {baselineFlow.length === 0 ? (
-                <div className="rounded-2xl border border-dashed border-slate-300 bg-slate-50 p-6 text-center">
+                <div className="rounded-2xl border shadow-[0_8px_24px_rgba(15,23,42,0.065),0_2px_6px_rgba(15,23,42,0.035)] border-dashed border-slate-300 bg-slate-50 p-6 text-center">
                   <p className="font-medium">No baseline study elements yet</p>
                   <p className="mt-2 text-sm text-slate-500">Add questionnaires or cognitive tasks, or enable demographics.</p>
                 </div>
@@ -3512,7 +3515,7 @@ function StudyBuilder({
                         : `Cognitive task · ${cognitive?.version_label || "Pinned version"}`;
                     const displayNumber = index + 1 + (components.consent && consentMethod === "psylattice" ? 1 : 0);
                     return (
-                      <div key={item.id} className="rounded-2xl border border-slate-200 bg-white p-4">
+                      <div key={item.id} className="rounded-2xl border shadow-[0_8px_24px_rgba(15,23,42,0.065),0_2px_6px_rgba(15,23,42,0.035)] border-slate-300/70 bg-white p-4">
                         <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                           <div className="min-w-0">
                             <div className="flex flex-wrap items-center gap-2">
@@ -3525,9 +3528,9 @@ function StudyBuilder({
                             <p className="mt-1 pl-9 text-xs text-slate-500">{detail}</p>
                           </div>
                           <div className="flex shrink-0 gap-2">
-                            <button type="button" onClick={() => moveBaselineFlowItem(item.ref_id, -1)} disabled={index === 0} className="rounded-lg border border-slate-200 px-3 py-2 text-xs font-semibold disabled:opacity-30">↑</button>
-                            <button type="button" onClick={() => moveBaselineFlowItem(item.ref_id, 1)} disabled={index === baselineFlow.length - 1} className="rounded-lg border border-slate-200 px-3 py-2 text-xs font-semibold disabled:opacity-30">↓</button>
-                            <button type="button" onClick={() => removeBaselineFlowEntry(item)} className="rounded-lg border border-red-200 px-3 py-2 text-xs font-semibold text-red-700">Remove</button>
+                            <button type="button" onClick={() => moveBaselineFlowItem(item.ref_id, -1)} disabled={index === 0} className="rounded-lg border shadow-[0_3px_10px_rgba(15,23,42,0.05)] border-slate-200 px-3 py-2 text-xs font-semibold disabled:opacity-30">↑</button>
+                            <button type="button" onClick={() => moveBaselineFlowItem(item.ref_id, 1)} disabled={index === baselineFlow.length - 1} className="rounded-lg border shadow-[0_3px_10px_rgba(15,23,42,0.05)] border-slate-200 px-3 py-2 text-xs font-semibold disabled:opacity-30">↓</button>
+                            <button type="button" onClick={() => removeBaselineFlowEntry(item)} className="rounded-lg border shadow-[0_3px_10px_rgba(15,23,42,0.05)] border-red-200 px-3 py-2 text-xs font-semibold text-red-700">Remove</button>
                           </div>
                         </div>
                       </div>
@@ -3537,8 +3540,8 @@ function StudyBuilder({
               )}
 
               <div className="grid gap-3 sm:grid-cols-2">
-                <button type="button" onClick={() => { setComponents((previous) => ({ ...previous, baseline: true })); setActiveStepKey("measures"); }} className="rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm font-semibold text-slate-700">+ Add questionnaire</button>
-                <button type="button" onClick={() => { setComponents((previous) => ({ ...previous, cognitive: true })); setActiveStepKey("cognitive"); }} className="rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm font-semibold text-slate-700">+ Add cognitive task</button>
+                <button type="button" onClick={() => { setComponents((previous) => ({ ...previous, baseline: true })); setActiveStepKey("measures"); }} className="rounded-xl border shadow-[0_5px_18px_rgba(15,23,42,0.06),0_1px_4px_rgba(15,23,42,0.035)] border-slate-300/70 bg-white px-4 py-3 text-sm shadow-[0_2px_6px_rgba(15,23,42,0.035)] font-semibold text-slate-700">+ Add questionnaire</button>
+                <button type="button" onClick={() => { setComponents((previous) => ({ ...previous, cognitive: true })); setActiveStepKey("cognitive"); }} className="rounded-xl border shadow-[0_5px_18px_rgba(15,23,42,0.06),0_1px_4px_rgba(15,23,42,0.035)] border-slate-300/70 bg-white px-4 py-3 text-sm shadow-[0_2px_6px_rgba(15,23,42,0.035)] font-semibold text-slate-700">+ Add cognitive task</button>
               </div>
             </div>
           )}
@@ -3557,7 +3560,7 @@ function StudyBuilder({
                       key={value}
                       type="button"
                       onClick={() => setConsentMethod(value as typeof consentMethod)}
-                      className={`rounded-xl border p-4 text-left text-sm font-medium ${
+                      className={`rounded-xl border shadow-[0_5px_18px_rgba(15,23,42,0.06),0_1px_4px_rgba(15,23,42,0.035)] p-4 text-left text-sm font-medium ${
                         consentMethod === value
                           ? "border-cyan-700 bg-cyan-50 text-cyan-900"
                           : "border-slate-200"
@@ -3577,7 +3580,7 @@ function StudyBuilder({
                       value={participantInformation}
                       onChange={(event) => setParticipantInformation(event.target.value)}
                       placeholder="Paste or write the approved participant information shown before consent items."
-                      className="mt-2 min-h-40 w-full rounded-xl border border-slate-200 px-4 py-3 text-sm"
+                      className="mt-2 min-h-40 w-full rounded-xl border shadow-[0_5px_18px_rgba(15,23,42,0.06),0_1px_4px_rgba(15,23,42,0.035)] border-slate-200 px-4 py-3 text-sm"
                     />
                   </label>
 
@@ -3592,7 +3595,7 @@ function StudyBuilder({
                       <button
                         type="button"
                         onClick={addConsentItem}
-                        className="rounded-xl bg-slate-950 px-4 py-2.5 text-sm font-semibold text-white"
+                        className="rounded-full bg-slate-950 px-4 py-2.5 text-sm font-semibold text-white shadow-[0_5px_14px_rgba(15,23,42,0.16)]"
                       >
                         + Add consent question
                       </button>
@@ -3600,13 +3603,13 @@ function StudyBuilder({
 
                     <div className="mt-4 space-y-4">
                       {consentItems.map((item, index) => (
-                        <div key={item.id} className="rounded-2xl border border-slate-200 bg-white p-5">
+                        <div key={item.id} className="rounded-2xl border shadow-[0_8px_24px_rgba(15,23,42,0.065),0_2px_6px_rgba(15,23,42,0.035)] border-slate-300/70 bg-white p-5">
                           <div className="flex flex-wrap items-center justify-between gap-3">
                             <p className="text-sm font-semibold">Consent item {index + 1}</p>
                             <div className="flex gap-2">
-                              <button type="button" onClick={() => moveConsentItem(item.id, -1)} className="rounded-lg border border-slate-200 px-2 py-1 text-xs">↑</button>
-                              <button type="button" onClick={() => moveConsentItem(item.id, 1)} className="rounded-lg border border-slate-200 px-2 py-1 text-xs">↓</button>
-                              <button type="button" onClick={() => removeConsentItem(item.id)} className="rounded-lg border border-red-200 px-2 py-1 text-xs text-red-700">Remove</button>
+                              <button type="button" onClick={() => moveConsentItem(item.id, -1)} className="rounded-lg border shadow-[0_3px_10px_rgba(15,23,42,0.05)] border-slate-200 px-2 py-1 text-xs">↑</button>
+                              <button type="button" onClick={() => moveConsentItem(item.id, 1)} className="rounded-lg border shadow-[0_3px_10px_rgba(15,23,42,0.05)] border-slate-200 px-2 py-1 text-xs">↓</button>
+                              <button type="button" onClick={() => removeConsentItem(item.id)} className="rounded-lg border shadow-[0_3px_10px_rgba(15,23,42,0.05)] border-red-200 px-2 py-1 text-xs text-red-700">Remove</button>
                             </div>
                           </div>
 
@@ -3614,7 +3617,7 @@ function StudyBuilder({
                             value={item.prompt}
                             onChange={(event) => updateConsentItem(item.id, { prompt: event.target.value })}
                             placeholder="Consent or comprehension statement"
-                            className="mt-4 min-h-20 w-full rounded-xl border border-slate-200 px-4 py-3 text-sm"
+                            className="mt-4 min-h-20 w-full rounded-xl border shadow-[0_5px_18px_rgba(15,23,42,0.06),0_1px_4px_rgba(15,23,42,0.035)] border-slate-200 px-4 py-3 text-sm"
                           />
 
                           <div className="mt-4 grid gap-4 sm:grid-cols-2">
@@ -3623,7 +3626,7 @@ function StudyBuilder({
                               <select
                                 value={item.response_type}
                                 onChange={(event) => updateConsentItem(item.id, { response_type: event.target.value as ConsentItemDraft["response_type"] })}
-                                className="mt-2 w-full rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm"
+                                className="mt-2 w-full rounded-xl border shadow-[0_5px_18px_rgba(15,23,42,0.06),0_1px_4px_rgba(15,23,42,0.035)] border-slate-300/70 bg-white px-3 py-2.5 text-sm shadow-[0_2px_6px_rgba(15,23,42,0.035)]"
                               >
                                 <option value="checkbox">Acknowledgment checkbox</option>
                                 <option value="yes_no">Yes / No</option>
@@ -3635,7 +3638,7 @@ function StudyBuilder({
                               </select>
                             </label>
 
-                            <label className="flex items-center gap-3 rounded-xl border border-slate-200 px-4 py-3 sm:self-end">
+                            <label className="flex items-center gap-3 rounded-xl border shadow-[0_5px_18px_rgba(15,23,42,0.06),0_1px_4px_rgba(15,23,42,0.035)] border-slate-200 px-4 py-3 sm:self-end">
                               <input
                                 type="checkbox"
                                 checked={item.required}
@@ -3652,7 +3655,7 @@ function StudyBuilder({
                                 <textarea
                                   value={item.options.join("\n")}
                                   onChange={(event) => updateConsentItem(item.id, { options: event.target.value.split("\n") })}
-                                  className="mt-2 min-h-24 w-full rounded-xl border border-slate-200 px-3 py-2.5 text-sm"
+                                  className="mt-2 min-h-24 w-full rounded-xl border shadow-[0_5px_18px_rgba(15,23,42,0.06),0_1px_4px_rgba(15,23,42,0.035)] border-slate-200 px-3 py-2.5 text-sm"
                                 />
                               </label>
 
@@ -3662,7 +3665,7 @@ function StudyBuilder({
                                   <select
                                     value={item.correct_option}
                                     onChange={(event) => updateConsentItem(item.id, { correct_option: event.target.value })}
-                                    className="mt-2 w-full rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm"
+                                    className="mt-2 w-full rounded-xl border shadow-[0_5px_18px_rgba(15,23,42,0.06),0_1px_4px_rgba(15,23,42,0.035)] border-slate-300/70 bg-white px-3 py-2.5 text-sm shadow-[0_2px_6px_rgba(15,23,42,0.035)]"
                                   >
                                     <option value="">Choose the approved correct answer</option>
                                     {item.options.filter(Boolean).map((option) => (
@@ -3687,7 +3690,7 @@ function StudyBuilder({
                     value={externalConsentNote}
                     onChange={(event) => setExternalConsentNote(event.target.value)}
                     placeholder="Record where/how consent is obtained, the relevant ethics approval, document version, or approved justification."
-                    className="mt-2 min-h-32 w-full rounded-xl border border-slate-200 px-4 py-3 text-sm"
+                    className="mt-2 min-h-32 w-full rounded-xl border shadow-[0_5px_18px_rgba(15,23,42,0.06),0_1px_4px_rgba(15,23,42,0.035)] border-slate-200 px-4 py-3 text-sm"
                   />
                 </label>
               )}
@@ -3696,7 +3699,7 @@ function StudyBuilder({
 
           {currentStep.key === "demographics" && (
             <div className="space-y-6">
-              <div className="rounded-2xl border border-cyan-100 bg-cyan-50/60 p-5">
+              <div className="rounded-2xl border shadow-[0_8px_24px_rgba(15,23,42,0.065),0_2px_6px_rgba(15,23,42,0.035)] border-cyan-100 bg-cyan-50/60 p-5">
                 <p className="font-medium text-cyan-950">
                   Participant demographics
                 </p>
@@ -3717,7 +3720,7 @@ function StudyBuilder({
                       key={preset.key}
                       type="button"
                       onClick={() => addDemographicPreset(preset.key)}
-                      className="rounded-full border border-slate-200 bg-white px-3 py-2 text-xs font-medium text-slate-600 hover:border-slate-300"
+                      className="rounded-full border shadow-[0_5px_16px_rgba(15,23,42,0.075),0_1px_3px_rgba(15,23,42,0.04)] border-slate-300/70 bg-white px-3 py-2 text-xs font-medium text-slate-600 hover:border-slate-300"
                     >
                       + {preset.label}
                     </button>
@@ -3753,7 +3756,7 @@ function StudyBuilder({
                     return (
                       <div
                         key={question.id}
-                        className="rounded-2xl border border-slate-200 p-5"
+                        className="rounded-2xl border shadow-[0_8px_24px_rgba(15,23,42,0.065),0_2px_6px_rgba(15,23,42,0.035)] border-slate-200 p-5"
                       >
                         <div className="flex flex-wrap items-center justify-between gap-3">
                           <div className="flex items-center gap-2">
@@ -3771,7 +3774,7 @@ function StudyBuilder({
                               onClick={() =>
                                 moveDemographicQuestion(question.id, -1)
                               }
-                              className="rounded-lg border border-slate-200 px-2 py-1 text-xs"
+                              className="rounded-lg border shadow-[0_3px_10px_rgba(15,23,42,0.05)] border-slate-200 px-2 py-1 text-xs"
                             >
                               ↑
                             </button>
@@ -3780,7 +3783,7 @@ function StudyBuilder({
                               onClick={() =>
                                 moveDemographicQuestion(question.id, 1)
                               }
-                              className="rounded-lg border border-slate-200 px-2 py-1 text-xs"
+                              className="rounded-lg border shadow-[0_3px_10px_rgba(15,23,42,0.05)] border-slate-200 px-2 py-1 text-xs"
                             >
                               ↓
                             </button>
@@ -3789,7 +3792,7 @@ function StudyBuilder({
                               onClick={() =>
                                 removeDemographicQuestion(question.id)
                               }
-                              className="rounded-lg border border-red-200 px-2 py-1 text-xs text-red-700"
+                              className="rounded-lg border shadow-[0_3px_10px_rgba(15,23,42,0.05)] border-red-200 px-2 py-1 text-xs text-red-700"
                             >
                               Remove
                             </button>
@@ -3808,7 +3811,7 @@ function StudyBuilder({
                                   label: event.target.value,
                                 })
                               }
-                              className="mt-2 w-full rounded-xl border border-slate-200 px-3 py-2.5 text-sm"
+                              className="mt-2 w-full rounded-xl border shadow-[0_5px_18px_rgba(15,23,42,0.06),0_1px_4px_rgba(15,23,42,0.035)] border-slate-200 px-3 py-2.5 text-sm"
                             />
                           </label>
 
@@ -3824,7 +3827,7 @@ function StudyBuilder({
                                     .value as DemographicQuestionDraft["question_type"],
                                 })
                               }
-                              className="mt-2 w-full rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm"
+                              className="mt-2 w-full rounded-xl border shadow-[0_5px_18px_rgba(15,23,42,0.06),0_1px_4px_rgba(15,23,42,0.035)] border-slate-300/70 bg-white px-3 py-2.5 text-sm shadow-[0_2px_6px_rgba(15,23,42,0.035)]"
                             >
                               <option value="short_text">Short open field</option>
                               <option value="long_text">Long open field</option>
@@ -3851,7 +3854,7 @@ function StudyBuilder({
                               })
                             }
                             rows={2}
-                            className="mt-2 w-full rounded-xl border border-slate-200 px-3 py-2.5 text-sm"
+                            className="mt-2 w-full rounded-xl border shadow-[0_5px_18px_rgba(15,23,42,0.06),0_1px_4px_rgba(15,23,42,0.035)] border-slate-200 px-3 py-2.5 text-sm"
                           />
                         </label>
 
@@ -3868,7 +3871,7 @@ function StudyBuilder({
                                 })
                               }
                               rows={6}
-                              className="mt-2 w-full rounded-xl border border-slate-200 px-3 py-2.5 text-sm"
+                              className="mt-2 w-full rounded-xl border shadow-[0_5px_18px_rgba(15,23,42,0.06),0_1px_4px_rgba(15,23,42,0.035)] border-slate-200 px-3 py-2.5 text-sm"
                             />
                           </label>
                         )}
@@ -3887,7 +3890,7 @@ function StudyBuilder({
                                   placeholder: event.target.value,
                                 })
                               }
-                              className="mt-2 w-full rounded-xl border border-slate-200 px-3 py-2.5 text-sm"
+                              className="mt-2 w-full rounded-xl border shadow-[0_5px_18px_rgba(15,23,42,0.06),0_1px_4px_rgba(15,23,42,0.035)] border-slate-200 px-3 py-2.5 text-sm"
                             />
                           </label>
                         )}
@@ -3906,7 +3909,7 @@ function StudyBuilder({
                                     min_value: event.target.value,
                                   })
                                 }
-                                className="mt-2 w-full rounded-xl border border-slate-200 px-3 py-2.5 text-sm"
+                                className="mt-2 w-full rounded-xl border shadow-[0_5px_18px_rgba(15,23,42,0.06),0_1px_4px_rgba(15,23,42,0.035)] border-slate-200 px-3 py-2.5 text-sm"
                               />
                             </label>
                             <label>
@@ -3921,14 +3924,14 @@ function StudyBuilder({
                                     max_value: event.target.value,
                                   })
                                 }
-                                className="mt-2 w-full rounded-xl border border-slate-200 px-3 py-2.5 text-sm"
+                                className="mt-2 w-full rounded-xl border shadow-[0_5px_18px_rgba(15,23,42,0.06),0_1px_4px_rgba(15,23,42,0.035)] border-slate-200 px-3 py-2.5 text-sm"
                               />
                             </label>
                           </div>
                         )}
 
                         <div className="mt-4 grid gap-3 sm:grid-cols-2">
-                          <label className="flex items-start gap-3 rounded-xl border border-slate-200 p-4">
+                          <label className="flex items-start gap-3 rounded-xl border shadow-[0_5px_18px_rgba(15,23,42,0.06),0_1px_4px_rgba(15,23,42,0.035)] border-slate-200 p-4">
                             <input
                               type="checkbox"
                               checked={question.required}
@@ -3947,7 +3950,7 @@ function StudyBuilder({
                             </div>
                           </label>
 
-                          <label className="flex items-start gap-3 rounded-xl border border-slate-200 p-4">
+                          <label className="flex items-start gap-3 rounded-xl border shadow-[0_5px_18px_rgba(15,23,42,0.06),0_1px_4px_rgba(15,23,42,0.035)] border-slate-200 p-4">
                             <input
                               type="checkbox"
                               checked={question.direct_identifier}
@@ -3980,7 +3983,7 @@ function StudyBuilder({
 
           {currentStep.key === "measures" && (
             <div className="space-y-6">
-              <div className="rounded-2xl border border-cyan-100 bg-cyan-50/60 p-5">
+              <div className="rounded-2xl border shadow-[0_8px_24px_rgba(15,23,42,0.065),0_2px_6px_rgba(15,23,42,0.035)] border-cyan-100 bg-cyan-50/60 p-5">
                 <p className="font-medium text-cyan-950">
                   Select questionnaires for this study
                 </p>
@@ -4009,7 +4012,7 @@ function StudyBuilder({
                     {studyMeasures.map((measure, index) => (
                       <div
                         key={measure.id}
-                        className="rounded-2xl border border-slate-200 p-4"
+                        className="rounded-2xl border shadow-[0_8px_24px_rgba(15,23,42,0.065),0_2px_6px_rgba(15,23,42,0.035)] border-slate-200 p-4"
                       >
                         <div className="flex flex-wrap items-start justify-between gap-3">
                           <div>
@@ -4046,7 +4049,7 @@ function StudyBuilder({
                               type="button"
                               onClick={() => moveStudyMeasure(measure.id, -1)}
                               disabled={index === 0}
-                              className="rounded-lg border border-slate-200 px-2.5 py-1.5 text-xs disabled:opacity-30"
+                              className="rounded-lg border shadow-[0_3px_10px_rgba(15,23,42,0.05)] border-slate-200 px-2.5 py-1.5 text-xs disabled:opacity-30"
                             >
                               ↑
                             </button>
@@ -4054,14 +4057,14 @@ function StudyBuilder({
                               type="button"
                               onClick={() => moveStudyMeasure(measure.id, 1)}
                               disabled={index === studyMeasures.length - 1}
-                              className="rounded-lg border border-slate-200 px-2.5 py-1.5 text-xs disabled:opacity-30"
+                              className="rounded-lg border shadow-[0_3px_10px_rgba(15,23,42,0.05)] border-slate-200 px-2.5 py-1.5 text-xs disabled:opacity-30"
                             >
                               ↓
                             </button>
                             <button
                               type="button"
                               onClick={() => removeStudyMeasure(measure.id)}
-                              className="rounded-lg border border-red-200 px-2.5 py-1.5 text-xs text-red-700"
+                              className="rounded-lg border shadow-[0_3px_10px_rgba(15,23,42,0.05)] border-red-200 px-2.5 py-1.5 text-xs text-red-700"
                             >
                               Remove
                             </button>
@@ -4098,7 +4101,7 @@ function StudyBuilder({
                       value={measureSearch}
                       onChange={(event) => setMeasureSearch(event.target.value)}
                       placeholder="Search name, acronym, construct or category..."
-                      className="mt-2 w-full rounded-xl border border-slate-200 px-4 py-3 text-sm outline-none focus:border-cyan-700"
+                      className="mt-2 w-full rounded-xl border shadow-[0_5px_18px_rgba(15,23,42,0.06),0_1px_4px_rgba(15,23,42,0.035)] border-slate-200 px-4 py-3 text-sm outline-none focus:border-cyan-700"
                     />
                   </label>
 
@@ -4110,7 +4113,7 @@ function StudyBuilder({
                 </div>
 
                 {measureCatalogueError && (
-                  <div className="mt-4 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+                  <div className="mt-4 border-l-2 border-rose-400 bg-transparent py-1 pl-3 pr-1 text-sm text-slate-600">
                     {measureCatalogueError}
                   </div>
                 )}
@@ -4132,7 +4135,7 @@ function StudyBuilder({
                       return (
                         <div
                           key={questionnaire.id}
-                          className="rounded-2xl border border-slate-200 p-5"
+                          className="rounded-2xl border shadow-[0_8px_24px_rgba(15,23,42,0.065),0_2px_6px_rgba(15,23,42,0.035)] border-slate-200 p-5"
                         >
                           <div className="flex flex-col justify-between gap-4 lg:flex-row lg:items-center">
                             <div className="min-w-0">
@@ -4223,14 +4226,14 @@ function StudyBuilder({
 
           {currentStep.key === "cognitive" && (
             <div className="space-y-5">
-              <div className="rounded-2xl border border-cyan-100 bg-cyan-50/60 p-5">
+              <div className="rounded-2xl border shadow-[0_8px_24px_rgba(15,23,42,0.065),0_2px_6px_rgba(15,23,42,0.035)] border-cyan-100 bg-cyan-50/60 p-5">
                 <p className="font-medium text-cyan-950">Cognitive tasks from your personal library</p>
                 <p className="mt-2 text-sm leading-6 text-cyan-900/75">
                   Study Builder pins a published task version. If you later edit that task in Cognitive Lab, this study does not change unless you deliberately replace the pinned version.
                 </p>
               </div>
 
-              <div className="rounded-2xl border border-slate-200 bg-white p-5">
+              <div className="rounded-2xl border shadow-[0_8px_24px_rgba(15,23,42,0.065),0_2px_6px_rgba(15,23,42,0.035)] border-slate-300/70 bg-white p-5">
                 <div>
                   <p className="font-medium">Selected cognitive tasks</p>
                   <p className="mt-1 text-sm text-slate-500">{studyCognitiveTasks.length} task{studyCognitiveTasks.length === 1 ? "" : "s"} in this study</p>
@@ -4241,7 +4244,7 @@ function StudyBuilder({
                 ) : (
                   <div className="mt-4 space-y-3">
                     {studyCognitiveTasks.map((item, index) => (
-                      <div key={item.id} className="rounded-2xl border border-slate-200 p-4">
+                      <div key={item.id} className="rounded-2xl border shadow-[0_8px_24px_rgba(15,23,42,0.065),0_2px_6px_rgba(15,23,42,0.035)] border-slate-200 p-4">
                         <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
                           <div className="min-w-0">
                             <div className="flex flex-wrap items-center gap-2">
@@ -4252,16 +4255,16 @@ function StudyBuilder({
                             {item.description && <p className="mt-2 line-clamp-2 text-sm leading-6 text-slate-500">{item.description}</p>}
                           </div>
                           <div className="flex shrink-0 gap-2">
-                            <button type="button" onClick={() => moveStudyCognitiveTask(item.id, -1)} disabled={index === 0} className="rounded-lg border border-slate-200 px-2.5 py-1.5 text-xs disabled:opacity-30">↑</button>
-                            <button type="button" onClick={() => moveStudyCognitiveTask(item.id, 1)} disabled={index === studyCognitiveTasks.length - 1} className="rounded-lg border border-slate-200 px-2.5 py-1.5 text-xs disabled:opacity-30">↓</button>
-                            <button type="button" onClick={() => removeStudyCognitiveTask(item.id)} className="rounded-lg border border-red-200 px-2.5 py-1.5 text-xs text-red-700">Remove</button>
+                            <button type="button" onClick={() => moveStudyCognitiveTask(item.id, -1)} disabled={index === 0} className="rounded-lg border shadow-[0_3px_10px_rgba(15,23,42,0.05)] border-slate-200 px-2.5 py-1.5 text-xs disabled:opacity-30">↑</button>
+                            <button type="button" onClick={() => moveStudyCognitiveTask(item.id, 1)} disabled={index === studyCognitiveTasks.length - 1} className="rounded-lg border shadow-[0_3px_10px_rgba(15,23,42,0.05)] border-slate-200 px-2.5 py-1.5 text-xs disabled:opacity-30">↓</button>
+                            <button type="button" onClick={() => removeStudyCognitiveTask(item.id)} className="rounded-lg border shadow-[0_3px_10px_rgba(15,23,42,0.05)] border-red-200 px-2.5 py-1.5 text-xs text-red-700">Remove</button>
                           </div>
                         </div>
                         <div className="mt-4 grid gap-3 sm:grid-cols-2">
-                          <button type="button" onClick={() => updateStudyCognitiveTask(item.id, { required: !item.required })} className={`rounded-xl border px-3 py-2.5 text-xs font-semibold ${item.required ? "border-cyan-200 bg-cyan-50 text-cyan-900" : "border-slate-200 bg-white text-slate-600"}`}>
+                          <button type="button" onClick={() => updateStudyCognitiveTask(item.id, { required: !item.required })} className={`rounded-xl border shadow-[0_5px_18px_rgba(15,23,42,0.06),0_1px_4px_rgba(15,23,42,0.035)] px-3 py-2.5 text-xs font-semibold ${item.required ? "border-cyan-200 bg-cyan-50 text-cyan-900" : "border-slate-300/70 bg-white text-slate-600"}`}>
                             {item.required ? "✓ Required" : "Optional"}
                           </button>
-                          <select value={item.administration_mode} onChange={(event) => updateStudyCognitiveTask(item.id, { administration_mode: event.target.value as StudyCognitiveTaskDraft["administration_mode"] })} className="rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-xs">
+                          <select value={item.administration_mode} onChange={(event) => updateStudyCognitiveTask(item.id, { administration_mode: event.target.value as StudyCognitiveTaskDraft["administration_mode"] })} className="rounded-xl border shadow-[0_5px_18px_rgba(15,23,42,0.06),0_1px_4px_rgba(15,23,42,0.035)] border-slate-300/70 bg-white px-3 py-2.5 text-xs">
                             <option value="once">Run once</option>
                             <option value="repeated">Repeated</option>
                             <option value="scheduled">Scheduled</option>
@@ -4274,18 +4277,18 @@ function StudyBuilder({
                 )}
               </div>
 
-              <div className="rounded-2xl border border-slate-200 bg-white p-5">
+              <div className="rounded-2xl border shadow-[0_8px_24px_rgba(15,23,42,0.065),0_2px_6px_rgba(15,23,42,0.035)] border-slate-300/70 bg-white p-5">
                 <div className="flex flex-col justify-between gap-3 sm:flex-row sm:items-end">
                   <label className="block flex-1">
                     <span className="text-sm font-medium">Browse My Cognitive Tasks</span>
-                    <input value={cognitiveSearch} onChange={(event) => setCognitiveSearch(event.target.value)} placeholder="Search task, domain or description" className="mt-2 w-full rounded-xl border border-slate-200 px-4 py-3 text-sm" />
+                    <input value={cognitiveSearch} onChange={(event) => setCognitiveSearch(event.target.value)} placeholder="Search task, domain or description" className="mt-2 w-full rounded-xl border shadow-[0_5px_18px_rgba(15,23,42,0.06),0_1px_4px_rgba(15,23,42,0.035)] border-slate-200 px-4 py-3 text-sm" />
                   </label>
                   <div className="rounded-full bg-slate-100 px-3 py-2 text-xs font-medium text-slate-500">
                     {loadingCognitiveCatalogue ? "Loading..." : `${filteredCognitiveCatalogue.length} in library`}
                   </div>
                 </div>
 
-                {cognitiveCatalogueError && <div className="mt-4 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">{cognitiveCatalogueError}</div>}
+                {cognitiveCatalogueError && <div className="mt-4 border-l-2 border-rose-400 bg-transparent py-1 pl-3 pr-1 text-sm text-slate-600">{cognitiveCatalogueError}</div>}
 
                 {loadingCognitiveCatalogue ? (
                   <p className="mt-5 text-sm text-slate-500">Loading your Cognitive Task Library...</p>
@@ -4296,7 +4299,7 @@ function StudyBuilder({
                         ? studyCognitiveTasks.filter((item) => item.version_id === task.published_version_id).length
                         : 0;
                       return (
-                        <div key={task.id} className="rounded-2xl border border-slate-200 p-5">
+                        <div key={task.id} className="rounded-2xl border shadow-[0_8px_24px_rgba(15,23,42,0.065),0_2px_6px_rgba(15,23,42,0.035)] border-slate-200 p-5">
                           <div className="flex flex-col justify-between gap-4 lg:flex-row lg:items-center">
                             <div className="min-w-0">
                               <div className="flex flex-wrap items-center gap-2">
@@ -4327,9 +4330,9 @@ function StudyBuilder({
           {currentStep.key === "ambulatory" && (
             <div className="space-y-5">
               <div
-                className={`rounded-2xl border p-5 ${
+                className={`rounded-2xl border shadow-[0_8px_24px_rgba(15,23,42,0.065),0_2px_6px_rgba(15,23,42,0.035)] p-5 ${
                   ambulatoryProtocolId
-                    ? "border-emerald-200 bg-emerald-50/70"
+                    ? "border-cyan-200 bg-cyan-50/70"
                     : "border-cyan-100 bg-cyan-50/60"
                 }`}
               >
@@ -4339,7 +4342,7 @@ function StudyBuilder({
                       <p
                         className={`font-medium ${
                           ambulatoryProtocolId
-                            ? "text-emerald-950"
+                            ? "text-cyan-950"
                             : "text-cyan-950"
                         }`}
                       >
@@ -4349,16 +4352,16 @@ function StudyBuilder({
                       </p>
 
                       {ambulatoryProtocolId && (
-                        <span className="rounded-full border border-emerald-200 bg-white px-2.5 py-1 text-[11px] font-semibold text-emerald-700">
+                        <span className="rounded-full border shadow-[0_5px_16px_rgba(15,23,42,0.075),0_1px_3px_rgba(15,23,42,0.04)] border-cyan-200 bg-white px-2.5 py-1 text-[11px] font-semibold text-cyan-700">
                           CONFIRMED
                         </span>
                       )}
                     </div>
 
                     {ambulatoryProtocolSummary ? (
-                      <div className="mt-3 grid gap-2 text-sm text-emerald-900/80 sm:grid-cols-2 lg:grid-cols-4">
+                      <div className="mt-3 grid gap-2 text-sm text-cyan-900/80 sm:grid-cols-2 lg:grid-cols-4">
                         <div>
-                          <span className="block text-xs font-medium text-emerald-700">
+                          <span className="block text-xs font-medium text-cyan-700">
                             Protocol
                           </span>
                           <span className="font-medium">
@@ -4367,7 +4370,7 @@ function StudyBuilder({
                         </div>
 
                         <div>
-                          <span className="block text-xs font-medium text-emerald-700">
+                          <span className="block text-xs font-medium text-cyan-700">
                             Duration
                           </span>
                           <span className="font-medium">
@@ -4378,7 +4381,7 @@ function StudyBuilder({
                         </div>
 
                         <div>
-                          <span className="block text-xs font-medium text-emerald-700">
+                          <span className="block text-xs font-medium text-cyan-700">
                             Blocks / schedules
                           </span>
                           <span className="font-medium">
@@ -4387,7 +4390,7 @@ function StudyBuilder({
                         </div>
 
                         <div>
-                          <span className="block text-xs font-medium text-emerald-700">
+                          <span className="block text-xs font-medium text-cyan-700">
                             Status
                           </span>
                           <span className="font-medium">
@@ -4405,7 +4408,7 @@ function StudyBuilder({
                     )}
 
                     {ambulatoryProtocolSummary?.updated_at && (
-                      <p className="mt-3 text-xs text-emerald-700/70">
+                      <p className="mt-3 text-xs text-cyan-700/70">
                         Last saved{" "}
                         {new Date(
                           ambulatoryProtocolSummary.updated_at
@@ -4446,7 +4449,7 @@ function StudyBuilder({
                 ].map(([title, description]) => (
                   <div
                     key={title}
-                    className="rounded-2xl border border-slate-200 bg-white p-5"
+                    className="rounded-2xl border shadow-[0_8px_24px_rgba(15,23,42,0.065),0_2px_6px_rgba(15,23,42,0.035)] border-slate-300/70 bg-white p-5"
                   >
                     <p className="font-medium">{title}</p>
                     <p className="mt-2 text-sm leading-6 text-slate-500">
@@ -4466,9 +4469,9 @@ function StudyBuilder({
 
           {currentStep.key === "followup" && (
             <div
-              className={`rounded-2xl border p-5 ${
+              className={`rounded-2xl border shadow-[0_8px_24px_rgba(15,23,42,0.065),0_2px_6px_rgba(15,23,42,0.035)] p-5 ${
                 followupWaveSummary.count > 0
-                  ? "border-emerald-200 bg-emerald-50/70"
+                  ? "border-cyan-200 bg-cyan-50/70"
                   : "border-cyan-100 bg-cyan-50/60"
               }`}
             >
@@ -4478,7 +4481,7 @@ function StudyBuilder({
                     <p
                       className={`font-medium ${
                         followupWaveSummary.count > 0
-                          ? "text-emerald-950"
+                          ? "text-cyan-950"
                           : "text-cyan-950"
                       }`}
                     >
@@ -4488,7 +4491,7 @@ function StudyBuilder({
                     </p>
 
                     {followupWaveSummary.count > 0 && (
-                      <span className="rounded-full border border-emerald-200 bg-white px-2.5 py-1 text-[11px] font-semibold text-emerald-700">
+                      <span className="rounded-full border shadow-[0_5px_16px_rgba(15,23,42,0.075),0_1px_3px_rgba(15,23,42,0.04)] border-cyan-200 bg-white px-2.5 py-1 text-[11px] font-semibold text-cyan-700">
                         CONFIRMED
                       </span>
                     )}
@@ -4496,13 +4499,13 @@ function StudyBuilder({
 
                   {followupWaveSummary.count > 0 ? (
                     <>
-                      <p className="mt-3 text-sm text-emerald-900/80">
+                      <p className="mt-3 text-sm text-cyan-900/80">
                         {followupWaveSummary.count} wave
                         {followupWaveSummary.count === 1 ? "" : "s"} configured
                         {" · "}
                         {followupWaveSummary.active} active.
                       </p>
-                      <p className="mt-1 text-xs leading-5 text-emerald-700/80">
+                      <p className="mt-1 text-xs leading-5 text-cyan-700/80">
                         {followupWaveSummary.names.join(" · ")}
                       </p>
                     </>
@@ -4536,7 +4539,7 @@ function StudyBuilder({
               <p className="text-sm leading-6 text-slate-500">
                 Save the study draft first, then use Participant Links to create TEST or live recruitment routes for this exact protocol.
               </p>
-              <div className="rounded-2xl border border-slate-200 p-5">
+              <div className="rounded-2xl border shadow-[0_8px_24px_rgba(15,23,42,0.065),0_2px_6px_rgba(15,23,42,0.035)] border-slate-200 p-5">
                 <p className="text-sm font-medium">Study draft ID</p>
                 <code className="mt-2 block rounded-lg bg-slate-50 p-3 text-xs">{studyId || "Save this draft to create a study ID"}</code>
               </div>
@@ -4545,9 +4548,9 @@ function StudyBuilder({
 
           {currentStep.key === "review" && (
             <div className="space-y-4">
-              <div className="rounded-2xl border border-emerald-100 bg-emerald-50 p-5">
-                <p className="font-medium text-emerald-900">Builder review</p>
-                <p className="mt-2 text-sm leading-6 text-emerald-800">
+              <div className="rounded-2xl border shadow-[0_8px_24px_rgba(15,23,42,0.065),0_2px_6px_rgba(15,23,42,0.035)] border-cyan-100 bg-cyan-50 p-5">
+                <p className="font-medium text-cyan-900">Builder review</p>
+                <p className="mt-2 text-sm leading-6 text-cyan-800">
                   This draft records the selected study components, configurable demographics, pinned questionnaire versions, pinned cognitive-task versions, consent, and optional ambulatory protocol. Use a TEST participant link before live recruitment and verify the full participant experience against the approved protocol.
                 </p>
               </div>
@@ -4563,7 +4566,7 @@ function StudyBuilder({
                 type="button"
                 disabled={currentStepIndex === 0}
                 onClick={() => setActiveStepKey(steps[Math.max(0, currentStepIndex - 1)].key)}
-                className="rounded-xl border border-slate-200 px-4 py-2.5 text-sm font-semibold disabled:opacity-40"
+                className="rounded-full border shadow-[0_5px_16px_rgba(15,23,42,0.075),0_1px_3px_rgba(15,23,42,0.04)] border-slate-300/70 bg-white px-4 py-2.5 text-sm font-semibold shadow-[0_2px_6px_rgba(15,23,42,0.04)] disabled:opacity-40"
               >
                 Back
               </button>
@@ -4571,7 +4574,7 @@ function StudyBuilder({
                 type="button"
                 disabled={currentStepIndex === steps.length - 1}
                 onClick={() => setActiveStepKey(steps[Math.min(steps.length - 1, currentStepIndex + 1)].key)}
-                className="rounded-xl border border-slate-200 px-4 py-2.5 text-sm font-semibold disabled:opacity-40"
+                className="rounded-full border shadow-[0_5px_16px_rgba(15,23,42,0.075),0_1px_3px_rgba(15,23,42,0.04)] border-slate-300/70 bg-white px-4 py-2.5 text-sm font-semibold shadow-[0_2px_6px_rgba(15,23,42,0.04)] disabled:opacity-40"
               >
                 Continue
               </button>
@@ -5601,7 +5604,7 @@ function QuestionnaireLibrary({
         card: "border-slate-200 border-l-cyan-400 bg-slate-50/45",
         badge: "bg-white text-cyan-800 ring-1 ring-cyan-200",
         number: "bg-white text-cyan-800 ring-1 ring-cyan-100",
-        soft: "border-slate-200 bg-white",
+        soft: "border-slate-300/70 bg-white",
         accent: "text-cyan-700",
       },
       Psychometric: {
@@ -5615,7 +5618,7 @@ function QuestionnaireLibrary({
         card: "border-slate-200 border-l-slate-600 bg-slate-50/45",
         badge: "bg-slate-100 text-slate-700 ring-1 ring-slate-200",
         number: "bg-slate-100 text-slate-700",
-        soft: "border-slate-200 bg-white",
+        soft: "border-slate-300/70 bg-white",
         accent: "text-slate-700",
       },
       Matrix: {
@@ -5643,14 +5646,14 @@ function QuestionnaireLibrary({
         card: "border-dashed border-slate-300 border-l-slate-500 bg-slate-50",
         badge: "bg-slate-100 text-slate-700 ring-1 ring-slate-200",
         number: "bg-slate-100 text-slate-700",
-        soft: "border-dashed border-slate-200 bg-white",
+        soft: "border-dashed border-slate-300/70 bg-white",
         accent: "text-slate-600",
       },
       Advanced: {
         card: "border-slate-300 border-l-slate-800 bg-slate-50/60",
         badge: "bg-slate-800 text-white",
         number: "bg-slate-800 text-white",
-        soft: "border-slate-200 bg-white",
+        soft: "border-slate-300/70 bg-white",
         accent: "text-slate-800",
       },
     };
@@ -6145,7 +6148,7 @@ function QuestionnaireLibrary({
           onChange={(event) =>
             updateLogicRule(item.id, rule.id, { value: event.target.value })
           }
-          className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm"
+          className="w-full rounded-xl border shadow-[0_5px_18px_rgba(15,23,42,0.06),0_1px_4px_rgba(15,23,42,0.035)] border-slate-300/70 bg-white px-3 py-2.5 text-sm shadow-[0_2px_6px_rgba(15,23,42,0.035)]"
         >
           <option value="">Choose a response...</option>
           {source.options.map((option) => (
@@ -6175,7 +6178,7 @@ function QuestionnaireLibrary({
           updateLogicRule(item.id, rule.id, { value: event.target.value })
         }
         placeholder={inputType === "text" ? "Comparison value" : undefined}
-        className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm"
+        className="w-full rounded-xl border shadow-[0_5px_18px_rgba(15,23,42,0.06),0_1px_4px_rgba(15,23,42,0.035)] border-slate-300/70 bg-white px-3 py-2.5 text-sm shadow-[0_2px_6px_rgba(15,23,42,0.035)]"
       />
     );
   }
@@ -6186,7 +6189,7 @@ function QuestionnaireLibrary({
       .filter((candidate) => !contentItemTypes.has(candidate.item_type));
 
     return (
-      <div className="mt-5 rounded-2xl border border-cyan-200 bg-cyan-50/40 p-4">
+      <div className="mt-5 rounded-2xl border shadow-[0_8px_24px_rgba(15,23,42,0.065),0_2px_6px_rgba(15,23,42,0.035)] border-cyan-200 bg-cyan-50/40 p-4">
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div>
             <p className="text-sm font-medium">Display logic / branching</p>
@@ -6199,7 +6202,7 @@ function QuestionnaireLibrary({
             type="button"
             onClick={() => addLogicRule(item.id)}
             disabled={previousSources.length === 0}
-            className="rounded-lg border border-slate-200 px-3 py-2 text-xs font-semibold disabled:cursor-not-allowed disabled:opacity-40"
+            className="rounded-lg border shadow-[0_3px_10px_rgba(15,23,42,0.05)] border-slate-200 px-3 py-2 text-xs font-semibold disabled:cursor-not-allowed disabled:opacity-40"
           >
             + Condition
           </button>
@@ -6213,7 +6216,7 @@ function QuestionnaireLibrary({
 
         {item.logic_rules.length > 0 && (
           <>
-            <div className="mt-4 flex flex-wrap items-center gap-3 rounded-xl border border-cyan-100 bg-white p-3">
+            <div className="mt-4 flex flex-wrap items-center gap-3 rounded-xl border shadow-[0_5px_18px_rgba(15,23,42,0.06),0_1px_4px_rgba(15,23,42,0.035)] border-cyan-100 bg-white p-3">
               <span className="text-xs font-medium text-slate-500">Show this item when</span>
               <select
                 value={item.logic_mode}
@@ -6222,7 +6225,7 @@ function QuestionnaireLibrary({
                     logic_mode: event.target.value as "all" | "any",
                   })
                 }
-                className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs font-semibold"
+                className="rounded-lg border shadow-[0_3px_10px_rgba(15,23,42,0.05)] border-slate-300/70 bg-white px-3 py-2 text-xs font-semibold"
               >
                 <option value="all">ALL conditions are true (AND)</option>
                 <option value="any">ANY condition is true (OR)</option>
@@ -6241,10 +6244,10 @@ function QuestionnaireLibrary({
                 return (
                   <div
                     key={rule.id}
-                    className={`rounded-xl border p-3 ${
+                    className={`rounded-xl border shadow-[0_5px_18px_rgba(15,23,42,0.06),0_1px_4px_rgba(15,23,42,0.035)] p-3 ${
                       invalidSource
                         ? "border-cyan-300 bg-cyan-50/60"
-                        : "border-slate-200 bg-white"
+                        : "border-slate-300/70 bg-white"
                     }`}
                   >
                     <div className="mb-2 flex items-center justify-between gap-3">
@@ -6254,7 +6257,7 @@ function QuestionnaireLibrary({
                       <button
                         type="button"
                         onClick={() => removeLogicRule(item.id, rule.id)}
-                        className="rounded-lg border border-red-200 bg-white px-2.5 py-1.5 text-xs text-red-700"
+                        className="rounded-lg border shadow-[0_3px_10px_rgba(15,23,42,0.05)] border-red-200 bg-white px-2.5 py-1.5 text-xs text-red-700"
                         aria-label={`Remove condition ${ruleIndex + 1}`}
                       >
                         Remove
@@ -6273,8 +6276,8 @@ function QuestionnaireLibrary({
                               event.target.value
                             )
                           }
-                          className={`mt-1 w-full rounded-xl border bg-white px-3 py-2.5 text-sm ${
-                            invalidSource ? "border-amber-300" : "border-slate-200"
+                          className={`mt-1 w-full rounded-xl border shadow-[0_5px_18px_rgba(15,23,42,0.06),0_1px_4px_rgba(15,23,42,0.035)] bg-white px-3 py-2.5 text-sm ${
+                            invalidSource ? "border-violet-300" : "border-slate-200"
                           }`}
                         >
                           <option value="">Choose an earlier question...</option>
@@ -6306,7 +6309,7 @@ function QuestionnaireLibrary({
                             });
                           }}
                           disabled={!source}
-                          className="mt-1 w-full rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm disabled:opacity-50"
+                          className="mt-1 w-full rounded-xl border shadow-[0_5px_18px_rgba(15,23,42,0.06),0_1px_4px_rgba(15,23,42,0.035)] border-slate-300/70 bg-white px-3 py-2.5 text-sm shadow-[0_2px_6px_rgba(15,23,42,0.035)] disabled:opacity-50"
                         >
                           {operators.map((operator) => (
                             <option key={operator} value={operator}>
@@ -6325,7 +6328,7 @@ function QuestionnaireLibrary({
                     </div>
 
                     {invalidSource ? (
-                      <p className="mt-2 text-xs leading-5 text-amber-800">
+                      <p className="mt-2 text-xs leading-5 text-violet-800">
                         This condition points to a missing, renamed, or later question.
                         Choose a valid earlier question before saving.
                       </p>
@@ -6347,7 +6350,7 @@ function QuestionnaireLibrary({
               })}
             </div>
 
-            <div className="mt-3 rounded-xl border border-cyan-100 bg-cyan-50/50 px-3 py-2.5 text-xs leading-5 text-cyan-950">
+            <div className="mt-3 rounded-xl border shadow-[0_5px_18px_rgba(15,23,42,0.06),0_1px_4px_rgba(15,23,42,0.035)] border-cyan-100 bg-cyan-50/50 px-3 py-2.5 text-xs leading-5 text-cyan-950">
               {item.logic_mode === "all"
                 ? "The item appears only after every condition above is true."
                 : "The item appears as soon as at least one condition above is true."}
@@ -6361,42 +6364,42 @@ function QuestionnaireLibrary({
 
   function renderBuilderItemEditor(item: BuilderItem, index: number) {
     return (
-      <div key={item.id} className={`rounded-2xl border border-l-4 p-5 ${questionnaireItemTheme(item.item_type).card}`}>
+      <div key={item.id} className={`rounded-2xl border shadow-[0_8px_24px_rgba(15,23,42,0.065),0_2px_6px_rgba(15,23,42,0.035)] border-l-4 p-5 ${questionnaireItemTheme(item.item_type).card}`}>
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div className="flex items-center gap-3"><div className={`flex h-9 w-9 items-center justify-center rounded-xl text-xs font-semibold ${questionnaireItemTheme(item.item_type).number}`}>{index + 1}</div><div><div className="flex flex-wrap items-center gap-2"><p className="text-sm font-semibold">{item.key || `Item ${index + 1}`}</p><span className={`rounded-full px-2 py-0.5 text-[10px] font-bold ${questionnaireItemTheme(item.item_type).badge}`}>{itemTypeLabel(item.item_type)}</span></div><p className="mt-1 text-[11px] font-medium text-slate-500">{itemTypeDefinitions.find((definition) => definition.value === item.item_type)?.group || "Advanced"}</p></div></div>
-          <div className="flex gap-2"><button type="button" onClick={() => moveBuilderItemWithinBlock(item.id, -1)} className="rounded-lg border border-slate-200 px-2 py-1 text-xs">↑</button><button type="button" onClick={() => moveBuilderItemWithinBlock(item.id, 1)} className="rounded-lg border border-slate-200 px-2 py-1 text-xs">↓</button><button type="button" onClick={() => duplicateBuilderItem(item.id)} className="rounded-lg border border-slate-200 px-2 py-1 text-xs">Duplicate</button><button type="button" onClick={() => removeBuilderItem(item.id)} disabled={builderItems.length <= 1} className="rounded-lg border border-red-200 px-2 py-1 text-xs text-red-700 disabled:opacity-30">Remove</button></div>
+          <div className="flex gap-2"><button type="button" onClick={() => moveBuilderItemWithinBlock(item.id, -1)} className="rounded-lg border shadow-[0_3px_10px_rgba(15,23,42,0.05)] border-slate-200 px-2 py-1 text-xs">↑</button><button type="button" onClick={() => moveBuilderItemWithinBlock(item.id, 1)} className="rounded-lg border shadow-[0_3px_10px_rgba(15,23,42,0.05)] border-slate-200 px-2 py-1 text-xs">↓</button><button type="button" onClick={() => duplicateBuilderItem(item.id)} className="rounded-lg border shadow-[0_3px_10px_rgba(15,23,42,0.05)] border-slate-200 px-2 py-1 text-xs">Duplicate</button><button type="button" onClick={() => removeBuilderItem(item.id)} disabled={builderItems.length <= 1} className="rounded-lg border shadow-[0_3px_10px_rgba(15,23,42,0.05)] border-red-200 px-2 py-1 text-xs text-red-700 disabled:opacity-30">Remove</button></div>
         </div>
       
         <div className="mt-4 grid gap-3 md:grid-cols-[160px_1fr]">
-          <label><span className="text-xs text-slate-500">Item key</span><input value={item.key} onChange={(event) => updateBuilderItem(item.id, { key: event.target.value })} className="mt-1 w-full rounded-xl border border-slate-200 px-3 py-2.5 text-sm" /></label>
-          <label><span className="text-xs text-slate-500">Response / content type</span><select value={item.item_type} onChange={(event) => changeBuilderItemType(item.id, event.target.value)} className="mt-1 w-full rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm">{Array.from(new Set(itemTypeDefinitions.map((definition) => definition.group))).map((group) => <optgroup key={group} label={group}>{itemTypeDefinitions.filter((definition) => definition.group === group).map((definition) => <option key={definition.value} value={definition.value}>{definition.label}</option>)}</optgroup>)}</select></label>
+          <label><span className="text-xs text-slate-500">Item key</span><input value={item.key} onChange={(event) => updateBuilderItem(item.id, { key: event.target.value })} className="mt-1 w-full rounded-xl border shadow-[0_5px_18px_rgba(15,23,42,0.06),0_1px_4px_rgba(15,23,42,0.035)] border-slate-200 px-3 py-2.5 text-sm" /></label>
+          <label><span className="text-xs text-slate-500">Response / content type</span><select value={item.item_type} onChange={(event) => changeBuilderItemType(item.id, event.target.value)} className="mt-1 w-full rounded-xl border shadow-[0_5px_18px_rgba(15,23,42,0.06),0_1px_4px_rgba(15,23,42,0.035)] border-slate-300/70 bg-white px-3 py-2.5 text-sm shadow-[0_2px_6px_rgba(15,23,42,0.035)]">{Array.from(new Set(itemTypeDefinitions.map((definition) => definition.group))).map((group) => <optgroup key={group} label={group}>{itemTypeDefinitions.filter((definition) => definition.group === group).map((definition) => <option key={definition.value} value={definition.value}>{definition.label}</option>)}</optgroup>)}</select></label>
           
         </div>
       
-        <label className="mt-4 block"><span className="text-sm font-medium">{contentItemTypes.has(item.item_type) ? "Content / heading" : "Question / statement"}</span><textarea value={item.prompt} onChange={(event) => updateBuilderItem(item.id, { prompt: event.target.value })} rows={2} className="mt-2 w-full rounded-xl border border-slate-200 px-4 py-3 text-sm" /></label>
-        <label className="mt-3 block"><span className="text-xs text-slate-500">Help text / secondary instructions</span><input value={item.help_text} onChange={(event) => updateBuilderItem(item.id, { help_text: event.target.value })} className="mt-1 w-full rounded-xl border border-slate-200 px-3 py-2.5 text-sm" /></label>
+        <label className="mt-4 block"><span className="text-sm font-medium">{contentItemTypes.has(item.item_type) ? "Content / heading" : "Question / statement"}</span><textarea value={item.prompt} onChange={(event) => updateBuilderItem(item.id, { prompt: event.target.value })} rows={2} className="mt-2 w-full rounded-xl border shadow-[0_5px_18px_rgba(15,23,42,0.06),0_1px_4px_rgba(15,23,42,0.035)] border-slate-200 px-4 py-3 text-sm" /></label>
+        <label className="mt-3 block"><span className="text-xs text-slate-500">Help text / secondary instructions</span><input value={item.help_text} onChange={(event) => updateBuilderItem(item.id, { help_text: event.target.value })} className="mt-1 w-full rounded-xl border shadow-[0_5px_18px_rgba(15,23,42,0.06),0_1px_4px_rgba(15,23,42,0.035)] border-slate-200 px-3 py-2.5 text-sm" /></label>
       
         {!contentItemTypes.has(item.item_type) && (
           <div className="mt-4 grid gap-3 sm:grid-cols-3">
-            <label><span className="text-xs text-slate-500">Subscale</span><input value={item.subscale} onChange={(event) => updateBuilderItem(item.id, { subscale: event.target.value })} className="mt-1 w-full rounded-xl border border-slate-200 px-3 py-2.5 text-sm" /></label>
-            <label className="flex items-center gap-2 rounded-xl border border-slate-200 px-4 py-3 text-sm sm:self-end"><input type="checkbox" checked={item.required} onChange={(event) => updateBuilderItem(item.id, { required: event.target.checked })} />Required</label>
-            <label className="flex items-center gap-2 rounded-xl border border-slate-200 px-4 py-3 text-sm sm:self-end"><input type="checkbox" checked={item.reverse_scored} onChange={(event) => updateBuilderItem(item.id, { reverse_scored: event.target.checked })} />Reverse scored</label>
+            <label><span className="text-xs text-slate-500">Subscale</span><input value={item.subscale} onChange={(event) => updateBuilderItem(item.id, { subscale: event.target.value })} className="mt-1 w-full rounded-xl border shadow-[0_5px_18px_rgba(15,23,42,0.06),0_1px_4px_rgba(15,23,42,0.035)] border-slate-200 px-3 py-2.5 text-sm" /></label>
+            <label className="flex items-center gap-2 rounded-xl border shadow-[0_5px_18px_rgba(15,23,42,0.06),0_1px_4px_rgba(15,23,42,0.035)] border-slate-200 px-4 py-3 text-sm sm:self-end"><input type="checkbox" checked={item.required} onChange={(event) => updateBuilderItem(item.id, { required: event.target.checked })} />Required</label>
+            <label className="flex items-center gap-2 rounded-xl border shadow-[0_5px_18px_rgba(15,23,42,0.06),0_1px_4px_rgba(15,23,42,0.035)] border-slate-200 px-4 py-3 text-sm sm:self-end"><input type="checkbox" checked={item.reverse_scored} onChange={(event) => updateBuilderItem(item.id, { reverse_scored: event.target.checked })} />Reverse scored</label>
           </div>
         )}
       
         {optionItemTypes.has(item.item_type) && (
-          <div className={`mt-5 rounded-2xl border p-4 ${questionnaireItemTheme(item.item_type).soft}`}>
-            <div className="flex items-center justify-between gap-3"><div><p className="text-sm font-medium">Response options</p><p className="mt-1 text-xs text-slate-400">Participant label, numeric code/score and optional weight are stored separately.</p></div><button type="button" onClick={() => addBuilderOption(item.id)} className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs font-semibold">+ Option</button></div>
+          <div className={`mt-5 rounded-2xl border shadow-[0_8px_24px_rgba(15,23,42,0.065),0_2px_6px_rgba(15,23,42,0.035)] p-4 ${questionnaireItemTheme(item.item_type).soft}`}>
+            <div className="flex items-center justify-between gap-3"><div><p className="text-sm font-medium">Response options</p><p className="mt-1 text-xs text-slate-400">Participant label, numeric code/score and optional weight are stored separately.</p></div><button type="button" onClick={() => addBuilderOption(item.id)} className="rounded-lg border shadow-[0_3px_10px_rgba(15,23,42,0.05)] border-slate-300/70 bg-white px-3 py-2 text-xs font-semibold">+ Option</button></div>
             <div className="mt-3 space-y-3">
               {item.options.map((option) => {
                 const optionUploadKey = `${item.id}:${option.id}`;
                 return (
-                  <div key={option.id} className="rounded-xl border border-slate-200 bg-white p-3">
+                  <div key={option.id} className="rounded-xl border shadow-[0_5px_18px_rgba(15,23,42,0.06),0_1px_4px_rgba(15,23,42,0.035)] border-slate-300/70 bg-white p-3">
                     <div className="grid gap-2 sm:grid-cols-[1fr_90px_90px_auto]">
-                      <input value={option.label} onChange={(event) => updateBuilderOption(item.id, option.id, { label: event.target.value })} className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm" />
-                      <input type="number" value={option.value} onChange={(event) => updateBuilderOption(item.id, option.id, { value: Number(event.target.value) })} className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm" title="Numeric code / score" />
-                      <input type="number" step="0.01" value={option.weight} onChange={(event) => updateBuilderOption(item.id, option.id, { weight: Number(event.target.value) })} className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm" title="Weight" />
-                      <button type="button" onClick={() => removeBuilderOption(item.id, option.id)} className="rounded-lg border border-red-200 bg-white px-3 py-2 text-xs text-red-700">×</button>
+                      <input value={option.label} onChange={(event) => updateBuilderOption(item.id, option.id, { label: event.target.value })} className="rounded-lg border shadow-[0_3px_10px_rgba(15,23,42,0.05)] border-slate-300/70 bg-white px-3 py-2 text-sm" />
+                      <input type="number" value={option.value} onChange={(event) => updateBuilderOption(item.id, option.id, { value: Number(event.target.value) })} className="rounded-lg border shadow-[0_3px_10px_rgba(15,23,42,0.05)] border-slate-300/70 bg-white px-3 py-2 text-sm" title="Numeric code / score" />
+                      <input type="number" step="0.01" value={option.weight} onChange={(event) => updateBuilderOption(item.id, option.id, { weight: Number(event.target.value) })} className="rounded-lg border shadow-[0_3px_10px_rgba(15,23,42,0.05)] border-slate-300/70 bg-white px-3 py-2 text-sm" title="Weight" />
+                      <button type="button" onClick={() => removeBuilderOption(item.id, option.id)} className="rounded-lg border shadow-[0_3px_10px_rgba(15,23,42,0.05)] border-red-200 bg-white px-3 py-2 text-xs text-red-700">×</button>
                     </div>
       
                     {item.item_type === "image_choice" && (
@@ -6404,7 +6407,7 @@ function QuestionnaireLibrary({
                         <div className="flex flex-wrap items-center gap-3">
                           <label
                             htmlFor={`option-media-${item.id}-${option.id}`}
-                            className={`cursor-pointer rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-50 ${
+                            className={`cursor-pointer rounded-lg border shadow-[0_3px_10px_rgba(15,23,42,0.05)] border-slate-300/70 bg-white px-3 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-50 ${
                               builderMediaUploadState[optionUploadKey] === "Uploading..."
                                 ? "pointer-events-none opacity-60"
                                 : ""
@@ -6436,7 +6439,7 @@ function QuestionnaireLibrary({
                                 builderMediaUploadState[optionUploadKey].startsWith("Error:")
                                   ? "font-medium text-red-700"
                                   : builderMediaUploadState[optionUploadKey] === "Uploaded"
-                                    ? "font-medium text-emerald-700"
+                                    ? "font-medium text-cyan-700"
                                     : "text-slate-500"
                               }`}
                             >
@@ -6463,9 +6466,9 @@ function QuestionnaireLibrary({
                         </div>
                         {builderMediaPreviews[optionUploadKey] ? (
                           // eslint-disable-next-line @next/next/no-img-element
-                          <img src={builderMediaPreviews[optionUploadKey]} alt="" className="mt-3 max-h-40 rounded-xl border border-slate-200 object-contain" />
+                          <img src={builderMediaPreviews[optionUploadKey]} alt="" className="mt-3 max-h-40 rounded-xl border shadow-[0_5px_18px_rgba(15,23,42,0.06),0_1px_4px_rgba(15,23,42,0.035)] border-slate-200 object-contain" />
                         ) : option.media_url ? (
-                          <p className="mt-2 text-xs text-emerald-700">Stored private option image attached.</p>
+                          <p className="mt-2 text-xs text-cyan-700">Stored private option image attached.</p>
                         ) : null}
                       </div>
                     )}
@@ -6478,22 +6481,22 @@ function QuestionnaireLibrary({
         )}
       
         {numericItemTypes.has(item.item_type) && (
-          <div className="mt-5 grid gap-3 rounded-2xl bg-slate-50 p-4 sm:grid-cols-3"><label><span className="text-xs text-slate-500">Minimum</span><input type="number" value={item.numeric_min} onChange={(event) => updateBuilderItem(item.id, { numeric_min: Number(event.target.value) })} className="mt-1 w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm" /></label><label><span className="text-xs text-slate-500">Maximum</span><input type="number" value={item.numeric_max} onChange={(event) => updateBuilderItem(item.id, { numeric_max: Number(event.target.value) })} className="mt-1 w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm" /></label><label><span className="text-xs text-slate-500">Step</span><input type="number" step="0.01" value={item.numeric_step} onChange={(event) => updateBuilderItem(item.id, { numeric_step: Number(event.target.value) })} className="mt-1 w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm" /></label><label><span className="text-xs text-slate-500">Left / low anchor</span><input value={item.left_anchor} onChange={(event) => updateBuilderItem(item.id, { left_anchor: event.target.value })} className="mt-1 w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm" /></label><label><span className="text-xs text-slate-500">Right / high anchor</span><input value={item.right_anchor} onChange={(event) => updateBuilderItem(item.id, { right_anchor: event.target.value })} className="mt-1 w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm" /></label></div>
+          <div className="mt-5 grid gap-3 rounded-2xl bg-slate-50 p-4 sm:grid-cols-3"><label><span className="text-xs text-slate-500">Minimum</span><input type="number" value={item.numeric_min} onChange={(event) => updateBuilderItem(item.id, { numeric_min: Number(event.target.value) })} className="mt-1 w-full rounded-lg border shadow-[0_3px_10px_rgba(15,23,42,0.05)] border-slate-300/70 bg-white px-3 py-2 text-sm" /></label><label><span className="text-xs text-slate-500">Maximum</span><input type="number" value={item.numeric_max} onChange={(event) => updateBuilderItem(item.id, { numeric_max: Number(event.target.value) })} className="mt-1 w-full rounded-lg border shadow-[0_3px_10px_rgba(15,23,42,0.05)] border-slate-300/70 bg-white px-3 py-2 text-sm" /></label><label><span className="text-xs text-slate-500">Step</span><input type="number" step="0.01" value={item.numeric_step} onChange={(event) => updateBuilderItem(item.id, { numeric_step: Number(event.target.value) })} className="mt-1 w-full rounded-lg border shadow-[0_3px_10px_rgba(15,23,42,0.05)] border-slate-300/70 bg-white px-3 py-2 text-sm" /></label><label><span className="text-xs text-slate-500">Left / low anchor</span><input value={item.left_anchor} onChange={(event) => updateBuilderItem(item.id, { left_anchor: event.target.value })} className="mt-1 w-full rounded-lg border shadow-[0_3px_10px_rgba(15,23,42,0.05)] border-slate-300/70 bg-white px-3 py-2 text-sm" /></label><label><span className="text-xs text-slate-500">Right / high anchor</span><input value={item.right_anchor} onChange={(event) => updateBuilderItem(item.id, { right_anchor: event.target.value })} className="mt-1 w-full rounded-lg border shadow-[0_3px_10px_rgba(15,23,42,0.05)] border-slate-300/70 bg-white px-3 py-2 text-sm" /></label></div>
         )}
       
         {(item.item_type === "multiple_choice" || item.item_type === "checklist" || item.item_type === "ranking" || item.item_type === "best_worst") && (
-          <div className="mt-4 grid gap-3 sm:grid-cols-2"><label><span className="text-xs text-slate-500">Minimum selections</span><input type="number" min={0} value={item.min_selections} onChange={(event) => updateBuilderItem(item.id, { min_selections: Number(event.target.value) })} className="mt-1 w-full rounded-xl border border-slate-200 px-3 py-2.5 text-sm" /></label><label><span className="text-xs text-slate-500">Maximum selections</span><input type="number" min={0} value={item.max_selections} onChange={(event) => updateBuilderItem(item.id, { max_selections: Number(event.target.value) })} className="mt-1 w-full rounded-xl border border-slate-200 px-3 py-2.5 text-sm" /></label></div>
+          <div className="mt-4 grid gap-3 sm:grid-cols-2"><label><span className="text-xs text-slate-500">Minimum selections</span><input type="number" min={0} value={item.min_selections} onChange={(event) => updateBuilderItem(item.id, { min_selections: Number(event.target.value) })} className="mt-1 w-full rounded-xl border shadow-[0_5px_18px_rgba(15,23,42,0.06),0_1px_4px_rgba(15,23,42,0.035)] border-slate-200 px-3 py-2.5 text-sm" /></label><label><span className="text-xs text-slate-500">Maximum selections</span><input type="number" min={0} value={item.max_selections} onChange={(event) => updateBuilderItem(item.id, { max_selections: Number(event.target.value) })} className="mt-1 w-full rounded-xl border shadow-[0_5px_18px_rgba(15,23,42,0.06),0_1px_4px_rgba(15,23,42,0.035)] border-slate-200 px-3 py-2.5 text-sm" /></label></div>
         )}
       
         {textItemTypes.has(item.item_type) && (
-          <div className="mt-4 grid gap-3 sm:grid-cols-2"><label><span className="text-xs text-slate-500">Maximum words</span><input type="number" min={0} value={item.max_words} onChange={(event) => updateBuilderItem(item.id, { max_words: Number(event.target.value) })} className="mt-1 w-full rounded-xl border border-slate-200 px-3 py-2.5 text-sm" /></label><label><span className="text-xs text-slate-500">Maximum characters</span><input type="number" min={0} value={item.max_characters} onChange={(event) => updateBuilderItem(item.id, { max_characters: Number(event.target.value) })} className="mt-1 w-full rounded-xl border border-slate-200 px-3 py-2.5 text-sm" /></label></div>
+          <div className="mt-4 grid gap-3 sm:grid-cols-2"><label><span className="text-xs text-slate-500">Maximum words</span><input type="number" min={0} value={item.max_words} onChange={(event) => updateBuilderItem(item.id, { max_words: Number(event.target.value) })} className="mt-1 w-full rounded-xl border shadow-[0_5px_18px_rgba(15,23,42,0.06),0_1px_4px_rgba(15,23,42,0.035)] border-slate-200 px-3 py-2.5 text-sm" /></label><label><span className="text-xs text-slate-500">Maximum characters</span><input type="number" min={0} value={item.max_characters} onChange={(event) => updateBuilderItem(item.id, { max_characters: Number(event.target.value) })} className="mt-1 w-full rounded-xl border shadow-[0_5px_18px_rgba(15,23,42,0.06),0_1px_4px_rgba(15,23,42,0.035)] border-slate-200 px-3 py-2.5 text-sm" /></label></div>
         )}
       
-        {item.item_type === "thurstone" && <label className="mt-4 block"><span className="text-xs font-medium text-slate-500">Hidden Thurstone statement scale value</span><input type="number" step="0.01" value={item.thurstone_weight} onChange={(event) => updateBuilderItem(item.id, { thurstone_weight: Number(event.target.value) })} className="mt-1 w-full rounded-xl border border-slate-200 px-3 py-2.5 text-sm" /></label>}
-        {item.item_type === "constant_sum" && <label className="mt-4 block"><span className="text-xs font-medium text-slate-500">Required allocation total</span><input type="number" value={item.constant_sum_target} onChange={(event) => updateBuilderItem(item.id, { constant_sum_target: Number(event.target.value) })} className="mt-1 w-full rounded-xl border border-slate-200 px-3 py-2.5 text-sm" /></label>}
-        {matrixItemTypes.has(item.item_type) && <label className="mt-4 block"><span className="text-xs font-medium text-slate-500">Matrix rows — one per line</span><textarea value={item.matrix_rows} onChange={(event) => updateBuilderItem(item.id, { matrix_rows: event.target.value })} className="mt-1 min-h-28 w-full rounded-xl border border-slate-200 px-3 py-2.5 text-sm" /></label>}
+        {item.item_type === "thurstone" && <label className="mt-4 block"><span className="text-xs font-medium text-slate-500">Hidden Thurstone statement scale value</span><input type="number" step="0.01" value={item.thurstone_weight} onChange={(event) => updateBuilderItem(item.id, { thurstone_weight: Number(event.target.value) })} className="mt-1 w-full rounded-xl border shadow-[0_5px_18px_rgba(15,23,42,0.06),0_1px_4px_rgba(15,23,42,0.035)] border-slate-200 px-3 py-2.5 text-sm" /></label>}
+        {item.item_type === "constant_sum" && <label className="mt-4 block"><span className="text-xs font-medium text-slate-500">Required allocation total</span><input type="number" value={item.constant_sum_target} onChange={(event) => updateBuilderItem(item.id, { constant_sum_target: Number(event.target.value) })} className="mt-1 w-full rounded-xl border shadow-[0_5px_18px_rgba(15,23,42,0.06),0_1px_4px_rgba(15,23,42,0.035)] border-slate-200 px-3 py-2.5 text-sm" /></label>}
+        {matrixItemTypes.has(item.item_type) && <label className="mt-4 block"><span className="text-xs font-medium text-slate-500">Matrix rows — one per line</span><textarea value={item.matrix_rows} onChange={(event) => updateBuilderItem(item.id, { matrix_rows: event.target.value })} className="mt-1 min-h-28 w-full rounded-xl border shadow-[0_5px_18px_rgba(15,23,42,0.06),0_1px_4px_rgba(15,23,42,0.035)] border-slate-200 px-3 py-2.5 text-sm" /></label>}
         {item.item_type !== "divider" && (
-          <div className="mt-4 rounded-2xl border border-slate-200 bg-slate-50 p-4">
+          <div className="mt-4 rounded-2xl border shadow-[0_8px_24px_rgba(15,23,42,0.065),0_2px_6px_rgba(15,23,42,0.035)] border-slate-200 bg-slate-50 p-4">
             <div className="flex flex-wrap items-center justify-between gap-3">
               <div>
                 <p className="text-sm font-medium text-slate-800">{builderMediaLabel(item.item_type)}</p>
@@ -6537,7 +6540,7 @@ function QuestionnaireLibrary({
                   builderMediaUploadState[item.id].startsWith("Error:")
                     ? "font-medium text-red-700"
                     : builderMediaUploadState[item.id] === "Uploaded"
-                      ? "font-medium text-emerald-700"
+                      ? "font-medium text-cyan-700"
                       : "text-slate-500"
                 }`}
               >
@@ -6547,16 +6550,16 @@ function QuestionnaireLibrary({
       
             {builderMediaPreviews[item.id] && item.media_mime_type.startsWith("image/") && (
               // eslint-disable-next-line @next/next/no-img-element
-              <img src={builderMediaPreviews[item.id]} alt="" className="mt-3 max-h-64 rounded-xl border border-slate-200 object-contain" />
+              <img src={builderMediaPreviews[item.id]} alt="" className="mt-3 max-h-64 rounded-xl border shadow-[0_5px_18px_rgba(15,23,42,0.06),0_1px_4px_rgba(15,23,42,0.035)] border-slate-200 object-contain" />
             )}
             {builderMediaPreviews[item.id] && item.media_mime_type.startsWith("audio/") && (
               <audio controls src={builderMediaPreviews[item.id]} className="mt-3 w-full" />
             )}
             {builderMediaPreviews[item.id] && item.media_mime_type.startsWith("video/") && (
-              <video controls src={builderMediaPreviews[item.id]} className="mt-3 max-h-80 w-full rounded-xl border border-slate-200" />
+              <video controls src={builderMediaPreviews[item.id]} className="mt-3 max-h-80 w-full rounded-xl border shadow-[0_5px_18px_rgba(15,23,42,0.06),0_1px_4px_rgba(15,23,42,0.035)] border-slate-200" />
             )}
             {!builderMediaPreviews[item.id] && item.media_url.startsWith("storage://") && (
-              <p className="mt-2 text-xs text-emerald-700">Stored private media attached.</p>
+              <p className="mt-2 text-xs text-cyan-700">Stored private media attached.</p>
             )}
       
             <div className="mt-3 grid gap-2 sm:grid-cols-[1fr_auto]">
@@ -6564,7 +6567,7 @@ function QuestionnaireLibrary({
                 value={item.media_url}
                 onChange={(event) => updateBuilderItem(item.id, { media_url: event.target.value, media_mime_type: "" })}
                 placeholder="Or paste an https:// media URL"
-                className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-xs"
+                className="w-full rounded-xl border shadow-[0_5px_18px_rgba(15,23,42,0.06),0_1px_4px_rgba(15,23,42,0.035)] border-slate-300/70 bg-white px-3 py-2.5 text-xs"
               />
               {item.media_url && (
                 <button
@@ -6578,7 +6581,7 @@ function QuestionnaireLibrary({
                       return next;
                     });
                   }}
-                  className="rounded-xl border border-red-200 bg-white px-3 py-2 text-xs font-semibold text-red-700"
+                  className="rounded-xl border shadow-[0_5px_18px_rgba(15,23,42,0.06),0_1px_4px_rgba(15,23,42,0.035)] border-red-200 bg-white px-3 py-2 text-xs font-semibold text-red-700"
                 >
                   Remove
                 </button>
@@ -6589,7 +6592,7 @@ function QuestionnaireLibrary({
       
         {renderLogicBuilder(item, index)}
       
-        {item.item_type === "custom" && <label className="mt-4 block"><span className="text-xs font-medium text-slate-500">Custom item configuration / implementation notes</span><textarea value={item.custom_config_notes} onChange={(event) => updateBuilderItem(item.id, { custom_config_notes: event.target.value })} placeholder="Describe any format not represented above. The database stores this as structured extension metadata for a future renderer/plugin." className="mt-1 min-h-28 w-full rounded-xl border border-slate-200 px-3 py-2.5 text-sm" /></label>}
+        {item.item_type === "custom" && <label className="mt-4 block"><span className="text-xs font-medium text-slate-500">Custom item configuration / implementation notes</span><textarea value={item.custom_config_notes} onChange={(event) => updateBuilderItem(item.id, { custom_config_notes: event.target.value })} placeholder="Describe any format not represented above. The database stores this as structured extension metadata for a future renderer/plugin." className="mt-1 min-h-28 w-full rounded-xl border shadow-[0_5px_18px_rgba(15,23,42,0.06),0_1px_4px_rgba(15,23,42,0.035)] border-slate-200 px-3 py-2.5 text-sm" /></label>}
       </div>
     );
   }
@@ -6984,7 +6987,7 @@ function QuestionnaireLibrary({
           ← Back to questionnaire library
         </button>
 
-        <div className="rounded-2xl border border-slate-200 bg-white p-6 sm:p-7">
+        <div className="rounded-2xl border shadow-[0_8px_24px_rgba(15,23,42,0.065),0_2px_6px_rgba(15,23,42,0.035)] border-slate-300/70 bg-white p-6 sm:p-7">
           <div className="max-w-5xl">
             <div className="flex flex-wrap gap-2">
               <Status type="accent">Universal research builder</Status>
@@ -7000,37 +7003,37 @@ function QuestionnaireLibrary({
           </div>
         </div>
 
-        {builderError && <div className="rounded-2xl border border-red-200 bg-red-50 px-5 py-4"><p className="text-sm text-red-700">{builderError}</p></div>}
-        {builderSuccess && <div className="rounded-2xl border border-emerald-200 bg-emerald-50 px-5 py-4"><p className="text-sm text-emerald-700">{builderSuccess}</p></div>}
+        {builderError && <div className="border-l-2 border-rose-400 bg-transparent py-1 pl-3 pr-1"><p className="text-sm text-slate-600">{builderError}</p></div>}
+        {builderSuccess && <div className="border-l-2 border-cyan-400 bg-transparent py-1 pl-3 pr-1"><p className="text-sm text-slate-600">{builderSuccess}</p></div>}
 
         <div className="grid gap-5 xl:grid-cols-[1.2fr_.8fr]">
           <div className="space-y-5">
             <Panel title="Instrument overview" description="Metadata shown to researchers in the library.">
               <div className="space-y-5">
                 <div className="grid gap-4 md:grid-cols-[1fr_180px]">
-                  <label><span className="text-sm font-medium">Name</span><input value={builderName} onChange={(event) => setBuilderName(event.target.value)} placeholder="e.g. Academic Coping Questionnaire" className="mt-2 w-full rounded-xl border border-slate-200 px-4 py-3 text-sm" /></label>
-                  <label><span className="text-sm font-medium">Acronym</span><input value={builderAcronym} onChange={(event) => setBuilderAcronym(event.target.value)} placeholder="ACQ" maxLength={20} className="mt-2 w-full rounded-xl border border-slate-200 px-4 py-3 text-sm" /></label>
+                  <label><span className="text-sm font-medium">Name</span><input value={builderName} onChange={(event) => setBuilderName(event.target.value)} placeholder="e.g. Academic Coping Questionnaire" className="mt-2 w-full rounded-xl border shadow-[0_5px_18px_rgba(15,23,42,0.06),0_1px_4px_rgba(15,23,42,0.035)] border-slate-200 px-4 py-3 text-sm" /></label>
+                  <label><span className="text-sm font-medium">Acronym</span><input value={builderAcronym} onChange={(event) => setBuilderAcronym(event.target.value)} placeholder="ACQ" maxLength={20} className="mt-2 w-full rounded-xl border shadow-[0_5px_18px_rgba(15,23,42,0.06),0_1px_4px_rgba(15,23,42,0.035)] border-slate-200 px-4 py-3 text-sm" /></label>
                 </div>
                 <div className="grid gap-4 md:grid-cols-2">
-                  <label><span className="text-sm font-medium">Category</span><input value={builderCategory} onChange={(event) => setBuilderCategory(event.target.value)} className="mt-2 w-full rounded-xl border border-slate-200 px-4 py-3 text-sm" /></label>
-                  <label><span className="text-sm font-medium">Estimated time (minutes)</span><input type="number" min={1} max={1440} value={builderEstimatedMinutes} onChange={(event) => setBuilderEstimatedMinutes(Number(event.target.value))} className="mt-2 w-full rounded-xl border border-slate-200 px-4 py-3 text-sm" /></label>
+                  <label><span className="text-sm font-medium">Category</span><input value={builderCategory} onChange={(event) => setBuilderCategory(event.target.value)} className="mt-2 w-full rounded-xl border shadow-[0_5px_18px_rgba(15,23,42,0.06),0_1px_4px_rgba(15,23,42,0.035)] border-slate-200 px-4 py-3 text-sm" /></label>
+                  <label><span className="text-sm font-medium">Estimated time (minutes)</span><input type="number" min={1} max={1440} value={builderEstimatedMinutes} onChange={(event) => setBuilderEstimatedMinutes(Number(event.target.value))} className="mt-2 w-full rounded-xl border shadow-[0_5px_18px_rgba(15,23,42,0.06),0_1px_4px_rgba(15,23,42,0.035)] border-slate-200 px-4 py-3 text-sm" /></label>
                 </div>
-                <label className="block"><span className="text-sm font-medium">Description</span><textarea value={builderDescription} onChange={(event) => setBuilderDescription(event.target.value)} rows={3} className="mt-2 w-full rounded-xl border border-slate-200 px-4 py-3 text-sm" /></label>
+                <label className="block"><span className="text-sm font-medium">Description</span><textarea value={builderDescription} onChange={(event) => setBuilderDescription(event.target.value)} rows={3} className="mt-2 w-full rounded-xl border shadow-[0_5px_18px_rgba(15,23,42,0.06),0_1px_4px_rgba(15,23,42,0.035)] border-slate-200 px-4 py-3 text-sm" /></label>
                 <div className="grid gap-4 md:grid-cols-2">
-                  <label><span className="text-sm font-medium">Constructs — comma separated</span><input value={builderConstructs} onChange={(event) => setBuilderConstructs(event.target.value)} placeholder="Stress, coping" className="mt-2 w-full rounded-xl border border-slate-200 px-4 py-3 text-sm" /></label>
-                  <label><span className="text-sm font-medium">Languages — comma separated</span><input value={builderLanguages} onChange={(event) => setBuilderLanguages(event.target.value)} placeholder="English, Italian" className="mt-2 w-full rounded-xl border border-slate-200 px-4 py-3 text-sm" /></label>
+                  <label><span className="text-sm font-medium">Constructs — comma separated</span><input value={builderConstructs} onChange={(event) => setBuilderConstructs(event.target.value)} placeholder="Stress, coping" className="mt-2 w-full rounded-xl border shadow-[0_5px_18px_rgba(15,23,42,0.06),0_1px_4px_rgba(15,23,42,0.035)] border-slate-200 px-4 py-3 text-sm" /></label>
+                  <label><span className="text-sm font-medium">Languages — comma separated</span><input value={builderLanguages} onChange={(event) => setBuilderLanguages(event.target.value)} placeholder="English, Italian" className="mt-2 w-full rounded-xl border shadow-[0_5px_18px_rgba(15,23,42,0.06),0_1px_4px_rgba(15,23,42,0.035)] border-slate-200 px-4 py-3 text-sm" /></label>
                 </div>
                 <div className="grid gap-4 md:grid-cols-2">
-                  <label><span className="text-sm font-medium">Target population</span><input value={builderPopulation} onChange={(event) => setBuilderPopulation(event.target.value)} className="mt-2 w-full rounded-xl border border-slate-200 px-4 py-3 text-sm" /></label>
-                  <label><span className="text-sm font-medium">Recall period</span><input value={builderRecallPeriod} onChange={(event) => setBuilderRecallPeriod(event.target.value)} placeholder="Past 7 days / Right now / General" className="mt-2 w-full rounded-xl border border-slate-200 px-4 py-3 text-sm" /></label>
+                  <label><span className="text-sm font-medium">Target population</span><input value={builderPopulation} onChange={(event) => setBuilderPopulation(event.target.value)} className="mt-2 w-full rounded-xl border shadow-[0_5px_18px_rgba(15,23,42,0.06),0_1px_4px_rgba(15,23,42,0.035)] border-slate-200 px-4 py-3 text-sm" /></label>
+                  <label><span className="text-sm font-medium">Recall period</span><input value={builderRecallPeriod} onChange={(event) => setBuilderRecallPeriod(event.target.value)} placeholder="Past 7 days / Right now / General" className="mt-2 w-full rounded-xl border shadow-[0_5px_18px_rgba(15,23,42,0.06),0_1px_4px_rgba(15,23,42,0.035)] border-slate-200 px-4 py-3 text-sm" /></label>
                 </div>
               </div>
             </Panel>
 
             <Panel title="Administration" description="Participant and researcher-facing instructions.">
               <div className="space-y-5">
-                <label className="block"><span className="text-sm font-medium">Participant instructions</span><textarea value={builderParticipantInstructions} onChange={(event) => setBuilderParticipantInstructions(event.target.value)} rows={4} className="mt-2 w-full rounded-xl border border-slate-200 px-4 py-3 text-sm" /></label>
-                <label className="block"><span className="text-sm font-medium">Researcher instructions</span><textarea value={builderResearcherInstructions} onChange={(event) => setBuilderResearcherInstructions(event.target.value)} rows={4} className="mt-2 w-full rounded-xl border border-slate-200 px-4 py-3 text-sm" /></label>
+                <label className="block"><span className="text-sm font-medium">Participant instructions</span><textarea value={builderParticipantInstructions} onChange={(event) => setBuilderParticipantInstructions(event.target.value)} rows={4} className="mt-2 w-full rounded-xl border shadow-[0_5px_18px_rgba(15,23,42,0.06),0_1px_4px_rgba(15,23,42,0.035)] border-slate-200 px-4 py-3 text-sm" /></label>
+                <label className="block"><span className="text-sm font-medium">Researcher instructions</span><textarea value={builderResearcherInstructions} onChange={(event) => setBuilderResearcherInstructions(event.target.value)} rows={4} className="mt-2 w-full rounded-xl border shadow-[0_5px_18px_rgba(15,23,42,0.06),0_1px_4px_rgba(15,23,42,0.035)] border-slate-200 px-4 py-3 text-sm" /></label>
               </div>
             </Panel>
 
@@ -7049,7 +7052,7 @@ function QuestionnaireLibrary({
                       key={block.id}
                       className={`overflow-hidden rounded-3xl border border-l-4 shadow-sm ${questionnairePageTheme(blockIndex).card}`}
                     >
-                      <div className="border-b border-slate-200/80 bg-white/75 p-5">
+                      <div className="border-b border-slate-300/65 bg-white/75 p-5">
                         <div className="flex flex-col justify-between gap-4 lg:flex-row lg:items-start">
                           <div className="min-w-0 flex-1">
                             <div className="flex flex-wrap items-center gap-2">
@@ -7083,7 +7086,7 @@ function QuestionnaireLibrary({
                               }
                               placeholder="Optional instructions shown before the questions in this block"
                               rows={2}
-                              className="mt-2 w-full resize-y rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm text-slate-600"
+                              className="mt-2 w-full resize-y rounded-xl border shadow-[0_5px_18px_rgba(15,23,42,0.06),0_1px_4px_rgba(15,23,42,0.035)] border-slate-300/70 bg-white px-3 py-2.5 text-sm shadow-[0_2px_6px_rgba(15,23,42,0.035)] text-slate-600"
                             />
                           </div>
 
@@ -7097,7 +7100,7 @@ function QuestionnaireLibrary({
                           </button>
                         </div>
 
-                        <details className="mt-4 rounded-xl border border-slate-200 bg-slate-50/70 px-4 py-3">
+                        <details className="mt-4 rounded-xl border shadow-[0_5px_18px_rgba(15,23,42,0.06),0_1px_4px_rgba(15,23,42,0.035)] border-slate-200 bg-slate-50/70 px-4 py-3">
                           <summary className="cursor-pointer text-xs font-semibold text-slate-600">
                             Block settings
                           </summary>
@@ -7111,7 +7114,7 @@ function QuestionnaireLibrary({
                                     key: event.target.value,
                                   })
                                 }
-                                className="mt-1 w-full rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm"
+                                className="mt-1 w-full rounded-xl border shadow-[0_5px_18px_rgba(15,23,42,0.06),0_1px_4px_rgba(15,23,42,0.035)] border-slate-300/70 bg-white px-3 py-2.5 text-sm shadow-[0_2px_6px_rgba(15,23,42,0.035)]"
                               />
                             </label>
                             <div className="space-y-2 pt-1 text-sm">
@@ -7155,7 +7158,7 @@ function QuestionnaireLibrary({
                             )
                           )
                         ) : (
-                          <div className="rounded-2xl border border-dashed border-slate-300 bg-white px-5 py-7 text-center">
+                          <div className="rounded-2xl border shadow-[0_8px_24px_rgba(15,23,42,0.065),0_2px_6px_rgba(15,23,42,0.035)] border-dashed border-slate-300 bg-white px-5 py-7 text-center">
                             <p className="text-sm font-medium text-slate-700">
                               This block is empty
                             </p>
@@ -7165,7 +7168,7 @@ function QuestionnaireLibrary({
                           </div>
                         )}
 
-                        <div className="rounded-2xl border border-dashed border-cyan-200 bg-white p-4">
+                        <div className="rounded-2xl border shadow-[0_8px_24px_rgba(15,23,42,0.065),0_2px_6px_rgba(15,23,42,0.035)] border-dashed border-cyan-200 bg-white p-4">
                           <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                             <div>
                               <p className="text-sm font-semibold text-slate-800">
@@ -7182,7 +7185,7 @@ function QuestionnaireLibrary({
                                 const type = event.target.value;
                                 if (type) addBuilderItem(block.id, type);
                               }}
-                              className="min-w-[230px] rounded-xl border border-cyan-200 bg-white px-3 py-2.5 text-sm font-medium text-slate-700 outline-none focus:border-cyan-700 disabled:opacity-40"
+                              className="min-w-[230px] rounded-xl border shadow-[0_5px_18px_rgba(15,23,42,0.06),0_1px_4px_rgba(15,23,42,0.035)] border-cyan-200 bg-white px-3 py-2.5 text-sm font-medium text-slate-700 outline-none focus:border-cyan-700 disabled:opacity-40"
                             >
                               <option value="">+ Add question / content…</option>
                               {Array.from(
@@ -7219,7 +7222,7 @@ function QuestionnaireLibrary({
               <button
                 type="button"
                 onClick={addBuilderBlock}
-                className="mt-5 w-full rounded-2xl border border-dashed border-slate-300 bg-white px-5 py-3.5 text-sm font-semibold text-slate-700 hover:border-cyan-300 hover:bg-cyan-50/30"
+                className="mt-5 w-full rounded-2xl border shadow-[0_8px_24px_rgba(15,23,42,0.065),0_2px_6px_rgba(15,23,42,0.035)] border-dashed border-slate-300 bg-white px-5 py-3.5 text-sm font-semibold text-slate-700 hover:border-cyan-300 hover:bg-cyan-50/30"
               >
                 + Add another block / page
               </button>
@@ -7227,12 +7230,12 @@ function QuestionnaireLibrary({
 
             <Panel title="Scoring, missing data & randomisation" description="Store the scoring plan without implying that a new measure has been validated.">
               <div className="grid gap-4 md:grid-cols-2">
-                <label><span className="text-sm font-medium">Scoring method</span><select value={builderScoringMethod} onChange={(event) => setBuilderScoringMethod(event.target.value)} className="mt-2 w-full rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm"><option value="none">No automatic score</option><option value="sum">Sum</option><option value="mean">Mean / average</option><option value="median">Median</option><option value="count_endorsed">Count endorsed</option><option value="percentage">Percentage</option><option value="weighted_sum">Weighted sum</option><option value="weighted_mean">Weighted mean</option><option value="thurstone_median">Thurstone median of endorsed values</option><option value="subscale_sum">Subscale sums</option><option value="subscale_mean">Subscale means</option><option value="total_and_subscales">Total + subscales</option><option value="custom_formula">Custom formula / algorithm</option><option value="irt_rasch">IRT / Rasch parameters supplied by researcher</option></select></label>
-                <label><span className="text-sm font-medium">Missing-data rule</span><select value={builderMissingRule} onChange={(event) => setBuilderMissingRule(event.target.value)} className="mt-2 w-full rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm"><option value="complete_case">Do not score if required items are missing</option><option value="available_items">Use available items</option><option value="allow_10_percent">Allow up to 10% missing</option><option value="allow_20_percent">Allow up to 20% missing</option><option value="prorate_80_percent">Prorate if at least 80% completed</option><option value="subscale_mean_imputation">Subscale-mean imputation</option><option value="custom">Custom rule documented below</option></select></label>
+                <label><span className="text-sm font-medium">Scoring method</span><select value={builderScoringMethod} onChange={(event) => setBuilderScoringMethod(event.target.value)} className="mt-2 w-full rounded-xl border shadow-[0_5px_18px_rgba(15,23,42,0.06),0_1px_4px_rgba(15,23,42,0.035)] border-slate-300/70 bg-white px-4 py-3 text-sm shadow-[0_2px_6px_rgba(15,23,42,0.035)]"><option value="none">No automatic score</option><option value="sum">Sum</option><option value="mean">Mean / average</option><option value="median">Median</option><option value="count_endorsed">Count endorsed</option><option value="percentage">Percentage</option><option value="weighted_sum">Weighted sum</option><option value="weighted_mean">Weighted mean</option><option value="thurstone_median">Thurstone median of endorsed values</option><option value="subscale_sum">Subscale sums</option><option value="subscale_mean">Subscale means</option><option value="total_and_subscales">Total + subscales</option><option value="custom_formula">Custom formula / algorithm</option><option value="irt_rasch">IRT / Rasch parameters supplied by researcher</option></select></label>
+                <label><span className="text-sm font-medium">Missing-data rule</span><select value={builderMissingRule} onChange={(event) => setBuilderMissingRule(event.target.value)} className="mt-2 w-full rounded-xl border shadow-[0_5px_18px_rgba(15,23,42,0.06),0_1px_4px_rgba(15,23,42,0.035)] border-slate-300/70 bg-white px-4 py-3 text-sm shadow-[0_2px_6px_rgba(15,23,42,0.035)]"><option value="complete_case">Do not score if required items are missing</option><option value="available_items">Use available items</option><option value="allow_10_percent">Allow up to 10% missing</option><option value="allow_20_percent">Allow up to 20% missing</option><option value="prorate_80_percent">Prorate if at least 80% completed</option><option value="subscale_mean_imputation">Subscale-mean imputation</option><option value="custom">Custom rule documented below</option></select></label>
               </div>
-              {(builderScoringMethod === "custom_formula" || builderScoringMethod === "irt_rasch" || builderMissingRule === "custom") && <textarea value={builderScoringFormula} onChange={(event) => setBuilderScoringFormula(event.target.value)} placeholder="Formula, calibrated parameters, or algorithm/missing-data specification. Example: stress=(q1+q2+reverse(q3))/3" className="mt-4 min-h-28 w-full rounded-xl border border-slate-200 px-4 py-3 text-sm" />}
-              <label className="mt-4 flex items-center gap-3 rounded-xl border border-slate-200 p-4 text-sm"><input type="checkbox" checked={builderRandomizeItems} onChange={(event) => setBuilderRandomizeItems(event.target.checked)} />Allow questionnaire-level item randomisation (block settings can override/structure this).</label>
-              <label className="mt-4 block"><span className="text-sm font-medium">Scoring / analysis notes</span><textarea value={builderScoringSummary} onChange={(event) => setBuilderScoringSummary(event.target.value)} rows={5} className="mt-2 w-full rounded-xl border border-slate-200 px-4 py-3 text-sm" /></label>
+              {(builderScoringMethod === "custom_formula" || builderScoringMethod === "irt_rasch" || builderMissingRule === "custom") && <textarea value={builderScoringFormula} onChange={(event) => setBuilderScoringFormula(event.target.value)} placeholder="Formula, calibrated parameters, or algorithm/missing-data specification. Example: stress=(q1+q2+reverse(q3))/3" className="mt-4 min-h-28 w-full rounded-xl border shadow-[0_5px_18px_rgba(15,23,42,0.06),0_1px_4px_rgba(15,23,42,0.035)] border-slate-200 px-4 py-3 text-sm" />}
+              <label className="mt-4 flex items-center gap-3 rounded-xl border shadow-[0_5px_18px_rgba(15,23,42,0.06),0_1px_4px_rgba(15,23,42,0.035)] border-slate-200 p-4 text-sm"><input type="checkbox" checked={builderRandomizeItems} onChange={(event) => setBuilderRandomizeItems(event.target.checked)} />Allow questionnaire-level item randomisation (block settings can override/structure this).</label>
+              <label className="mt-4 block"><span className="text-sm font-medium">Scoring / analysis notes</span><textarea value={builderScoringSummary} onChange={(event) => setBuilderScoringSummary(event.target.value)} rows={5} className="mt-2 w-full rounded-xl border shadow-[0_5px_18px_rgba(15,23,42,0.06),0_1px_4px_rgba(15,23,42,0.035)] border-slate-200 px-4 py-3 text-sm" /></label>
               <p className="mt-3 text-xs leading-5 text-slate-400">PsyLattice stores researcher-defined scoring. It does not infer psychometric validity, norms, diagnostic meaning or calibrated IRT/Rasch parameters.</p>
             </Panel>
           </div>
@@ -7241,11 +7244,11 @@ function QuestionnaireLibrary({
             <Panel title="Builder summary">
               <div className="grid grid-cols-2 gap-3"><StatCard label="Items/content" value={String(builderItems.length)} detail={`${builderBlocks.length} block(s)`} /><StatCard label="Response types" value={String(responseTypesUsed.length)} detail="Mixed formats supported" /></div>
               <div className="mt-4 rounded-2xl bg-slate-50 p-5"><p className="text-xs font-semibold uppercase tracking-[0.12em] text-slate-400">Subscales</p><p className="mt-2 text-sm font-medium text-slate-700">{subscales.length > 0 ? subscales.join(", ") : "No subscales assigned"}</p></div>
-              <div className="mt-4 rounded-2xl border border-cyan-100 bg-cyan-50/60 p-5"><p className="font-medium text-cyan-950">Extensible by design</p><p className="mt-2 text-sm leading-6 text-cyan-900/75">The custom item type and JSONB configuration mean new research formats can be added later without redesigning the core database.</p></div>
+              <div className="mt-4 rounded-2xl border shadow-[0_8px_24px_rgba(15,23,42,0.065),0_2px_6px_rgba(15,23,42,0.035)] border-cyan-100 bg-cyan-50/60 p-5"><p className="font-medium text-cyan-950">Extensible by design</p><p className="mt-2 text-sm leading-6 text-cyan-900/75">The custom item type and JSONB configuration mean new research formats can be added later without redesigning the core database.</p></div>
             </Panel>
 
             <Panel title="Included capabilities">
-              <div className="space-y-3 text-sm text-slate-600">{["Item-specific response formats", "Blocks/pages and page breaks", "Branching / display logic", "Piping via {{item_key}}", "Option and block randomisation", "Subscales and reverse scoring", "Weighted / Thurstone scoring metadata", "Missing-data rules", "Matrices, ranking, Q-sort and allocation", "Text, numeric, date/time and uploads", "Media/stimulus metadata", "Custom/future item configuration"].map((capability) => <div key={capability} className="flex gap-2"><span className="mt-0.5 text-emerald-700"><CheckIcon /></span><span>{capability}</span></div>)}</div>
+              <div className="space-y-3 text-sm text-slate-600">{["Item-specific response formats", "Blocks/pages and page breaks", "Branching / display logic", "Piping via {{item_key}}", "Option and block randomisation", "Subscales and reverse scoring", "Weighted / Thurstone scoring metadata", "Missing-data rules", "Matrices, ranking, Q-sort and allocation", "Text, numeric, date/time and uploads", "Media/stimulus metadata", "Custom/future item configuration"].map((capability) => <div key={capability} className="flex gap-2"><span className="mt-0.5 text-cyan-700"><CheckIcon /></span><span>{capability}</span></div>)}</div>
             </Panel>
 
             <Panel
@@ -7272,10 +7275,10 @@ function QuestionnaireLibrary({
                 ].map((option) => (
                   <label
                     key={option.value}
-                    className={`flex cursor-pointer items-start gap-3 rounded-2xl border p-4 transition ${
+                    className={`flex cursor-pointer items-start gap-3 rounded-2xl border shadow-[0_8px_24px_rgba(15,23,42,0.065),0_2px_6px_rgba(15,23,42,0.035)] p-4 transition ${
                       builderPublicationMode === option.value
                         ? "border-cyan-300 bg-cyan-50/60"
-                        : "border-slate-200 bg-white hover:border-slate-300"
+                        : "border-slate-300/70 bg-white hover:border-slate-300"
                     }`}
                   >
                     <input
@@ -7299,7 +7302,7 @@ function QuestionnaireLibrary({
               </div>
 
               {builderPublicationMode !== "private" && (
-                <div className="mt-5 rounded-2xl border border-slate-200 bg-slate-50/70 p-4">
+                <div className="mt-5 rounded-2xl border shadow-[0_8px_24px_rgba(15,23,42,0.065),0_2px_6px_rgba(15,23,42,0.035)] border-slate-200 bg-slate-50/70 p-4">
                   <p className="text-xs font-semibold uppercase tracking-[0.12em] text-slate-500">
                     Publisher details shown in the PsyLattice library
                   </p>
@@ -7312,7 +7315,7 @@ function QuestionnaireLibrary({
                         value={builderPublisherName}
                         onChange={(event) => setBuilderPublisherName(event.target.value)}
                         placeholder="Your name, lab, group or organisation"
-                        className="mt-1 w-full rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm"
+                        className="mt-1 w-full rounded-xl border shadow-[0_5px_18px_rgba(15,23,42,0.06),0_1px_4px_rgba(15,23,42,0.035)] border-slate-300/70 bg-white px-3 py-2.5 text-sm shadow-[0_2px_6px_rgba(15,23,42,0.035)]"
                       />
                     </label>
                     <label className="block">
@@ -7325,7 +7328,7 @@ function QuestionnaireLibrary({
                           setBuilderPublisherAffiliation(event.target.value)
                         }
                         placeholder="University, lab, organisation"
-                        className="mt-1 w-full rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm"
+                        className="mt-1 w-full rounded-xl border shadow-[0_5px_18px_rgba(15,23,42,0.06),0_1px_4px_rgba(15,23,42,0.035)] border-slate-300/70 bg-white px-3 py-2.5 text-sm shadow-[0_2px_6px_rgba(15,23,42,0.035)]"
                       />
                     </label>
                     <label className="block">
@@ -7336,7 +7339,7 @@ function QuestionnaireLibrary({
                         value={builderPublisherUrl}
                         onChange={(event) => setBuilderPublisherUrl(event.target.value)}
                         placeholder="https://…"
-                        className="mt-1 w-full rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm"
+                        className="mt-1 w-full rounded-xl border shadow-[0_5px_18px_rgba(15,23,42,0.06),0_1px_4px_rgba(15,23,42,0.035)] border-slate-300/70 bg-white px-3 py-2.5 text-sm shadow-[0_2px_6px_rgba(15,23,42,0.035)]"
                       />
                     </label>
                   </div>
@@ -7348,13 +7351,13 @@ function QuestionnaireLibrary({
             </Panel>
 
             <Panel title="Rights confirmation">
-              <label className="flex items-start gap-3 rounded-2xl border border-orange-300 bg-orange-50/90 p-5"><input type="checkbox" checked={builderRightsConfirmed} onChange={(event) => setBuilderRightsConfirmed(event.target.checked)} className="mt-1" /><span className="text-sm leading-6 text-amber-900">I confirm that I created this instrument content, or I have the permission/licence required to reproduce and digitally administer it.</span></label>
+              <label className="flex items-start gap-3 rounded-2xl border shadow-[0_8px_24px_rgba(15,23,42,0.065),0_2px_6px_rgba(15,23,42,0.035)] border-[#cfc6f6] bg-[#f7f5ff] p-5"><input type="checkbox" checked={builderRightsConfirmed} onChange={(event) => setBuilderRightsConfirmed(event.target.checked)} className="mt-1" /><span className="text-sm leading-6 text-violet-900">I confirm that I created this instrument content, or I have the permission/licence required to reproduce and digitally administer it.</span></label>
               <p className="mt-4 text-xs leading-5 text-slate-400">PsyLattice records this confirmation but does not independently verify third-party rights.</p>
             </Panel>
 
             <Panel title="Save instrument">
               <button type="button" onClick={() => void saveCustomQuestionnaire()} disabled={savingCustomQuestionnaire} className="w-full rounded-xl bg-slate-950 px-5 py-3 text-sm font-semibold text-white disabled:opacity-50">{savingCustomQuestionnaire ? "Saving instrument..." : builderPublicationMode === "private" ? "Save privately" : builderPublicationMode === "free" ? "Publish free to PsyLattice" : "Publish with permission required"}</button>
-              <button type="button" onClick={() => { setBuilderOpen(false); resetCustomBuilder(); }} disabled={savingCustomQuestionnaire} className="mt-2 w-full rounded-xl border border-slate-200 px-5 py-3 text-sm font-semibold text-slate-600 disabled:opacity-50">Cancel</button>
+              <button type="button" onClick={() => { setBuilderOpen(false); resetCustomBuilder(); }} disabled={savingCustomQuestionnaire} className="mt-2 w-full rounded-xl border shadow-[0_5px_18px_rgba(15,23,42,0.06),0_1px_4px_rgba(15,23,42,0.035)] border-slate-200 px-5 py-3 text-sm font-semibold text-slate-600 disabled:opacity-50">Cancel</button>
             </Panel>
           </div>
         </div>
@@ -7388,12 +7391,12 @@ function QuestionnaireLibrary({
         </button>
 
         {libraryError && (
-          <div className="rounded-2xl border border-red-200 bg-red-50 px-5 py-4">
+          <div className="border-l-2 border-rose-400 bg-transparent py-1 pl-3 pr-1">
             <p className="text-sm text-red-700">{libraryError}</p>
           </div>
         )}
 
-        <div className="rounded-2xl border border-slate-200 bg-white p-6 sm:p-7">
+        <div className="rounded-2xl border shadow-[0_8px_24px_rgba(15,23,42,0.065),0_2px_6px_rgba(15,23,42,0.035)] border-slate-300/70 bg-white p-6 sm:p-7">
           <div className="flex flex-col justify-between gap-5 xl:flex-row xl:items-start">
             <div className="max-w-4xl">
               <div className="flex flex-wrap gap-2">
@@ -7444,7 +7447,7 @@ function QuestionnaireLibrary({
                   href={questionnaireResources[0].url}
                   target="_blank"
                   rel="noreferrer"
-                  className="rounded-xl bg-slate-950 px-4 py-2.5 text-sm font-semibold text-white"
+                  className="rounded-full bg-slate-950 px-4 py-2.5 text-sm font-semibold text-white shadow-[0_5px_14px_rgba(15,23,42,0.16)]"
                 >
                   Open questionnaire source ↗
                 </a>
@@ -7453,7 +7456,7 @@ function QuestionnaireLibrary({
               <button
                 type="button"
                 onClick={() => changeScreen("builder")}
-                className="rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm font-semibold text-slate-700"
+                className="rounded-xl border shadow-[0_5px_18px_rgba(15,23,42,0.06),0_1px_4px_rgba(15,23,42,0.035)] border-slate-300/70 bg-white px-4 py-2.5 text-sm font-semibold text-slate-700"
               >
                 Open Study Builder
               </button>
@@ -7543,10 +7546,10 @@ function QuestionnaireLibrary({
                             mode as "private" | "free" | "restricted"
                           )
                         }
-                        className={`rounded-xl border px-3 py-2.5 text-xs font-semibold transition disabled:cursor-default ${
+                        className={`rounded-xl border shadow-[0_5px_18px_rgba(15,23,42,0.06),0_1px_4px_rgba(15,23,42,0.035)] px-3 py-2.5 text-xs font-semibold transition disabled:cursor-default ${
                           active
                             ? "border-cyan-300 bg-cyan-50 text-cyan-900"
-                            : "border-slate-200 bg-white text-slate-600 hover:border-slate-300"
+                            : "border-slate-300/70 bg-white text-slate-600 hover:border-slate-300"
                         }`}
                       >
                         {label}
@@ -7581,7 +7584,7 @@ function QuestionnaireLibrary({
                           accessRequests.map((request) => (
                             <div
                               key={request.id}
-                              className="rounded-xl border border-slate-200 bg-white p-4"
+                              className="rounded-xl border shadow-[0_5px_18px_rgba(15,23,42,0.06),0_1px_4px_rgba(15,23,42,0.035)] border-slate-300/70 bg-white p-4"
                             >
                               <div className="flex flex-col justify-between gap-3 sm:flex-row sm:items-start">
                                 <div>
@@ -7638,7 +7641,7 @@ function QuestionnaireLibrary({
                                         "revoked"
                                       )
                                     }
-                                    className="rounded-lg border border-slate-200 px-3 py-2 text-xs font-semibold text-slate-600 disabled:opacity-50"
+                                    className="rounded-lg border shadow-[0_3px_10px_rgba(15,23,42,0.05)] border-slate-200 px-3 py-2 text-xs font-semibold text-slate-600 disabled:opacity-50"
                                   >
                                     Revoke
                                   </button>
@@ -7652,7 +7655,7 @@ function QuestionnaireLibrary({
                                         "denied"
                                       )
                                     }
-                                    className="rounded-lg border border-slate-200 px-3 py-2 text-xs font-semibold text-slate-600 disabled:opacity-50"
+                                    className="rounded-lg border shadow-[0_3px_10px_rgba(15,23,42,0.05)] border-slate-200 px-3 py-2 text-xs font-semibold text-slate-600 disabled:opacity-50"
                                   >
                                     Decline
                                   </button>
@@ -7666,7 +7669,7 @@ function QuestionnaireLibrary({
                   )}
               </>
             ) : !questionnaireCanUse(selectedQuestionnaire) ? (
-              <div className="mt-5 rounded-2xl border border-cyan-100 bg-cyan-50/60 p-5">
+              <div className="mt-5 rounded-2xl border shadow-[0_8px_24px_rgba(15,23,42,0.065),0_2px_6px_rgba(15,23,42,0.035)] border-cyan-100 bg-cyan-50/60 p-5">
                 <p className="font-semibold text-cyan-950">
                   Permission is required to use this questionnaire
                 </p>
@@ -7686,7 +7689,7 @@ function QuestionnaireLibrary({
                       }
                       rows={3}
                       placeholder="Optional note to the publisher about how you plan to use the questionnaire"
-                      className="mt-4 w-full rounded-xl border border-cyan-200 bg-white px-3 py-2.5 text-sm"
+                      className="mt-4 w-full rounded-xl border shadow-[0_5px_18px_rgba(15,23,42,0.06),0_1px_4px_rgba(15,23,42,0.035)] border-cyan-200 bg-white px-3 py-2.5 text-sm"
                     />
                     <button
                       type="button"
@@ -7694,7 +7697,7 @@ function QuestionnaireLibrary({
                       onClick={() =>
                         void requestQuestionnaireAccess(selectedQuestionnaire)
                       }
-                      className="mt-3 rounded-xl bg-slate-950 px-4 py-2.5 text-sm font-semibold text-white disabled:opacity-50"
+                      className="mt-3 rounded-full bg-slate-950 px-4 py-2.5 text-sm font-semibold text-white shadow-[0_5px_14px_rgba(15,23,42,0.16)] disabled:opacity-50"
                     >
                       {accessBusy ? "Sending request…" : "Request access"}
                     </button>
@@ -7702,7 +7705,7 @@ function QuestionnaireLibrary({
                 )}
               </div>
             ) : (
-              <div className="mt-5 rounded-xl bg-emerald-50 px-4 py-3 text-sm font-medium text-emerald-800">
+              <div className="mt-5 border-l-2 border-cyan-400 bg-transparent py-1 pl-3 pr-1 text-sm font-medium text-slate-600">
                 {selectedQuestionnaire.access_mode === "free"
                   ? "The publisher allows free research use in PsyLattice."
                   : "The publisher has granted your account access."}
@@ -7771,7 +7774,7 @@ function QuestionnaireLibrary({
                     </p>
                   </div>
 
-                  <div className="rounded-2xl border border-slate-200 p-5">
+                  <div className="rounded-2xl border shadow-[0_8px_24px_rgba(15,23,42,0.065),0_2px_6px_rgba(15,23,42,0.035)] border-slate-200 p-5">
                     <p className="text-xs font-semibold uppercase tracking-[0.12em] text-slate-400">
                       Researcher instructions
                     </p>
@@ -7782,7 +7785,7 @@ function QuestionnaireLibrary({
                   </div>
 
                   <div className="grid gap-4 md:grid-cols-2">
-                    <div className="rounded-xl border border-slate-200 p-4">
+                    <div className="rounded-xl border shadow-[0_5px_18px_rgba(15,23,42,0.06),0_1px_4px_rgba(15,23,42,0.035)] border-slate-200 p-4">
                       <p className="text-xs text-slate-400">Response format</p>
                       <p className="mt-2 text-sm leading-6 text-slate-700">
                         {selectedVersion?.response_scale_description ||
@@ -7790,7 +7793,7 @@ function QuestionnaireLibrary({
                       </p>
                     </div>
 
-                    <div className="rounded-xl border border-slate-200 p-4">
+                    <div className="rounded-xl border shadow-[0_5px_18px_rgba(15,23,42,0.06),0_1px_4px_rgba(15,23,42,0.035)] border-slate-200 p-4">
                       <p className="text-xs text-slate-400">Population</p>
                       <p className="mt-2 text-sm leading-6 text-slate-700">
                         {selectedQuestionnaire.population || "Not specified"}
@@ -7804,7 +7807,7 @@ function QuestionnaireLibrary({
                 title="Scoring"
                 description="Stored scoring guidance for the current questionnaire version."
               >
-                <div className="rounded-2xl border border-cyan-100 bg-cyan-50/60 p-5">
+                <div className="rounded-2xl border shadow-[0_8px_24px_rgba(15,23,42,0.065),0_2px_6px_rgba(15,23,42,0.035)] border-cyan-100 bg-cyan-50/60 p-5">
                   <p className="text-sm leading-7 text-cyan-950">
                     {selectedVersion?.scoring_summary ||
                       "A scoring summary has not yet been stored for this questionnaire."}
@@ -7828,11 +7831,11 @@ function QuestionnaireLibrary({
               description="Item wording and response coding stored for the current version."
             >
               {selectedQuestionnaire.license_status === "restricted" ? (
-                <div className="rounded-2xl border border-orange-300 bg-orange-50/90 p-5">
-                  <p className="font-medium text-amber-900">
+                <div className="rounded-2xl border shadow-[0_8px_24px_rgba(15,23,42,0.065),0_2px_6px_rgba(15,23,42,0.035)] border-[#cfc6f6] bg-[#f7f5ff] p-5">
+                  <p className="font-medium text-violet-900">
                     Item text is hidden for this restricted measure.
                   </p>
-                  <p className="mt-2 text-sm leading-6 text-amber-800">
+                  <p className="mt-2 text-sm leading-6 text-violet-800">
                     PsyLattice should only expose or digitally administer restricted item
                     content after the required rights and licence terms are documented.
                   </p>
@@ -7900,7 +7903,7 @@ function QuestionnaireLibrary({
                 description="Check the documented usage status before deploying a measure."
               >
                 <div className="space-y-4">
-                  <div className="flex items-center justify-between gap-4 rounded-xl border border-slate-200 p-4">
+                  <div className="flex items-center justify-between gap-4 rounded-xl border shadow-[0_5px_18px_rgba(15,23,42,0.06),0_1px_4px_rgba(15,23,42,0.035)] border-slate-200 p-4">
                     <span className="text-sm font-medium">Research use</span>
                     <Status type="success">
                       {selectedQuestionnaire.owner_user_id === currentUserId
@@ -7909,7 +7912,7 @@ function QuestionnaireLibrary({
                     </Status>
                   </div>
 
-                  <div className="flex items-center justify-between gap-4 rounded-xl border border-slate-200 p-4">
+                  <div className="flex items-center justify-between gap-4 rounded-xl border shadow-[0_5px_18px_rgba(15,23,42,0.06),0_1px_4px_rgba(15,23,42,0.035)] border-slate-200 p-4">
                     <span className="text-sm font-medium">Self workspace</span>
                     <Status
                       type={selectedQuestionnaire.self_available ? "success" : "neutral"}
@@ -7920,7 +7923,7 @@ function QuestionnaireLibrary({
                     </Status>
                   </div>
 
-                  <div className="rounded-xl border border-slate-200 p-4">
+                  <div className="rounded-xl border shadow-[0_5px_18px_rgba(15,23,42,0.06),0_1px_4px_rgba(15,23,42,0.035)] border-slate-200 p-4">
                     <p className="text-xs font-medium text-slate-400">
                       Licence status
                     </p>
@@ -7933,21 +7936,21 @@ function QuestionnaireLibrary({
                     </p>
                   </div>
 
-                  <div className="rounded-xl border border-slate-200 p-4">
+                  <div className="rounded-xl border shadow-[0_5px_18px_rgba(15,23,42,0.06),0_1px_4px_rgba(15,23,42,0.035)] border-slate-200 p-4">
                     <p className="text-xs font-medium text-slate-400">Commercial use</p>
                     <p className="mt-2 text-sm leading-6 text-slate-600">
                       {selectedQuestionnaire.commercial_use_note || "Not documented"}
                     </p>
                   </div>
 
-                  <div className="rounded-xl border border-slate-200 p-4">
+                  <div className="rounded-xl border shadow-[0_5px_18px_rgba(15,23,42,0.06),0_1px_4px_rgba(15,23,42,0.035)] border-slate-200 p-4">
                     <p className="text-xs font-medium text-slate-400">Modification</p>
                     <p className="mt-2 text-sm leading-6 text-slate-600">
                       {selectedQuestionnaire.modification_note || "Not documented"}
                     </p>
                   </div>
 
-                  <div className="rounded-xl border border-slate-200 p-4">
+                  <div className="rounded-xl border shadow-[0_5px_18px_rgba(15,23,42,0.06),0_1px_4px_rgba(15,23,42,0.035)] border-slate-200 p-4">
                     <p className="text-xs font-medium text-slate-400">Redistribution</p>
                     <p className="mt-2 text-sm leading-6 text-slate-600">
                       {selectedQuestionnaire.redistribution_note || "Not documented"}
@@ -7959,7 +7962,7 @@ function QuestionnaireLibrary({
                       href={selectedQuestionnaire.license_source_url}
                       target="_blank"
                       rel="noreferrer"
-                      className="inline-flex rounded-xl bg-slate-950 px-4 py-2.5 text-sm font-semibold text-white"
+                      className="inline-flex rounded-full bg-slate-950 px-4 py-2.5 text-sm font-semibold text-white shadow-[0_5px_14px_rgba(15,23,42,0.16)]"
                     >
                       Open licence source ↗
                     </a>
@@ -7976,7 +7979,7 @@ function QuestionnaireLibrary({
                     {resources.map((resource) => (
                       <div
                         key={resource.id}
-                        className="rounded-2xl border border-slate-200 p-4"
+                        className="rounded-2xl border shadow-[0_8px_24px_rgba(15,23,42,0.065),0_2px_6px_rgba(15,23,42,0.035)] border-slate-200 p-4"
                       >
                         <div className="flex flex-col justify-between gap-4 sm:flex-row sm:items-start">
                           <div>
@@ -8010,7 +8013,7 @@ function QuestionnaireLibrary({
                             href={resource.url}
                             target="_blank"
                             rel="noreferrer"
-                            className="shrink-0 rounded-xl border border-slate-200 px-4 py-2.5 text-xs font-semibold text-slate-700 hover:bg-slate-50"
+                            className="shrink-0 rounded-xl border shadow-[0_5px_18px_rgba(15,23,42,0.06),0_1px_4px_rgba(15,23,42,0.035)] border-slate-200 px-4 py-2.5 text-xs font-semibold text-slate-700 hover:bg-slate-50"
                           >
                             {resource.download_allowed
                               ? "Open / download ↗"
@@ -8066,7 +8069,7 @@ function QuestionnaireLibrary({
                         <button
                           type="button"
                           onClick={() => void copyCitation(reference)}
-                          className="rounded-xl border border-slate-200 px-3 py-2 text-xs font-semibold"
+                          className="rounded-xl border shadow-[0_5px_18px_rgba(15,23,42,0.06),0_1px_4px_rgba(15,23,42,0.035)] border-slate-200 px-3 py-2 text-xs font-semibold"
                         >
                           {copiedReferenceId === reference.id
                             ? "Copied"
@@ -8078,7 +8081,7 @@ function QuestionnaireLibrary({
                             href={reference.url}
                             target="_blank"
                             rel="noreferrer"
-                            className="rounded-xl border border-slate-200 px-3 py-2 text-xs font-semibold"
+                            className="rounded-xl border shadow-[0_5px_18px_rgba(15,23,42,0.06),0_1px_4px_rgba(15,23,42,0.035)] border-slate-200 px-3 py-2 text-xs font-semibold"
                           >
                             Source ↗
                           </a>
@@ -8115,7 +8118,7 @@ function QuestionnaireLibrary({
   return (
     <div className="space-y-5">
       {libraryError && (
-        <div className="rounded-2xl border border-red-200 bg-red-50 px-5 py-4">
+        <div className="border-l-2 border-rose-400 bg-transparent py-1 pl-3 pr-1">
           <p className="text-sm text-red-700">{libraryError}</p>
         </div>
       )}
@@ -8152,13 +8155,13 @@ function QuestionnaireLibrary({
             value={search}
             onChange={(event) => setSearch(event.target.value)}
             placeholder="Search name, acronym, construct, category or description..."
-            className="rounded-xl border border-slate-200 px-4 py-3 text-sm outline-none focus:border-cyan-700"
+            className="rounded-xl border shadow-[0_5px_18px_rgba(15,23,42,0.06),0_1px_4px_rgba(15,23,42,0.035)] border-slate-200 px-4 py-3 text-sm outline-none focus:border-cyan-700"
           />
 
           <select
             value={categoryFilter}
             onChange={(event) => setCategoryFilter(event.target.value)}
-            className="rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm"
+            className="rounded-xl border shadow-[0_5px_18px_rgba(15,23,42,0.06),0_1px_4px_rgba(15,23,42,0.035)] border-slate-300/70 bg-white px-4 py-3 text-sm shadow-[0_2px_6px_rgba(15,23,42,0.035)]"
           >
             {categories.map((category) => (
               <option key={category} value={category}>
@@ -8170,7 +8173,7 @@ function QuestionnaireLibrary({
           <select
             value={licenceFilter}
             onChange={(event) => setLicenceFilter(event.target.value)}
-            className="rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm"
+            className="rounded-xl border shadow-[0_5px_18px_rgba(15,23,42,0.06),0_1px_4px_rgba(15,23,42,0.035)] border-slate-300/70 bg-white px-4 py-3 text-sm shadow-[0_2px_6px_rgba(15,23,42,0.035)]"
           >
             <option value="All">All licence statuses</option>
             <option value="public_domain">Public domain</option>
@@ -8213,7 +8216,7 @@ function QuestionnaireLibrary({
           {filteredQuestionnaires.map((item) => (
             <article
               key={item.id}
-              className="rounded-2xl border border-slate-200 bg-white p-6 transition hover:border-slate-300"
+              className="rounded-2xl border shadow-[0_8px_24px_rgba(15,23,42,0.065),0_2px_6px_rgba(15,23,42,0.035)] border-slate-300/70 bg-white p-6 transition hover:border-slate-300"
             >
               <div className="flex flex-wrap items-start justify-between gap-3">
                 <div className="flex flex-wrap gap-2">
@@ -8305,7 +8308,7 @@ function QuestionnaireLibrary({
                 <button
                   type="button"
                   onClick={() => void openQuestionnaire(item)}
-                  className="rounded-xl bg-slate-950 px-4 py-2.5 text-sm font-semibold text-white"
+                  className="rounded-full bg-slate-950 px-4 py-2.5 text-sm font-semibold text-white shadow-[0_5px_14px_rgba(15,23,42,0.16)]"
                 >
                   {questionnaireCanUse(item)
                     ? "View research details"
@@ -8317,7 +8320,7 @@ function QuestionnaireLibrary({
                     href={item.license_source_url}
                     target="_blank"
                     rel="noreferrer"
-                    className="rounded-xl border border-slate-200 px-4 py-2.5 text-sm font-semibold text-slate-700"
+                    className="rounded-full border shadow-[0_5px_16px_rgba(15,23,42,0.075),0_1px_3px_rgba(15,23,42,0.04)] border-slate-300/70 bg-white px-4 py-2.5 text-sm font-semibold shadow-[0_2px_6px_rgba(15,23,42,0.04)] text-slate-700"
                   >
                     Licence source ↗
                   </a>
@@ -8358,12 +8361,12 @@ function QuestionnaireLibrary({
         </div>
       </Panel>
 
-      <div className="rounded-2xl border border-orange-300 bg-orange-50/90 p-5">
-        <p className="font-medium text-amber-900">
+      <div className="rounded-2xl border shadow-[0_8px_24px_rgba(15,23,42,0.065),0_2px_6px_rgba(15,23,42,0.035)] border-[#cfc6f6] bg-[#f7f5ff] p-5">
+        <p className="font-medium text-violet-900">
           Questionnaire licensing safeguard
         </p>
 
-        <p className="mt-2 max-w-4xl text-sm leading-6 text-amber-800">
+        <p className="mt-2 max-w-4xl text-sm leading-6 text-violet-800">
           Finding a questionnaire online does not automatically grant rights to
           reproduce, digitally administer, modify, score or redistribute it. PsyLattice
           records the source and current usage status, but researchers should verify the
@@ -8670,7 +8673,7 @@ function AmbulatoryBuilder({
         <button
           type="button"
           onClick={() => changeScreen("builder")}
-          className="rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm font-semibold text-slate-700"
+          className="rounded-xl border shadow-[0_5px_18px_rgba(15,23,42,0.06),0_1px_4px_rgba(15,23,42,0.035)] border-slate-300/70 bg-white px-4 py-2.5 text-sm font-semibold text-slate-700"
         >
           ← Back to Study Builder
         </button>
@@ -8686,13 +8689,13 @@ function AmbulatoryBuilder({
       </div>
 
       {errorMessage && (
-        <div className="rounded-2xl border border-red-200 bg-red-50 px-5 py-4 text-sm text-red-700">
+        <div className="border-l-2 border-rose-400 bg-transparent py-1 pl-3 pr-1 text-sm text-red-700">
           {errorMessage}
         </div>
       )}
 
       {successMessage && (
-        <div className="rounded-2xl border border-emerald-200 bg-emerald-50 px-5 py-4 text-sm text-emerald-800">
+        <div className="border-l-2 border-cyan-400 bg-transparent py-1 pl-3 pr-1 text-sm text-cyan-800">
           {successMessage}
         </div>
       )}
@@ -8709,7 +8712,7 @@ function AmbulatoryBuilder({
               onChange={(event) =>
                 setSelectedStudyId(event.target.value)
               }
-              className="mt-2 w-full rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm"
+              className="mt-2 w-full rounded-xl border shadow-[0_5px_18px_rgba(15,23,42,0.06),0_1px_4px_rgba(15,23,42,0.035)] border-slate-300/70 bg-white px-4 py-3 text-sm shadow-[0_2px_6px_rgba(15,23,42,0.035)]"
             >
               {studies.map((study) => (
                 <option key={study.id} value={study.id}>
@@ -8731,7 +8734,7 @@ function AmbulatoryBuilder({
               onChange={(event) =>
                 setDurationDays(Number(event.target.value))
               }
-              className="mt-2 w-full rounded-xl border border-slate-200 px-4 py-3 text-sm"
+              className="mt-2 w-full rounded-xl border shadow-[0_5px_18px_rgba(15,23,42,0.06),0_1px_4px_rgba(15,23,42,0.035)] border-slate-200 px-4 py-3 text-sm"
             />
           </label>
         </div>
@@ -8745,12 +8748,12 @@ function AmbulatoryBuilder({
             onChange={(event) =>
               setProtocolName(event.target.value)
             }
-            className="mt-2 w-full rounded-xl border border-slate-200 px-4 py-3 text-sm"
+            className="mt-2 w-full rounded-xl border shadow-[0_5px_18px_rgba(15,23,42,0.06),0_1px_4px_rgba(15,23,42,0.035)] border-slate-200 px-4 py-3 text-sm"
           />
         </label>
 
         <div className="mt-5 grid gap-3 md:grid-cols-2">
-          <label className="flex items-start gap-3 rounded-xl border border-slate-200 p-4">
+          <label className="flex items-start gap-3 rounded-xl border shadow-[0_5px_18px_rgba(15,23,42,0.06),0_1px_4px_rgba(15,23,42,0.035)] border-slate-200 p-4">
             <input
               type="checkbox"
               checked={notificationsEnabled}
@@ -8769,7 +8772,7 @@ function AmbulatoryBuilder({
             </div>
           </label>
 
-          <label className="flex items-start gap-3 rounded-xl border border-slate-200 p-4">
+          <label className="flex items-start gap-3 rounded-xl border shadow-[0_5px_18px_rgba(15,23,42,0.06),0_1px_4px_rgba(15,23,42,0.035)] border-slate-200 p-4">
             <input
               type="checkbox"
               checked={participantFeedbackEnabled}
@@ -8813,7 +8816,7 @@ function AmbulatoryBuilder({
           type="button"
           disabled={loading || !selectedStudy}
           onClick={() => void loadProtocol(selectedStudyId)}
-          className="rounded-xl border border-slate-200 bg-white px-5 py-3 text-sm font-semibold text-slate-700 disabled:opacity-50"
+          className="rounded-xl border shadow-[0_5px_18px_rgba(15,23,42,0.06),0_1px_4px_rgba(15,23,42,0.035)] border-slate-300/70 bg-white px-5 py-3 text-sm font-semibold text-slate-700 disabled:opacity-50"
         >
           Reload saved protocol
         </button>
@@ -9144,7 +9147,7 @@ function Participants() {
           <select
             value={selectedStudyId}
             onChange={(event) => setSelectedStudyId(event.target.value)}
-            className="mt-2 w-full rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm"
+            className="mt-2 w-full rounded-xl border shadow-[0_5px_18px_rgba(15,23,42,0.06),0_1px_4px_rgba(15,23,42,0.035)] border-slate-300/70 bg-white px-4 py-3 text-sm shadow-[0_2px_6px_rgba(15,23,42,0.035)]"
           >
             {studies.map((study) => (
               <option key={study.id} value={study.id}>
@@ -9161,14 +9164,14 @@ function Participants() {
       </div>
 
       {participantError && (
-        <div className="rounded-2xl border border-red-200 bg-red-50 px-5 py-4">
+        <div className="border-l-2 border-rose-400 bg-transparent py-1 pl-3 pr-1">
           <p className="text-sm text-red-700">{participantError}</p>
         </div>
       )}
 
       {participantMessage && (
-        <div className="rounded-2xl border border-emerald-200 bg-emerald-50 px-5 py-4">
-          <p className="text-sm text-emerald-800">{participantMessage}</p>
+        <div className="border-l-2 border-cyan-400 bg-transparent py-1 pl-3 pr-1">
+          <p className="text-sm text-cyan-800">{participantMessage}</p>
         </div>
       )}
 
@@ -9327,7 +9330,7 @@ function Participants() {
                 onChange={(event) =>
                   setSelectedDemographicParticipantId(event.target.value)
                 }
-                className="mt-2 w-full rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm"
+                className="mt-2 w-full rounded-xl border shadow-[0_5px_18px_rgba(15,23,42,0.06),0_1px_4px_rgba(15,23,42,0.035)] border-slate-300/70 bg-white px-4 py-3 text-sm shadow-[0_2px_6px_rgba(15,23,42,0.035)]"
               >
                 {participants.map((participant) => (
                   <option key={participant.id} value={participant.id}>
@@ -9355,7 +9358,7 @@ function Participants() {
                 {demographicResponses.map((row) => (
                   <div
                     key={row.id}
-                    className="rounded-xl border border-slate-200 p-4"
+                    className="rounded-xl border shadow-[0_5px_18px_rgba(15,23,42,0.06),0_1px_4px_rgba(15,23,42,0.035)] border-slate-200 p-4"
                   >
                     <div className="flex flex-wrap items-start justify-between gap-2">
                       <p className="text-sm font-medium">
@@ -9376,7 +9379,7 @@ function Participants() {
         )}
       </Panel>
 
-      <div className="rounded-2xl border border-slate-200 bg-white p-5">
+      <div className="rounded-2xl border shadow-[0_8px_24px_rgba(15,23,42,0.065),0_2px_6px_rgba(15,23,42,0.035)] border-slate-300/70 bg-white p-5">
         <p className="text-sm leading-6 text-slate-500">
           Participant IDs are pseudonymous by default. Avoid entering names,
           emails or other directly identifying information into participant
@@ -9799,7 +9802,7 @@ function ParticipantLinks() {
                 setLinkError("");
                 setLinkMessage("");
               }}
-              className="mt-2 w-full rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm"
+              className="mt-2 w-full rounded-xl border shadow-[0_5px_18px_rgba(15,23,42,0.06),0_1px_4px_rgba(15,23,42,0.035)] border-slate-300/70 bg-white px-4 py-3 text-sm shadow-[0_2px_6px_rgba(15,23,42,0.035)]"
             >
               {studies.map((study) => (
                 <option key={study.id} value={study.id}>
@@ -9836,14 +9839,14 @@ function ParticipantLinks() {
       </Panel>
 
       {linkError && (
-        <div className="rounded-2xl border border-red-200 bg-red-50 px-5 py-4">
+        <div className="border-l-2 border-rose-400 bg-transparent py-1 pl-3 pr-1">
           <p className="text-sm leading-6 text-red-700">{linkError}</p>
         </div>
       )}
 
       {linkMessage && (
-        <div className="rounded-2xl border border-emerald-200 bg-emerald-50 px-5 py-4">
-          <p className="text-sm leading-6 text-emerald-800">{linkMessage}</p>
+        <div className="border-l-2 border-cyan-400 bg-transparent py-1 pl-3 pr-1">
+          <p className="text-sm leading-6 text-cyan-800">{linkMessage}</p>
         </div>
       )}
 
@@ -9860,7 +9863,7 @@ function ParticipantLinks() {
                   value={linkNameDraft}
                   onChange={(event) => setLinkNameDraft(event.target.value)}
                   placeholder="Psychology cohort"
-                  className="mt-2 w-full rounded-xl border border-slate-200 px-4 py-3 text-sm"
+                  className="mt-2 w-full rounded-xl border shadow-[0_5px_18px_rgba(15,23,42,0.06),0_1px_4px_rgba(15,23,42,0.035)] border-slate-200 px-4 py-3 text-sm"
                 />
               </label>
 
@@ -9872,7 +9875,7 @@ function ParticipantLinks() {
                     setLinkKind(event.target.value as "test" | "live");
                     setActivationConfirmed(false);
                   }}
-                  className="mt-2 w-full rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm"
+                  className="mt-2 w-full rounded-xl border shadow-[0_5px_18px_rgba(15,23,42,0.06),0_1px_4px_rgba(15,23,42,0.035)] border-slate-300/70 bg-white px-4 py-3 text-sm shadow-[0_2px_6px_rgba(15,23,42,0.035)]"
                 >
                   <option value="test">TEST link</option>
                   <option value="live">Live recruitment link</option>
@@ -9890,7 +9893,7 @@ function ParticipantLinks() {
                       event.target.value as "open" | "participant_code"
                     )
                   }
-                  className="mt-2 w-full rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm"
+                  className="mt-2 w-full rounded-xl border shadow-[0_5px_18px_rgba(15,23,42,0.06),0_1px_4px_rgba(15,23,42,0.035)] border-slate-300/70 bg-white px-4 py-3 text-sm shadow-[0_2px_6px_rgba(15,23,42,0.035)]"
                 >
                   <option value="open">Anyone with the link</option>
                   <option value="participant_code">
@@ -9913,7 +9916,7 @@ function ParticipantLinks() {
                         Math.max(1, Number(event.target.value))
                       )
                     }
-                    className="mt-2 w-full rounded-xl border border-slate-200 px-4 py-3 text-sm"
+                    className="mt-2 w-full rounded-xl border shadow-[0_5px_18px_rgba(15,23,42,0.06),0_1px_4px_rgba(15,23,42,0.035)] border-slate-200 px-4 py-3 text-sm"
                   />
                 </label>
               )}
@@ -9935,13 +9938,13 @@ function ParticipantLinks() {
                   }
                   rows={6}
                   placeholder={"P001\nP002\nP003"}
-                  className="mt-2 w-full rounded-xl border border-slate-200 px-4 py-3 font-mono text-sm"
+                  className="mt-2 w-full rounded-xl border shadow-[0_5px_18px_rgba(15,23,42,0.06),0_1px_4px_rgba(15,23,42,0.035)] border-slate-200 px-4 py-3 font-mono text-sm"
                 />
               </label>
             )}
 
             {accessMode === "open" && (
-              <label className="flex items-start gap-3 rounded-xl border border-slate-200 p-4">
+              <label className="flex items-start gap-3 rounded-xl border shadow-[0_5px_18px_rgba(15,23,42,0.06),0_1px_4px_rgba(15,23,42,0.035)] border-slate-200 p-4">
                 <input
                   type="checkbox"
                   checked={allowMultipleSubmissions}
@@ -9964,7 +9967,7 @@ function ParticipantLinks() {
             )}
 
             {linkKind === "live" && (
-              <label className="flex items-start gap-3 rounded-xl border border-orange-300 bg-orange-50/90 p-4">
+              <label className="flex items-start gap-3 rounded-xl border shadow-[0_5px_18px_rgba(15,23,42,0.06),0_1px_4px_rgba(15,23,42,0.035)] border-[#cfc6f6] bg-[#f7f5ff] p-4">
                 <input
                   type="checkbox"
                   checked={activationConfirmed}
@@ -9974,10 +9977,10 @@ function ParticipantLinks() {
                   className="mt-1"
                 />
                 <div>
-                  <p className="text-sm font-medium text-amber-950">
+                  <p className="text-sm font-medium text-violet-950">
                     Confirm live deployment
                   </p>
-                  <p className="mt-1 text-xs leading-5 text-amber-800">
+                  <p className="mt-1 text-xs leading-5 text-violet-800">
                     I confirm that the study is ready for recruitment and that
                     its consent, questionnaire rights, ethics requirements,
                     participant information, and approved study procedures have
@@ -10079,7 +10082,7 @@ function ParticipantLinks() {
                       <button
                         type="button"
                         onClick={() => void copyLink(link)}
-                        className="rounded-xl border border-slate-200 px-4 py-2.5 text-xs font-semibold"
+                        className="rounded-xl border shadow-[0_5px_18px_rgba(15,23,42,0.06),0_1px_4px_rgba(15,23,42,0.035)] border-slate-200 px-4 py-2.5 text-xs font-semibold"
                       >
                         Copy link
                       </button>
@@ -10093,7 +10096,7 @@ function ParticipantLinks() {
                             "noopener,noreferrer"
                           )
                         }
-                        className="rounded-xl border border-slate-200 px-4 py-2.5 text-xs font-semibold"
+                        className="rounded-xl border shadow-[0_5px_18px_rgba(15,23,42,0.06),0_1px_4px_rgba(15,23,42,0.035)] border-slate-200 px-4 py-2.5 text-xs font-semibold"
                       >
                         Open
                       </button>
@@ -10101,7 +10104,7 @@ function ParticipantLinks() {
                       <button
                         type="button"
                         onClick={() => void toggleLinkStatus(link)}
-                        className="rounded-xl border border-slate-200 px-4 py-2.5 text-xs font-semibold"
+                        className="rounded-xl border shadow-[0_5px_18px_rgba(15,23,42,0.06),0_1px_4px_rgba(15,23,42,0.035)] border-slate-200 px-4 py-2.5 text-xs font-semibold"
                       >
                         {link.status === "active" ? "Pause" : "Activate"}
                       </button>
@@ -10128,7 +10131,7 @@ function ParticipantLinks() {
             ].map((item, index) => (
               <div
                 key={item}
-                className="flex items-center gap-3 rounded-xl border border-slate-200 p-3"
+                className="flex items-center gap-3 rounded-xl border shadow-[0_5px_18px_rgba(15,23,42,0.06),0_1px_4px_rgba(15,23,42,0.035)] border-slate-200 p-3"
               >
                 <span className="flex h-7 w-7 items-center justify-center rounded-full bg-cyan-50 text-xs font-semibold text-cyan-900">
                   {index + 1}
@@ -10487,6 +10490,160 @@ const emptyResearchDataBundle: ResearchDataBundle = {
   followupWaves: [],
   exportLogs: [],
 };
+
+
+type ResearchAnalysisSample = {
+  id: string;
+  study_id: string;
+  owner_user_id: string;
+  name: string;
+  description: string;
+  sample_type: "primary" | "per_protocol" | "sensitivity" | "custom";
+  created_at: string;
+  updated_at: string;
+};
+
+type ResearchAnalysisSampleMember = {
+  id: string;
+  sample_id: string;
+  participant_id: string;
+  decision: "include" | "review" | "exclude";
+  reason: string;
+  notes: string;
+  created_at: string;
+  updated_at: string;
+};
+
+function useResearchAnalysisSamples(studyId: string) {
+  const [samples, setSamples] = useState<ResearchAnalysisSample[]>([]);
+  const [members, setMembers] = useState<ResearchAnalysisSampleMember[]>([]);
+  const [loadingSamples, setLoadingSamples] = useState(false);
+  const [sampleError, setSampleError] = useState("");
+
+  async function reloadSamples() {
+    if (!studyId) {
+      setSamples([]);
+      setMembers([]);
+      setSampleError("");
+      return;
+    }
+
+    setLoadingSamples(true);
+    setSampleError("");
+
+    try {
+      const supabase = createClient();
+      const { data: sampleRows, error: samplesError } = await supabase
+        .from("research_analysis_samples")
+        .select(
+          "id, study_id, owner_user_id, name, description, sample_type, created_at, updated_at"
+        )
+        .eq("study_id", studyId)
+        .order("updated_at", { ascending: false });
+
+      if (samplesError) throw samplesError;
+
+      const nextSamples = (sampleRows || []) as ResearchAnalysisSample[];
+      setSamples(nextSamples);
+
+      if (nextSamples.length === 0) {
+        setMembers([]);
+        return;
+      }
+
+      const { data: memberRows, error: membersError } = await supabase
+        .from("research_analysis_sample_members")
+        .select(
+          "id, sample_id, participant_id, decision, reason, notes, created_at, updated_at"
+        )
+        .in(
+          "sample_id",
+          nextSamples.map((sample) => sample.id)
+        );
+
+      if (membersError) throw membersError;
+      setMembers((memberRows || []) as ResearchAnalysisSampleMember[]);
+    } catch (error) {
+      setSamples([]);
+      setMembers([]);
+      setSampleError(
+        error instanceof Error
+          ? error.message
+          : "Analysis samples could not be loaded."
+      );
+    } finally {
+      setLoadingSamples(false);
+    }
+  }
+
+  useEffect(() => {
+    void reloadSamples();
+  }, [studyId]);
+
+  return {
+    samples,
+    members,
+    loadingSamples,
+    sampleError,
+    reloadSamples,
+  };
+}
+
+function researchFilterBundleToParticipantIds(
+  bundle: ResearchDataBundle,
+  participantIds: Set<string>
+): ResearchDataBundle {
+  const cognitiveSessions = bundle.cognitiveSessions.filter(
+    (session) =>
+      Boolean(session.participant_id) &&
+      participantIds.has(session.participant_id as string)
+  );
+  const cognitiveSessionIds = new Set(
+    cognitiveSessions.map((session) => session.id)
+  );
+  const ambulatoryCheckinIds = new Set(
+    bundle.ambulatoryCheckins
+      .filter((checkin) => participantIds.has(checkin.participant_id))
+      .map((checkin) => checkin.id)
+  );
+
+  return {
+    ...bundle,
+    participants: bundle.participants.filter((participant) =>
+      participantIds.has(participant.id)
+    ),
+    sessions: bundle.sessions.filter((session) =>
+      participantIds.has(session.participant_id)
+    ),
+    consents: bundle.consents.filter((consent) =>
+      participantIds.has(consent.participant_id)
+    ),
+    demographicResponses: bundle.demographicResponses.filter((response) =>
+      participantIds.has(response.participant_id)
+    ),
+    measureSessions: bundle.measureSessions.filter((session) =>
+      participantIds.has(session.participant_id)
+    ),
+    responses: bundle.responses.filter((response) =>
+      participantIds.has(response.participant_id)
+    ),
+    ambulatoryPrompts: bundle.ambulatoryPrompts.filter((prompt) =>
+      participantIds.has(prompt.participant_id)
+    ),
+    ambulatoryCheckins: bundle.ambulatoryCheckins.filter((checkin) =>
+      participantIds.has(checkin.participant_id)
+    ),
+    ambulatoryResponses: bundle.ambulatoryResponses.filter(
+      (response) =>
+        participantIds.has(response.participant_id) &&
+        ambulatoryCheckinIds.has(response.checkin_id)
+    ),
+    cognitiveSessions,
+    cognitiveTrials: bundle.cognitiveTrials.filter((trial) =>
+      cognitiveSessionIds.has(trial.session_id)
+    ),
+  };
+}
 
 const researchDatasetLabels: Record<ResearchDatasetType, string> = {
   participant_summary: "Participant summary",
@@ -11229,6 +11386,70 @@ function researchCognitiveAnalysisVariables(attachment: ResearchDataCognitiveAtt
     medianRt: `${base}_median_rt_ms`,
     omissions: `${base}_omissions`,
   };
+}
+
+
+type ResearchQuestionnaireScoreField = {
+  source: string;
+  label: string;
+  measureId: string;
+  scoreName: string;
+  questionnaireName: string;
+  phaseLabel: string;
+};
+
+function researchQuestionnaireScoreFields(
+  bundle: ResearchDataBundle
+): ResearchQuestionnaireScoreField[] {
+  const fields: ResearchQuestionnaireScoreField[] = [];
+  const seen = new Set<string>();
+  const measures = [...bundle.measures].sort((a, b) => {
+    const aWave =
+      a.measurement_point === "baseline"
+        ? 0
+        : researchFollowupWaveForMeasure(bundle, a)?.position ?? 999;
+    const bWave =
+      b.measurement_point === "baseline"
+        ? 0
+        : researchFollowupWaveForMeasure(bundle, b)?.position ?? 999;
+    if (aWave !== bWave) return aWave - bWave;
+    return a.position - b.position;
+  });
+
+  for (const measure of measures) {
+    const questionnaire = researchQuestionnaireForMeasure(bundle, measure);
+    if (!questionnaire) continue;
+
+    const scoreNames = new Set<string>();
+    for (const session of bundle.measureSessions) {
+      if (session.study_measure_id !== measure.id) continue;
+      if (!session.scores || typeof session.scores !== "object") continue;
+      Object.keys(session.scores).forEach((name) => scoreNames.add(name));
+    }
+
+    for (const scoreName of scoreNames) {
+      const source = researchStatVariable(
+        "score",
+        researchMeasurePhaseVariable(bundle, measure),
+        measure.position,
+        questionnaire.acronym || questionnaire.name,
+        scoreName
+      );
+      if (seen.has(source)) continue;
+      seen.add(source);
+      const phaseLabel = researchMeasurePhaseDisplay(bundle, measure);
+      fields.push({
+        source,
+        label: `${phaseLabel} - ${questionnaire.name} - ${scoreName}`,
+        measureId: measure.id,
+        scoreName,
+        questionnaireName: questionnaire.name,
+        phaseLabel,
+      });
+    }
+  }
+
+  return fields;
 }
 
 type ResearchParticipantSummaryQuestionnaireField = {
@@ -12885,6 +13106,8 @@ function researchBuildRows(
   // continues to preserve each original raw response.
   const questionnaireFields =
     researchAnalysisQuestionnaireFields(bundle);
+  const questionnaireScoreFields =
+    researchQuestionnaireScoreFields(bundle);
 
   return participants.map((participant) => {
     const row: ResearchTableRow = {
@@ -12913,9 +13136,13 @@ function researchBuildRows(
         : "";
     }
 
-    // Create all questionnaire item columns even when this participant has
-    // missing data, so the exported XLSX has a stable study-level structure.
+    // Create all questionnaire item and computed score columns even when this
+    // participant has missing data, so every Excel export keeps a stable
+    // study-level structure across participants.
     for (const field of questionnaireFields) {
+      row[field.source] = "";
+    }
+    for (const field of questionnaireScoreFields) {
       row[field.source] = "";
     }
 
@@ -12948,6 +13175,27 @@ function researchBuildRows(
           item,
           response
         );
+      }
+    }
+
+    const participantMeasureSessions = bundle.measureSessions.filter(
+      (session) =>
+        session.participant_id === participant.id &&
+        session.status === "completed"
+    );
+
+    for (const session of participantMeasureSessions) {
+      const matchingScoreFields = questionnaireScoreFields.filter(
+        (field) => field.measureId === session.study_measure_id
+      );
+      for (const field of matchingScoreFields) {
+        const value = session.scores?.[field.scoreName];
+        row[field.source] =
+          value === null || value === undefined
+            ? ""
+            : typeof value === "object"
+              ? researchValueText(value)
+              : value;
       }
     }
 
@@ -13452,6 +13700,20 @@ function researchBuildCodebook(
     }
   );
 
+  for (const field of researchQuestionnaireScoreFields(bundle)) {
+    rows.push({
+      variable: field.source,
+      label: field.label,
+      type: "Numeric / computed",
+      source: "study_measure_sessions.scores",
+      notes: `${field.phaseLabel} · ${field.questionnaireName} · Deterministically scored questionnaire output stored by PsyLattice.`,
+      questionnaire: field.questionnaireName,
+      phase: field.phaseLabel,
+      component: field.scoreName,
+      storage: "Computed score retained alongside lossless item-level questionnaire responses",
+    });
+  }
+
   for (const attachment of bundle.cognitiveAttachments) {
     const variables = researchCognitiveAnalysisVariables(attachment);
     const baseNotes = `Cognitive task administration ${attachment.position}: ${attachment.title} · ${attachment.version_label}`;
@@ -13465,6 +13727,959 @@ function researchBuildCodebook(
   }
 
   return rows;
+}
+
+
+type ResearchWorkbookMode = "complete" | "clean" | "raw";
+type ResearchVisualExportPreset = "complete" | "analysis" | "stats" | "raw";
+
+type ResearchWorkbookSheet = {
+  name: string;
+  kind: "meta" | "clean" | "raw" | "codebook";
+  description: string;
+  rows: ResearchTableRow[];
+};
+
+function researchDemographicsWideRows(
+  bundle: ResearchDataBundle,
+  identityMode: ResearchIdentityMode,
+  includeTestData: boolean,
+  includeDirectIdentifiers: boolean
+): ResearchTableRow[] {
+  const participants = researchFilteredParticipants(bundle, includeTestData);
+  const identityMap = researchParticipantLabelMap(participants, identityMode);
+  const questions = [...bundle.demographicQuestions]
+    .filter((question) => includeDirectIdentifiers || !question.direct_identifier)
+    .sort((a, b) => a.position - b.position);
+
+  return participants.map((participant) => {
+    const row: ResearchTableRow = {
+      participant: identityMap.get(participant.id) || "",
+      is_test: participant.is_test,
+    };
+
+    for (const question of questions) {
+      const response = bundle.demographicResponses.find(
+        (candidate) =>
+          candidate.participant_id === participant.id &&
+          candidate.question_id === question.id
+      );
+      row[`demo_${researchSafeVariable(question.field_key)}`] = response
+        ? response.text_value ?? response.numeric_value ?? response.response
+        : "";
+    }
+
+    return row;
+  });
+}
+
+function researchFollowupExportRows(
+  bundle: ResearchDataBundle,
+  identityMode: ResearchIdentityMode,
+  includeTestData: boolean
+): ResearchTableRow[] {
+  const participants = researchFilteredParticipants(bundle, includeTestData);
+  const identityMap = researchParticipantLabelMap(participants, identityMode);
+  const rows: ResearchTableRow[] = [];
+
+  for (const participant of participants) {
+    for (const wave of [...bundle.followupWaves].sort((a, b) => a.position - b.position)) {
+      const session = [...bundle.sessions]
+        .filter(
+          (candidate) =>
+            candidate.participant_id === participant.id &&
+            candidate.followup_wave_id === wave.id
+        )
+        .sort(
+          (a, b) =>
+            new Date(b.started_at).getTime() -
+            new Date(a.started_at).getTime()
+        )[0];
+      const measures = bundle.measures.filter(
+        (measure) => measure.followup_wave_id === wave.id
+      );
+      const completed = bundle.measureSessions.filter(
+        (measureSession) =>
+          measureSession.participant_id === participant.id &&
+          measureSession.status === "completed" &&
+          measures.some((measure) => measure.id === measureSession.study_measure_id)
+      );
+
+      rows.push({
+        participant: identityMap.get(participant.id) || "",
+        is_test: participant.is_test,
+        followup_position: wave.position,
+        followup_name: wave.name,
+        followup_status: wave.status,
+        participant_session_status: session?.status || "not_started",
+        session_started_at: session?.started_at || "",
+        session_completed_at: session?.completed_at || "",
+        configured_questionnaires: measures.length,
+        completed_questionnaires: completed.length,
+      });
+    }
+  }
+
+  return rows;
+}
+
+function researchParticipantSessionExportRows(
+  bundle: ResearchDataBundle,
+  identityMode: ResearchIdentityMode,
+  includeTestData: boolean
+): ResearchTableRow[] {
+  const participants = researchFilteredParticipants(bundle, includeTestData);
+  const participantIds = new Set(participants.map((participant) => participant.id));
+  const identityMap = researchParticipantLabelMap(participants, identityMode);
+
+  return bundle.sessions
+    .filter((session) => participantIds.has(session.participant_id))
+    .map((session) => {
+      const participant = researchParticipantForId(bundle, session.participant_id);
+      const wave = session.followup_wave_id
+        ? bundle.followupWaves.find((candidate) => candidate.id === session.followup_wave_id)
+        : null;
+      return {
+        participant: identityMap.get(session.participant_id) || "",
+        is_test: participant?.is_test ?? session.is_test,
+        participant_session_id: session.id,
+        phase: session.phase,
+        followup_wave_position: wave?.position ?? "",
+        followup_wave_name: wave?.name ?? "",
+        session_status: session.status,
+        started_at: session.started_at,
+        last_seen_at: session.last_seen_at,
+        completed_at: session.completed_at || "",
+      };
+    });
+}
+
+function researchAmbulatoryPromptExportRows(
+  bundle: ResearchDataBundle,
+  identityMode: ResearchIdentityMode,
+  includeTestData: boolean
+): ResearchTableRow[] {
+  const participants = researchFilteredParticipants(bundle, includeTestData);
+  const participantIds = new Set(participants.map((participant) => participant.id));
+  const identityMap = researchParticipantLabelMap(participants, identityMode);
+
+  return bundle.ambulatoryPrompts
+    .filter((prompt) => participantIds.has(prompt.participant_id))
+    .map((prompt) => {
+      const participant = researchParticipantForId(bundle, prompt.participant_id);
+      return {
+        participant: identityMap.get(prompt.participant_id) || "",
+        is_test: participant?.is_test ?? false,
+        prompt_instance_id: prompt.id,
+        schedule_key: prompt.schedule_key,
+        schedule_label: prompt.schedule_label,
+        trigger_type: prompt.trigger_type,
+        local_date: prompt.local_date,
+        occurrence_index: prompt.occurrence_index,
+        scheduled_for: prompt.scheduled_for || "",
+        expires_at: prompt.expires_at || "",
+        prompt_status: prompt.status,
+        notification_sent_at: prompt.notification_sent_at || "",
+        opened_at: prompt.opened_at || "",
+        completed_at: prompt.completed_at || "",
+      };
+    });
+}
+
+function researchCognitiveConditionExportRows(
+  bundle: ResearchDataBundle,
+  identityMode: ResearchIdentityMode,
+  includeTestData: boolean
+): ResearchTableRow[] {
+  const participants = researchFilteredParticipants(bundle, includeTestData);
+  const identityMap = researchParticipantLabelMap(participants, identityMode);
+  const rows: ResearchTableRow[] = [];
+
+  for (const participant of participants) {
+    for (const attachment of [...bundle.cognitiveAttachments].sort((a, b) => a.position - b.position)) {
+      const summary = researchCognitiveParticipantSummary(
+        bundle,
+        participant.id,
+        attachment.id
+      );
+      if (!summary.session) continue;
+
+      const conditionLabels = Array.from(
+        new Set(
+          summary.trials.map((trial) => trial.condition_label || "(unlabelled)")
+        )
+      );
+
+      for (const condition of conditionLabels) {
+        const trials = summary.trials.filter(
+          (trial) => (trial.condition_label || "(unlabelled)") === condition
+        );
+        const scorable = trials.filter((trial) => trial.correct !== null);
+        const correct = scorable.filter((trial) => trial.correct === true).length;
+        const rts = trials
+          .map((trial) => researchNumber(trial.reaction_time_ms))
+          .filter((value): value is number => value !== null);
+        const omissions = trials.filter((trial) => {
+          const response = trial.response_payload?.response;
+          return response === null || response === undefined || response === "";
+        }).length;
+
+        rows.push({
+          participant: identityMap.get(participant.id) || "",
+          is_test: participant.is_test,
+          administration_position: attachment.position,
+          cognitive_task: attachment.title,
+          version: attachment.version_label,
+          condition,
+          trials: trials.length,
+          scorable_trials: scorable.length,
+          correct_trials: correct,
+          accuracy: scorable.length > 0 ? correct / scorable.length : "",
+          mean_rt_ms: researchMean(rts) ?? "",
+          median_rt_ms: researchMedian(rts) ?? "",
+          omissions,
+          cognitive_session_id: summary.session.id,
+        });
+      }
+    }
+  }
+
+  return rows;
+}
+
+function researchWorkbookDatasetSheet(
+  bundle: ResearchDataBundle,
+  datasetType: ResearchDatasetType,
+  name: string,
+  kind: "clean" | "raw",
+  description: string,
+  identityMode: ResearchIdentityMode,
+  includeTestData: boolean,
+  includeDirectIdentifiers: boolean
+): ResearchWorkbookSheet {
+  return {
+    name,
+    kind,
+    description,
+    rows: researchBuildRows(
+      bundle,
+      datasetType,
+      identityMode,
+      includeTestData,
+      includeDirectIdentifiers
+    ),
+  };
+}
+
+
+function researchCompatibleVariableBase(value: string) {
+  let base = researchSafeVariable(value).slice(0, 58);
+  if (!base) base = "variable";
+  if (!/^[a-z]/.test(base)) base = `v_${base}`;
+  return base.slice(0, 60);
+}
+
+function researchCompatibleVariableMap(
+  rows: ResearchTableRow[],
+  codebook: ResearchCodebookRow[]
+) {
+  const columns = Array.from(
+    new Set(rows.flatMap((row) => Object.keys(row)))
+  );
+  const codebookByVariable = new Map(
+    codebook.map((row) => [row.variable, row])
+  );
+  const used = new Set<string>();
+
+  return columns.map((sourceVariable) => {
+    const base = researchCompatibleVariableBase(sourceVariable);
+    let compatibleVariable = base;
+    let suffix = 2;
+
+    while (used.has(compatibleVariable.toLowerCase())) {
+      const tail = `_${suffix}`;
+      compatibleVariable = `${base.slice(0, Math.max(1, 60 - tail.length))}${tail}`;
+      suffix += 1;
+    }
+    used.add(compatibleVariable.toLowerCase());
+
+    const documented = codebookByVariable.get(sourceVariable);
+    return {
+      source_variable: sourceVariable,
+      compatible_variable: compatibleVariable,
+      label: documented?.label || sourceVariable,
+      type: documented?.type || "Derived / inferred",
+      source: documented?.source || "Analysis_Wide",
+      value_labels: documented?.value_labels || "",
+      missing_value: "Blank cell",
+      missing_meaning:
+        "No stored/derived value or not applicable. Raw sheets preserve the source observation where available.",
+    };
+  });
+}
+
+function researchCompatibilityValue(value: unknown) {
+  if (value === null || value === undefined || value === "") return "";
+  if (typeof value === "boolean") return value ? 1 : 0;
+  if (typeof value === "number") return Number.isFinite(value) ? value : "";
+  if (typeof value === "string") return value;
+  return researchValueText(value);
+}
+
+function researchBuildCompatibleAnalysis(
+  bundle: ResearchDataBundle,
+  identityMode: ResearchIdentityMode,
+  includeTestData: boolean,
+  includeDirectIdentifiers: boolean
+) {
+  const sourceRows = researchBuildRows(
+    bundle,
+    "analysis_wide",
+    identityMode,
+    includeTestData,
+    includeDirectIdentifiers
+  );
+  const variableMapRows = researchCompatibleVariableMap(
+    sourceRows,
+    researchBuildCodebook(bundle, "analysis_wide", includeDirectIdentifiers)
+  );
+  const mapping = new Map(
+    variableMapRows.map((row) => [row.source_variable, row.compatible_variable])
+  );
+
+  const rows = sourceRows.map((sourceRow) => {
+    const row: ResearchTableRow = {};
+    for (const [sourceVariable, value] of Object.entries(sourceRow)) {
+      const compatible = mapping.get(sourceVariable);
+      if (!compatible) continue;
+      row[compatible] = researchCompatibilityValue(value);
+    }
+    return row;
+  });
+
+  return { rows, variableMapRows };
+}
+
+function researchBuildDataQualitySheets(
+  bundle: ResearchDataBundle,
+  identityMode: ResearchIdentityMode,
+  includeTestData: boolean
+) {
+  const participants = researchFilteredParticipants(bundle, includeTestData);
+  const identityMap = researchParticipantLabelMap(participants, identityMode);
+  const participantIds = new Set(participants.map((participant) => participant.id));
+
+  const qualityFlagRows: ResearchTableRow[] = [];
+  const flagsByParticipant = new Map<string, Array<{ code: string; label: string; detail: string; domain: string; sessionId: string }>>();
+
+  for (const attachment of bundle.cognitiveAttachments) {
+    const analysis = buildCognitiveAttachmentAnalysis({
+      attachment,
+      participants: bundle.participants,
+      sessions: bundle.cognitiveSessions,
+      trials: bundle.cognitiveTrials,
+      includeTestData,
+    });
+
+    for (const flag of analysis.qualityFlags) {
+      if (!participantIds.has(flag.participantId)) continue;
+      const participant = bundle.participants.find((candidate) => candidate.id === flag.participantId);
+      if (!participant) continue;
+      const entry = {
+        code: flag.code,
+        label: flag.label,
+        detail: flag.detail,
+        domain: `Cognitive · ${attachment.title} · position ${attachment.position}`,
+        sessionId: flag.sessionId,
+      };
+      const current = flagsByParticipant.get(flag.participantId) || [];
+      current.push(entry);
+      flagsByParticipant.set(flag.participantId, current);
+      qualityFlagRows.push({
+        participant: identityMap.get(flag.participantId) || "",
+        is_test: participant.is_test ? 1 : 0,
+        domain: entry.domain,
+        administration_position: attachment.position,
+        flag_code: flag.code,
+        severity: flag.severity,
+        flag_label: flag.label,
+        detail: flag.detail,
+        source_session_id: flag.sessionId,
+        automatic_exclusion: 0,
+      });
+    }
+  }
+
+  const requiredDemographics = bundle.demographicQuestions.filter((question) => question.required);
+  const requiredMeasures = bundle.measures.filter((measure) => measure.required);
+  const requiredCognitive = bundle.cognitiveAttachments.filter((attachment) => attachment.required);
+
+  const summaryRows = participants.map((participant) => {
+    const reasons: string[] = [];
+    const demographicAnsweredIds = new Set(
+      bundle.demographicResponses
+        .filter((response) => response.participant_id === participant.id)
+        .map((response) => response.question_id)
+    );
+    const missingRequiredDemographics = requiredDemographics.filter(
+      (question) => !demographicAnsweredIds.has(question.id)
+    ).length;
+    if (missingRequiredDemographics > 0) {
+      reasons.push(`${missingRequiredDemographics} required demographic field(s) missing`);
+    }
+
+    const completedMeasureIds = new Set(
+      bundle.measureSessions
+        .filter(
+          (session) =>
+            session.participant_id === participant.id && session.status === "completed"
+        )
+        .map((session) => session.study_measure_id)
+    );
+    const incompleteRequiredQuestionnaires = requiredMeasures.filter(
+      (measure) => !completedMeasureIds.has(measure.id)
+    ).length;
+    if (incompleteRequiredQuestionnaires > 0) {
+      reasons.push(`${incompleteRequiredQuestionnaires} required questionnaire administration(s) incomplete`);
+    }
+
+    let completedCognitive = 0;
+    let incompleteRequiredCognitive = 0;
+    for (const attachment of bundle.cognitiveAttachments) {
+      const summary = researchCognitiveParticipantSummary(bundle, participant.id, attachment.id);
+      if (summary.session?.status === "completed") completedCognitive += 1;
+      if (attachment.required && summary.session?.status !== "completed") {
+        incompleteRequiredCognitive += 1;
+      }
+    }
+    if (incompleteRequiredCognitive > 0) {
+      reasons.push(`${incompleteRequiredCognitive} required cognitive task administration(s) incomplete`);
+    }
+
+    const prompts = bundle.ambulatoryPrompts.filter(
+      (prompt) => prompt.participant_id === participant.id
+    );
+    const completedPrompts = prompts.filter((prompt) => prompt.status === "completed").length;
+    const missedPrompts = prompts.filter((prompt) => prompt.status === "missed").length;
+    const ambulatoryCompliance = prompts.length > 0
+      ? Math.round((completedPrompts / prompts.length) * 1000) / 10
+      : "";
+
+    const participantFlags = flagsByParticipant.get(participant.id) || [];
+    if (participantFlags.length > 0) {
+      reasons.push(...Array.from(new Set(participantFlags.map((flag) => flag.label))));
+    }
+
+    const consent = bundle.consents.find((row) => row.participant_id === participant.id);
+    const participantSessions = bundle.sessions.filter((session) => session.participant_id === participant.id);
+    const incompleteSessions = participantSessions.filter((session) => session.status !== "completed").length;
+
+    return {
+      participant: identityMap.get(participant.id) || "",
+      is_test: participant.is_test ? 1 : 0,
+      participant_status: participant.status,
+      consent_recorded: consent ? 1 : 0,
+      consented: consent?.consented ? 1 : 0,
+      demographics_configured: bundle.demographicQuestions.length,
+      demographics_answered: demographicAnsweredIds.size,
+      required_demographics_missing: missingRequiredDemographics,
+      questionnaires_configured: bundle.measures.length,
+      questionnaires_completed: completedMeasureIds.size,
+      required_questionnaires_incomplete: incompleteRequiredQuestionnaires,
+      cognitive_tasks_configured: bundle.cognitiveAttachments.length,
+      cognitive_tasks_completed: completedCognitive,
+      required_cognitive_tasks_incomplete: incompleteRequiredCognitive,
+      ambulatory_prompts: prompts.length,
+      ambulatory_prompts_completed: completedPrompts,
+      ambulatory_prompts_missed: missedPrompts,
+      ambulatory_compliance_percent: ambulatoryCompliance,
+      participant_sessions: participantSessions.length,
+      incomplete_participant_sessions: incompleteSessions,
+      cognitive_quality_flags: participantFlags.length,
+      researcher_review_recommended: reasons.length > 0 ? 1 : 0,
+      review_reasons: reasons.join(" | "),
+      automatic_exclusion: 0,
+      raw_data_retained: 1,
+    };
+  });
+
+  return { summaryRows, qualityFlagRows };
+}
+
+function researchImportGuideRows(): ResearchTableRow[] {
+  return [
+    {
+      tool: "SPSS",
+      recommended_sheet: "Analysis_Compatible",
+      variable_names: "Lower-case ASCII/underscore names, max 60 characters, unique and letter-prefixed.",
+      boolean_coding: "0 = false/no; 1 = true/yes",
+      missing_values: "Blank cells are system-missing on import.",
+      notes: "Use Variable_Map and Codebook for labels/coding. Raw sheets remain available for verification.",
+    },
+    {
+      tool: "jamovi",
+      recommended_sheet: "Analysis_Compatible",
+      variable_names: "Stable machine-friendly names.",
+      boolean_coding: "0/1",
+      missing_values: "Blank cells",
+      notes: "Set measurement level after import where jamovi cannot infer it from the workbook alone.",
+    },
+    {
+      tool: "JASP",
+      recommended_sheet: "Analysis_Compatible",
+      variable_names: "Stable machine-friendly names.",
+      boolean_coding: "0/1",
+      missing_values: "Blank cells",
+      notes: "Use Codebook/Variable_Map to confirm scale and categorical coding.",
+    },
+    {
+      tool: "R / Python",
+      recommended_sheet: "Analysis_Compatible or the relevant *_RAW sheet",
+      variable_names: "Stable snake_case names.",
+      boolean_coding: "0/1 in Analysis_Compatible; raw sheets preserve source values.",
+      missing_values: "Blank Excel cells import as missing/NA depending on reader.",
+      notes: "Use raw long-format sheets for trial-level, item-level, or multilevel analyses.",
+    },
+  ];
+}
+
+function researchBuildUniversalWorkbook(
+  bundle: ResearchDataBundle,
+  study: ResearchDataStudy,
+  mode: ResearchWorkbookMode,
+  identityMode: ResearchIdentityMode,
+  includeTestData: boolean,
+  includeDirectIdentifiers: boolean
+): ResearchWorkbookSheet[] {
+  const compatibleAnalysis = researchBuildCompatibleAnalysis(
+    bundle,
+    identityMode,
+    includeTestData,
+    includeDirectIdentifiers
+  );
+  const dataQuality = researchBuildDataQualitySheets(
+    bundle,
+    identityMode,
+    includeTestData
+  );
+
+  const cleanSheets: ResearchWorkbookSheet[] = [
+    researchWorkbookDatasetSheet(
+      bundle,
+      "participant_summary",
+      "Participants",
+      "clean",
+      "One row per participant with study status and questionnaire item fields.",
+      identityMode,
+      includeTestData,
+      includeDirectIdentifiers
+    ),
+    researchWorkbookDatasetSheet(
+      bundle,
+      "analysis_wide",
+      "Analysis_Wide",
+      "clean",
+      "Primary analysis-ready sheet: one row per participant with demographics, questionnaire items/scores and cognitive summaries.",
+      identityMode,
+      includeTestData,
+      includeDirectIdentifiers
+    ),
+    {
+      name: "Analysis_Compatible",
+      kind: "clean",
+      description: "Statistical-software-friendly one-row-per-participant sheet with safe variable names, 0/1 booleans and blank missing cells.",
+      rows: compatibleAnalysis.rows,
+    },
+    {
+      name: "Data_Quality",
+      kind: "clean",
+      description: "Participant-level completeness and quality review summary. Flags never automatically exclude data.",
+      rows: dataQuality.summaryRows,
+    },
+    {
+      name: "Quality_Flags",
+      kind: "clean",
+      description: "Long-format review flags with source session and reason. automatic_exclusion is always 0.",
+      rows: dataQuality.qualityFlagRows,
+    },
+    {
+      name: "Demographics_Clean",
+      kind: "clean",
+      description: "One row per participant with configured demographic variables expanded into columns.",
+      rows: researchDemographicsWideRows(
+        bundle,
+        identityMode,
+        includeTestData,
+        includeDirectIdentifiers
+      ),
+    },
+    researchWorkbookDatasetSheet(
+      bundle,
+      "questionnaire_scores",
+      "Questionnaire_Scores",
+      "clean",
+      "Deterministically computed questionnaire scores in long format, preserving study phase/administration.",
+      identityMode,
+      includeTestData,
+      includeDirectIdentifiers
+    ),
+    researchWorkbookDatasetSheet(
+      bundle,
+      "cognitive_participant_summary",
+      "Cognitive_Summary",
+      "clean",
+      "Participant × cognitive-task-administration summaries with accuracy, RT and omissions.",
+      identityMode,
+      includeTestData,
+      includeDirectIdentifiers
+    ),
+    {
+      name: "Cognitive_Conditions",
+      kind: "clean",
+      description: "Participant × task administration × condition summaries for direct condition-level analysis.",
+      rows: researchCognitiveConditionExportRows(
+        bundle,
+        identityMode,
+        includeTestData
+      ),
+    },
+    researchWorkbookDatasetSheet(
+      bundle,
+      "ambulatory_wide",
+      "Ambulatory_Wide",
+      "clean",
+      "One row per ambulatory check-in with structured responses expanded into analysis-ready columns.",
+      identityMode,
+      includeTestData,
+      includeDirectIdentifiers
+    ),
+    researchWorkbookDatasetSheet(
+      bundle,
+      "ambulatory_participant_days",
+      "Participant_Days",
+      "clean",
+      "Participant-day compliance and descriptive ambulatory summaries.",
+      identityMode,
+      includeTestData,
+      includeDirectIdentifiers
+    ),
+    {
+      name: "Followups",
+      kind: "clean",
+      description: "Participant × follow-up wave status and questionnaire-completion summary.",
+      rows: researchFollowupExportRows(
+        bundle,
+        identityMode,
+        includeTestData
+      ),
+    },
+  ];
+
+  const rawSheets: ResearchWorkbookSheet[] = [
+    {
+      name: "Participant_Sessions_RAW",
+      kind: "raw",
+      description: "Every stored participant session, including baseline/follow-up/ambulatory phase and resume timestamps.",
+      rows: researchParticipantSessionExportRows(
+        bundle,
+        identityMode,
+        includeTestData
+      ),
+    },
+    researchWorkbookDatasetSheet(
+      bundle,
+      "demographics",
+      "Demographics_RAW",
+      "raw",
+      "One row per stored demographic response.",
+      identityMode,
+      includeTestData,
+      includeDirectIdentifiers
+    ),
+    researchWorkbookDatasetSheet(
+      bundle,
+      "questionnaire_responses",
+      "Questionnaire_RAW",
+      "raw",
+      "Lossless item-level questionnaire responses with raw response JSON and scalar helper values.",
+      identityMode,
+      includeTestData,
+      includeDirectIdentifiers
+    ),
+    researchWorkbookDatasetSheet(
+      bundle,
+      "participant_uploads",
+      "Participant_Uploads",
+      "raw",
+      "Metadata for participant file/image/audio/video responses; private file content is not embedded in the workbook.",
+      identityMode,
+      includeTestData,
+      includeDirectIdentifiers
+    ),
+    researchWorkbookDatasetSheet(
+      bundle,
+      "cognitive_sessions",
+      "Cognitive_Sessions_RAW",
+      "raw",
+      "Study cognitive sessions including deterministic summaries, device information and timing diagnostics.",
+      identityMode,
+      includeTestData,
+      includeDirectIdentifiers
+    ),
+    researchWorkbookDatasetSheet(
+      bundle,
+      "cognitive_trials",
+      "Cognitive_Trials_RAW",
+      "raw",
+      "Every stored cognitive trial with condition, response, correctness, RT, stimulus payload and timing JSON.",
+      identityMode,
+      includeTestData,
+      includeDirectIdentifiers
+    ),
+    {
+      name: "Ambulatory_Prompts_RAW",
+      kind: "raw",
+      description: "Every scheduled ambulatory/ESM prompt instance, including missed prompts that never produced a check-in.",
+      rows: researchAmbulatoryPromptExportRows(
+        bundle,
+        identityMode,
+        includeTestData
+      ),
+    },
+    researchWorkbookDatasetSheet(
+      bundle,
+      "ambulatory_checkins",
+      "Ambulatory_Checkins_RAW",
+      "raw",
+      "Every stored ambulatory check-in with scheduling and timing metadata.",
+      identityMode,
+      includeTestData,
+      includeDirectIdentifiers
+    ),
+    researchWorkbookDatasetSheet(
+      bundle,
+      "ambulatory_responses",
+      "Ambulatory_Responses_RAW",
+      "raw",
+      "Every stored ambulatory/ESM item response with the original response preserved.",
+      identityMode,
+      includeTestData,
+      includeDirectIdentifiers
+    ),
+    researchWorkbookDatasetSheet(
+      bundle,
+      "consent",
+      "Consent",
+      "raw",
+      "Consent status/version/timestamp. Consent response payload is included only when direct-identifier export is explicitly enabled.",
+      identityMode,
+      includeTestData,
+      includeDirectIdentifiers
+    ),
+  ];
+
+  const dataSheets =
+    mode === "clean"
+      ? cleanSheets
+      : mode === "raw"
+        ? rawSheets
+        : [...cleanSheets, ...rawSheets];
+
+  const codebookDatasetTypes: ResearchDatasetType[] =
+    mode === "clean"
+      ? [
+          "participant_summary",
+          "analysis_wide",
+          "demographics",
+          "questionnaire_scores",
+          "cognitive_participant_summary",
+          "ambulatory_wide",
+          "ambulatory_participant_days",
+        ]
+      : mode === "raw"
+        ? [
+            "demographics",
+            "questionnaire_responses",
+            "participant_uploads",
+            "cognitive_sessions",
+            "cognitive_trials",
+            "ambulatory_checkins",
+            "ambulatory_responses",
+            "consent",
+          ]
+        : [
+            "participant_summary",
+            "analysis_wide",
+            "demographics",
+            "questionnaire_responses",
+            "participant_uploads",
+            "questionnaire_scores",
+            "cognitive_sessions",
+            "cognitive_trials",
+            "cognitive_participant_summary",
+            "consent",
+            "ambulatory_checkins",
+            "ambulatory_responses",
+            "ambulatory_wide",
+            "ambulatory_participant_days",
+          ];
+
+  const codebookRows: ResearchTableRow[] = [];
+  for (const datasetType of codebookDatasetTypes) {
+    for (const variable of researchBuildCodebook(
+      bundle,
+      datasetType,
+      includeDirectIdentifiers
+    )) {
+      codebookRows.push({
+        dataset: datasetType,
+        dataset_label: researchDatasetLabels[datasetType],
+        variable: variable.variable,
+        label: variable.label,
+        type: variable.type,
+        source: variable.source,
+        questionnaire: variable.questionnaire || "",
+        phase: variable.phase || "",
+        item_key: variable.item_key || "",
+        item_position: variable.item_position ?? "",
+        response_type: variable.response_type || "",
+        component: variable.component || "",
+        value_labels: variable.value_labels || "",
+        required: variable.required ?? "",
+        reverse_scored: variable.reverse_scored ?? "",
+        storage: variable.storage || "",
+        missing_value: "Blank cell",
+        missing_meaning: "No stored/derived value or not applicable; inspect raw source sheets when distinction matters.",
+        notes: variable.notes,
+      });
+    }
+  }
+
+  const customCodebookRows: ResearchTableRow[] = [
+    ["Participant_Sessions_RAW", "participant_session_id", "Participant session ID", "text", "participant_sessions"],
+    ["Participant_Sessions_RAW", "phase", "Session phase", "categorical", "participant_sessions"],
+    ["Participant_Sessions_RAW", "followup_wave_name", "Follow-up wave name", "text", "study_followup_waves"],
+    ["Participant_Sessions_RAW", "session_status", "Session status", "categorical", "participant_sessions"],
+    ["Participant_Sessions_RAW", "started_at", "Session started", "datetime", "participant_sessions"],
+    ["Participant_Sessions_RAW", "last_seen_at", "Last participant activity", "datetime", "participant_sessions"],
+    ["Cognitive_Conditions", "condition", "Cognitive condition", "text", "cognitive_trial_results"],
+    ["Cognitive_Conditions", "accuracy", "Condition accuracy", "numeric proportion", "derived from cognitive_trial_results"],
+    ["Cognitive_Conditions", "mean_rt_ms", "Condition mean reaction time", "milliseconds", "derived from cognitive_trial_results"],
+    ["Cognitive_Conditions", "median_rt_ms", "Condition median reaction time", "milliseconds", "derived from cognitive_trial_results"],
+    ["Ambulatory_Prompts_RAW", "prompt_instance_id", "Ambulatory prompt instance ID", "text", "study_ambulatory_prompt_instances"],
+    ["Ambulatory_Prompts_RAW", "prompt_status", "Prompt status", "categorical", "study_ambulatory_prompt_instances"],
+    ["Ambulatory_Prompts_RAW", "scheduled_for", "Prompt scheduled timestamp", "datetime", "study_ambulatory_prompt_instances"],
+    ["Ambulatory_Prompts_RAW", "expires_at", "Prompt expiry timestamp", "datetime", "study_ambulatory_prompt_instances"],
+    ["Followups", "followup_name", "Follow-up wave", "text", "study_followup_waves"],
+    ["Followups", "configured_questionnaires", "Configured questionnaires", "integer", "derived"],
+    ["Followups", "completed_questionnaires", "Completed questionnaires", "integer", "derived"],
+    ["Data_Quality", "researcher_review_recommended", "Researcher review recommended", "binary 0/1", "derived"],
+    ["Data_Quality", "review_reasons", "Review reasons", "text", "derived"],
+    ["Data_Quality", "automatic_exclusion", "Automatic exclusion applied", "binary 0/1", "derived; always 0"],
+    ["Quality_Flags", "flag_code", "Quality review flag code", "categorical", "deterministic quality engine"],
+    ["Quality_Flags", "detail", "Quality review detail", "text", "deterministic quality engine"],
+    ["Analysis_Compatible", "participant", "Export participant identifier", "text", "Analysis_Wide"],
+  ].map(([dataset, variable, label, type, source]) => ({
+    dataset,
+    dataset_label: dataset,
+    variable,
+    label,
+    type,
+    source,
+    notes: "Universal workbook helper variable.",
+  }));
+  codebookRows.push(...customCodebookRows);
+
+  const manifestRows: ResearchTableRow[] = [
+    ...dataSheets.map((sheet) => ({
+      sheet: sheet.name,
+      layer: sheet.kind === "raw" ? "RAW / lossless" : "CLEAN / analysis-ready",
+      rows: sheet.rows.length,
+      description: sheet.description,
+    })),
+    ...(mode === "raw"
+      ? []
+      : [
+          {
+            sheet: "Variable_Map",
+            layer: "DOCUMENTATION",
+            rows: compatibleAnalysis.variableMapRows.length,
+            description: "Original-to-compatible variable-name map and missing-value convention.",
+          },
+          {
+            sheet: "Import_Guide",
+            layer: "DOCUMENTATION",
+            rows: researchImportGuideRows().length,
+            description: "Import guidance for SPSS, jamovi, JASP, R and Python.",
+          },
+        ]),
+    {
+      sheet: "Codebook",
+      layer: "DOCUMENTATION",
+      rows: codebookRows.length,
+      description: "Variable-level documentation across included datasets.",
+    },
+  ];
+
+  const readmeRows: ResearchTableRow[] = [
+    { section: "Study", field: "Study title", value: study.title, notes: "" },
+    { section: "Study", field: "Study ID", value: study.id, notes: "Stable PsyLattice study identifier." },
+    { section: "Study", field: "Study status", value: study.status, notes: "" },
+    { section: "Study", field: "Target sample size", value: study.target_sample_size ?? "", notes: "Blank when no target N is configured." },
+    { section: "Study", field: "Configured components", value: researchValueText(study.components), notes: "Study component flags serialized as JSON." },
+    { section: "Export", field: "Workbook mode", value: mode, notes: mode === "complete" ? "Contains clean and raw layers." : mode === "clean" ? "Contains analysis-ready/summary layers." : "Contains lossless/raw layers." },
+    { section: "Export", field: "Generated at", value: new Date().toISOString(), notes: "UTC ISO timestamp." },
+    { section: "Privacy", field: "Participant identity mode", value: identityMode, notes: identityMode === "anonymous" ? "Participant identifiers are replaced with export-scoped ANON IDs." : "PsyLattice pseudonymous participant IDs are retained." },
+    { section: "Privacy", field: "TEST data included", value: includeTestData, notes: "TEST participants are excluded by default." },
+    { section: "Privacy", field: "Direct identifiers included", value: includeDirectIdentifiers, notes: "Direct demographic identifiers are excluded unless explicitly enabled and confirmed." },
+    { section: "Structure", field: "Missing values", value: "Blank cell", notes: "Blank is the default cross-software missing convention. PsyLattice does not inject -999/-99 sentinels into clean numeric variables." },
+    { section: "Analysis", field: "Compatibility sheet", value: mode === "raw" ? "Not included in raw-only workbook" : "Analysis_Compatible", notes: "Uses conservative variable names and 0/1 booleans for straightforward SPSS, jamovi, JASP, R and Python import." },
+    { section: "Analysis", field: "Variable map", value: mode === "raw" ? "Not included in raw-only workbook" : "Variable_Map", notes: "Maps original Analysis_Wide names to compatibility names so renaming never loses meaning." },
+    { section: "Quality", field: "Automatic exclusions", value: "None", notes: "Data_Quality and Quality_Flags identify records for researcher review; PsyLattice does not silently delete or exclude participant data." },
+    { section: "Structure", field: "Repeated administrations", value: "Preserved", notes: "Questionnaire and cognitive-task placements retain phase/position/administration information so repeated pre/post uses are not silently merged." },
+    { section: "Raw data", field: "JSON fields", value: "JSON text", notes: "Structured/raw payloads are serialized as JSON text without discarding nested values." },
+    { section: "Raw data", field: "Participant uploads", value: "Metadata only", notes: "Private uploaded files are not embedded in Excel; their response metadata remains exportable." },
+    { section: "Analysis", field: "Primary sheet", value: mode === "raw" ? "Use the relevant *_RAW sheet" : "Analysis_Compatible", notes: mode === "raw" ? "Raw sheets preserve individual observations." : "Analysis_Compatible is the safest direct import sheet; Analysis_Wide retains the original PsyLattice variable names." },
+    { section: "Codebook", field: "Variable documentation", value: "Codebook worksheet", notes: "Use it to map exported variables to PsyLattice source, item, phase, coding and storage meaning." },
+  ];
+
+  return [
+    {
+      name: "README",
+      kind: "meta",
+      description: "Workbook interpretation, privacy and data-structure notes.",
+      rows: readmeRows,
+    },
+    {
+      name: "Manifest",
+      kind: "meta",
+      description: "Worksheet inventory and row counts.",
+      rows: manifestRows,
+    },
+    ...dataSheets,
+    ...(mode === "raw"
+      ? []
+      : [
+          {
+            name: "Variable_Map",
+            kind: "codebook" as const,
+            description: "Maps Analysis_Wide variables to Analysis_Compatible names and documents missing-value handling.",
+            rows: compatibleAnalysis.variableMapRows,
+          },
+          {
+            name: "Import_Guide",
+            kind: "meta" as const,
+            description: "Recommended worksheet and conventions for common statistical software.",
+            rows: researchImportGuideRows(),
+          },
+        ]),
+    {
+      name: "Codebook",
+      kind: "codebook",
+      description: "Variable-level documentation across included datasets.",
+      rows: codebookRows,
+    },
+  ];
 }
 
 /* =========================================================
@@ -13537,7 +14752,7 @@ function ResearchAmbulatoryDataPanel({
       description="Research-ready compliance, prompt and event metrics from real V3 participant records."
     >
       <div className="mb-5 flex flex-wrap items-center justify-between gap-3">
-        <div className="flex rounded-xl border border-slate-200 bg-white p-1">
+        <div className="flex rounded-xl border shadow-[0_5px_18px_rgba(15,23,42,0.06),0_1px_4px_rgba(15,23,42,0.035)] border-slate-300/70 bg-white p-1">
           {([7, 14, 30] as const).map((value) => (
             <button
               key={value}
@@ -13558,7 +14773,7 @@ function ResearchAmbulatoryDataPanel({
           type="button"
           disabled={loading}
           onClick={() => void loadSummary()}
-          className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-slate-600 disabled:opacity-50"
+          className="rounded-xl border shadow-[0_5px_18px_rgba(15,23,42,0.06),0_1px_4px_rgba(15,23,42,0.035)] border-slate-300/70 bg-white px-3 py-2 text-xs font-semibold text-slate-600 disabled:opacity-50"
         >
           Refresh
         </button>
@@ -13612,7 +14827,7 @@ function ResearchAmbulatoryDataPanel({
             ].map(([title, description]) => (
               <div
                 key={title}
-                className="rounded-xl border border-slate-200 bg-slate-50/50 p-4"
+                className="rounded-xl border shadow-[0_5px_18px_rgba(15,23,42,0.06),0_1px_4px_rgba(15,23,42,0.035)] border-slate-200 bg-slate-50/50 p-4"
               >
                 <p className="text-sm font-semibold">{title}</p>
                 <p className="mt-1 text-xs leading-5 text-slate-500">
@@ -13680,7 +14895,7 @@ function ResearchCognitiveDataPanel({
           const conditionLabels = Array.from(new Set(trials.map((trial) => trial.condition_label || "Unlabelled")));
 
           return (
-            <div key={attachment.id} className="rounded-2xl border border-slate-200 bg-white p-5">
+            <div key={attachment.id} className="rounded-2xl border shadow-[0_8px_24px_rgba(15,23,42,0.065),0_2px_6px_rgba(15,23,42,0.035)] border-slate-300/70 bg-white p-5">
               <div className="flex flex-wrap items-start justify-between gap-3">
                 <div>
                   <p className="text-[10px] font-semibold uppercase tracking-[0.15em] text-cyan-700">Administration {attachment.position}</p>
@@ -13701,7 +14916,7 @@ function ResearchCognitiveDataPanel({
               </div>
 
               {conditionLabels.length > 0 && (
-                <div className="mt-4 overflow-x-auto rounded-xl border border-slate-200">
+                <div className="mt-4 overflow-x-auto rounded-xl border shadow-[0_5px_18px_rgba(15,23,42,0.06),0_1px_4px_rgba(15,23,42,0.035)] border-slate-200">
                   <table className="w-full min-w-[620px] text-left text-xs">
                     <thead className="bg-slate-50 text-slate-500">
                       <tr>
@@ -13785,7 +15000,7 @@ function ResearchPairedComparisonCard({
   const enoughPairs = comparison.n >= 3 && comparison.t !== null;
 
   return (
-    <div className="rounded-2xl border border-slate-200 bg-white p-5">
+    <div className="rounded-2xl border shadow-[0_8px_24px_rgba(15,23,42,0.065),0_2px_6px_rgba(15,23,42,0.035)] border-slate-300/70 bg-white p-5">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
           <p className="text-[10px] font-semibold uppercase tracking-[0.15em] text-cyan-700">
@@ -13822,7 +15037,7 @@ function ResearchPairedComparisonCard({
       </div>
 
       {enoughPairs ? (
-        <div className="mt-4 rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-xs leading-6 text-slate-600">
+        <div className="mt-4 rounded-xl border shadow-[0_5px_18px_rgba(15,23,42,0.06),0_1px_4px_rgba(15,23,42,0.035)] border-slate-200 bg-slate-50 px-4 py-3 text-xs leading-6 text-slate-600">
           <span className="font-semibold text-slate-900">
             t({comparison.df}) = {researchFormatEstimate(comparison.t, 3)}, p {researchFormatP(comparison.pTwoSided)}
           </span>
@@ -13830,7 +15045,7 @@ function ResearchPairedComparisonCard({
           {note}
         </div>
       ) : (
-        <div className="mt-4 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-xs leading-5 text-amber-800">
+        <div className="mt-4 rounded-xl border shadow-[0_5px_18px_rgba(15,23,42,0.06),0_1px_4px_rgba(15,23,42,0.035)] border-[#d8d1f6] bg-[#f8f6ff] px-4 py-3 text-xs leading-5 text-violet-800">
           At least 3 participants with usable data in both selected conditions are required before PsyLattice displays this paired inferential test.
         </div>
       )}
@@ -13916,7 +15131,7 @@ function ResearchCognitiveAnalysisPanel({
           <select
             value={selectedAttachment.id}
             onChange={(event) => setSelectedAttachmentId(event.target.value)}
-            className="mt-2 w-full rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm"
+            className="mt-2 w-full rounded-xl border shadow-[0_5px_18px_rgba(15,23,42,0.06),0_1px_4px_rgba(15,23,42,0.035)] border-slate-300/70 bg-white px-4 py-3 text-sm shadow-[0_2px_6px_rgba(15,23,42,0.035)]"
           >
             {attachments.map((attachment) => (
               <option key={attachment.id} value={attachment.id}>
@@ -13930,10 +15145,10 @@ function ResearchCognitiveAnalysisPanel({
           <button
             type="button"
             onClick={() => setIncludeTestData((current) => !current)}
-            className={`rounded-full border px-3 py-1.5 text-xs font-semibold transition ${
+            className={`rounded-full border shadow-[0_5px_16px_rgba(15,23,42,0.075),0_1px_3px_rgba(15,23,42,0.04)] px-3 py-1.5 text-xs font-semibold transition ${
               includeTestData
-                ? "border-amber-200 bg-amber-50 text-amber-800"
-                : "border-slate-200 bg-white text-slate-500"
+                ? "border-[#d8d1f6] bg-[#f8f6ff] text-violet-800"
+                : "border-slate-300/70 bg-white text-slate-500"
             }`}
           >
             {includeTestData ? "TEST data included" : "Include TEST data"}
@@ -13950,7 +15165,7 @@ function ResearchCognitiveAnalysisPanel({
         </div>
       </div>
 
-      <div className="mt-5 overflow-x-auto rounded-2xl border border-slate-200">
+      <div className="mt-5 overflow-x-auto rounded-2xl border shadow-[0_8px_24px_rgba(15,23,42,0.065),0_2px_6px_rgba(15,23,42,0.035)] border-slate-200">
         <table className="w-full min-w-[820px] text-left text-xs">
           <thead className="bg-slate-50 text-slate-500">
             <tr>
@@ -13999,7 +15214,7 @@ function ResearchCognitiveAnalysisPanel({
 
       {analysis.conditionLabels.length >= 2 && (
         <div className="mt-5 space-y-4">
-          <div className="rounded-2xl border border-cyan-100 bg-cyan-50/40 p-4">
+          <div className="rounded-2xl border shadow-[0_8px_24px_rgba(15,23,42,0.065),0_2px_6px_rgba(15,23,42,0.035)] border-cyan-100 bg-cyan-50/40 p-4">
             <p className="text-sm font-semibold text-cyan-950">Compare two conditions</p>
             <p className="mt-1 text-xs leading-5 text-cyan-900/70">
               PsyLattice matches the same participants across both conditions and compares their participant-level condition summaries.
@@ -14016,7 +15231,7 @@ function ResearchCognitiveAnalysisPanel({
                       setConditionB(analysis.conditionLabels.find((item) => item !== next) || "");
                     }
                   }}
-                  className="mt-1.5 w-full rounded-xl border border-cyan-100 bg-white px-3 py-2.5 text-sm"
+                  className="mt-1.5 w-full rounded-xl border shadow-[0_5px_18px_rgba(15,23,42,0.06),0_1px_4px_rgba(15,23,42,0.035)] border-cyan-100 bg-white px-3 py-2.5 text-sm"
                 >
                   {analysis.conditionLabels.map((condition) => (
                     <option key={condition} value={condition} disabled={condition === conditionB}>
@@ -14036,7 +15251,7 @@ function ResearchCognitiveAnalysisPanel({
                       setConditionA(analysis.conditionLabels.find((item) => item !== next) || "");
                     }
                   }}
-                  className="mt-1.5 w-full rounded-xl border border-cyan-100 bg-white px-3 py-2.5 text-sm"
+                  className="mt-1.5 w-full rounded-xl border shadow-[0_5px_18px_rgba(15,23,42,0.06),0_1px_4px_rgba(15,23,42,0.035)] border-cyan-100 bg-white px-3 py-2.5 text-sm"
                 >
                   {analysis.conditionLabels.map((condition) => (
                     <option key={condition} value={condition} disabled={condition === conditionA}>
@@ -14068,7 +15283,7 @@ function ResearchCognitiveAnalysisPanel({
         </div>
       )}
 
-      <div className="mt-5 rounded-2xl border border-slate-200 bg-slate-50/60 p-5">
+      <div className="mt-5 rounded-2xl border shadow-[0_8px_24px_rgba(15,23,42,0.065),0_2px_6px_rgba(15,23,42,0.035)] border-slate-200 bg-slate-50/60 p-5">
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div>
             <p className="text-[10px] font-semibold uppercase tracking-[0.15em] text-slate-500">Data quality</p>
@@ -14083,7 +15298,7 @@ function ResearchCognitiveAnalysisPanel({
         </div>
 
         {analysis.qualityFlags.length === 0 ? (
-          <div className="mt-4 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-xs text-emerald-800">
+          <div className="mt-4 rounded-xl border shadow-[0_5px_18px_rgba(15,23,42,0.06),0_1px_4px_rgba(15,23,42,0.035)] border-cyan-200 bg-cyan-50 px-4 py-3 text-xs text-cyan-800">
             No built-in review flags were triggered for the current live participant sessions.
           </div>
         ) : (
@@ -14093,7 +15308,7 @@ function ResearchCognitiveAnalysisPanel({
               return (
                 <div
                   key={`${flag.sessionId}-${flag.code}-${index}`}
-                  className="flex flex-col gap-2 rounded-xl border border-slate-200 bg-white px-4 py-3 sm:flex-row sm:items-start sm:justify-between"
+                  className="flex flex-col gap-2 rounded-xl border shadow-[0_5px_18px_rgba(15,23,42,0.06),0_1px_4px_rgba(15,23,42,0.035)] border-slate-300/70 bg-white px-4 py-3 sm:flex-row sm:items-start sm:justify-between"
                 >
                   <div>
                     <p className="text-xs font-semibold text-slate-900">
@@ -14116,7 +15331,7 @@ function ResearchCognitiveAnalysisPanel({
         )}
       </div>
 
-      <div className="mt-5 rounded-xl border border-slate-200 bg-white px-4 py-3 text-[11px] leading-5 text-slate-500">
+      <div className="mt-5 rounded-xl border shadow-[0_5px_18px_rgba(15,23,42,0.06),0_1px_4px_rgba(15,23,42,0.035)] border-slate-300/70 bg-white px-4 py-3 text-[11px] leading-5 text-slate-500">
         <span className="font-semibold text-slate-700">Analysis boundary:</span> the current engine provides participant-level descriptive summaries, 95% confidence intervals, paired t-tests for selected two-condition contrasts, Cohen’s dz, and transparent quality flags. It does not automatically choose a complex statistical model or claim that a hypothesis is supported. Trial-level mixed models, regression, questionnaire–cognitive associations and preregistered analysis plans are later analysis modules.
       </div>
     </Panel>
@@ -14137,6 +15352,14 @@ function DataDashboard({
     loading,
     error,
   } = useResearchDataWorkspace();
+
+  const {
+    samples: analysisSamples,
+    members: analysisSampleMembers,
+    loadingSamples,
+    sampleError,
+    reloadSamples,
+  } = useResearchAnalysisSamples(selectedStudyId);
 
   const liveParticipants = bundle.participants.filter(
     (participant) =>
@@ -14316,6 +15539,382 @@ function DataDashboard({
     )
     .slice(0, 10);
 
+
+  const { summaryRows: dataQualityRows, qualityFlagRows } =
+    researchBuildDataQualitySheets(
+      bundle,
+      "pseudonymous",
+      false
+    );
+
+  const summaryByParticipant = new Map<string, ResearchTableRow>();
+  dataQualityRows.forEach((row) => {
+    summaryByParticipant.set(String(row.participant ?? ""), row);
+  });
+
+  const flagsByParticipant = new Map<string, ResearchTableRow[]>();
+  qualityFlagRows.forEach((row) => {
+    const key = String(row.participant ?? "");
+    const current = flagsByParticipant.get(key) || [];
+    current.push(row);
+    flagsByParticipant.set(key, current);
+  });
+
+  const reviewRows = [...liveParticipants]
+    .map((participant) => {
+      const participantLabel = participant.public_id;
+      const summary = summaryByParticipant.get(participantLabel) || {};
+      const flags = flagsByParticipant.get(participantLabel) || [];
+      const consentOk = !consentRequired || Number(summary.consented ?? 0) === 1;
+      const demographicsOk =
+        !demographicsRequired ||
+        requiredDemographicQuestions.length === 0 ||
+        Number(summary.required_demographics_missing ?? 0) === 0;
+      const questionnairesOk =
+        Number(summary.required_questionnaires_incomplete ?? 0) === 0;
+      const cognitiveOk =
+        Number(summary.required_cognitive_tasks_incomplete ?? 0) === 0;
+      const incompleteSessions = Number(
+        summary.incomplete_participant_sessions ?? 0
+      );
+      const coreComplete =
+        consentOk && demographicsOk && questionnairesOk && cognitiveOk;
+      const reviewReasons = Array.from(
+        new Set(
+          String(summary.review_reasons ?? "")
+            .split("|")
+            .map((value) => value.trim())
+            .filter(Boolean)
+        )
+      );
+
+      let stage: "ready" | "review" | "incomplete" = "ready";
+      if (!coreComplete) {
+        stage = "incomplete";
+      } else if (flags.length > 0 || incompleteSessions > 0) {
+        stage = "review";
+      }
+
+      return {
+        participant,
+        participantLabel,
+        summary,
+        flags,
+        consentOk,
+        demographicsOk,
+        questionnairesOk,
+        cognitiveOk,
+        incompleteSessions,
+        coreComplete,
+        reviewReasons,
+        stage,
+      };
+    })
+    .sort((a, b) => {
+      const order = { review: 0, incomplete: 1, ready: 2 } as const;
+      if (order[a.stage] !== order[b.stage]) {
+        return order[a.stage] - order[b.stage];
+      }
+      return a.participantLabel.localeCompare(b.participantLabel);
+    });
+
+  const totalLiveParticipants = reviewRows.length;
+  const consentReadyCount = reviewRows.filter((row) => row.consentOk).length;
+  const requiredDataCompleteCount = reviewRows.filter(
+    (row) => row.coreComplete
+  ).length;
+  const readyPreviewCount = reviewRows.filter(
+    (row) => row.stage === "ready"
+  ).length;
+  const reviewPreviewCount = reviewRows.filter(
+    (row) => row.stage === "review"
+  ).length;
+  const incompletePreviewCount = reviewRows.filter(
+    (row) => row.stage === "incomplete"
+  ).length;
+
+  const stagePercent = (value: number) =>
+    totalLiveParticipants > 0
+      ? Math.round((value / totalLiveParticipants) * 100)
+      : 0;
+
+  const [reviewFilter, setReviewFilter] = useState<
+    "all" | "review" | "incomplete" | "ready"
+  >("review");
+  const [selectedReviewParticipantId, setSelectedReviewParticipantId] =
+    useState("");
+
+  const filteredReviewRows = reviewRows.filter((row) => {
+    if (reviewFilter === "all") return true;
+    return row.stage === reviewFilter;
+  });
+
+  useEffect(() => {
+    if (
+      !filteredReviewRows.some(
+        (row) => row.participant.id === selectedReviewParticipantId
+      )
+    ) {
+      setSelectedReviewParticipantId(
+        filteredReviewRows[0]?.participant.id || ""
+      );
+    }
+  }, [
+    reviewFilter,
+    selectedReviewParticipantId,
+    filteredReviewRows
+      .map((row) => row.participant.id)
+      .join("|"),
+  ]);
+
+  const selectedReviewRow =
+    filteredReviewRows.find(
+      (row) => row.participant.id === selectedReviewParticipantId
+    ) || filteredReviewRows[0] || reviewRows[0] || null;
+
+  const [newSampleName, setNewSampleName] = useState("Primary analysis");
+  const [newSampleType, setNewSampleType] = useState<
+    "primary" | "per_protocol" | "sensitivity" | "custom"
+  >("primary");
+  const [selectedAnalysisSampleId, setSelectedAnalysisSampleId] = useState("");
+  const [sampleActionError, setSampleActionError] = useState("");
+  const [sampleActionMessage, setSampleActionMessage] = useState("");
+  const [sampleSaving, setSampleSaving] = useState(false);
+  const [sampleParticipantId, setSampleParticipantId] = useState("");
+  const [sampleDecision, setSampleDecision] = useState<
+    "include" | "review" | "exclude"
+  >("include");
+  const [sampleReason, setSampleReason] = useState("");
+  const [sampleNotes, setSampleNotes] = useState("");
+
+  useEffect(() => {
+    setSelectedAnalysisSampleId((current) =>
+      analysisSamples.some((sample) => sample.id === current)
+        ? current
+        : analysisSamples[0]?.id || ""
+    );
+  }, [analysisSamples.map((sample) => sample.id).join("|")]);
+
+  const selectedAnalysisSample =
+    analysisSamples.find((sample) => sample.id === selectedAnalysisSampleId) ||
+    analysisSamples[0] ||
+    null;
+
+  const selectedSampleMembers = selectedAnalysisSample
+    ? analysisSampleMembers.filter(
+        (member) => member.sample_id === selectedAnalysisSample.id
+      )
+    : [];
+
+  const selectedSampleMemberMap = new Map(
+    selectedSampleMembers.map((member) => [member.participant_id, member])
+  );
+
+  const includedSampleCount = selectedSampleMembers.filter(
+    (member) => member.decision === "include"
+  ).length;
+  const reviewSampleCount = selectedSampleMembers.filter(
+    (member) => member.decision === "review"
+  ).length;
+  const excludedSampleCount = selectedSampleMembers.filter(
+    (member) => member.decision === "exclude"
+  ).length;
+  const notYetInSampleCount = Math.max(
+    liveParticipants.length - selectedSampleMembers.length,
+    0
+  );
+
+  useEffect(() => {
+    const fallbackId =
+      selectedReviewRow?.participant.id || liveParticipants[0]?.id || "";
+    setSampleParticipantId((current) =>
+      liveParticipants.some((participant) => participant.id === current)
+        ? current
+        : fallbackId
+    );
+  }, [
+    selectedAnalysisSampleId,
+    selectedReviewRow?.participant.id,
+    liveParticipants.map((participant) => participant.id).join("|"),
+  ]);
+
+  const currentSampleMember = sampleParticipantId
+    ? selectedSampleMemberMap.get(sampleParticipantId) || null
+    : null;
+
+  useEffect(() => {
+    setSampleDecision(currentSampleMember?.decision || "include");
+    setSampleReason(currentSampleMember?.reason || "");
+    setSampleNotes(currentSampleMember?.notes || "");
+  }, [
+    currentSampleMember?.id,
+    currentSampleMember?.decision,
+    currentSampleMember?.reason,
+    currentSampleMember?.notes,
+    sampleParticipantId,
+    selectedAnalysisSampleId,
+  ]);
+
+  async function createAnalysisSample() {
+    if (!selectedStudyId || sampleSaving) return;
+    const name = newSampleName.trim();
+    if (!name) {
+      setSampleActionError("Give this analysis sample a name.");
+      return;
+    }
+
+    setSampleSaving(true);
+    setSampleActionError("");
+    setSampleActionMessage("");
+
+    try {
+      const supabase = createClient();
+      const {
+        data: { user },
+        error: userError,
+      } = await supabase.auth.getUser();
+      if (userError || !user) {
+        throw new Error("Your researcher session has expired.");
+      }
+
+      const { data: sample, error: sampleInsertError } = await supabase
+        .from("research_analysis_samples")
+        .insert({
+          study_id: selectedStudyId,
+          owner_user_id: user.id,
+          name,
+          sample_type: newSampleType,
+          description:
+            "Researcher-controlled analysis sample. All live participants present at creation start included; exclusions/review decisions are explicit and reversible.",
+        })
+        .select(
+          "id, study_id, owner_user_id, name, description, sample_type, created_at, updated_at"
+        )
+        .single();
+
+      if (sampleInsertError || !sample) {
+        throw sampleInsertError || new Error("The analysis sample could not be created.");
+      }
+
+      if (liveParticipants.length > 0) {
+        const { error: membersInsertError } = await supabase
+          .from("research_analysis_sample_members")
+          .insert(
+            liveParticipants.map((participant) => ({
+              sample_id: sample.id,
+              participant_id: participant.id,
+              decision: "include",
+              reason: "",
+              notes: "",
+            }))
+          );
+
+        if (membersInsertError) throw membersInsertError;
+      }
+
+      await reloadSamples();
+      setSelectedAnalysisSampleId(sample.id);
+      setSampleActionMessage(
+        `${name} created with ${liveParticipants.length} current live participant${liveParticipants.length === 1 ? "" : "s"} included. Nobody was automatically excluded.`
+      );
+    } catch (error) {
+      setSampleActionError(
+        error instanceof Error
+          ? error.message
+          : "The analysis sample could not be created."
+      );
+    } finally {
+      setSampleSaving(false);
+    }
+  }
+
+  async function saveSampleParticipantDecision() {
+    if (!selectedAnalysisSample || !sampleParticipantId || sampleSaving) return;
+    if ((sampleDecision === "exclude" || sampleDecision === "review") && !sampleReason.trim()) {
+      setSampleActionError(
+        "Add a reason when marking a participant for review or exclusion."
+      );
+      return;
+    }
+
+    setSampleSaving(true);
+    setSampleActionError("");
+    setSampleActionMessage("");
+
+    try {
+      const supabase = createClient();
+      const { error: upsertError } = await supabase
+        .from("research_analysis_sample_members")
+        .upsert(
+          {
+            sample_id: selectedAnalysisSample.id,
+            participant_id: sampleParticipantId,
+            decision: sampleDecision,
+            reason: sampleReason.trim(),
+            notes: sampleNotes.trim(),
+          },
+          { onConflict: "sample_id,participant_id" }
+        );
+
+      if (upsertError) throw upsertError;
+      await reloadSamples();
+      const participant = liveParticipants.find(
+        (candidate) => candidate.id === sampleParticipantId
+      );
+      setSampleActionMessage(
+        `${participant?.public_id || "Participant"} marked ${sampleDecision} in ${selectedAnalysisSample.name}.`
+      );
+    } catch (error) {
+      setSampleActionError(
+        error instanceof Error
+          ? error.message
+          : "This sample decision could not be saved."
+      );
+    } finally {
+      setSampleSaving(false);
+    }
+  }
+
+  async function addCurrentLiveParticipantsToSample() {
+    if (!selectedAnalysisSample || sampleSaving) return;
+    const missing = liveParticipants.filter(
+      (participant) => !selectedSampleMemberMap.has(participant.id)
+    );
+    if (missing.length === 0) {
+      setSampleActionMessage("All current live participants are already represented in this sample.");
+      return;
+    }
+
+    setSampleSaving(true);
+    setSampleActionError("");
+    setSampleActionMessage("");
+    try {
+      const supabase = createClient();
+      const { error: insertError } = await supabase
+        .from("research_analysis_sample_members")
+        .insert(
+          missing.map((participant) => ({
+            sample_id: selectedAnalysisSample.id,
+            participant_id: participant.id,
+            decision: "include",
+            reason: "",
+            notes: "",
+          }))
+        );
+      if (insertError) throw insertError;
+      await reloadSamples();
+      setSampleActionMessage(
+        `${missing.length} newer live participant${missing.length === 1 ? "" : "s"} added as included. No exclusion rule was applied.`
+      );
+    } catch (error) {
+      setSampleActionError(
+        error instanceof Error ? error.message : "Participants could not be added."
+      );
+    } finally {
+      setSampleSaving(false);
+    }
+  }
+
   return (
     <div className="space-y-5">
       <div className="flex flex-wrap items-end justify-between gap-4">
@@ -14324,7 +15923,7 @@ function DataDashboard({
           <select
             value={selectedStudyId}
             onChange={(event) => setSelectedStudyId(event.target.value)}
-            className="mt-2 w-full rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm"
+            className="mt-2 w-full rounded-xl border shadow-[0_5px_18px_rgba(15,23,42,0.06),0_1px_4px_rgba(15,23,42,0.035)] border-slate-300/70 bg-white px-4 py-3 text-sm shadow-[0_2px_6px_rgba(15,23,42,0.035)]"
           >
             {studies.map((study) => (
               <option key={study.id} value={study.id}>
@@ -14350,7 +15949,7 @@ function DataDashboard({
       </div>
 
       {error && (
-        <div className="rounded-2xl border border-red-200 bg-red-50 px-5 py-4">
+        <div className="border-l-2 border-rose-400 bg-transparent py-1 pl-3 pr-1">
           <p className="text-sm leading-6 text-red-700">{error}</p>
         </div>
       )}
@@ -14461,11 +16060,11 @@ function DataDashboard({
               )}
 
               {selectedStudy?.components?.ambulatory && (
-                <div className="rounded-xl border border-orange-300 bg-orange-50/90 p-4">
-                  <p className="text-sm font-medium text-amber-950">
+                <div className="rounded-xl border shadow-[0_5px_18px_rgba(15,23,42,0.06),0_1px_4px_rgba(15,23,42,0.035)] border-[#cfc6f6] bg-[#f7f5ff] p-4">
+                  <p className="text-sm font-medium text-violet-950">
                     Ambulatory component configured
                   </p>
-                  <p className="mt-1 text-xs leading-5 text-amber-800">
+                  <p className="mt-1 text-xs leading-5 text-violet-800">
                     The participant EMA delivery/response pipeline is not
                     connected yet, so PsyLattice does not invent an ambulatory
                     compliance percentage here.
@@ -14524,6 +16123,690 @@ function DataDashboard({
           </p>
         </Panel>
       </div>
+
+      <Panel
+        title="Visual analysis sample overview"
+        description="See how live participants move from recruitment to a primary-analysis-ready sample. These counts are visual guidance for the researcher — not hidden exclusion logic."
+      >
+        {loading ? (
+          <p className="text-sm text-slate-500">Preparing sample overview...</p>
+        ) : totalLiveParticipants === 0 ? (
+          <div className="rounded-2xl bg-slate-50 p-5">
+            <p className="font-medium">No live participants yet</p>
+            <p className="mt-2 text-sm leading-6 text-slate-500">
+              Recruit participants or finish a TEST run and then switch to live data to see a visual sample overview here.
+            </p>
+          </div>
+        ) : (
+          <div className="space-y-5">
+            <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+              <StatCard
+                label="All live participants"
+                value={String(totalLiveParticipants)}
+                detail="Current live sample entering the study"
+              />
+              <StatCard
+                label="Required data complete"
+                value={String(requiredDataCompleteCount)}
+                detail={`${stagePercent(requiredDataCompleteCount)}% have consent + required measures/components complete`}
+              />
+              <StatCard
+                label="Needs researcher review"
+                value={String(reviewPreviewCount)}
+                detail="Transparent flags only — nobody is auto-excluded"
+              />
+              <StatCard
+                label="Primary sample preview"
+                value={String(readyPreviewCount)}
+                detail={`${stagePercent(readyPreviewCount)}% ready without current review flags`}
+              />
+            </div>
+
+            <div className="grid gap-5 xl:grid-cols-[1.1fr_.9fr]">
+              <div className="rounded-2xl border shadow-[0_8px_24px_rgba(15,23,42,0.065),0_2px_6px_rgba(15,23,42,0.035)] border-slate-300/70 bg-white p-5">
+                <p className="text-sm font-semibold text-slate-900">Participant flow</p>
+                <p className="mt-1 text-xs leading-5 text-slate-500">
+                  A visual funnel for the current study. This helps researchers see where participants are being lost or flagged before exporting a sample.
+                </p>
+                <div className="mt-5 space-y-4">
+                  {[
+                    {
+                      label: "Live participants",
+                      count: totalLiveParticipants,
+                      color: "bg-slate-900",
+                      detail: "All live, non-withdrawn participants",
+                    },
+                    {
+                      label: consentRequired ? "Consent recorded" : "Consent step not required",
+                      count: consentRequired ? consentReadyCount : totalLiveParticipants,
+                      color: "bg-cyan-500",
+                      detail: consentRequired
+                        ? `${consentReadyCount} participants have a consent record`
+                        : "All participants continue because consent is not a configured component",
+                    },
+                    {
+                      label: "Required data complete",
+                      count: requiredDataCompleteCount,
+                      color: "bg-cyan-500",
+                      detail: "Consent + required demographics/questionnaires/cognitive tasks complete",
+                    },
+                    {
+                      label: "Primary sample preview",
+                      count: readyPreviewCount,
+                      color: "bg-violet-500",
+                      detail: "Ready right now without current review flags",
+                    },
+                  ].map((stage) => (
+                    <div key={stage.label}>
+                      <div className="mb-1.5 flex items-center justify-between gap-3">
+                        <div>
+                          <p className="text-sm font-medium text-slate-800">{stage.label}</p>
+                          <p className="text-[11px] leading-4 text-slate-400">{stage.detail}</p>
+                        </div>
+                        <div className="shrink-0 text-right">
+                          <p className="text-base font-semibold text-slate-950">{stage.count}</p>
+                          <p className="text-[11px] text-slate-400">{stagePercent(stage.count)}%</p>
+                        </div>
+                      </div>
+                      <div className="h-2 overflow-hidden rounded-full bg-slate-100">
+                        <div
+                          className={`h-full rounded-full ${stage.color}`}
+                          style={{ width: `${Math.max(stagePercent(stage.count), stage.count > 0 ? 6 : 0)}%` }}
+                        />
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              <div className="rounded-2xl border shadow-[0_8px_24px_rgba(15,23,42,0.065),0_2px_6px_rgba(15,23,42,0.035)] border-[#d8d1f6] bg-[#f8f6ff]/70 p-5">
+                <p className="text-sm font-semibold text-violet-950">Primary analysis sample preview</p>
+                <p className="mt-1 text-xs leading-5 text-violet-900/80">
+                  PsyLattice is not excluding anyone behind the scenes. This is a visual preview to help you inspect which records look analysis-ready right now.
+                </p>
+                <div className="mt-4 space-y-3">
+                  <div className="flex items-center justify-between rounded-xl bg-white/80 px-4 py-3">
+                    <span className="text-sm text-slate-700">Ready without current flags</span>
+                    <Status type="success">{readyPreviewCount}</Status>
+                  </div>
+                  <div className="flex items-center justify-between rounded-xl bg-white/80 px-4 py-3">
+                    <span className="text-sm text-slate-700">Needs review</span>
+                    <Status type={reviewPreviewCount > 0 ? "warning" : "success"}>{reviewPreviewCount}</Status>
+                  </div>
+                  <div className="flex items-center justify-between rounded-xl bg-white/80 px-4 py-3">
+                    <span className="text-sm text-slate-700">Incomplete required data</span>
+                    <Status type={incompletePreviewCount > 0 ? "warning" : "success"}>{incompletePreviewCount}</Status>
+                  </div>
+                </div>
+                <div className="mt-4 rounded-xl border shadow-[0_5px_18px_rgba(15,23,42,0.06),0_1px_4px_rgba(15,23,42,0.035)] border-violet-200 bg-white/80 px-4 py-3 text-xs leading-5 text-violet-950">
+                  <span className="font-semibold">Next step:</span> inspect the Participant review queue below, then later save formal analysis samples/export presets from this visual overview.
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+      </Panel>
+
+      <Panel
+        title="Participant review queue"
+        description="Visual review workflow for included, incomplete and flagged participants. Use this before deciding what should go into your final analysis sample or export."
+      >
+        {loading ? (
+          <p className="text-sm text-slate-500">Preparing participant review queue...</p>
+        ) : reviewRows.length === 0 ? (
+          <div className="rounded-2xl bg-slate-50 p-5">
+            <p className="font-medium">No live participant records yet</p>
+            <p className="mt-2 text-sm leading-6 text-slate-500">
+              Once live participants begin responding, PsyLattice will surface them here with visual quality and completeness indicators.
+            </p>
+          </div>
+        ) : (
+          <div className="space-y-5">
+            <div className="flex flex-wrap gap-2">
+              {[
+                ["review", `Needs review (${reviewPreviewCount})`],
+                ["incomplete", `Incomplete (${incompletePreviewCount})`],
+                ["ready", `Ready (${readyPreviewCount})`],
+                ["all", `All (${reviewRows.length})`],
+              ].map(([value, label]) => (
+                <button
+                  key={String(value)}
+                  type="button"
+                  onClick={() => setReviewFilter(value as "all" | "review" | "incomplete" | "ready")}
+                  className={`rounded-full border shadow-[0_5px_16px_rgba(15,23,42,0.075),0_1px_3px_rgba(15,23,42,0.04)] px-3 py-1.5 text-xs font-semibold transition ${
+                    reviewFilter === value
+                      ? "border-slate-900 bg-slate-900 text-white"
+                      : "border-slate-300/70 bg-white text-slate-600"
+                  }`}
+                >
+                  {String(label)}
+                </button>
+              ))}
+            </div>
+
+            <div className="grid gap-5 xl:grid-cols-[0.95fr_1.05fr]">
+              <div className="space-y-3">
+                {filteredReviewRows.length === 0 ? (
+                  <div className="rounded-2xl border shadow-[0_8px_24px_rgba(15,23,42,0.065),0_2px_6px_rgba(15,23,42,0.035)] border-slate-200 bg-slate-50 p-5 text-sm text-slate-500">
+                    No participants match the current filter.
+                  </div>
+                ) : (
+                  filteredReviewRows.slice(0, 18).map((row) => {
+                    const active = row.participant.id === selectedReviewParticipantId;
+                    const stageType =
+                      row.stage === "ready"
+                        ? "success"
+                        : row.stage === "review"
+                          ? "warning"
+                          : "accent";
+                    const stageLabel =
+                      row.stage === "ready"
+                        ? "Ready"
+                        : row.stage === "review"
+                          ? "Needs review"
+                          : "Incomplete";
+                    return (
+                      <button
+                        key={row.participant.id}
+                        type="button"
+                        onClick={() => setSelectedReviewParticipantId(row.participant.id)}
+                        className={`w-full rounded-2xl border shadow-[0_8px_24px_rgba(15,23,42,0.065),0_2px_6px_rgba(15,23,42,0.035)] px-4 py-4 text-left transition ${
+                          active
+                            ? "border-slate-900 bg-slate-900 text-white shadow-sm"
+                            : "border-slate-300/70 bg-white hover:border-slate-300"
+                        }`}
+                      >
+                        <div className="flex items-start justify-between gap-3">
+                          <div>
+                            <p className={`text-sm font-semibold ${active ? "text-white" : "text-slate-900"}`}>{row.participantLabel}</p>
+                            <p className={`mt-1 text-xs ${active ? "text-slate-300" : "text-slate-500"}`}>
+                              {row.reviewReasons[0] || "No current review reason"}
+                            </p>
+                          </div>
+                          <Status type={stageType as any}>{stageLabel}</Status>
+                        </div>
+                        <div className="mt-3 flex flex-wrap gap-2 text-[11px]">
+                          <span className={`rounded-full px-2.5 py-1 ${active ? "bg-white/10 text-slate-100" : row.consentOk ? "bg-cyan-50 text-cyan-700" : "bg-violet-50 text-violet-700"}`}>
+                            Consent {row.consentOk ? "ok" : "missing"}
+                          </span>
+                          <span className={`rounded-full px-2.5 py-1 ${active ? "bg-white/10 text-slate-100" : row.demographicsOk ? "bg-cyan-50 text-cyan-700" : "bg-violet-50 text-violet-700"}`}>
+                            Demographics {row.demographicsOk ? "ok" : "missing"}
+                          </span>
+                          <span className={`rounded-full px-2.5 py-1 ${active ? "bg-white/10 text-slate-100" : row.questionnairesOk ? "bg-cyan-50 text-cyan-700" : "bg-violet-50 text-violet-700"}`}>
+                            Questionnaires {row.questionnairesOk ? "ok" : "incomplete"}
+                          </span>
+                          <span className={`rounded-full px-2.5 py-1 ${active ? "bg-white/10 text-slate-100" : row.cognitiveOk ? "bg-cyan-50 text-cyan-700" : "bg-violet-50 text-violet-700"}`}>
+                            Cognitive {row.cognitiveOk ? "ok" : "incomplete"}
+                          </span>
+                          <span className={`rounded-full px-2.5 py-1 ${active ? "bg-white/10 text-slate-100" : "bg-slate-100 text-slate-600"}`}>
+                            {row.flags.length} flag{row.flags.length === 1 ? "" : "s"}
+                          </span>
+                        </div>
+                      </button>
+                    );
+                  })
+                )}
+                {filteredReviewRows.length > 18 && (
+                  <p className="px-1 text-xs text-slate-400">
+                    Showing the first 18 participants for visual review. Use Data Explorer or Export Data for the full dataset.
+                  </p>
+                )}
+              </div>
+
+              <div className="rounded-2xl border shadow-[0_8px_24px_rgba(15,23,42,0.065),0_2px_6px_rgba(15,23,42,0.035)] border-slate-300/70 bg-white p-5">
+                {!selectedReviewRow ? (
+                  <div className="rounded-2xl bg-slate-50 p-5 text-sm text-slate-500">
+                    Select a participant from the queue to inspect their current completeness and quality summary.
+                  </div>
+                ) : (
+                  <div className="space-y-5">
+                    <div className="flex flex-wrap items-start justify-between gap-3">
+                      <div>
+                        <p className="text-lg font-semibold text-slate-950">{selectedReviewRow.participantLabel}</p>
+                        <p className="mt-1 text-sm text-slate-500">
+                          Status: {selectedReviewRow.participant.status.replaceAll("_", " ")}
+                        </p>
+                      </div>
+                      <Status
+                        type={
+                          selectedReviewRow.stage === "ready"
+                            ? "success"
+                            : selectedReviewRow.stage === "review"
+                              ? "warning"
+                              : "accent"
+                        }
+                      >
+                        {selectedReviewRow.stage === "ready"
+                          ? "Primary sample preview: ready"
+                          : selectedReviewRow.stage === "review"
+                            ? "Primary sample preview: review"
+                            : "Primary sample preview: incomplete"}
+                      </Status>
+                    </div>
+
+                    <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+                      <div className="rounded-xl border shadow-[0_5px_18px_rgba(15,23,42,0.06),0_1px_4px_rgba(15,23,42,0.035)] border-slate-200 bg-slate-50 px-4 py-3">
+                        <p className="text-[11px] font-semibold uppercase tracking-[0.12em] text-slate-500">Consent</p>
+                        <p className="mt-1 text-sm font-medium text-slate-900">{selectedReviewRow.consentOk ? "Recorded" : "Missing"}</p>
+                      </div>
+                      <div className="rounded-xl border shadow-[0_5px_18px_rgba(15,23,42,0.06),0_1px_4px_rgba(15,23,42,0.035)] border-slate-200 bg-slate-50 px-4 py-3">
+                        <p className="text-[11px] font-semibold uppercase tracking-[0.12em] text-slate-500">Demographics</p>
+                        <p className="mt-1 text-sm font-medium text-slate-900">{selectedReviewRow.demographicsOk ? "Complete" : "Needs attention"}</p>
+                      </div>
+                      <div className="rounded-xl border shadow-[0_5px_18px_rgba(15,23,42,0.06),0_1px_4px_rgba(15,23,42,0.035)] border-slate-200 bg-slate-50 px-4 py-3">
+                        <p className="text-[11px] font-semibold uppercase tracking-[0.12em] text-slate-500">Questionnaires</p>
+                        <p className="mt-1 text-sm font-medium text-slate-900">{selectedReviewRow.questionnairesOk ? "Complete" : "Incomplete"}</p>
+                      </div>
+                      <div className="rounded-xl border shadow-[0_5px_18px_rgba(15,23,42,0.06),0_1px_4px_rgba(15,23,42,0.035)] border-slate-200 bg-slate-50 px-4 py-3">
+                        <p className="text-[11px] font-semibold uppercase tracking-[0.12em] text-slate-500">Cognitive tasks</p>
+                        <p className="mt-1 text-sm font-medium text-slate-900">{selectedReviewRow.cognitiveOk ? "Complete" : "Incomplete"}</p>
+                      </div>
+                    </div>
+
+                    <div className="grid gap-4 lg:grid-cols-[1fr_.95fr]">
+                      <div className="rounded-2xl border shadow-[0_8px_24px_rgba(15,23,42,0.065),0_2px_6px_rgba(15,23,42,0.035)] border-slate-200 p-4">
+                        <p className="text-sm font-semibold text-slate-900">Review reasons</p>
+                        {selectedReviewRow.reviewReasons.length === 0 ? (
+                          <p className="mt-2 text-sm leading-6 text-slate-500">
+                            No current review reasons. This participant is ready in the current primary-sample preview.
+                          </p>
+                        ) : (
+                          <div className="mt-3 flex flex-wrap gap-2">
+                            {selectedReviewRow.reviewReasons.map((reason) => (
+                              <span
+                                key={reason}
+                                className="rounded-full bg-violet-50 px-3 py-1.5 text-xs font-medium text-violet-800"
+                              >
+                                {reason}
+                              </span>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+
+                      <div className="rounded-2xl border shadow-[0_8px_24px_rgba(15,23,42,0.065),0_2px_6px_rgba(15,23,42,0.035)] border-slate-200 p-4">
+                        <p className="text-sm font-semibold text-slate-900">Session summary</p>
+                        <div className="mt-3 space-y-2 text-sm text-slate-600">
+                          <div className="flex items-center justify-between gap-3">
+                            <span>Participant sessions</span>
+                            <span className="font-medium text-slate-900">{Number(selectedReviewRow.summary.participant_sessions ?? 0)}</span>
+                          </div>
+                          <div className="flex items-center justify-between gap-3">
+                            <span>Incomplete sessions</span>
+                            <span className="font-medium text-slate-900">{selectedReviewRow.incompleteSessions}</span>
+                          </div>
+                          <div className="flex items-center justify-between gap-3">
+                            <span>Ambulatory compliance</span>
+                            <span className="font-medium text-slate-900">
+                              {selectedReviewRow.summary.ambulatory_compliance_percent === ""
+                                ? "—"
+                                : `${selectedReviewRow.summary.ambulatory_compliance_percent}%`}
+                            </span>
+                          </div>
+                          <div className="flex items-center justify-between gap-3">
+                            <span>Cognitive quality flags</span>
+                            <span className="font-medium text-slate-900">{Number(selectedReviewRow.summary.cognitive_quality_flags ?? 0)}</span>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="rounded-2xl border shadow-[0_8px_24px_rgba(15,23,42,0.065),0_2px_6px_rgba(15,23,42,0.035)] border-slate-200 bg-slate-50 p-4">
+                      <p className="text-sm font-semibold text-slate-900">Detailed quality flags</p>
+                      {selectedReviewRow.flags.length === 0 ? (
+                        <p className="mt-2 text-sm leading-6 text-slate-500">
+                          No detailed quality flags are currently stored for this participant.
+                        </p>
+                      ) : (
+                        <div className="mt-3 space-y-3">
+                          {selectedReviewRow.flags.map((flag, index) => (
+                            <div key={`${String(flag.flag_code)}-${index}`} className="rounded-xl border shadow-[0_5px_18px_rgba(15,23,42,0.06),0_1px_4px_rgba(15,23,42,0.035)] border-slate-300/70 bg-white px-4 py-3">
+                              <div className="flex items-start justify-between gap-3">
+                                <div>
+                                  <p className="text-sm font-medium text-slate-900">{String(flag.flag_label || flag.flag_code || "Quality flag")}</p>
+                                  <p className="mt-1 text-xs leading-5 text-slate-500">{String(flag.domain || "")}</p>
+                                </div>
+                                <Status type={String(flag.severity || "review") === "warning" ? "warning" : "accent"}>
+                                  {String(flag.severity || "review")}
+                                </Status>
+                              </div>
+                              {flag.detail ? (
+                                <p className="mt-2 text-sm leading-6 text-slate-600">{String(flag.detail)}</p>
+                              ) : null}
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+        )}
+      </Panel>
+
+      <Panel
+        title="Saved analysis samples"
+        description="Create reproducible participant sets for primary, per-protocol or sensitivity analyses. Quality flags guide review, but only researcher decisions change a saved sample."
+      >
+        {sampleError && (
+          <div className="mb-4 border-l-2 border-rose-400 bg-transparent py-1 pl-3 pr-1 text-sm text-slate-600">
+            {sampleError}
+          </div>
+        )}
+        {sampleActionError && (
+          <div className="mb-4 border-l-2 border-rose-400 bg-transparent py-1 pl-3 pr-1 text-sm text-slate-600">
+            {sampleActionError}
+          </div>
+        )}
+        {sampleActionMessage && (
+          <div className="mb-4 border-l-2 border-cyan-400 bg-transparent py-1 pl-3 pr-1 text-sm text-slate-600">
+            {sampleActionMessage}
+          </div>
+        )}
+
+        <div className="grid gap-5 xl:grid-cols-[0.82fr_1.18fr]">
+          <div className="space-y-4">
+            <div className="rounded-2xl border shadow-[0_8px_24px_rgba(15,23,42,0.065),0_2px_6px_rgba(15,23,42,0.035)] border-slate-200 bg-slate-50 p-4">
+              <div className="flex flex-wrap items-start justify-between gap-3">
+                <div>
+                  <p className="text-sm font-semibold text-slate-900">Create analysis sample</p>
+                  <p className="mt-1 text-xs leading-5 text-slate-500">
+                    New samples begin with all current live participants included. Review/exclude decisions are always explicit.
+                  </p>
+                </div>
+                <span className="rounded-full bg-white px-2.5 py-1 text-[10px] font-bold uppercase tracking-wide text-slate-500">
+                  No auto-exclusion
+                </span>
+              </div>
+
+              <label className="mt-4 block">
+                <span className="text-xs font-semibold text-slate-600">Sample name</span>
+                <input
+                  value={newSampleName}
+                  onChange={(event) => setNewSampleName(event.target.value)}
+                  className="mt-2 w-full rounded-xl border shadow-[0_5px_18px_rgba(15,23,42,0.06),0_1px_4px_rgba(15,23,42,0.035)] border-slate-300/70 bg-white px-3 py-2.5 text-sm shadow-[0_2px_6px_rgba(15,23,42,0.035)]"
+                  placeholder="Primary analysis"
+                />
+              </label>
+
+              <div className="mt-3 grid grid-cols-2 gap-2">
+                {[
+                  ["primary", "Primary"],
+                  ["per_protocol", "Per-protocol"],
+                  ["sensitivity", "Sensitivity"],
+                  ["custom", "Custom"],
+                ].map(([value, label]) => (
+                  <button
+                    key={value}
+                    type="button"
+                    onClick={() => {
+                      setNewSampleType(value as typeof newSampleType);
+                      if (value === "primary") setNewSampleName("Primary analysis");
+                      if (value === "per_protocol") setNewSampleName("Per-protocol");
+                      if (value === "sensitivity") setNewSampleName("Sensitivity analysis");
+                      if (value === "custom" && newSampleName === "Primary analysis") setNewSampleName("Custom sample");
+                    }}
+                    className={`rounded-xl border shadow-[0_5px_18px_rgba(15,23,42,0.06),0_1px_4px_rgba(15,23,42,0.035)] px-3 py-2 text-xs font-semibold ${
+                      newSampleType === value
+                        ? "border-cyan-700 bg-cyan-50 text-cyan-800"
+                        : "border-slate-300/70 bg-white text-slate-600"
+                    }`}
+                  >
+                    {label}
+                  </button>
+                ))}
+              </div>
+
+              <button
+                type="button"
+                onClick={() => void createAnalysisSample()}
+                disabled={sampleSaving || !selectedStudyId || liveParticipants.length === 0}
+                className="mt-4 w-full rounded-full bg-slate-950 px-4 py-2.5 text-sm font-semibold text-white shadow-[0_5px_14px_rgba(15,23,42,0.16)] disabled:opacity-50"
+              >
+                {sampleSaving ? "Saving..." : "Create sample"}
+              </button>
+            </div>
+
+            <div className="space-y-2">
+              <div className="flex items-center justify-between gap-3 px-1">
+                <p className="text-xs font-semibold uppercase tracking-[0.12em] text-slate-400">Saved samples</p>
+                {loadingSamples && <span className="text-xs text-slate-400">Loading...</span>}
+              </div>
+              {analysisSamples.length === 0 ? (
+                <div className="rounded-2xl border shadow-[0_8px_24px_rgba(15,23,42,0.065),0_2px_6px_rgba(15,23,42,0.035)] border-dashed border-slate-300/70 bg-white p-4 text-sm leading-6 text-slate-500">
+                  No saved sample yet. Create one above when you are ready to formalize participant inclusion decisions.
+                </div>
+              ) : (
+                analysisSamples.map((sample) => {
+                  const sampleMembers = analysisSampleMembers.filter((member) => member.sample_id === sample.id);
+                  const included = sampleMembers.filter((member) => member.decision === "include").length;
+                  const review = sampleMembers.filter((member) => member.decision === "review").length;
+                  const excluded = sampleMembers.filter((member) => member.decision === "exclude").length;
+                  const active = selectedAnalysisSample?.id === sample.id;
+                  return (
+                    <button
+                      key={sample.id}
+                      type="button"
+                      onClick={() => {
+                        setSelectedAnalysisSampleId(sample.id);
+                        setSampleActionError("");
+                        setSampleActionMessage("");
+                      }}
+                      className={`w-full rounded-2xl border shadow-[0_8px_24px_rgba(15,23,42,0.065),0_2px_6px_rgba(15,23,42,0.035)] p-4 text-left transition ${
+                        active
+                          ? "border-slate-900 bg-slate-900 text-white"
+                          : "border-slate-300/70 bg-white hover:border-slate-300"
+                      }`}
+                    >
+                      <div className="flex items-start justify-between gap-3">
+                        <div>
+                          <p className={`text-sm font-semibold ${active ? "text-white" : "text-slate-900"}`}>{sample.name}</p>
+                          <p className={`mt-1 text-[11px] uppercase tracking-wide ${active ? "text-slate-300" : "text-slate-400"}`}>
+                            {sample.sample_type.replaceAll("_", " ")}
+                          </p>
+                        </div>
+                        <span className={`rounded-full px-2.5 py-1 text-[10px] font-semibold ${active ? "bg-white/10 text-white" : "bg-slate-100 text-slate-500"}`}>
+                          n={included}
+                        </span>
+                      </div>
+                      <div className={`mt-3 flex gap-3 text-[11px] ${active ? "text-slate-300" : "text-slate-500"}`}>
+                        <span>{included} included</span>
+                        <span>{review} review</span>
+                        <span>{excluded} excluded</span>
+                      </div>
+                    </button>
+                  );
+                })
+              )}
+            </div>
+          </div>
+
+          <div className="rounded-2xl border shadow-[0_8px_24px_rgba(15,23,42,0.065),0_2px_6px_rgba(15,23,42,0.035)] border-slate-300/70 bg-white p-5">
+            {!selectedAnalysisSample ? (
+              <div className="flex min-h-[320px] items-center justify-center rounded-2xl bg-slate-50 p-6 text-center">
+                <div>
+                  <p className="font-semibold text-slate-900">Create or select an analysis sample</p>
+                  <p className="mt-2 max-w-md text-sm leading-6 text-slate-500">
+                    Saved samples turn the visual review process into a reproducible researcher-controlled participant set.
+                  </p>
+                </div>
+              </div>
+            ) : (
+              <div className="space-y-5">
+                <div className="flex flex-wrap items-start justify-between gap-3">
+                  <div>
+                    <p className="text-lg font-semibold text-slate-950">{selectedAnalysisSample.name}</p>
+                    <p className="mt-1 text-xs leading-5 text-slate-500">
+                      Updated {new Date(selectedAnalysisSample.updated_at).toLocaleString()} · current live recruitment is not silently added after sample creation.
+                    </p>
+                  </div>
+                  {notYetInSampleCount > 0 ? (
+                    <button
+                      type="button"
+                      disabled={sampleSaving}
+                      onClick={() => void addCurrentLiveParticipantsToSample()}
+                      className="rounded-xl border shadow-[0_5px_18px_rgba(15,23,42,0.06),0_1px_4px_rgba(15,23,42,0.035)] border-cyan-200 bg-cyan-50 px-3 py-2 text-xs font-semibold text-cyan-800 disabled:opacity-50"
+                    >
+                      Add {notYetInSampleCount} newer participant{notYetInSampleCount === 1 ? "" : "s"}
+                    </button>
+                  ) : (
+                    <Status type="success">Current recruitment represented</Status>
+                  )}
+                </div>
+
+                <div className="grid gap-3 sm:grid-cols-3">
+                  <div className="rounded-xl border shadow-[0_5px_18px_rgba(15,23,42,0.06),0_1px_4px_rgba(15,23,42,0.035)] border-cyan-200 bg-cyan-50 px-4 py-3">
+                    <p className="text-[11px] font-semibold uppercase tracking-wide text-cyan-700">Included</p>
+                    <p className="mt-1 text-2xl font-semibold text-cyan-950">{includedSampleCount}</p>
+                  </div>
+                  <div className="rounded-xl border shadow-[0_5px_18px_rgba(15,23,42,0.06),0_1px_4px_rgba(15,23,42,0.035)] border-[#d8d1f6] bg-[#f8f6ff] px-4 py-3">
+                    <p className="text-[11px] font-semibold uppercase tracking-wide text-violet-700">Review</p>
+                    <p className="mt-1 text-2xl font-semibold text-violet-950">{reviewSampleCount}</p>
+                  </div>
+                  <div className="rounded-xl border shadow-[0_5px_18px_rgba(15,23,42,0.06),0_1px_4px_rgba(15,23,42,0.035)] border-rose-200 bg-rose-50 px-4 py-3">
+                    <p className="text-[11px] font-semibold uppercase tracking-wide text-rose-700">Excluded</p>
+                    <p className="mt-1 text-2xl font-semibold text-rose-950">{excludedSampleCount}</p>
+                  </div>
+                </div>
+
+                <div className="grid gap-4 lg:grid-cols-[0.8fr_1.2fr]">
+                  <div className="max-h-[470px] space-y-2 overflow-auto rounded-2xl border shadow-[0_8px_24px_rgba(15,23,42,0.065),0_2px_6px_rgba(15,23,42,0.035)] border-slate-200 bg-slate-50 p-3">
+                    {liveParticipants.map((participant) => {
+                      const member = selectedSampleMemberMap.get(participant.id);
+                      const preview = reviewRows.find((row) => row.participant.id === participant.id);
+                      const active = sampleParticipantId === participant.id;
+                      const decision = member?.decision || "not_added";
+                      return (
+                        <button
+                          key={participant.id}
+                          type="button"
+                          onClick={() => setSampleParticipantId(participant.id)}
+                          className={`w-full rounded-xl border shadow-[0_5px_18px_rgba(15,23,42,0.06),0_1px_4px_rgba(15,23,42,0.035)] px-3 py-3 text-left transition ${
+                            active
+                              ? "border-slate-900 bg-slate-900 text-white"
+                              : "border-slate-300/70 bg-white hover:border-slate-300"
+                          }`}
+                        >
+                          <div className="flex items-center justify-between gap-3">
+                            <div>
+                              <p className={`text-sm font-semibold ${active ? "text-white" : "text-slate-900"}`}>{participant.public_id}</p>
+                              <p className={`mt-1 text-[11px] ${active ? "text-slate-300" : "text-slate-400"}`}>
+                                System preview: {preview?.stage || "—"}
+                              </p>
+                            </div>
+                            <span className={`rounded-full px-2.5 py-1 text-[10px] font-semibold ${
+                              active
+                                ? "bg-white/10 text-white"
+                                : decision === "include"
+                                  ? "bg-cyan-50 text-cyan-700"
+                                  : decision === "exclude"
+                                    ? "bg-rose-50 text-rose-700"
+                                    : decision === "review"
+                                      ? "bg-violet-50 text-violet-700"
+                                      : "bg-slate-100 text-slate-500"
+                            }`}>
+                              {decision.replaceAll("_", " ")}
+                            </span>
+                          </div>
+                        </button>
+                      );
+                    })}
+                  </div>
+
+                  <div className="rounded-2xl border shadow-[0_8px_24px_rgba(15,23,42,0.065),0_2px_6px_rgba(15,23,42,0.035)] border-slate-200 p-4">
+                    {!sampleParticipantId ? (
+                      <p className="text-sm text-slate-500">Select a participant to edit their sample decision.</p>
+                    ) : (
+                      <div className="space-y-4">
+                        <div>
+                          <p className="text-sm font-semibold text-slate-900">
+                            {liveParticipants.find((participant) => participant.id === sampleParticipantId)?.public_id || "Participant"}
+                          </p>
+                          <p className="mt-1 text-xs leading-5 text-slate-500">
+                            Sample decisions are independent from the automatic quality-preview labels. You remain in control.
+                          </p>
+                        </div>
+
+                        <div className="grid grid-cols-3 gap-2">
+                          {[
+                            ["include", "Include"],
+                            ["review", "Review"],
+                            ["exclude", "Exclude"],
+                          ].map(([value, label]) => (
+                            <button
+                              key={value}
+                              type="button"
+                              onClick={() => setSampleDecision(value as "include" | "review" | "exclude")}
+                              className={`rounded-xl border shadow-[0_5px_18px_rgba(15,23,42,0.06),0_1px_4px_rgba(15,23,42,0.035)] px-3 py-2.5 text-xs font-semibold ${
+                                sampleDecision === value
+                                  ? value === "include"
+                                    ? "border-cyan-600 bg-cyan-50 text-cyan-800"
+                                    : value === "review"
+                                      ? "border-violet-500 bg-violet-50 text-violet-800"
+                                      : "border-rose-500 bg-rose-50 text-rose-800"
+                                  : "border-slate-300/70 bg-white text-slate-500"
+                              }`}
+                            >
+                              {label}
+                            </button>
+                          ))}
+                        </div>
+
+                        <label className="block">
+                          <span className="text-xs font-semibold text-slate-600">
+                            Reason {sampleDecision === "include" ? "(optional)" : "(required)"}
+                          </span>
+                          <select
+                            value={sampleReason}
+                            onChange={(event) => setSampleReason(event.target.value)}
+                            className="mt-2 w-full rounded-xl border shadow-[0_5px_18px_rgba(15,23,42,0.06),0_1px_4px_rgba(15,23,42,0.035)] border-slate-300/70 bg-white px-3 py-2.5 text-sm shadow-[0_2px_6px_rgba(15,23,42,0.035)]"
+                          >
+                            <option value="">Select a reason</option>
+                            <option value="Missing required data">Missing required data</option>
+                            <option value="Technical failure">Technical failure</option>
+                            <option value="High omission rate">High omission rate</option>
+                            <option value="Timing or visibility issue">Timing or visibility issue</option>
+                            <option value="Protocol deviation">Protocol deviation</option>
+                            <option value="Participant withdrawal or request">Participant withdrawal or request</option>
+                            <option value="Researcher review decision">Researcher review decision</option>
+                            <option value="Other">Other</option>
+                          </select>
+                        </label>
+
+                        <label className="block">
+                          <span className="text-xs font-semibold text-slate-600">Researcher note</span>
+                          <textarea
+                            value={sampleNotes}
+                            onChange={(event) => setSampleNotes(event.target.value)}
+                            rows={4}
+                            className="mt-2 w-full resize-y rounded-xl border shadow-[0_5px_18px_rgba(15,23,42,0.06),0_1px_4px_rgba(15,23,42,0.035)] border-slate-300/70 bg-white px-3 py-2.5 text-sm shadow-[0_2px_6px_rgba(15,23,42,0.035)]"
+                            placeholder="Optional explanation, audit note or protocol reference..."
+                          />
+                        </label>
+
+                        <button
+                          type="button"
+                          disabled={sampleSaving}
+                          onClick={() => void saveSampleParticipantDecision()}
+                          className="w-full rounded-full bg-slate-950 px-4 py-2.5 text-sm font-semibold text-white shadow-[0_5px_14px_rgba(15,23,42,0.16)] disabled:opacity-50"
+                        >
+                          {sampleSaving ? "Saving..." : "Save participant decision"}
+                        </button>
+
+                        <p className="text-[11px] leading-5 text-slate-400">
+                          Excluding a participant here only affects this saved analysis sample. Their raw questionnaire, cognitive, demographic, ambulatory and session data remain stored and exportable from the full dataset.
+                        </p>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
+      </Panel>
 
       <Panel
         title="Latest questionnaire responses"
@@ -14614,7 +16897,7 @@ function DataDashboard({
           <button
             type="button"
             onClick={() => changeScreen("explorer")}
-            className="rounded-xl border border-slate-200 px-4 py-2.5 text-sm font-semibold"
+            className="rounded-full border shadow-[0_5px_16px_rgba(15,23,42,0.075),0_1px_3px_rgba(15,23,42,0.04)] border-slate-300/70 bg-white px-4 py-2.5 text-sm font-semibold shadow-[0_2px_6px_rgba(15,23,42,0.04)]"
           >
             Open Data Explorer
           </button>
@@ -14622,7 +16905,7 @@ function DataDashboard({
           <button
             type="button"
             onClick={() => changeScreen("exports")}
-            className="rounded-xl bg-slate-950 px-4 py-2.5 text-sm font-semibold text-white"
+            className="rounded-full bg-slate-950 px-4 py-2.5 text-sm font-semibold text-white shadow-[0_5px_14px_rgba(15,23,42,0.16)]"
           >
             Export study data
           </button>
@@ -14753,7 +17036,7 @@ function ResearchParticipantUploadActions({
             type="button"
             onClick={() => void openPreview()}
             disabled={opening || downloading}
-            className="rounded-lg border border-slate-200 px-3 py-1.5 text-xs font-semibold text-slate-700 hover:border-cyan-300 hover:text-cyan-800 disabled:opacity-50"
+            className="rounded-lg border shadow-[0_3px_10px_rgba(15,23,42,0.05)] border-slate-200 px-3 py-1.5 text-xs font-semibold text-slate-700 hover:border-cyan-300 hover:text-cyan-800 disabled:opacity-50"
           >
             {opening ? "Opening..." : "Preview"}
           </button>
@@ -14790,7 +17073,7 @@ function ResearchParticipantUploadActions({
               <button
                 type="button"
                 onClick={() => setPreview(null)}
-                className="rounded-lg border border-slate-200 px-3 py-1.5 text-xs font-semibold"
+                className="rounded-lg border shadow-[0_3px_10px_rgba(15,23,42,0.05)] border-slate-200 px-3 py-1.5 text-xs font-semibold"
               >
                 Close
               </button>
@@ -14811,7 +17094,7 @@ function ResearchParticipantUploadActions({
               <iframe
                 src={preview.url}
                 title={preview.name}
-                className="h-[75vh] w-full rounded-xl border border-slate-200"
+                className="h-[75vh] w-full rounded-xl border shadow-[0_5px_18px_rgba(15,23,42,0.06),0_1px_4px_rgba(15,23,42,0.035)] border-slate-200"
               />
             ) : null}
           </div>
@@ -14842,6 +17125,8 @@ function DataExplorer() {
   const [includeTestData, setIncludeTestData] = useState(false);
   const [showDirectIdentifiers, setShowDirectIdentifiers] =
     useState(false);
+  const [showVariableDictionary, setShowVariableDictionary] = useState(false);
+  const [copyTableStatus, setCopyTableStatus] = useState("");
 
   const rows = researchBuildRows(
     bundle,
@@ -14865,6 +17150,9 @@ function DataExplorer() {
   const columns = Array.from(
     new Set(displayedRows.flatMap((row) => Object.keys(row)))
   );
+  const allFilteredColumns = Array.from(
+    new Set(filteredRows.flatMap((row) => Object.keys(row)))
+  );
   const displayColumns =
     datasetType === "participant_uploads"
       ? [...columns, "__file_actions"]
@@ -14875,6 +17163,48 @@ function DataExplorer() {
     datasetType,
     showDirectIdentifiers
   );
+
+  function researchClipboardCell(value: unknown) {
+    return researchValueText(value)
+      .replace(/\t/g, " ")
+      .replace(/\r?\n/g, " ")
+      .trim();
+  }
+
+  async function copyEntireFilteredTable() {
+    if (filteredRows.length === 0 || allFilteredColumns.length === 0) return;
+
+    const text = [
+      allFilteredColumns.join("\t"),
+      ...filteredRows.map((row) =>
+        allFilteredColumns
+          .map((column) => researchClipboardCell(row[column]))
+          .join("\t")
+      ),
+    ].join("\n");
+
+    try {
+      await navigator.clipboard.writeText(text);
+      setCopyTableStatus(
+        `Copied all ${filteredRows.length} row${filteredRows.length === 1 ? "" : "s"}`
+      );
+    } catch {
+      const textarea = document.createElement("textarea");
+      textarea.value = text;
+      textarea.style.position = "fixed";
+      textarea.style.opacity = "0";
+      document.body.appendChild(textarea);
+      textarea.focus();
+      textarea.select();
+      document.execCommand("copy");
+      textarea.remove();
+      setCopyTableStatus(
+        `Copied all ${filteredRows.length} row${filteredRows.length === 1 ? "" : "s"}`
+      );
+    }
+
+    window.setTimeout(() => setCopyTableStatus(""), 2200);
+  }
 
   return (
     <div className="space-y-5">
@@ -14888,7 +17218,7 @@ function DataExplorer() {
             <select
               value={selectedStudyId}
               onChange={(event) => setSelectedStudyId(event.target.value)}
-              className="mt-2 w-full rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm"
+              className="mt-2 w-full rounded-xl border shadow-[0_5px_18px_rgba(15,23,42,0.06),0_1px_4px_rgba(15,23,42,0.035)] border-slate-300/70 bg-white px-4 py-3 text-sm shadow-[0_2px_6px_rgba(15,23,42,0.035)]"
             >
               {studies.map((study) => (
                 <option key={study.id} value={study.id}>
@@ -14907,7 +17237,7 @@ function DataExplorer() {
                   event.target.value as ResearchDatasetType
                 )
               }
-              className="mt-2 w-full rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm"
+              className="mt-2 w-full rounded-xl border shadow-[0_5px_18px_rgba(15,23,42,0.06),0_1px_4px_rgba(15,23,42,0.035)] border-slate-300/70 bg-white px-4 py-3 text-sm shadow-[0_2px_6px_rgba(15,23,42,0.035)]"
             >
               {Object.entries(researchDatasetLabels).map(
                 ([value, label]) => (
@@ -14925,10 +17255,10 @@ function DataExplorer() {
             value={search}
             onChange={(event) => setSearch(event.target.value)}
             placeholder="Search participant ID, variable, item or response..."
-            className="rounded-xl border border-slate-200 px-4 py-3 text-sm outline-none focus:border-cyan-700"
+            className="rounded-xl border shadow-[0_5px_18px_rgba(15,23,42,0.06),0_1px_4px_rgba(15,23,42,0.035)] border-slate-200 px-4 py-3 text-sm outline-none focus:border-cyan-700"
           />
 
-          <label className="flex items-center gap-2 rounded-xl border border-slate-200 px-4 py-3 text-xs">
+          <label className="flex items-center gap-2 rounded-xl border shadow-[0_5px_18px_rgba(15,23,42,0.06),0_1px_4px_rgba(15,23,42,0.035)] border-slate-200 px-4 py-3 text-xs">
             <input
               type="checkbox"
               checked={includeTestData}
@@ -14939,7 +17269,7 @@ function DataExplorer() {
             Include TEST data
           </label>
 
-          <label className="flex items-center gap-2 rounded-xl border border-slate-200 px-4 py-3 text-xs">
+          <label className="flex items-center gap-2 rounded-xl border shadow-[0_5px_18px_rgba(15,23,42,0.06),0_1px_4px_rgba(15,23,42,0.035)] border-slate-200 px-4 py-3 text-xs">
             <input
               type="checkbox"
               checked={showDirectIdentifiers}
@@ -14952,7 +17282,7 @@ function DataExplorer() {
         </div>
 
         {selectedStudy && (
-          <div className="mt-4 flex flex-wrap gap-2">
+          <div className="mt-4 flex flex-wrap items-center gap-2">
             <Status type="accent">
               {researchDatasetLabels[datasetType]}
             </Status>
@@ -14960,12 +17290,24 @@ function DataExplorer() {
               {filteredRows.length} row
               {filteredRows.length === 1 ? "" : "s"}
             </span>
+            <button
+              type="button"
+              onClick={() => setShowVariableDictionary((current) => !current)}
+              className={`rounded-full border shadow-[0_5px_16px_rgba(15,23,42,0.075),0_1px_3px_rgba(15,23,42,0.04)] px-2.5 py-1 text-[11px] font-semibold transition ${
+                showVariableDictionary
+                  ? "border-cyan-300/70 bg-[#ecfbff] text-cyan-900"
+                  : "border-slate-300/70 bg-white text-slate-500 hover:border-slate-300 hover:text-slate-700"
+              }`}
+              aria-expanded={showVariableDictionary}
+            >
+              {showVariableDictionary ? "Hide variables" : `Variables · ${codebook.length}`}
+            </button>
           </div>
         )}
       </Panel>
 
       {error && (
-        <div className="rounded-2xl border border-red-200 bg-red-50 px-5 py-4">
+        <div className="border-l-2 border-rose-400 bg-transparent py-1 pl-3 pr-1">
           <p className="text-sm leading-6 text-red-700">{error}</p>
         </div>
       )}
@@ -14974,10 +17316,31 @@ function DataExplorer() {
         title="Dataset"
         description={
           filteredRows.length > 250
-            ? `Showing the first 250 of ${filteredRows.length} matching rows. Use Export Data for the complete dataset.`
+            ? `Showing the first 250 of ${filteredRows.length} matching rows. Copy table copies all ${filteredRows.length} matching rows.`
             : "The table below is generated from the selected study's stored data."
         }
       >
+        <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+          <p className="text-xs text-slate-400">
+            Copy uses the rows currently shown in this preview after search and filters.
+          </p>
+          <div className="flex items-center gap-2">
+            {copyTableStatus && (
+              <span className="text-xs font-medium text-cyan-700">
+                {copyTableStatus}
+              </span>
+            )}
+            <button
+              type="button"
+              onClick={() => void copyEntireFilteredTable()}
+              disabled={loading || filteredRows.length === 0}
+              className="rounded-lg border shadow-[0_3px_10px_rgba(15,23,42,0.05)] border-slate-300/70 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 transition hover:border-cyan-300 hover:text-cyan-800 disabled:cursor-not-allowed disabled:opacity-40"
+            >
+              Copy table
+            </button>
+          </div>
+        </div>
+
         {loading ? (
           <p className="text-sm text-slate-500">Loading study data...</p>
         ) : displayedRows.length === 0 ? (
@@ -15041,10 +17404,11 @@ function DataExplorer() {
         )}
       </Panel>
 
-      <Panel
-        title="Variable dictionary"
-        description="Variables are generated from the study configuration and the exact questionnaire versions attached to the study."
-      >
+      {showVariableDictionary && (
+        <Panel
+          title="Variable dictionary"
+          description="Variables are generated from the study configuration and the exact questionnaire versions attached to the study."
+        >
         {codebook.length === 0 ? (
           <p className="text-sm text-slate-500">
             No variables are available for this dataset yet.
@@ -15054,7 +17418,7 @@ function DataExplorer() {
             {codebook.slice(0, 80).map((variable) => (
               <div
                 key={`${variable.source}-${variable.variable}`}
-                className="rounded-xl border border-slate-200 p-4"
+                className="rounded-xl border shadow-[0_5px_18px_rgba(15,23,42,0.06),0_1px_4px_rgba(15,23,42,0.035)] border-slate-200 p-4"
               >
                 <code className="break-all text-sm font-semibold text-cyan-800">
                   {variable.variable}
@@ -15083,6 +17447,7 @@ function DataExplorer() {
           </p>
         )}
       </Panel>
+      )}
 
       <ResearchCognitiveDataPanel bundle={bundle} />
 
@@ -15120,6 +17485,43 @@ function ExportData() {
     error,
   } = useResearchDataWorkspace();
 
+  const {
+    samples: exportAnalysisSamples,
+    members: exportAnalysisSampleMembers,
+    loadingSamples: loadingExportSamples,
+    sampleError: exportSampleError,
+  } = useResearchAnalysisSamples(selectedStudyId);
+  const [selectedExportSampleId, setSelectedExportSampleId] = useState("all");
+
+  const selectedExportSample =
+    exportAnalysisSamples.find((sample) => sample.id === selectedExportSampleId) ||
+    null;
+  const selectedExportMembers = selectedExportSample
+    ? exportAnalysisSampleMembers.filter(
+        (member) => member.sample_id === selectedExportSample.id
+      )
+    : [];
+  const includedExportParticipantIds = new Set(
+    selectedExportMembers
+      .filter((member) => member.decision === "include")
+      .map((member) => member.participant_id)
+  );
+  const includedExportParticipantKey = Array.from(
+    includedExportParticipantIds
+  )
+    .sort()
+    .join("|");
+  const exportBundle = useMemo(
+    () =>
+      selectedExportSample
+        ? researchFilterBundleToParticipantIds(
+            bundle,
+            includedExportParticipantIds
+          )
+        : bundle,
+    [bundle, selectedExportSample?.id, includedExportParticipantKey]
+  );
+
   const [datasetType, setDatasetType] =
     useState<ResearchDatasetType>("analysis_wide");
   const [format, setFormat] =
@@ -15143,6 +17545,8 @@ function ExportData() {
   const [exporting, setExporting] = useState(false);
   const [exportError, setExportError] = useState("");
   const [exportMessage, setExportMessage] = useState("");
+  const [visualExportPreset, setVisualExportPreset] =
+    useState<ResearchVisualExportPreset>("complete");
 
   useEffect(() => {
     if (!includeDirectIdentifiers) {
@@ -15150,8 +17554,137 @@ function ExportData() {
     }
   }, [includeDirectIdentifiers]);
 
+  useEffect(() => {
+    if (selectedExportSampleId !== "all") {
+      setIncludeTestData(false);
+    }
+  }, [selectedExportSampleId]);
+
+  const visualExportPresets: Array<{
+    id: ResearchVisualExportPreset;
+    name: string;
+    eyebrow: string;
+    description: string;
+    mode: ResearchWorkbookMode;
+    recommended?: boolean;
+    sheetNames?: string[];
+  }> = [
+    {
+      id: "complete",
+      name: "Complete research archive",
+      eyebrow: "Everything together",
+      description:
+        "Clean analysis sheets + complete raw observations + documentation. Best for archiving, handover and reproducibility.",
+      mode: "complete",
+      recommended: true,
+    },
+    {
+      id: "analysis",
+      name: "Thesis / analysis workbook",
+      eyebrow: "Clean and practical",
+      description:
+        "Analysis-ready participant, questionnaire, cognitive and ambulatory summaries without the large raw observation tables.",
+      mode: "clean",
+    },
+    {
+      id: "stats",
+      name: "SPSS · jamovi · JASP",
+      eyebrow: "Statistics-ready",
+      description:
+        "A compact one-row-per-participant analysis file with quality review, variable mapping, import guide and codebook.",
+      mode: "clean",
+      sheetNames: [
+        "README",
+        "Manifest",
+        "Analysis_Compatible",
+        "Data_Quality",
+        "Quality_Flags",
+        "Questionnaire_Scores",
+        "Cognitive_Summary",
+        "Cognitive_Conditions",
+        "Variable_Map",
+        "Import_Guide",
+        "Codebook",
+      ],
+    },
+    {
+      id: "raw",
+      name: "Raw reproducibility archive",
+      eyebrow: "Lossless observations",
+      description:
+        "Raw questionnaire responses, cognitive trials/timing, ambulatory records, participant sessions and consent metadata.",
+      mode: "raw",
+    },
+  ];
+
+  const selectedVisualExportPreset =
+    visualExportPresets.find((preset) => preset.id === visualExportPreset) ||
+    visualExportPresets[0];
+
+  function filterPresetSheets(
+    sheets: ResearchWorkbookSheet[],
+    preset: (typeof visualExportPresets)[number]
+  ) {
+    if (!preset.sheetNames) return sheets;
+    const allowed = new Set(preset.sheetNames);
+    const filtered = sheets.filter((sheet) => allowed.has(sheet.name));
+
+    return filtered.map((sheet) =>
+      sheet.name === "Manifest"
+        ? {
+            ...sheet,
+            rows: sheet.rows.filter((row) =>
+              allowed.has(String(row.sheet ?? ""))
+            ),
+          }
+        : sheet
+    );
+  }
+
+  const workbookPreviewSheets = useMemo(
+    () =>
+      selectedStudy
+        ? filterPresetSheets(
+            researchBuildUniversalWorkbook(
+              exportBundle,
+              selectedStudy,
+              selectedVisualExportPreset.mode,
+              identityMode,
+              includeTestData,
+              includeDirectIdentifiers
+            ),
+            selectedVisualExportPreset
+          )
+        : [],
+    [
+      exportBundle,
+      selectedStudy,
+      visualExportPreset,
+      identityMode,
+      includeTestData,
+      includeDirectIdentifiers,
+    ]
+  );
+
+  const workbookPreviewDataRows = workbookPreviewSheets
+    .filter((sheet) => sheet.kind === "clean" || sheet.kind === "raw")
+    .reduce((sum, sheet) => sum + sheet.rows.length, 0);
+  const workbookPreviewParticipantCount = researchFilteredParticipants(
+    exportBundle,
+    includeTestData
+  ).length;
+  const workbookPreviewCleanSheets = workbookPreviewSheets.filter(
+    (sheet) => sheet.kind === "clean"
+  ).length;
+  const workbookPreviewRawSheets = workbookPreviewSheets.filter(
+    (sheet) => sheet.kind === "raw"
+  ).length;
+  const workbookPreviewDocumentationSheets = workbookPreviewSheets.filter(
+    (sheet) => sheet.kind === "meta" || sheet.kind === "codebook"
+  ).length;
+
   const previewRows = researchBuildRows(
-    bundle,
+    exportBundle,
     datasetType,
     identityMode,
     includeTestData,
@@ -15159,15 +17692,15 @@ function ExportData() {
   );
 
   const codebook = researchBuildCodebook(
-    bundle,
+    exportBundle,
     datasetType,
     includeDirectIdentifiers
   );
 
   const participantQuestionnaireFields =
-    researchParticipantSummaryQuestionnaireFields(bundle);
+    researchParticipantSummaryQuestionnaireFields(exportBundle);
   const analysisQuestionnaireFields =
-    researchAnalysisQuestionnaireFields(bundle);
+    researchAnalysisQuestionnaireFields(exportBundle);
 
   const questionnaireLabelMap = new Map(
     [...participantQuestionnaireFields, ...analysisQuestionnaireFields].map(
@@ -15451,7 +17984,127 @@ function ExportData() {
     );
   }
 
-  async function logExport(rowCount: number) {
+  async function downloadUniversalWorkbook(
+    mode: ResearchWorkbookMode,
+    preset: (typeof visualExportPresets)[number] = selectedVisualExportPreset
+  ) {
+    if (!selectedStudy || exporting) return;
+
+    setExporting(true);
+    setExportError("");
+    setExportMessage("");
+
+    if (includeDirectIdentifiers && !identifierConfirmed) {
+      setExportError(
+        "Confirm that you are authorised to export directly identifying participant fields."
+      );
+      setExporting(false);
+      return;
+    }
+
+    const sheets = filterPresetSheets(
+      researchBuildUniversalWorkbook(
+        exportBundle,
+        selectedStudy,
+        mode,
+        identityMode,
+        includeTestData,
+        includeDirectIdentifiers
+      ),
+      preset
+    );
+    const dataRowCount = sheets
+      .filter((sheet) => sheet.kind === "clean" || sheet.kind === "raw")
+      .reduce((sum, sheet) => sum + sheet.rows.length, 0);
+
+    const timestamp = new Date()
+      .toISOString()
+      .replaceAll(":", "-")
+      .replaceAll(".", "-");
+    const filename = `${researchFilename(selectedStudy.title)}-${preset.id}-research-workbook-${timestamp}.xlsx`;
+
+    try {
+      const response = await fetch("/api/research/export-xlsx", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          workbookTitle: `${selectedStudy.title} — PsyLattice ${preset.name}`,
+          filename,
+          sheets: sheets.map((sheet) => ({
+            name: sheet.name,
+            kind: sheet.kind,
+            description: sheet.description,
+            rows: sheet.rows,
+          })),
+        }),
+      });
+
+      if (!response.ok) {
+        const payload = await response.json().catch(() => ({}));
+        throw new Error(
+          payload?.error || "The universal Excel workbook could not be generated."
+        );
+      }
+
+      const blob = await response.blob();
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = filename;
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      window.setTimeout(() => URL.revokeObjectURL(url), 1000);
+
+      const savedLog = await logExport(dataRowCount, {
+        datasetType: `universal_workbook_${mode}`,
+        exportFormat: "xlsx",
+        metadata: {
+          workbook_mode: mode,
+          export_preset: preset.id,
+          export_preset_name: preset.name,
+          worksheet_count: sheets.length,
+          included_sheets: sheets.map((sheet) => sheet.name),
+          analysis_sample_id: selectedExportSample?.id || null,
+          analysis_sample_name: selectedExportSample?.name || "All live participants",
+          analysis_sample_included_count: selectedExportSample
+            ? includedExportParticipantIds.size
+            : null,
+        },
+      });
+
+      if (savedLog) {
+        setBundle((previous) => ({
+          ...previous,
+          exportLogs: [
+            savedLog,
+            ...previous.exportLogs.filter((entry) => entry.id !== savedLog.id),
+          ].slice(0, 25),
+        }));
+      }
+
+      setExportMessage(
+        `${preset.name} exported with ${sheets.length} worksheets and ${dataRowCount.toLocaleString()} data rows.`
+      );
+    } catch (error) {
+      setExportError(
+        error instanceof Error
+          ? error.message
+          : "The universal Excel workbook could not be generated."
+      );
+    } finally {
+      setExporting(false);
+    }
+  }
+
+  async function logExport(
+    rowCount: number,
+    override?: {
+      datasetType?: string;
+      exportFormat?: "csv" | "json" | "xlsx";
+      metadata?: Record<string, unknown>;
+    }
+  ) {
     if (!selectedStudyId) return null;
 
     const supabase = createClient();
@@ -15468,8 +18121,8 @@ function ExportData() {
       .insert({
         study_id: selectedStudyId,
         owner_user_id: user.id,
-        dataset_type: datasetType,
-        export_format: format,
+        dataset_type: override?.datasetType || datasetType,
+        export_format: override?.exportFormat || format,
         identity_mode: identityMode,
         include_test_data: includeTestData,
         include_direct_identifiers: includeDirectIdentifiers,
@@ -15478,6 +18131,9 @@ function ExportData() {
           study_title: selectedStudy?.title || "",
           codebook_variables: codebook.length,
           generated_client_side: true,
+          analysis_sample_id: selectedExportSample?.id || null,
+          analysis_sample_name: selectedExportSample?.name || "All live participants",
+          ...(override?.metadata || {}),
         },
       })
       .select(
@@ -15554,6 +18210,8 @@ function ExportData() {
                   includeTestData,
                 include_direct_identifiers:
                   includeDirectIdentifiers,
+                analysis_sample_id: selectedExportSample?.id || null,
+                analysis_sample_name: selectedExportSample?.name || "All live participants",
                 columns:
                   selectedColumns,
                 generated_at:
@@ -15647,29 +18305,390 @@ function ExportData() {
   return (
     <div className="space-y-5">
       {error && (
-        <div className="rounded-2xl border border-red-200 bg-red-50 px-5 py-4">
+        <div className="border-l-2 border-rose-400 bg-transparent py-1 pl-3 pr-1">
           <p className="text-sm leading-6 text-red-700">{error}</p>
         </div>
       )}
 
       {exportError && (
-        <div className="rounded-2xl border border-red-200 bg-red-50 px-5 py-4">
+        <div className="border-l-2 border-rose-400 bg-transparent py-1 pl-3 pr-1">
           <p className="text-sm leading-6 text-red-700">{exportError}</p>
         </div>
       )}
 
       {exportMessage && (
-        <div className="rounded-2xl border border-emerald-200 bg-emerald-50 px-5 py-4">
-          <p className="text-sm leading-6 text-emerald-800">
+        <div className="border-l-2 border-cyan-400 bg-transparent py-1 pl-3 pr-1">
+          <p className="text-sm leading-6 text-cyan-800">
             {exportMessage}
           </p>
         </div>
       )}
 
+      <Panel
+        title="Export population"
+        description="Choose whether this export uses the full current study dataset or one of your saved researcher-controlled analysis samples."
+      >
+        {exportSampleError && (
+          <div className="mb-4 border-l-2 border-rose-400 bg-transparent py-1 pl-3 pr-1 text-sm text-slate-600">
+            {exportSampleError}
+          </div>
+        )}
+
+        <div className="grid gap-4 lg:grid-cols-[1fr_.9fr]">
+          <div>
+            <label className="block">
+              <span className="text-sm font-medium text-slate-800">Participants to export</span>
+              <select
+                value={selectedExportSampleId}
+                onChange={(event) => setSelectedExportSampleId(event.target.value)}
+                className="mt-2 w-full rounded-xl border shadow-[0_5px_18px_rgba(15,23,42,0.06),0_1px_4px_rgba(15,23,42,0.035)] border-slate-300/70 bg-white px-4 py-3 text-sm shadow-[0_2px_6px_rgba(15,23,42,0.035)]"
+              >
+                <option value="all">All eligible study participants</option>
+                {exportAnalysisSamples.map((sample) => {
+                  const memberRows = exportAnalysisSampleMembers.filter(
+                    (member) => member.sample_id === sample.id
+                  );
+                  const included = memberRows.filter(
+                    (member) => member.decision === "include"
+                  ).length;
+                  return (
+                    <option key={sample.id} value={sample.id}>
+                      {sample.name} · {included} included
+                    </option>
+                  );
+                })}
+              </select>
+            </label>
+
+            <p className="mt-2 text-xs leading-5 text-slate-500">
+              {selectedExportSample
+                ? `Only participants explicitly marked Include in “${selectedExportSample.name}” will be exported. Review/excluded participants remain stored in PsyLattice and are not deleted.`
+                : "Exports use the normal full study population/filter settings. Saved analysis samples remain available as optional reproducible subsets."}
+            </p>
+          </div>
+
+          <div className={`rounded-2xl border shadow-[0_8px_24px_rgba(15,23,42,0.065),0_2px_6px_rgba(15,23,42,0.035)] p-4 ${selectedExportSample ? "border-cyan-200 bg-cyan-50/60" : "border-slate-200 bg-slate-50"}`}>
+            {loadingExportSamples ? (
+              <p className="text-sm text-slate-500">Loading saved samples...</p>
+            ) : selectedExportSample ? (
+              <div>
+                <div className="flex items-center justify-between gap-3">
+                  <div>
+                    <p className="text-sm font-semibold text-slate-900">{selectedExportSample.name}</p>
+                    <p className="mt-1 text-[11px] uppercase tracking-wide text-slate-400">{selectedExportSample.sample_type.replaceAll("_", " ")}</p>
+                  </div>
+                  <Status type="accent">Saved sample</Status>
+                </div>
+                <div className="mt-4 grid grid-cols-3 gap-2 text-center">
+                  <div className="rounded-xl bg-white px-3 py-3">
+                    <p className="text-lg font-semibold text-cyan-700">
+                      {selectedExportMembers.filter((member) => member.decision === "include").length}
+                    </p>
+                    <p className="text-[10px] uppercase tracking-wide text-slate-400">Included</p>
+                  </div>
+                  <div className="rounded-xl bg-white px-3 py-3">
+                    <p className="text-lg font-semibold text-violet-700">
+                      {selectedExportMembers.filter((member) => member.decision === "review").length}
+                    </p>
+                    <p className="text-[10px] uppercase tracking-wide text-slate-400">Review</p>
+                  </div>
+                  <div className="rounded-xl bg-white px-3 py-3">
+                    <p className="text-lg font-semibold text-rose-700">
+                      {selectedExportMembers.filter((member) => member.decision === "exclude").length}
+                    </p>
+                    <p className="text-[10px] uppercase tracking-wide text-slate-400">Excluded</p>
+                  </div>
+                </div>
+              </div>
+            ) : (
+              <div>
+                <p className="text-sm font-semibold text-slate-900">Full study export</p>
+                <p className="mt-2 text-xs leading-5 text-slate-500">
+                  Choose a saved analysis sample above when you want the Excel/CSV/JSON file to contain only a formal participant subset.
+                </p>
+              </div>
+            )}
+          </div>
+        </div>
+      </Panel>
+
+      <Panel
+        title="Visual Export Center"
+        description="Choose the purpose of the export, preview the exact workbook before download, then export with a clear record of sample, privacy settings, sheets and row counts."
+      >
+        <div className="grid gap-4 lg:grid-cols-2 xl:grid-cols-4">
+          {visualExportPresets.map((preset) => {
+            const active = preset.id === visualExportPreset;
+            return (
+              <button
+                key={preset.id}
+                type="button"
+                onClick={() => setVisualExportPreset(preset.id)}
+                className={`relative rounded-2xl border shadow-[0_8px_24px_rgba(15,23,42,0.065),0_2px_6px_rgba(15,23,42,0.035)] p-5 text-left transition ${
+                  active
+                    ? "border-slate-950 bg-slate-950 text-white shadow-sm"
+                    : "border-slate-300/70 bg-white hover:border-slate-400"
+                }`}
+              >
+                {preset.recommended && (
+                  <span
+                    className={`absolute right-3 top-3 rounded-full px-2.5 py-1 text-[9px] font-bold uppercase tracking-[0.12em] ${
+                      active
+                        ? "bg-white text-slate-950"
+                        : "bg-cyan-100 text-cyan-900"
+                    }`}
+                  >
+                    Recommended
+                  </span>
+                )}
+                <p
+                  className={`text-[10px] font-bold uppercase tracking-[0.14em] ${
+                    active ? "text-cyan-300" : "text-slate-400"
+                  }`}
+                >
+                  {preset.eyebrow}
+                </p>
+                <p
+                  className={`mt-2 pr-16 text-sm font-semibold ${
+                    active ? "text-white" : "text-slate-950"
+                  }`}
+                >
+                  {preset.name}
+                </p>
+                <p
+                  className={`mt-2 text-xs leading-5 ${
+                    active ? "text-slate-300" : "text-slate-500"
+                  }`}
+                >
+                  {preset.description}
+                </p>
+              </button>
+            );
+          })}
+        </div>
+
+        <div className="mt-5 grid gap-5 xl:grid-cols-[.78fr_1.22fr]">
+          <div className="space-y-4">
+            <div className="rounded-2xl border shadow-[0_8px_24px_rgba(15,23,42,0.065),0_2px_6px_rgba(15,23,42,0.035)] border-slate-200 bg-slate-50 p-5">
+              <div className="flex items-start justify-between gap-4">
+                <div>
+                  <p className="text-sm font-semibold text-slate-950">What will be exported?</p>
+                  <p className="mt-1 text-xs leading-5 text-slate-500">
+                    This summary reflects the current controls and selected saved sample.
+                  </p>
+                </div>
+                <Status type="accent">Live preview</Status>
+              </div>
+
+              <div className="mt-4 space-y-3">
+                {[
+                  [
+                    "Study",
+                    selectedStudy?.title || "No study selected",
+                  ],
+                  [
+                    "Population",
+                    selectedExportSample
+                      ? selectedExportSample.name
+                      : includeTestData
+                        ? "All eligible + TEST participants"
+                        : "All eligible live participants",
+                  ],
+                  [
+                    "Participants",
+                    workbookPreviewParticipantCount.toLocaleString(),
+                  ],
+                  [
+                    "Identity",
+                    identityMode === "anonymous"
+                      ? "Anonymous export IDs"
+                      : "PsyLattice pseudonymous IDs",
+                  ],
+                  [
+                    "Direct identifiers",
+                    includeDirectIdentifiers ? "Included" : "Excluded",
+                  ],
+                  [
+                    "TEST data",
+                    includeTestData ? "Included" : "Excluded",
+                  ],
+                ].map(([label, value]) => (
+                  <div
+                    key={label}
+                    className="flex items-start justify-between gap-4 border-b border-slate-200/80 pb-2.5 last:border-0 last:pb-0"
+                  >
+                    <span className="text-xs text-slate-500">{label}</span>
+                    <span className="max-w-[65%] text-right text-xs font-semibold text-slate-900">
+                      {value}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            <div className="grid grid-cols-2 gap-3">
+              <div className="rounded-2xl border shadow-[0_8px_24px_rgba(15,23,42,0.065),0_2px_6px_rgba(15,23,42,0.035)] border-slate-300/70 bg-white p-4">
+                <p className="text-2xl font-semibold text-slate-950">{workbookPreviewSheets.length}</p>
+                <p className="mt-1 text-xs text-slate-500">Worksheets</p>
+              </div>
+              <div className="rounded-2xl border shadow-[0_8px_24px_rgba(15,23,42,0.065),0_2px_6px_rgba(15,23,42,0.035)] border-slate-300/70 bg-white p-4">
+                <p className="text-2xl font-semibold text-slate-950">{workbookPreviewDataRows.toLocaleString()}</p>
+                <p className="mt-1 text-xs text-slate-500">Data rows</p>
+              </div>
+              <div className="rounded-2xl border shadow-[0_8px_24px_rgba(15,23,42,0.065),0_2px_6px_rgba(15,23,42,0.035)] border-cyan-200 bg-cyan-50/60 p-4">
+                <p className="text-2xl font-semibold text-cyan-800">{workbookPreviewCleanSheets}</p>
+                <p className="mt-1 text-xs text-cyan-700">Clean sheets</p>
+              </div>
+              <div className="rounded-2xl border shadow-[0_8px_24px_rgba(15,23,42,0.065),0_2px_6px_rgba(15,23,42,0.035)] border-[#d8d1f6] bg-[#f8f6ff]/60 p-4">
+                <p className="text-2xl font-semibold text-violet-800">{workbookPreviewRawSheets}</p>
+                <p className="mt-1 text-xs text-violet-700">Raw sheets</p>
+              </div>
+            </div>
+
+            <button
+              type="button"
+              disabled={exporting || !selectedStudy || workbookPreviewParticipantCount === 0}
+              onClick={() =>
+                void downloadUniversalWorkbook(
+                  selectedVisualExportPreset.mode,
+                  selectedVisualExportPreset
+                )
+              }
+              className="w-full rounded-2xl bg-slate-950 px-5 py-4 text-left text-white transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              <div className="flex items-center justify-between gap-4">
+                <div>
+                  <p className="text-sm font-semibold">
+                    {exporting ? "Preparing workbook..." : `Download ${selectedVisualExportPreset.name}`}
+                  </p>
+                  <p className="mt-1 text-xs text-slate-300">
+                    {workbookPreviewParticipantCount.toLocaleString()} participant{workbookPreviewParticipantCount === 1 ? "" : "s"} · {workbookPreviewSheets.length} sheets · {workbookPreviewDataRows.toLocaleString()} data rows
+                  </p>
+                </div>
+                <span className="text-xl">↓</span>
+              </div>
+            </button>
+
+            {includeDirectIdentifiers && !identifierConfirmed && (
+              <div className="rounded-xl border shadow-[0_5px_18px_rgba(15,23,42,0.06),0_1px_4px_rgba(15,23,42,0.035)] border-[#d8d1f6] bg-[#f8f6ff] px-4 py-3 text-xs leading-5 text-violet-800">
+                Direct identifiers are selected. Confirm authorisation in the privacy controls below before downloading.
+              </div>
+            )}
+          </div>
+
+          <div className="rounded-2xl border shadow-[0_8px_24px_rgba(15,23,42,0.065),0_2px_6px_rgba(15,23,42,0.035)] border-slate-300/70 bg-white p-5">
+            <div className="flex flex-wrap items-start justify-between gap-3">
+              <div>
+                <p className="text-sm font-semibold text-slate-950">Workbook preview</p>
+                <p className="mt-1 text-xs leading-5 text-slate-500">
+                  These are the actual sheets that will be sent to the Excel generator. Empty sheets remain visible when their structure is meaningful.
+                </p>
+              </div>
+              <div className="flex flex-wrap gap-2 text-[10px] font-semibold">
+                <span className="rounded-full bg-cyan-50 px-2.5 py-1 text-cyan-700">{workbookPreviewCleanSheets} clean</span>
+                <span className="rounded-full bg-violet-50 px-2.5 py-1 text-violet-700">{workbookPreviewRawSheets} raw</span>
+                <span className="rounded-full bg-violet-50 px-2.5 py-1 text-violet-700">{workbookPreviewDocumentationSheets} docs</span>
+              </div>
+            </div>
+
+            <div className="mt-4 max-h-[560px] space-y-2 overflow-y-auto pr-1">
+              {workbookPreviewSheets.map((sheet, index) => {
+                const kindClass =
+                  sheet.kind === "raw"
+                    ? "border-[#d8d1f6] bg-[#f8f6ff]/55"
+                    : sheet.kind === "clean"
+                      ? "border-cyan-200 bg-cyan-50/55"
+                      : "border-[#d8d1f6] bg-[#f8f6ff]/50";
+                const kindLabel =
+                  sheet.kind === "raw"
+                    ? "RAW"
+                    : sheet.kind === "clean"
+                      ? "CLEAN"
+                      : "DOC";
+                return (
+                  <div
+                    key={`${sheet.name}-${index}`}
+                    className={`rounded-xl border shadow-[0_5px_18px_rgba(15,23,42,0.06),0_1px_4px_rgba(15,23,42,0.035)] px-4 py-3 ${kindClass}`}
+                  >
+                    <div className="flex items-start justify-between gap-4">
+                      <div className="min-w-0">
+                        <div className="flex flex-wrap items-center gap-2">
+                          <span className="truncate text-sm font-semibold text-slate-900">{sheet.name}</span>
+                          <span className="rounded-full bg-white/80 px-2 py-0.5 text-[9px] font-bold tracking-wide text-slate-500">{kindLabel}</span>
+                        </div>
+                        <p className="mt-1 text-[11px] leading-4 text-slate-500">{sheet.description}</p>
+                      </div>
+                      <div className="shrink-0 text-right">
+                        <p className="text-sm font-semibold text-slate-950">{sheet.rows.length.toLocaleString()}</p>
+                        <p className="text-[10px] text-slate-400">rows</p>
+                      </div>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        </div>
+
+        <div className="mt-5 rounded-2xl border shadow-[0_8px_24px_rgba(15,23,42,0.065),0_2px_6px_rgba(15,23,42,0.035)] border-slate-200 bg-slate-50 p-4">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div>
+              <p className="text-sm font-semibold text-slate-900">Privacy & identity controls</p>
+              <p className="mt-1 text-xs text-slate-500">These settings update the workbook preview immediately.</p>
+            </div>
+            <div className="flex flex-wrap gap-2">
+              <button
+                type="button"
+                onClick={() => setIdentityMode("pseudonymous")}
+                className={`rounded-full border shadow-[0_5px_16px_rgba(15,23,42,0.075),0_1px_3px_rgba(15,23,42,0.04)] px-3 py-1.5 text-xs font-semibold ${identityMode === "pseudonymous" ? "border-slate-900 bg-slate-900 text-white" : "border-slate-300/70 bg-white text-slate-600"}`}
+              >
+                Pseudonymous IDs
+              </button>
+              <button
+                type="button"
+                onClick={() => setIdentityMode("anonymous")}
+                className={`rounded-full border shadow-[0_5px_16px_rgba(15,23,42,0.075),0_1px_3px_rgba(15,23,42,0.04)] px-3 py-1.5 text-xs font-semibold ${identityMode === "anonymous" ? "border-slate-900 bg-slate-900 text-white" : "border-slate-300/70 bg-white text-slate-600"}`}
+              >
+                Anonymous IDs
+              </button>
+              <button
+                type="button"
+                disabled={Boolean(selectedExportSample)}
+                onClick={() => setIncludeTestData((current) => !current)}
+                className={`rounded-full border shadow-[0_5px_16px_rgba(15,23,42,0.075),0_1px_3px_rgba(15,23,42,0.04)] px-3 py-1.5 text-xs font-semibold ${includeTestData ? "border-violet-300 bg-violet-100 text-violet-900" : "border-slate-300/70 bg-white text-slate-600"} disabled:opacity-40`}
+              >
+                {includeTestData ? "TEST included" : "TEST excluded"}
+              </button>
+              <button
+                type="button"
+                onClick={() => setIncludeDirectIdentifiers((current) => !current)}
+                className={`rounded-full border shadow-[0_5px_16px_rgba(15,23,42,0.075),0_1px_3px_rgba(15,23,42,0.04)] px-3 py-1.5 text-xs font-semibold ${includeDirectIdentifiers ? "border-rose-300 bg-rose-100 text-rose-900" : "border-slate-300/70 bg-white text-slate-600"}`}
+              >
+                {includeDirectIdentifiers ? "Direct IDs included" : "Direct IDs excluded"}
+              </button>
+            </div>
+          </div>
+
+          {includeDirectIdentifiers && (
+            <label className="mt-4 flex items-start gap-3 rounded-xl border shadow-[0_5px_18px_rgba(15,23,42,0.06),0_1px_4px_rgba(15,23,42,0.035)] border-rose-200 bg-white px-4 py-3">
+              <input
+                type="checkbox"
+                checked={identifierConfirmed}
+                onChange={(event) => setIdentifierConfirmed(event.target.checked)}
+                className="mt-0.5"
+              />
+              <span className="text-xs leading-5 text-slate-600">
+                I confirm that I am authorised to export directly identifying participant fields and understand that this file requires appropriate secure handling.
+              </span>
+            </label>
+          )}
+        </div>
+      </Panel>
+
       <div className="grid gap-5 xl:grid-cols-[1.1fr_.9fr]">
         <Panel
-          title="Create research export"
-          description="Design the table shape and export real XLSX, CSV or JSON study data."
+          title="Custom single-dataset export"
+          description="Fine-tune one dataset when you do not need the complete study workbook."
         >
           <div className="space-y-5">
             <label className="block">
@@ -15679,7 +18698,7 @@ function ExportData() {
                 onChange={(event) =>
                   setSelectedStudyId(event.target.value)
                 }
-                className="mt-2 w-full rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm"
+                className="mt-2 w-full rounded-xl border shadow-[0_5px_18px_rgba(15,23,42,0.06),0_1px_4px_rgba(15,23,42,0.035)] border-slate-300/70 bg-white px-4 py-3 text-sm shadow-[0_2px_6px_rgba(15,23,42,0.035)]"
               >
                 {studies.map((study) => (
                   <option key={study.id} value={study.id}>
@@ -15698,7 +18717,7 @@ function ExportData() {
                     event.target.value as ResearchDatasetType
                   )
                 }
-                className="mt-2 w-full rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm"
+                className="mt-2 w-full rounded-xl border shadow-[0_5px_18px_rgba(15,23,42,0.06),0_1px_4px_rgba(15,23,42,0.035)] border-slate-300/70 bg-white px-4 py-3 text-sm shadow-[0_2px_6px_rgba(15,23,42,0.035)]"
               >
                 {Object.entries(researchDatasetLabels).map(
                   ([value, label]) => (
@@ -15721,7 +18740,7 @@ function ExportData() {
                     event.target.value as ResearchIdentityMode
                   )
                 }
-                className="mt-2 w-full rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm"
+                className="mt-2 w-full rounded-xl border shadow-[0_5px_18px_rgba(15,23,42,0.06),0_1px_4px_rgba(15,23,42,0.035)] border-slate-300/70 bg-white px-4 py-3 text-sm shadow-[0_2px_6px_rgba(15,23,42,0.035)]"
               >
                 <option value="pseudonymous">
                   PsyLattice pseudonymous participant IDs
@@ -15739,7 +18758,7 @@ function ExportData() {
             </label>
 
             <div className="grid gap-3">
-              <label className="flex items-start gap-3 rounded-xl border border-slate-200 p-4">
+              <label className="flex items-start gap-3 rounded-xl border shadow-[0_5px_18px_rgba(15,23,42,0.06),0_1px_4px_rgba(15,23,42,0.035)] border-slate-200 p-4">
                 <input
                   type="checkbox"
                   checked={includeTestData}
@@ -15757,7 +18776,7 @@ function ExportData() {
                 </div>
               </label>
 
-              <label className="flex items-start gap-3 rounded-xl border border-orange-300 bg-orange-50/90 p-4">
+              <label className="flex items-start gap-3 rounded-xl border shadow-[0_5px_18px_rgba(15,23,42,0.06),0_1px_4px_rgba(15,23,42,0.035)] border-[#cfc6f6] bg-[#f7f5ff] p-4">
                 <input
                   type="checkbox"
                   checked={includeDirectIdentifiers}
@@ -15767,10 +18786,10 @@ function ExportData() {
                   className="mt-1"
                 />
                 <div>
-                  <p className="text-sm font-medium text-amber-950">
+                  <p className="text-sm font-medium text-violet-950">
                     Include demographic fields marked as direct identifiers
                   </p>
-                  <p className="mt-1 text-xs leading-5 text-amber-800">
+                  <p className="mt-1 text-xs leading-5 text-violet-800">
                     Off by default. Free-text questionnaire answers may still
                     contain participant-entered identifying information and
                     cannot be automatically de-identified reliably.
@@ -15779,7 +18798,7 @@ function ExportData() {
               </label>
 
               {includeDirectIdentifiers && (
-                <label className="flex items-start gap-3 rounded-xl border border-red-200 bg-red-50 p-4">
+                <label className="flex items-start gap-3 rounded-xl border shadow-[0_5px_18px_rgba(15,23,42,0.06),0_1px_4px_rgba(15,23,42,0.035)] border-red-200 bg-red-50 p-4">
                   <input
                     type="checkbox"
                     checked={identifierConfirmed}
@@ -15811,7 +18830,7 @@ function ExportData() {
                     onClick={() =>
                       setFormat(value as "csv" | "json" | "xlsx")
                     }
-                    className={`rounded-full border px-3 py-2 text-xs font-medium ${
+                    className={`rounded-full border shadow-[0_5px_16px_rgba(15,23,42,0.075),0_1px_3px_rgba(15,23,42,0.04)] px-3 py-2 text-xs font-medium ${
                       format === value
                         ? "border-cyan-700 bg-cyan-50 text-cyan-800"
                         : "border-slate-200 text-slate-500"
@@ -15823,7 +18842,7 @@ function ExportData() {
               </div>
             </div>
 
-            <div className="rounded-2xl border border-cyan-100 bg-cyan-50/40 p-4">
+            <div className="rounded-2xl border shadow-[0_8px_24px_rgba(15,23,42,0.065),0_2px_6px_rgba(15,23,42,0.035)] border-cyan-100 bg-cyan-50/40 p-4">
               <p className="text-sm font-semibold text-cyan-950">
                 Table designer
               </p>
@@ -15846,7 +18865,7 @@ function ExportData() {
                           event.target.value
                         )
                       }
-                      className="mt-2 w-full rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm"
+                      className="mt-2 w-full rounded-xl border shadow-[0_5px_18px_rgba(15,23,42,0.06),0_1px_4px_rgba(15,23,42,0.035)] border-slate-300/70 bg-white px-3 py-2.5 text-sm shadow-[0_2px_6px_rgba(15,23,42,0.035)]"
                     />
                   </label>
 
@@ -15861,11 +18880,11 @@ function ExportData() {
                           event.target.value
                         )
                       }
-                      className="mt-2 w-full rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm"
+                      className="mt-2 w-full rounded-xl border shadow-[0_5px_18px_rgba(15,23,42,0.06),0_1px_4px_rgba(15,23,42,0.035)] border-slate-300/70 bg-white px-3 py-2.5 text-sm shadow-[0_2px_6px_rgba(15,23,42,0.035)]"
                     />
                   </label>
 
-                  <label className="flex items-start gap-3 rounded-xl border border-slate-200 bg-white p-3 md:col-span-2">
+                  <label className="flex items-start gap-3 rounded-xl border shadow-[0_5px_18px_rgba(15,23,42,0.06),0_1px_4px_rgba(15,23,42,0.035)] border-slate-300/70 bg-white p-3 md:col-span-2">
                     <input
                       type="checkbox"
                       checked={includeCodebookSheet}
@@ -15902,7 +18921,7 @@ function ExportData() {
                       .map((column, index, visibleColumns) => (
                         <div
                           key={column.source}
-                          className="grid gap-2 rounded-xl border border-slate-200 bg-white p-3 md:grid-cols-[34px_1fr_1fr_auto] md:items-center"
+                          className="grid gap-2 rounded-xl border shadow-[0_5px_18px_rgba(15,23,42,0.06),0_1px_4px_rgba(15,23,42,0.035)] border-slate-300/70 bg-white p-3 md:grid-cols-[34px_1fr_1fr_auto] md:items-center"
                         >
                           <input
                             type="checkbox"
@@ -15934,7 +18953,7 @@ function ExportData() {
                                 }
                               )
                             }
-                            className="rounded-lg border border-slate-200 px-3 py-2 text-xs disabled:bg-slate-50"
+                            className="rounded-lg border shadow-[0_3px_10px_rgba(15,23,42,0.05)] border-slate-200 px-3 py-2 text-xs disabled:bg-slate-50"
                           />
 
                           <div className="flex gap-1">
@@ -15947,7 +18966,7 @@ function ExportData() {
                                   -1
                                 )
                               }
-                              className="rounded-lg border border-slate-200 px-2 py-1 text-xs disabled:opacity-30"
+                              className="rounded-lg border shadow-[0_3px_10px_rgba(15,23,42,0.05)] border-slate-200 px-2 py-1 text-xs disabled:opacity-30"
                             >
                               ↑
                             </button>
@@ -15963,7 +18982,7 @@ function ExportData() {
                                   1
                                 )
                               }
-                              className="rounded-lg border border-slate-200 px-2 py-1 text-xs disabled:opacity-30"
+                              className="rounded-lg border shadow-[0_3px_10px_rgba(15,23,42,0.05)] border-slate-200 px-2 py-1 text-xs disabled:opacity-30"
                             >
                               ↓
                             </button>
@@ -16011,10 +19030,10 @@ function ExportData() {
                               return (
                                 <label
                                   key={group.measureId}
-                                  className={`flex cursor-pointer items-start gap-3 rounded-xl border p-4 ${
+                                  className={`flex cursor-pointer items-start gap-3 rounded-xl border shadow-[0_5px_18px_rgba(15,23,42,0.06),0_1px_4px_rgba(15,23,42,0.035)] p-4 ${
                                     enabled
                                       ? "border-cyan-200 bg-cyan-50/50"
-                                      : "border-slate-200 bg-white"
+                                      : "border-slate-300/70 bg-white"
                                   }`}
                                 >
                                   <input
@@ -16058,7 +19077,7 @@ function ExportData() {
                   columnConfig.map((column, index) => (
                     <div
                       key={column.source}
-                      className="grid gap-2 rounded-xl border border-slate-200 bg-white p-3 md:grid-cols-[34px_1fr_1fr_auto] md:items-center"
+                      className="grid gap-2 rounded-xl border shadow-[0_5px_18px_rgba(15,23,42,0.06),0_1px_4px_rgba(15,23,42,0.035)] border-slate-300/70 bg-white p-3 md:grid-cols-[34px_1fr_1fr_auto] md:items-center"
                     >
                       <input
                         type="checkbox"
@@ -16090,7 +19109,7 @@ function ExportData() {
                             }
                           )
                         }
-                        className="rounded-lg border border-slate-200 px-3 py-2 text-xs disabled:bg-slate-50"
+                        className="rounded-lg border shadow-[0_3px_10px_rgba(15,23,42,0.05)] border-slate-200 px-3 py-2 text-xs disabled:bg-slate-50"
                       />
 
                       <div className="flex gap-1">
@@ -16103,7 +19122,7 @@ function ExportData() {
                               -1
                             )
                           }
-                          className="rounded-lg border border-slate-200 px-2 py-1 text-xs disabled:opacity-30"
+                          className="rounded-lg border shadow-[0_3px_10px_rgba(15,23,42,0.05)] border-slate-200 px-2 py-1 text-xs disabled:opacity-30"
                         >
                           ↑
                         </button>
@@ -16119,7 +19138,7 @@ function ExportData() {
                               1
                             )
                           }
-                          className="rounded-lg border border-slate-200 px-2 py-1 text-xs disabled:opacity-30"
+                          className="rounded-lg border shadow-[0_3px_10px_rgba(15,23,42,0.05)] border-slate-200 px-2 py-1 text-xs disabled:opacity-30"
                         >
                           ↓
                         </button>
@@ -16190,7 +19209,7 @@ function ExportData() {
                 type="button"
                 onClick={downloadCodebook}
                 disabled={loading || !selectedStudy}
-                className="rounded-xl border border-slate-200 px-5 py-3 text-sm font-semibold disabled:opacity-40"
+                className="rounded-xl border shadow-[0_5px_18px_rgba(15,23,42,0.06),0_1px_4px_rgba(15,23,42,0.035)] border-slate-200 px-5 py-3 text-sm font-semibold disabled:opacity-40"
               >
                 Download codebook CSV
               </button>
@@ -16231,7 +19250,7 @@ function ExportData() {
               ],
             ].map(([name, description]) => (
               <div key={name} className="flex gap-3">
-                <span className="mt-1 text-emerald-700">
+                <span className="mt-1 text-cyan-700">
                   <CheckIcon />
                 </span>
 
@@ -16245,7 +19264,7 @@ function ExportData() {
             ))}
           </div>
 
-          <div className="mt-6 rounded-2xl border border-cyan-100 bg-cyan-50/60 p-4">
+          <div className="mt-6 rounded-2xl border shadow-[0_8px_24px_rgba(15,23,42,0.065),0_2px_6px_rgba(15,23,42,0.035)] border-cyan-100 bg-cyan-50/60 p-4">
             <p className="text-sm font-medium text-cyan-950">
               Current export architecture
             </p>
@@ -16306,7 +19325,7 @@ function ExportData() {
                 <button
                   type="button"
                   onClick={() => repeatExportSettings(log)}
-                  className="rounded-xl border border-slate-200 px-4 py-2.5 text-xs font-semibold"
+                  className="rounded-xl border shadow-[0_5px_18px_rgba(15,23,42,0.06),0_1px_4px_rgba(15,23,42,0.035)] border-slate-200 px-4 py-2.5 text-xs font-semibold"
                 >
                   Repeat settings
                 </button>
@@ -16418,7 +19437,7 @@ function TeamPermissions() {
           ))}
         </div>
 
-        <button className="mt-5 rounded-xl border border-slate-200 px-4 py-2.5 text-sm font-semibold">
+        <button className="mt-5 rounded-full border shadow-[0_5px_16px_rgba(15,23,42,0.075),0_1px_3px_rgba(15,23,42,0.04)] border-slate-300/70 bg-white px-4 py-2.5 text-sm font-semibold shadow-[0_2px_6px_rgba(15,23,42,0.04)]">
           + Invite collaborator
         </button>
       </Panel>
@@ -16449,7 +19468,7 @@ function TeamPermissions() {
           ].map(([name, detail, status]) => (
             <div
               key={name}
-              className="flex justify-between gap-5 rounded-xl border border-slate-200 p-4"
+              className="flex justify-between gap-5 rounded-xl border shadow-[0_5px_18px_rgba(15,23,42,0.06),0_1px_4px_rgba(15,23,42,0.035)] border-slate-200 p-4"
             >
               <div>
                 <p className="text-sm font-medium">{name}</p>
@@ -16632,10 +19651,10 @@ export default function ResearcherWorkspace() {
   ];
 
   return (
-    <main className="min-h-screen bg-[#f6f8f8] text-slate-950">
+    <main className="min-h-screen bg-[#f5f8f8] text-slate-950">
       {/* Header */}
 
-      <header className="sticky top-0 z-50 border-b border-slate-200 bg-white/95 backdrop-blur">
+      <header className="sticky top-0 z-50 border-b border-slate-300/65 bg-white/92 shadow-[0_1px_0_rgba(15,23,42,0.04),0_12px_34px_rgba(15,23,42,0.06)] backdrop-blur-xl">
         <div className="flex min-h-20 items-center justify-between gap-4 px-5 lg:px-7">
           <div className="flex items-center gap-3">
            <div>
@@ -16657,7 +19676,7 @@ export default function ResearcherWorkspace() {
 
             <Link
               href="/signin"
-              className="rounded-xl border border-slate-200 px-4 py-2 text-xs font-semibold text-slate-600"
+              className="rounded-full border shadow-[0_5px_16px_rgba(15,23,42,0.075),0_1px_3px_rgba(15,23,42,0.04)] border-slate-300/70 bg-white px-4 py-2 text-xs font-semibold text-slate-600 shadow-[0_2px_6px_rgba(15,23,42,0.045)] transition hover:-translate-y-px hover:shadow-[0_5px_14px_rgba(15,23,42,0.07)]"
             >
               Sign out
             </Link>
@@ -16666,7 +19685,7 @@ export default function ResearcherWorkspace() {
           <select
             value={screen}
             onChange={(event) => setScreen(event.target.value as Screen)}
-            className="max-w-[200px] rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm lg:hidden"
+            className="max-w-[200px] rounded-full border shadow-[0_5px_16px_rgba(15,23,42,0.075),0_1px_3px_rgba(15,23,42,0.04)] border-slate-300/70 bg-white px-4 py-2 text-sm shadow-[0_2px_6px_rgba(15,23,42,0.04)] lg:hidden"
           >
             {navigation.map((item) => (
               <option key={item.id} value={item.id}>
@@ -16681,7 +19700,7 @@ export default function ResearcherWorkspace() {
         {/* Sidebar */}
 
         <aside
-          className={`fixed bottom-0 left-0 top-20 z-40 hidden overflow-y-auto border-r border-slate-200 bg-white p-3 transition-[width] duration-200 lg:block ${
+          className={`fixed bottom-0 left-0 top-20 z-40 hidden overflow-y-auto border-r border-slate-200/80 bg-[#fbfdfd] p-3 shadow-[10px_0_34px_rgba(15,23,42,0.05)] transition-[width] duration-200 lg:block ${
             sidebarCollapsed ? "w-[76px]" : "w-[245px]"
           }`}
         >
@@ -16705,7 +19724,7 @@ export default function ResearcherWorkspace() {
                   ? "Expand sidebar"
                   : "Collapse sidebar"
               }
-              className="flex h-9 w-9 items-center justify-center rounded-xl border border-slate-200 bg-white text-lg font-semibold text-slate-500 transition hover:bg-slate-50 hover:text-slate-950"
+              className="flex h-9 w-9 items-center justify-center rounded-full border shadow-[0_5px_16px_rgba(15,23,42,0.075),0_1px_3px_rgba(15,23,42,0.04)] border-slate-300/70 bg-white text-lg font-semibold text-slate-500 shadow-[0_2px_6px_rgba(15,23,42,0.04)] transition hover:-translate-y-px hover:text-slate-950 hover:shadow-[0_5px_14px_rgba(15,23,42,0.07)]"
             >
               {sidebarCollapsed ? "›" : "‹"}
             </button>
@@ -16744,18 +19763,18 @@ export default function ResearcherWorkspace() {
                             : undefined
                         }
                         aria-label={item.label}
-                        className={`relative flex w-full items-center rounded-xl py-2.5 text-sm transition ${
+                        className={`relative flex w-full items-center rounded-full py-2.5 text-sm transition-all ${
                           sidebarCollapsed
                             ? "justify-center px-2"
                             : "gap-3 px-3 text-left"
                         } ${
                           active
-                            ? "bg-cyan-50 font-semibold text-cyan-900"
-                            : "text-slate-500 hover:bg-slate-50 hover:text-slate-950"
+                            ? "border border-cyan-200/70 bg-white font-semibold text-cyan-900 shadow-[0_6px_16px_rgba(8,145,178,0.16),0_14px_30px_rgba(15,23,42,0.07)]"
+                            : "border border-transparent text-slate-500 hover:border-slate-200/70 hover:bg-white hover:text-slate-950 hover:shadow-[0_3px_10px_rgba(15,23,42,0.035)]"
                         }`}
                       >
                         <span
-                          className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-lg ${
+                          className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-full ${
                             sidebarCollapsed && active ? "bg-cyan-100" : ""
                           }`}
                         >
@@ -16772,7 +19791,7 @@ export default function ResearcherWorkspace() {
                           <div className="flex min-w-0 flex-1 items-center gap-2">
                             <span className="min-w-0 truncate">{item.label}</span>
                             {item.id === "cognitive" && (
-                              <span className="ml-auto inline-flex shrink-0 items-center overflow-hidden rounded-full border border-cyan-200 bg-cyan-50 text-[8px] font-bold uppercase tracking-[0.12em] text-cyan-800">
+                              <span className="ml-auto inline-flex shrink-0 items-center overflow-hidden rounded-full border shadow-[0_5px_16px_rgba(15,23,42,0.075),0_1px_3px_rgba(15,23,42,0.04)] border-cyan-200 bg-cyan-50 text-[8px] font-bold uppercase tracking-[0.12em] text-cyan-800">
                                 <span className="px-1.5 py-0.5">New</span>
                                 <span className="h-3 w-px bg-cyan-200" aria-hidden="true" />
                                 <span className="px-1.5 py-0.5">Beta</span>
@@ -16783,7 +19802,7 @@ export default function ResearcherWorkspace() {
 
                         {sidebarCollapsed && item.id === "cognitive" && (
                           <span
-                            className="absolute right-1 top-1 flex h-3.5 min-w-3.5 items-center justify-center rounded-full border border-white bg-cyan-600 px-0.5 text-[7px] font-bold uppercase leading-none text-white shadow-sm"
+                            className="absolute right-1 top-1 flex h-3.5 min-w-3.5 items-center justify-center rounded-full border shadow-[0_5px_16px_rgba(15,23,42,0.075),0_1px_3px_rgba(15,23,42,0.04)] border-white bg-cyan-600 px-0.5 text-[7px] font-bold uppercase leading-none text-white shadow-sm"
                             aria-hidden="true"
                           >
                             β
@@ -16827,24 +19846,26 @@ export default function ResearcherWorkspace() {
           }`}
         >
           <div className="mx-auto max-w-[1450px]">
-            <div className="mb-7">
-              <div className="mb-2 flex flex-wrap items-center gap-2">
+            <div className="mb-7 flex flex-col gap-3 rounded-[24px] border border-white/80 bg-white/75 px-5 py-5 shadow-[0_6px_18px_rgba(15,23,42,0.05),0_24px_58px_rgba(15,23,42,0.075)] backdrop-blur sm:px-6">
+              <div className="flex flex-wrap items-center gap-2">
                 <Status type="accent">Researcher workspace</Status>
 
-                <span className="text-xs text-slate-400">
+                <span className="rounded-full border shadow-[0_5px_16px_rgba(15,23,42,0.075),0_1px_3px_rgba(15,23,42,0.04)] border-slate-300/70 bg-white px-3 py-1 text-[11px] font-medium text-slate-400 shadow-[0_2px_5px_rgba(15,23,42,0.03)]">
                   Live workspace data
                 </span>
               </div>
 
-              <h1 className="text-2xl font-semibold tracking-[-0.025em] sm:text-3xl">
-                {screen === "dashboard"
-                  ? "Research overview"
-                  : currentNavigation.label}
-              </h1>
+              <div>
+                <h1 className="text-2xl font-semibold tracking-[-0.03em] text-slate-950 sm:text-3xl">
+                  {screen === "dashboard"
+                    ? "Research overview"
+                    : currentNavigation.label}
+                </h1>
 
-              <p className="mt-2 max-w-3xl text-sm leading-6 text-slate-500">
-                {descriptions[screen]}
-              </p>
+                <p className="mt-2 max-w-3xl text-sm leading-6 text-slate-500">
+                  {descriptions[screen]}
+                </p>
+              </div>
             </div>
 
             {renderScreen()}

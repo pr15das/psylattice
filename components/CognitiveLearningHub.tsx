@@ -71,7 +71,7 @@ const guides: Guide[] = [
 
 function MiniBadge({ children }: { children: ReactNode }) {
   return (
-    <span className="inline-flex items-center rounded-full border border-sky-100 bg-sky-50 px-2.5 py-1 text-[10px] font-semibold text-sky-800">
+    <span className="inline-flex items-center rounded-full border border-cyan-200 bg-white px-2.5 py-1 shadow-[0_4px_12px_rgba(8,145,178,0.07)] text-[10px] font-semibold text-cyan-800">
       {children}
     </span>
   );
@@ -88,7 +88,7 @@ function GuideHeader({
 }) {
   return (
     <div className="max-w-3xl">
-      <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-sky-700">
+      <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-cyan-700">
         {eyebrow}
       </p>
       <h2 className="mt-2 text-2xl font-semibold tracking-[-0.035em] text-slate-950 sm:text-3xl">
@@ -111,9 +111,9 @@ function VisualCard({
   children?: ReactNode;
 }) {
   return (
-    <article className="overflow-hidden rounded-[24px] border border-slate-200 bg-white shadow-[0_18px_50px_-40px_rgba(15,23,42,.45)]">
+    <article className="overflow-hidden rounded-[24px] border border-slate-300/70 bg-white shadow-[0_2px_6px_rgba(15,23,42,0.04),0_14px_34px_rgba(15,23,42,0.075)]">
       {children && (
-        <div className="border-b border-slate-100 bg-gradient-to-br from-slate-50 to-sky-50/50 p-4 sm:p-5">
+        <div className="border-b border-slate-100 bg-gradient-to-br from-slate-50 to-cyan-50/50 p-4 sm:p-5">
           {children}
         </div>
       )}
@@ -140,20 +140,20 @@ function WorkflowIllustration() {
   ];
 
   return (
-    <div className="relative overflow-hidden rounded-[26px] border border-slate-200 bg-slate-950 p-5 text-white sm:p-6">
-      <div className="pointer-events-none absolute -right-10 -top-10 h-40 w-40 rounded-full bg-sky-400/10 blur-3xl" />
+    <div className="relative overflow-hidden rounded-[26px] border border-slate-300/70 bg-white p-5 text-slate-950 shadow-[0_2px_6px_rgba(15,23,42,0.04),0_14px_34px_rgba(15,23,42,0.075)] sm:p-6">
+      <div className="pointer-events-none absolute -right-10 -top-10 h-40 w-40 rounded-full bg-cyan-400/10 blur-3xl" />
       <div className="relative grid gap-3 md:grid-cols-5">
         {steps.map(([number, label, copy], index) => (
           <div key={label} className="relative">
             <div className="rounded-2xl border border-white/10 bg-white/[0.05] p-4">
-              <span className="flex h-8 w-8 items-center justify-center rounded-xl bg-sky-400/10 text-xs font-semibold text-sky-200">
+              <span className="flex h-8 w-8 items-center justify-center rounded-xl bg-cyan-400/10 text-xs font-semibold text-cyan-200">
                 {number}
               </span>
               <p className="mt-4 text-sm font-semibold">{label}</p>
               <p className="mt-1 text-[11px] leading-5 text-slate-400">{copy}</p>
             </div>
             {index < steps.length - 1 && (
-              <ArrowRight className="absolute -right-2 top-1/2 z-10 hidden h-4 w-4 -translate-y-1/2 text-sky-300 md:block" />
+              <ArrowRight className="absolute -right-2 top-1/2 z-10 hidden h-4 w-4 -translate-y-1/2 text-cyan-700 md:block" />
             )}
           </div>
         ))}
@@ -164,14 +164,14 @@ function WorkflowIllustration() {
 
 function BuilderIllustration() {
   return (
-    <div className="rounded-[24px] border border-slate-200 bg-[#f7fafb] p-3 sm:p-4">
+    <div className="rounded-[24px] border border-slate-300/70 bg-white p-3 shadow-[0_5px_18px_rgba(15,23,42,0.055)] sm:p-4">
       <div className="overflow-hidden rounded-[20px] border border-slate-200 bg-white shadow-sm">
         <div className="flex items-center justify-between border-b border-slate-100 px-4 py-3">
           <div>
-            <p className="text-[9px] font-semibold uppercase tracking-[0.16em] text-sky-700">Task Builder</p>
+            <p className="text-[9px] font-semibold uppercase tracking-[0.16em] text-cyan-700">Task Builder</p>
             <p className="mt-0.5 text-xs font-semibold text-slate-900">Emotional Stroop</p>
           </div>
-          <div className="rounded-lg bg-slate-950 px-3 py-1.5 text-[9px] font-semibold text-white">Save</div>
+          <div className="rounded-full bg-slate-950 px-3 py-1.5 text-[9px] font-semibold text-white">Save</div>
         </div>
         <div className="grid min-h-[260px] md:grid-cols-[.75fr_1.4fr_.9fr]">
           <div className="border-r border-slate-100 bg-slate-50 p-3">
@@ -180,7 +180,7 @@ function BuilderIllustration() {
               <div
                 key={item}
                 className={`mt-2 rounded-xl border p-2.5 ${
-                  index === 2 ? "border-sky-200 bg-sky-50" : "border-slate-200 bg-white"
+                  index === 2 ? "border-cyan-200 bg-cyan-50" : "border-slate-200 bg-white"
                 }`}
               >
                 <p className="text-[9px] font-semibold text-slate-800">{item}</p>
@@ -217,7 +217,7 @@ function BuilderIllustration() {
 
           <div className="border-l border-slate-100 bg-slate-50 p-3">
             <p className="text-[8px] font-semibold uppercase tracking-[0.14em] text-slate-400">Settings</p>
-            <div className="mt-3 rounded-xl border border-sky-200 bg-white p-3">
+            <div className="mt-3 rounded-xl border border-cyan-200 bg-white p-3">
               <p className="text-[9px] font-semibold text-slate-800">Response</p>
               <p className="mt-2 text-[8px] text-slate-400">Input method</p>
               <div className="mt-1 rounded-lg border border-slate-200 px-2 py-1.5 text-[8px] font-semibold text-slate-700">Keyboard</div>
@@ -240,10 +240,10 @@ function BuilderIllustration() {
 function ResponseIllustration() {
   return (
     <div className="grid gap-4 lg:grid-cols-[1fr_1fr]">
-      <div className="rounded-[24px] border border-slate-200 bg-slate-950 p-5 text-white">
+      <div className="rounded-[24px] border border-slate-300/70 bg-white p-5 text-slate-950 shadow-[0_2px_6px_rgba(15,23,42,0.04),0_14px_34px_rgba(15,23,42,0.075)]">
         <div className="flex items-center justify-between">
           <MiniBadge>Participant sees</MiniBadge>
-          <TimerReset className="h-4 w-4 text-sky-300" />
+          <TimerReset className="h-4 w-4 text-cyan-700" />
         </div>
         <div className="mt-8 flex min-h-28 items-center justify-center">
           <span className="text-5xl font-black tracking-tight text-red-400">GREEN</span>
@@ -251,8 +251,8 @@ function ResponseIllustration() {
         <p className="mt-5 text-center text-[11px] text-slate-400">Respond to the ink colour, not the word.</p>
       </div>
 
-      <div className="rounded-[24px] border border-slate-200 bg-white p-5">
-        <p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-sky-700">Response mapping</p>
+      <div className="rounded-[24px] border border-slate-200 bg-white p-5 shadow-[0_5px_18px_rgba(15,23,42,0.055)]">
+        <p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-cyan-700">Response mapping</p>
         <div className="mt-5 grid grid-cols-4 gap-2">
           {[
             ["R", "Red"],
@@ -268,13 +268,13 @@ function ResponseIllustration() {
             </div>
           ))}
         </div>
-        <div className="mt-4 flex items-center gap-3 rounded-2xl border border-emerald-100 bg-emerald-50 p-3">
-          <div className="flex h-8 w-8 items-center justify-center rounded-xl bg-emerald-100 text-emerald-700">
+        <div className="mt-4 flex items-center gap-3 rounded-2xl border border-cyan-100 bg-cyan-50 p-3">
+          <div className="flex h-8 w-8 items-center justify-center rounded-xl bg-cyan-100 text-cyan-700">
             <Check className="h-4 w-4" />
           </div>
           <div>
-            <p className="text-[10px] font-semibold text-emerald-900">Correct answer = R</p>
-            <p className="mt-0.5 text-[9px] text-emerald-700">The trial table provides the correct key for this trial.</p>
+            <p className="text-[10px] font-semibold text-cyan-900">Correct answer = R</p>
+            <p className="mt-0.5 text-[9px] text-cyan-700">The trial table provides the correct key for this trial.</p>
           </div>
         </div>
       </div>
@@ -291,7 +291,7 @@ function TrialTableIllustration() {
   ];
 
   return (
-    <div className="overflow-hidden rounded-[22px] border border-slate-200 bg-white shadow-sm">
+    <div className="overflow-hidden rounded-[22px] border border-slate-300/70 bg-white shadow-[0_5px_18px_rgba(15,23,42,0.055)]">
       <div className="grid grid-cols-4 bg-slate-950 px-3 py-2.5 text-[9px] font-semibold text-white">
         <span>word</span>
         <span>colour</span>
@@ -301,7 +301,7 @@ function TrialTableIllustration() {
       {rows.map((row, rowIndex) => (
         <div key={rowIndex} className="grid grid-cols-4 border-t border-slate-100 px-3 py-2.5 text-[9px] text-slate-600">
           {row.map((cell, index) => (
-            <span key={`${cell}-${index}`} className={index === 3 ? "font-semibold text-sky-700" : ""}>
+            <span key={`${cell}-${index}`} className={index === 3 ? "font-semibold text-cyan-700" : ""}>
               {cell}
             </span>
           ))}
@@ -321,12 +321,12 @@ function PilotIllustration() {
   return (
     <div className="grid gap-3 md:grid-cols-3">
       {cards.map(([title, subtitle, copy], index) => (
-        <div key={title} className="relative rounded-[22px] border border-slate-200 bg-white p-4">
-          <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-sky-50 text-sky-700">
+        <div key={title} className="relative rounded-[22px] border border-slate-200 bg-white p-4 shadow-[0_5px_18px_rgba(15,23,42,0.055)]">
+          <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-cyan-50 text-cyan-700">
             {index === 0 ? <Play className="h-4 w-4" /> : index === 1 ? <Link2 className="h-4 w-4" /> : <Check className="h-4 w-4" />}
           </div>
           <p className="mt-4 text-sm font-semibold text-slate-950">{title}</p>
-          <p className="mt-1 text-[10px] font-semibold text-sky-700">{subtitle}</p>
+          <p className="mt-1 text-[10px] font-semibold text-cyan-700">{subtitle}</p>
           <p className="mt-2 text-[10px] leading-5 text-slate-500">{copy}</p>
           {index < cards.length - 1 && (
             <ArrowRight className="absolute -right-2 top-1/2 z-10 hidden h-4 w-4 -translate-y-1/2 text-slate-300 md:block" />
@@ -355,7 +355,7 @@ function StartGuide({ onOpen }: { onOpen: (guide: GuideKey) => void }) {
         >
           <div className="grid grid-cols-3 gap-2">
             {[Target, BrainCircuit, TimerReset].map((Icon, index) => (
-              <div key={index} className="flex h-16 items-center justify-center rounded-2xl border border-slate-200 bg-white text-sky-700">
+              <div key={index} className="flex h-16 items-center justify-center rounded-2xl border border-slate-200 bg-white text-cyan-700">
                 <Icon className="h-5 w-5" />
               </div>
             ))}
@@ -389,11 +389,11 @@ function StartGuide({ onOpen }: { onOpen: (guide: GuideKey) => void }) {
               <Play className="h-5 w-5" />
             </div>
             <ArrowRight className="h-4 w-4 text-slate-300" />
-            <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-sky-100 text-sky-800">
+            <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-cyan-100 text-cyan-800">
               <Link2 className="h-5 w-5" />
             </div>
             <ArrowRight className="h-4 w-4 text-slate-300" />
-            <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-emerald-100 text-emerald-800">
+            <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-cyan-100 text-cyan-800">
               <Check className="h-5 w-5" />
             </div>
           </div>
@@ -404,24 +404,24 @@ function StartGuide({ onOpen }: { onOpen: (guide: GuideKey) => void }) {
         <button
           type="button"
           onClick={() => onOpen("builder")}
-          className="group flex items-center justify-between rounded-[22px] border border-slate-200 bg-white p-4 text-left transition hover:border-sky-200 hover:bg-sky-50/30"
+          className="group flex items-center justify-between rounded-[22px] border border-slate-200 bg-white p-4 shadow-[0_5px_18px_rgba(15,23,42,0.055)] text-left transition hover:-translate-y-px hover:border-cyan-200 hover:bg-white hover:shadow-[0_6px_18px_rgba(8,145,178,0.08)]"
         >
           <div>
             <p className="text-xs font-semibold text-slate-950">Next: understand the builder</p>
             <p className="mt-1 text-[11px] text-slate-500">See blocks, trials, steps and the trial table visually.</p>
           </div>
-          <ArrowRight className="h-4 w-4 text-slate-300 transition group-hover:translate-x-0.5 group-hover:text-sky-600" />
+          <ArrowRight className="h-4 w-4 text-slate-300 transition group-hover:translate-x-0.5 group-hover:text-cyan-600" />
         </button>
         <button
           type="button"
           onClick={() => onOpen("stroop")}
-          className="group flex items-center justify-between rounded-[22px] border border-slate-200 bg-white p-4 text-left transition hover:border-sky-200 hover:bg-sky-50/30"
+          className="group flex items-center justify-between rounded-[22px] border border-slate-200 bg-white p-4 shadow-[0_5px_18px_rgba(15,23,42,0.055)] text-left transition hover:-translate-y-px hover:border-cyan-200 hover:bg-white hover:shadow-[0_6px_18px_rgba(8,145,178,0.08)]"
         >
           <div>
             <p className="text-xs font-semibold text-slate-950">See a complete example</p>
             <p className="mt-1 text-[11px] text-slate-500">Build a basic Stroop task from start to finish.</p>
           </div>
-          <ArrowRight className="h-4 w-4 text-slate-300 transition group-hover:translate-x-0.5 group-hover:text-sky-600" />
+          <ArrowRight className="h-4 w-4 text-slate-300 transition group-hover:translate-x-0.5 group-hover:text-cyan-600" />
         </button>
       </div>
     </div>
@@ -446,9 +446,9 @@ function BuilderGuide({ onOpen }: { onOpen: (guide: GuideKey) => void }) {
           ["4", "Step", "What happens during the trial: stimulus, response, ITI, etc.", MousePointerClick],
         ] as Array<[string, string, string, LucideIcon]>).map(([number, title, copy, IconComponent]) => {
           return (
-            <div key={title} className="rounded-[22px] border border-slate-200 bg-white p-4">
+            <div key={title} className="rounded-[22px] border border-slate-200 bg-white p-4 shadow-[0_5px_18px_rgba(15,23,42,0.055)]">
               <div className="flex items-center justify-between">
-                <span className="text-[10px] font-semibold text-sky-700">{number}</span>
+                <span className="text-[10px] font-semibold text-cyan-700">{number}</span>
                 <IconComponent className="h-4 w-4 text-slate-300" />
               </div>
               <p className="mt-4 text-sm font-semibold text-slate-950">{title}</p>
@@ -459,9 +459,9 @@ function BuilderGuide({ onOpen }: { onOpen: (guide: GuideKey) => void }) {
       </div>
 
       <div className="grid gap-4 lg:grid-cols-[1.1fr_.9fr]">
-        <div className="rounded-[24px] border border-slate-200 bg-white p-5">
+        <div className="rounded-[24px] border border-slate-200 bg-white p-5 shadow-[0_5px_18px_rgba(15,23,42,0.055)]">
           <div className="flex items-center gap-2">
-            <Rows3 className="h-4 w-4 text-sky-700" />
+            <Rows3 className="h-4 w-4 text-cyan-700" />
             <h3 className="text-sm font-semibold text-slate-950">The trial table changes each repeated trial</h3>
           </div>
           <p className="mt-2 text-xs leading-5 text-slate-500">
@@ -472,23 +472,23 @@ function BuilderGuide({ onOpen }: { onOpen: (guide: GuideKey) => void }) {
           </div>
         </div>
 
-        <div className="rounded-[24px] border border-sky-100 bg-gradient-to-br from-sky-50 to-cyan-50/50 p-5">
-          <Lightbulb className="h-5 w-5 text-sky-700" />
-          <p className="mt-4 text-sm font-semibold text-sky-950">A useful mental model</p>
+        <div className="rounded-[24px] border border-cyan-200/80 bg-cyan-50/55 shadow-[0_6px_18px_rgba(8,145,178,0.07)] p-5">
+          <Lightbulb className="h-5 w-5 text-cyan-700" />
+          <p className="mt-4 text-sm font-semibold text-cyan-950">A useful mental model</p>
           <div className="mt-4 space-y-3">
             <div className="rounded-2xl bg-white/80 p-3">
-              <p className="text-[10px] font-semibold text-sky-900">Timeline</p>
-              <p className="mt-1 text-[11px] text-sky-800/70">“Show a word, then wait for a key press.”</p>
+              <p className="text-[10px] font-semibold text-cyan-900">Timeline</p>
+              <p className="mt-1 text-[11px] text-cyan-800/70">“Show a word, then wait for a key press.”</p>
             </div>
             <div className="rounded-2xl bg-white/80 p-3">
-              <p className="text-[10px] font-semibold text-sky-900">Trial table</p>
-              <p className="mt-1 text-[11px] text-sky-800/70">“This time the word is RED, the ink is green, and G is correct.”</p>
+              <p className="text-[10px] font-semibold text-cyan-900">Trial table</p>
+              <p className="mt-1 text-[11px] text-cyan-800/70">“This time the word is RED, the ink is green, and G is correct.”</p>
             </div>
           </div>
           <button
             type="button"
             onClick={() => onOpen("responses")}
-            className="mt-5 inline-flex items-center gap-2 text-xs font-semibold text-sky-800"
+            className="mt-5 inline-flex items-center gap-2 text-xs font-semibold text-cyan-800"
           >
             Next: configure responses <ArrowRight className="h-3.5 w-3.5" />
           </button>
@@ -516,8 +516,8 @@ function ResponsesGuide({ onOpen }: { onOpen: (guide: GuideKey) => void }) {
           [TimerReset, "RT starts from", "Usually the stimulus onset that the participant reacts to."],
         ] as Array<[LucideIcon, string, string]>).map(([IconComponent, title, copy]) => {
           return (
-            <div key={title} className="rounded-[22px] border border-slate-200 bg-white p-4">
-              <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-sky-50 text-sky-700">
+            <div key={title} className="rounded-[22px] border border-slate-200 bg-white p-4 shadow-[0_5px_18px_rgba(15,23,42,0.055)]">
+              <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-cyan-50 text-cyan-700">
                 <IconComponent className="h-4 w-4" />
               </div>
               <p className="mt-4 text-sm font-semibold text-slate-950">{title}</p>
@@ -527,8 +527,8 @@ function ResponsesGuide({ onOpen }: { onOpen: (guide: GuideKey) => void }) {
         })}
       </div>
 
-      <div className="rounded-[24px] border border-slate-200 bg-white p-5">
-        <p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-sky-700">Example configuration</p>
+      <div className="rounded-[24px] border border-slate-200 bg-white p-5 shadow-[0_5px_18px_rgba(15,23,42,0.055)]">
+        <p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-cyan-700">Example configuration</p>
         <div className="mt-4 grid gap-3 md:grid-cols-4">
           {[
             ["Respond with", "Keyboard"],
@@ -542,7 +542,7 @@ function ResponsesGuide({ onOpen }: { onOpen: (guide: GuideKey) => void }) {
             </div>
           ))}
         </div>
-        <div className="mt-4 flex items-center gap-2 rounded-2xl border border-emerald-100 bg-emerald-50 p-3 text-[11px] text-emerald-800">
+        <div className="mt-4 flex items-center gap-2 rounded-2xl border border-cyan-100 bg-cyan-50 p-3 text-[11px] text-cyan-800">
           <Check className="h-4 w-4 shrink-0" />
           For the example trial above, green ink means the correct key is G even when the word itself says RED.
         </div>
@@ -551,7 +551,7 @@ function ResponsesGuide({ onOpen }: { onOpen: (guide: GuideKey) => void }) {
       <button
         type="button"
         onClick={() => onOpen("stroop")}
-        className="inline-flex items-center gap-2 rounded-xl bg-slate-950 px-4 py-2.5 text-xs font-semibold text-white"
+        className="inline-flex items-center gap-2 rounded-full bg-slate-950 px-4 py-2.5 text-xs font-semibold text-white shadow-[0_4px_10px_rgba(15,23,42,0.16),0_12px_24px_rgba(15,23,42,0.12)] transition hover:-translate-y-px"
       >
         See the complete Stroop example <ArrowRight className="h-3.5 w-3.5" />
       </button>
@@ -569,10 +569,10 @@ function StroopGuide({ onOpen }: { onOpen: (guide: GuideKey) => void }) {
       />
 
       <div className="grid gap-4 lg:grid-cols-[.9fr_1.1fr]">
-        <div className="rounded-[26px] border border-slate-200 bg-slate-950 p-6 text-white">
+        <div className="rounded-[26px] border border-slate-300/70 bg-white p-6 text-slate-950 shadow-[0_2px_6px_rgba(15,23,42,0.04),0_14px_34px_rgba(15,23,42,0.075)]">
           <div className="flex items-center justify-between">
             <MiniBadge>What the participant does</MiniBadge>
-            <Target className="h-5 w-5 text-sky-300" />
+            <Target className="h-5 w-5 text-cyan-700" />
           </div>
           <div className="mt-8 space-y-4">
             <div className="rounded-2xl border border-white/10 bg-white/[0.05] p-4 text-center">
@@ -587,8 +587,8 @@ function StroopGuide({ onOpen }: { onOpen: (guide: GuideKey) => void }) {
           <p className="mt-5 text-center text-[11px] leading-5 text-slate-400">Respond to the ink colour as quickly and accurately as possible.</p>
         </div>
 
-        <div className="rounded-[26px] border border-slate-200 bg-white p-5 sm:p-6">
-          <p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-sky-700">Recommended structure for this example</p>
+        <div className="rounded-[26px] border border-slate-200 bg-white p-5 sm:p-6 shadow-[0_5px_18px_rgba(15,23,42,0.055)]">
+          <p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-cyan-700">Recommended structure for this example</p>
           <div className="mt-5 space-y-3">
             {[
               ["01", "Instructions", "Explain the colour-response mapping."],
@@ -597,7 +597,7 @@ function StroopGuide({ onOpen }: { onOpen: (guide: GuideKey) => void }) {
               ["04", "End", "Thank the participant / continue the study."],
             ].map(([number, title, copy]) => (
               <div key={title} className="flex items-center gap-3 rounded-2xl border border-slate-200 bg-slate-50 p-3">
-                <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-white text-[10px] font-semibold text-sky-700 shadow-sm">{number}</span>
+                <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-white text-[10px] font-semibold text-cyan-700 shadow-sm">{number}</span>
                 <div>
                   <p className="text-xs font-semibold text-slate-900">{title}</p>
                   <p className="mt-0.5 text-[10px] text-slate-500">{copy}</p>
@@ -654,12 +654,12 @@ function StroopGuide({ onOpen }: { onOpen: (guide: GuideKey) => void }) {
         </VisualCard>
       </div>
 
-      <div className="rounded-[24px] border border-amber-200 bg-amber-50 p-5">
+      <div className="rounded-[24px] border border-slate-200 bg-white shadow-[0_6px_18px_rgba(15,23,42,0.055)] p-5">
         <div className="flex items-start gap-3">
-          <CircleHelp className="mt-0.5 h-5 w-5 shrink-0 text-amber-700" />
+          <CircleHelp className="mt-0.5 h-5 w-5 shrink-0 text-slate-600" />
           <div>
-            <p className="text-sm font-semibold text-amber-950">Use the task name as a template label, not a validity guarantee</p>
-            <p className="mt-2 text-xs leading-5 text-amber-900/70">
+            <p className="text-sm font-semibold text-slate-900">Use the task name as a template label, not a validity guarantee</p>
+            <p className="mt-2 text-xs leading-5 text-slate-500">
               If you change timings, stimuli, response mappings or scoring, you are creating a particular implementation. Your thesis or study protocol should document the exact version and justify the design you use.
             </p>
           </div>
@@ -669,7 +669,7 @@ function StroopGuide({ onOpen }: { onOpen: (guide: GuideKey) => void }) {
       <button
         type="button"
         onClick={() => onOpen("pilots")}
-        className="inline-flex items-center gap-2 rounded-xl bg-slate-950 px-4 py-2.5 text-xs font-semibold text-white"
+        className="inline-flex items-center gap-2 rounded-full bg-slate-950 px-4 py-2.5 text-xs font-semibold text-white shadow-[0_4px_10px_rgba(15,23,42,0.16),0_12px_24px_rgba(15,23,42,0.12)] transition hover:-translate-y-px"
       >
         Next: preview and pilot <ArrowRight className="h-3.5 w-3.5" />
       </button>
@@ -690,7 +690,7 @@ function PilotsGuide() {
       <div className="grid gap-4 lg:grid-cols-3">
         <VisualCard number="1" title="Preview yourself" text="Confirm the task starts, stimuli appear correctly, responses work and the result summary is sensible.">
           <div className="flex min-h-28 items-center justify-center rounded-2xl border border-slate-200 bg-slate-950 text-white">
-            <Play className="h-8 w-8 text-sky-300" />
+            <Play className="h-8 w-8 text-cyan-700" />
           </div>
         </VisualCard>
         <VisualCard number="2" title="Create a pilot link" text="Share the public link with testers. Pilot runs remain separate from study data.">
@@ -714,12 +714,12 @@ function PilotsGuide() {
         </VisualCard>
       </div>
 
-      <div className="rounded-[24px] border border-sky-100 bg-gradient-to-r from-sky-50 to-cyan-50/60 p-5">
+      <div className="rounded-[24px] border border-cyan-200/80 bg-cyan-50/55 shadow-[0_6px_18px_rgba(8,145,178,0.07)] p-5">
         <div className="flex items-start gap-3">
-          <Sparkles className="mt-0.5 h-5 w-5 shrink-0 text-sky-700" />
+          <Sparkles className="mt-0.5 h-5 w-5 shrink-0 text-cyan-700" />
           <div>
-            <p className="text-sm font-semibold text-sky-950">From task design to study deployment</p>
-            <p className="mt-2 text-xs leading-5 text-sky-900/70">
+            <p className="text-sm font-semibold text-cyan-950">From task design to study deployment</p>
+            <p className="mt-2 text-xs leading-5 text-cyan-900/70">
               Once a task has been previewed and piloted, mark that exact version Ready for studies. It then appears in Study Builder, where you can add it more than once and position each administration in Study flow. Participant runs use the pinned version, so later edits do not silently change an active protocol.
             </p>
           </div>
@@ -754,11 +754,11 @@ export default function CognitiveLearningHub() {
     <div className="space-y-5">
       <section className="overflow-hidden rounded-[28px] border border-slate-200 bg-white">
         <div className="grid gap-0 lg:grid-cols-[.72fr_1.28fr]">
-          <div className="border-b border-slate-100 bg-gradient-to-br from-slate-950 via-slate-950 to-sky-950 p-6 text-white lg:border-b-0 lg:border-r lg:border-slate-800 sm:p-7">
-            <div className="flex h-11 w-11 items-center justify-center rounded-2xl border border-white/10 bg-white/[0.06] text-sky-200">
+          <div className="border-b border-slate-200 bg-white p-6 text-slate-950 lg:border-b-0 lg:border-r sm:p-7">
+            <div className="flex h-11 w-11 items-center justify-center rounded-2xl border border-cyan-200 bg-cyan-50 text-cyan-800 shadow-[0_5px_16px_rgba(8,145,178,0.08)]">
               <BookOpenCheck className="h-5 w-5" />
             </div>
-            <p className="mt-5 text-[10px] font-semibold uppercase tracking-[0.18em] text-sky-300">Cognitive Lab guides</p>
+            <p className="mt-5 text-[10px] font-semibold uppercase tracking-[0.18em] text-cyan-700">Cognitive Lab guides</p>
             <h2 className="mt-2 text-2xl font-semibold tracking-[-0.035em]">Learn by seeing how the task works.</h2>
             <p className="mt-3 max-w-md text-sm leading-6 text-slate-400">
               Short visual explanations, illustrated configurations and complete task examples — built directly into PsyLattice.
@@ -781,12 +781,12 @@ export default function CognitiveLearningHub() {
                   onClick={() => setGuide(item.id)}
                   className={`group rounded-[20px] border p-4 text-left transition ${
                     active
-                      ? "border-sky-200 bg-gradient-to-br from-sky-50 to-cyan-50/50 shadow-[0_16px_40px_-30px_rgba(14,165,233,.5)]"
-                      : "border-slate-200 bg-white hover:border-sky-200 hover:bg-sky-50/20"
+                      ? "border-cyan-200 bg-white shadow-[0_6px_18px_rgba(8,145,178,0.10)]"
+                      : "border-slate-200 bg-white hover:-translate-y-px hover:border-cyan-200 hover:bg-white hover:shadow-[0_6px_18px_rgba(8,145,178,0.08)]"
                   }`}
                 >
                   <div className="flex items-start justify-between gap-3">
-                    <div className={`flex h-9 w-9 items-center justify-center rounded-xl ${active ? "bg-sky-100 text-sky-800" : "bg-slate-100 text-slate-600"}`}>
+                    <div className={`flex h-9 w-9 items-center justify-center rounded-xl ${active ? "bg-cyan-100 text-cyan-800" : "bg-slate-100 text-slate-600"}`}>
                       <Icon className="h-4 w-4" />
                     </div>
                     <span className="text-[9px] font-semibold text-slate-400">{item.minutes}</span>
@@ -803,7 +803,7 @@ export default function CognitiveLearningHub() {
       <div className="rounded-[28px] border border-slate-200 bg-[#fbfcfc] p-4 sm:p-6 lg:p-7">
         <div className="mb-6 flex flex-wrap items-center justify-between gap-3 border-b border-slate-200 pb-4">
           <div className="flex items-center gap-3">
-            <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-white text-sky-700 shadow-sm">
+            <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-white text-cyan-700 shadow-sm">
               <ActiveGuideIcon className="h-4 w-4" />
             </div>
             <div>
@@ -812,7 +812,7 @@ export default function CognitiveLearningHub() {
             </div>
           </div>
           <div className="inline-flex items-center gap-2 rounded-full border border-slate-200 bg-white px-3 py-1.5 text-[10px] font-semibold text-slate-500">
-            <FlaskConical className="h-3.5 w-3.5 text-sky-600" />
+            <FlaskConical className="h-3.5 w-3.5 text-cyan-600" />
             Cognitive Lab manual · Phase 1
           </div>
         </div>

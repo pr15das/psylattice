@@ -159,9 +159,9 @@ function StagePill({ stage }: { stage: CognitiveTask["template_stage"] }) {
   }[stage];
 
   const style = {
-    foundation: "border-amber-200 bg-amber-50 text-amber-800",
-    builder_ready: "border-sky-200 bg-sky-50 text-sky-800",
-    runner_ready: "border-emerald-200 bg-emerald-50 text-emerald-800",
+    foundation: "border-slate-200 bg-white text-slate-600 shadow-[0_4px_12px_rgba(15,23,42,0.05)]",
+    builder_ready: "border-cyan-200 bg-cyan-50/80 text-cyan-900 shadow-[0_5px_16px_rgba(8,145,178,0.09)]",
+    runner_ready: "border-cyan-300 bg-white text-cyan-900 shadow-[0_6px_18px_rgba(8,145,178,0.14)]",
   }[stage];
 
   return (
@@ -210,8 +210,8 @@ function EmptyState({
   action?: ReactNode;
 }) {
   return (
-    <div className="rounded-[26px] border border-dashed border-slate-300 bg-white px-6 py-12 text-center">
-      <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-2xl bg-sky-50 text-sky-700">
+    <div className="rounded-[26px] border border-dashed border-slate-300 bg-white px-6 py-12 text-center shadow-[0_6px_20px_rgba(15,23,42,0.05)]">
+      <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-2xl bg-cyan-50 text-cyan-700">
         <Icon className="h-5 w-5" />
       </div>
       <h3 className="mt-4 text-base font-semibold text-slate-900">{title}</h3>
@@ -376,8 +376,11 @@ export default function CognitiveLab() {
   const activePilotLinks = pilotLinks.filter((link) => link.status === "active" && (!link.expires_at || new Date(link.expires_at).getTime() > Date.now())).length;
 
   function pilotUrl(token: string) {
-    if (typeof window === "undefined") return `/cognitive/pilot/${token}`;
-    return `${window.location.origin}/cognitive/pilot/${token}`;
+    // Pilot and study links intentionally share the existing public /study/[token]
+    // route. The participant page identifies the token type against Supabase.
+    const path = `/study/${encodeURIComponent(token)}`;
+    if (typeof window === "undefined") return path;
+    return `${window.location.origin}${path}`;
   }
 
   async function copyPilotLink(token: string) {
@@ -386,6 +389,14 @@ export default function CognitiveLab() {
       setNotice({ type: "success", text: "Pilot link copied." });
     } catch {
       setNotice({ type: "error", text: "The pilot link could not be copied automatically." });
+    }
+  }
+
+  function openPilotLink(token: string) {
+    const url = pilotUrl(token);
+    const popup = window.open(url, "_blank", "noopener,noreferrer");
+    if (!popup) {
+      window.location.assign(url);
     }
   }
 
@@ -607,39 +618,39 @@ export default function CognitiveLab() {
 
   return (
     <div className="space-y-6">
-      <section className="relative overflow-hidden rounded-[28px] border border-sky-300/20 bg-slate-950 text-white shadow-[0_30px_80px_-48px_rgba(15,23,42,.7)]">
-        <div className="pointer-events-none absolute -left-20 -top-24 h-64 w-64 rounded-full bg-sky-500/15 blur-3xl" />
-        <div className="pointer-events-none absolute right-24 top-10 h-48 w-48 rounded-full bg-cyan-400/10 blur-3xl" />
+      <section className="relative overflow-hidden rounded-[28px] border border-slate-300/75 bg-white text-slate-950 shadow-[0_3px_8px_rgba(15,23,42,0.055),0_18px_44px_rgba(15,23,42,0.085),0_36px_90px_rgba(8,145,178,0.05)]">
+        <div className="pointer-events-none absolute -left-20 -top-24 h-64 w-64 rounded-full bg-cyan-100/70 blur-3xl" />
+        <div className="pointer-events-none absolute right-24 top-10 h-48 w-48 rounded-full bg-cyan-50 blur-3xl" />
         <div className="relative grid gap-8 px-6 py-7 lg:grid-cols-[1fr_.8fr] lg:px-8 lg:py-8">
           <div>
             <div className="flex flex-wrap items-center gap-2">
-              <span className="rounded-full border border-sky-300/30 bg-sky-400/10 px-3 py-1.5 text-[10px] font-semibold uppercase tracking-[0.16em] text-sky-200">
+              <span className="rounded-full border border-cyan-200 bg-white px-3 py-1.5 text-[10px] font-semibold uppercase tracking-[0.16em] text-cyan-900 shadow-[0_5px_16px_rgba(8,145,178,0.09)]">
                 Cognitive Lab · Phase 1F
               </span>
-              <span className="rounded-full border border-white/10 bg-white/[0.05] px-3 py-1.5 text-[10px] font-semibold text-slate-300">
+              <span className="rounded-full border border-slate-200 bg-white px-3 py-1.5 text-[10px] font-semibold text-slate-500 shadow-[0_4px_12px_rgba(15,23,42,0.05)]">
                 Learn + Preview + Pilot + Study execution
               </span>
             </div>
             <h2 className="mt-5 max-w-2xl text-3xl font-semibold tracking-[-0.04em] sm:text-4xl">
               Build reusable cognitive tasks, then place them inside complete PsyLattice studies.
             </h2>
-            <p className="mt-4 max-w-2xl text-sm leading-7 text-slate-300">
+            <p className="mt-4 max-w-2xl text-sm leading-7 text-slate-500">
               Cognitive Lab owns the task definition and version history. Study Builder owns when and where the task runs in the participant flow. The Participant Runner executes it, and Research Data owns the resulting trial-level dataset.
             </p>
           </div>
 
           <div className="grid gap-3 sm:grid-cols-3 lg:grid-cols-1 xl:grid-cols-3">
             {[
-              { value: String(templates.length), label: "Starter templates", icon: Library, accent: "text-sky-300" },
-              { value: String(tasks.length), label: "My tasks", icon: FlaskConical, accent: "text-cyan-300" },
-              { value: String(activePilotLinks), label: "Active pilot links", icon: Link2, accent: "text-sky-300" },
+              { value: String(templates.length), label: "Starter templates", icon: Library, accent: "text-cyan-700" },
+              { value: String(tasks.length), label: "My tasks", icon: FlaskConical, accent: "text-cyan-700" },
+              { value: String(activePilotLinks), label: "Active pilot links", icon: Link2, accent: "text-cyan-700" },
             ].map((stat) => {
               const Icon = stat.icon;
               return (
-                <div key={stat.label} className="rounded-2xl border border-white/10 bg-white/[0.05] p-4">
+                <div key={stat.label} className="rounded-[22px] border border-slate-200 bg-white/95 p-4 shadow-[0_2px_6px_rgba(15,23,42,0.045),0_12px_28px_rgba(15,23,42,0.075)]">
                   <Icon className={`h-4 w-4 ${stat.accent}`} />
                   <p className="mt-4 text-2xl font-semibold">{stat.value}</p>
-                  <p className="mt-1 text-[11px] text-slate-400">{stat.label}</p>
+                  <p className="mt-1 text-[11px] text-slate-500">{stat.label}</p>
                 </div>
               );
             })}
@@ -647,7 +658,7 @@ export default function CognitiveLab() {
         </div>
       </section>
 
-      <div className="flex flex-wrap gap-2 rounded-2xl border border-slate-200 bg-white p-2">
+      <div className="flex flex-wrap gap-2 rounded-[24px] border border-slate-300/75 bg-white p-2 shadow-[0_2px_6px_rgba(15,23,42,0.04),0_12px_28px_rgba(15,23,42,0.075)]">
         {tabs.map((item) => {
           const Icon = item.icon;
           const active = item.id === tab;
@@ -656,10 +667,10 @@ export default function CognitiveLab() {
               key={item.id}
               type="button"
               onClick={() => setTab(item.id)}
-              className={`inline-flex items-center gap-2 rounded-xl px-3.5 py-2.5 text-xs font-semibold transition ${
+              className={`inline-flex items-center gap-2 rounded-full px-3.5 py-2.5 text-xs font-semibold transition-all ${
                 active
-                  ? "bg-gradient-to-r from-sky-50 to-cyan-50 text-sky-900 ring-1 ring-inset ring-sky-100"
-                  : "text-slate-500 hover:bg-slate-50 hover:text-slate-900"
+                  ? "border border-cyan-200 bg-white text-cyan-950 shadow-[0_5px_16px_rgba(8,145,178,0.14),0_10px_24px_rgba(15,23,42,0.055)]"
+                  : "border border-transparent text-slate-500 hover:border-slate-200 hover:bg-white hover:text-slate-900 hover:shadow-[0_4px_12px_rgba(15,23,42,0.05)]"
               }`}
             >
               <Icon className="h-4 w-4" />
@@ -670,19 +681,14 @@ export default function CognitiveLab() {
       </div>
 
       {notice && (
-        <div
-          className={`rounded-2xl border px-4 py-3 text-sm ${
-            notice.type === "success"
-              ? "border-emerald-200 bg-emerald-50 text-emerald-800"
-              : "border-red-200 bg-red-50 text-red-700"
-          }`}
-        >
-          {notice.text}
+        <div className={`flex items-start gap-3 px-1 text-sm ${notice.type === "success" ? "text-cyan-900" : "text-rose-700"}`}>
+          <span className={`mt-1 h-4 w-1 rounded-full ${notice.type === "success" ? "bg-cyan-500" : "bg-rose-500"}`} aria-hidden="true" />
+          <span className="leading-6">{notice.text}</span>
         </div>
       )}
 
       {loading ? (
-        <div className="flex min-h-56 items-center justify-center rounded-[26px] border border-slate-200 bg-white">
+        <div className="flex min-h-56 items-center justify-center rounded-[26px] border border-slate-300/70 bg-white shadow-[0_2px_6px_rgba(15,23,42,0.04),0_12px_30px_rgba(15,23,42,0.07)]">
           <div className="flex items-center gap-3 text-sm text-slate-500">
             <Loader2 className="h-4 w-4 animate-spin" />
             Loading Cognitive Lab…
@@ -690,17 +696,17 @@ export default function CognitiveLab() {
         </div>
       ) : tab === "overview" ? (
         <div className="grid gap-5 xl:grid-cols-[1.15fr_.85fr]">
-          <section className="rounded-[26px] border border-slate-200 bg-white p-5 sm:p-6">
+          <section className="rounded-[26px] border border-slate-300/70 bg-white p-5 shadow-[0_2px_6px_rgba(15,23,42,0.04),0_12px_30px_rgba(15,23,42,0.07)] sm:p-6">
             <div className="flex flex-wrap items-start justify-between gap-4">
               <div>
-                <p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-sky-700">Workflow foundation</p>
+                <p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-cyan-700">Workflow foundation</p>
                 <h3 className="mt-2 text-xl font-semibold tracking-[-0.025em] text-slate-950">One task, reusable across many studies.</h3>
               </div>
               <div className="flex flex-wrap gap-2">
                 <button
                   type="button"
                   onClick={() => setTab("learn")}
-                  className="inline-flex items-center gap-2 rounded-xl border border-sky-200 bg-sky-50 px-4 py-2.5 text-xs font-semibold text-sky-900"
+                  className="inline-flex items-center gap-2 rounded-full border border-cyan-200 bg-white px-4 py-2.5 shadow-[0_5px_16px_rgba(8,145,178,0.10)] transition hover:-translate-y-px text-xs font-semibold text-cyan-900"
                 >
                   <BookOpenCheck className="h-3.5 w-3.5" />
                   Learn how it works
@@ -708,7 +714,7 @@ export default function CognitiveLab() {
                 <button
                   type="button"
                   onClick={() => setTab("library")}
-                  className="inline-flex items-center gap-2 rounded-xl bg-slate-950 px-4 py-2.5 text-xs font-semibold text-white"
+                  className="inline-flex items-center gap-2 rounded-full bg-slate-950 px-4 py-2.5 shadow-[0_4px_10px_rgba(15,23,42,0.16),0_10px_24px_rgba(15,23,42,0.12)] transition hover:-translate-y-px text-xs font-semibold text-white"
                 >
                   Browse templates
                   <ArrowRight className="h-3.5 w-3.5" />
@@ -723,20 +729,20 @@ export default function CognitiveLab() {
                 ["03", "Study Builder", "Choose when the task is administered."],
                 ["04", "Research Data", "Keep trial-level results aligned with the study."],
               ].map(([number, title, text]) => (
-                <div key={number} className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
-                  <p className="text-[10px] font-semibold text-sky-700">{number}</p>
+                <div key={number} className="rounded-2xl border border-slate-200 bg-white p-4 shadow-[0_5px_16px_rgba(15,23,42,0.055)] shadow-[0_5px_16px_rgba(15,23,42,0.055)]">
+                  <p className="text-[10px] font-semibold text-cyan-700">{number}</p>
                   <p className="mt-2 text-sm font-semibold text-slate-900">{title}</p>
                   <p className="mt-2 text-xs leading-5 text-slate-500">{text}</p>
                 </div>
               ))}
             </div>
 
-            <div className="mt-5 rounded-2xl border border-sky-100 bg-gradient-to-r from-sky-50/80 to-cyan-50/70 p-4">
+            <div className="mt-5 rounded-2xl border border-cyan-200/80 bg-cyan-50/55 shadow-[0_7px_20px_rgba(8,145,178,0.07)] p-4">
               <div className="flex items-start gap-3">
-                <Sparkles className="mt-0.5 h-4 w-4 shrink-0 text-sky-700" />
+                <Sparkles className="mt-0.5 h-4 w-4 shrink-0 text-cyan-700" />
                 <div>
-                  <p className="text-sm font-semibold text-sky-950">What Cognitive Lab does now</p>
-                  <p className="mt-1 text-xs leading-5 text-sky-900/70">
+                  <p className="text-sm font-semibold text-cyan-950">What Cognitive Lab does now</p>
+                  <p className="mt-1 text-xs leading-5 text-cyan-900/70">
                     The task templates, personal Cognitive Task Library, visual Task Builder, calibrated Preview runner and Pilot Sessions work together. Publish a tested version when it is ready to be selected inside Study Builder.
                   </p>
                 </div>
@@ -744,7 +750,7 @@ export default function CognitiveLab() {
             </div>
           </section>
 
-          <section className="rounded-[26px] border border-slate-200 bg-white p-5 sm:p-6">
+          <section className="rounded-[26px] border border-slate-300/70 bg-white p-5 shadow-[0_2px_6px_rgba(15,23,42,0.04),0_12px_30px_rgba(15,23,42,0.07)] sm:p-6">
             <p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-slate-500">Quick start</p>
             <h3 className="mt-2 text-xl font-semibold text-slate-950">Start from a task family or create your own.</h3>
             <div className="mt-5 space-y-3">
@@ -759,7 +765,7 @@ export default function CognitiveLab() {
                       setSearch(task.title);
                       setTab("library");
                     }}
-                    className="flex w-full items-center gap-3 rounded-2xl border border-slate-200 bg-white p-3 text-left transition hover:border-sky-200 hover:bg-sky-50/30"
+                    className="flex w-full items-center gap-3 rounded-2xl border border-slate-200 bg-white p-3 shadow-[0_4px_14px_rgba(15,23,42,0.05)] text-left transition hover:border-cyan-200 hover:bg-cyan-50/30"
                   >
                     <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-slate-100 text-slate-700">
                       <Icon className="h-4 w-4" />
@@ -787,10 +793,10 @@ export default function CognitiveLab() {
         <CognitiveLearningHub />
       ) : tab === "library" ? (
         <div className="space-y-5">
-          <section className="rounded-[26px] border border-slate-200 bg-white p-5 sm:p-6">
+          <section className="rounded-[26px] border border-slate-300/70 bg-white p-5 shadow-[0_2px_6px_rgba(15,23,42,0.04),0_12px_30px_rgba(15,23,42,0.07)] sm:p-6">
             <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
               <div>
-                <p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-sky-700">Cognitive Task Library</p>
+                <p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-cyan-700">Cognitive Task Library</p>
                 <h3 className="mt-2 text-xl font-semibold text-slate-950">Starter task structures for common cognitive paradigms.</h3>
                 <p className="mt-2 max-w-3xl text-sm leading-6 text-slate-500">
                   These are configurable implementation templates. A template name does not by itself make a particular configuration psychometrically or experimentally valid for every protocol.
@@ -803,13 +809,13 @@ export default function CognitiveLab() {
                     value={search}
                     onChange={(event) => setSearch(event.target.value)}
                     placeholder="Search cognitive tasks"
-                    className="w-full rounded-xl border border-slate-200 bg-white py-2.5 pl-9 pr-3 text-sm outline-none transition focus:border-sky-300 sm:w-64"
+                    className="w-full rounded-xl border border-slate-200 bg-white py-2.5 pl-9 pr-3 text-sm outline-none transition focus:border-cyan-300 sm:w-64"
                   />
                 </label>
                 <select
                   value={selectedDomain}
                   onChange={(event) => setSelectedDomain(event.target.value)}
-                  className="rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm text-slate-600"
+                  className="rounded-full border border-slate-200 bg-white px-3 py-2 shadow-[0_4px_12px_rgba(15,23,42,0.05)] transition hover:-translate-y-px.5 text-sm text-slate-600"
                 >
                   <option value="all">All domains</option>
                   {domains.map((domain) => (
@@ -829,7 +835,7 @@ export default function CognitiveLab() {
               return (
                 <article key={task.id} className="rounded-[24px] border border-slate-200 bg-white p-5 shadow-sm">
                   <div className="flex items-start justify-between gap-4">
-                    <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-sky-50 text-sky-700">
+                    <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-cyan-50 text-cyan-700">
                       <Icon className="h-5 w-5" />
                     </div>
                     <StagePill stage={task.template_stage} />
@@ -857,7 +863,7 @@ export default function CognitiveLab() {
                       type="button"
                       onClick={() => void cloneTemplate(task)}
                       disabled={cloning}
-                      className="inline-flex shrink-0 items-center gap-2 rounded-xl bg-slate-950 px-3.5 py-2.5 text-xs font-semibold text-white disabled:opacity-60"
+                      className="inline-flex shrink-0 items-center gap-2 rounded-full bg-slate-950 px-3.5 py-2.5 shadow-[0_4px_10px_rgba(15,23,42,0.16),0_10px_24px_rgba(15,23,42,0.12)] transition hover:-translate-y-px text-xs font-semibold text-white disabled:opacity-60"
                     >
                       {cloning ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Plus className="h-3.5 w-3.5" />}
                       Use template
@@ -874,16 +880,16 @@ export default function CognitiveLab() {
         </div>
       ) : tab === "tasks" ? (
         <div className="grid gap-5 xl:grid-cols-[1fr_.8fr]">
-          <section className="rounded-[26px] border border-slate-200 bg-white p-5 sm:p-6">
+          <section className="rounded-[26px] border border-slate-300/70 bg-white p-5 shadow-[0_2px_6px_rgba(15,23,42,0.04),0_12px_30px_rgba(15,23,42,0.07)] sm:p-6">
             <div className="flex flex-wrap items-center justify-between gap-3">
               <div>
-                <p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-sky-700">My Cognitive Tasks</p>
+                <p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-cyan-700">My Cognitive Tasks</p>
                 <h3 className="mt-2 text-xl font-semibold text-slate-950">Your personal library of reusable cognitive tasks.</h3>
               </div>
               <button
                 type="button"
                 onClick={() => setShowCreate(true)}
-                className="inline-flex items-center gap-2 rounded-xl bg-slate-950 px-4 py-2.5 text-xs font-semibold text-white"
+                className="inline-flex items-center gap-2 rounded-full bg-slate-950 px-4 py-2.5 shadow-[0_4px_10px_rgba(15,23,42,0.16),0_10px_24px_rgba(15,23,42,0.12)] transition hover:-translate-y-px text-xs font-semibold text-white"
               >
                 <Plus className="h-4 w-4" />
                 Create task
@@ -900,7 +906,7 @@ export default function CognitiveLab() {
                     <button
                       type="button"
                       onClick={() => setTab("library")}
-                      className="rounded-xl bg-slate-950 px-4 py-2.5 text-xs font-semibold text-white"
+                      className="rounded-full bg-slate-950 px-4 py-2.5 shadow-[0_4px_10px_rgba(15,23,42,0.16),0_10px_24px_rgba(15,23,42,0.12)] transition hover:-translate-y-px text-xs font-semibold text-white"
                     >
                       Browse Task Templates
                     </button>
@@ -919,8 +925,8 @@ export default function CognitiveLab() {
                       onClick={() => setSelectedTaskId(task.id)}
                       className={`w-full rounded-2xl border p-4 text-left transition ${
                         selected
-                          ? "border-sky-300 bg-gradient-to-r from-sky-50/60 to-cyan-50/30"
-                          : "border-slate-200 bg-white hover:border-sky-200"
+                          ? "border-cyan-300 bg-cyan-50/45"
+                          : "border-slate-200 bg-white hover:border-cyan-200"
                       }`}
                     >
                       <div className="flex flex-wrap items-start justify-between gap-3">
@@ -936,11 +942,11 @@ export default function CognitiveLab() {
                           </p>
                         </div>
                         {publishedVersionFor(task.id) ? (
-                          <span className="rounded-full border border-emerald-200 bg-emerald-50 px-2.5 py-1 text-[9px] font-semibold text-emerald-800">
+                          <span className="rounded-full border border-cyan-200 bg-cyan-50 px-2.5 py-1 text-[9px] font-semibold text-cyan-900 shadow-[0_4px_12px_rgba(8,145,178,0.08)]">
                             {version?.status === "draft" ? "Study-ready + draft" : "Ready for studies"}
                           </span>
                         ) : (
-                          <span className="rounded-full border border-amber-200 bg-amber-50 px-2.5 py-1 text-[9px] font-semibold text-amber-800">
+                          <span className="rounded-full border border-slate-200 bg-white px-2.5 py-1 text-[9px] font-semibold text-slate-600 shadow-[0_4px_12px_rgba(15,23,42,0.05)]">
                             Draft only
                           </span>
                         )}
@@ -952,7 +958,7 @@ export default function CognitiveLab() {
             )}
           </section>
 
-          <section className="rounded-[26px] border border-slate-200 bg-white p-5 sm:p-6">
+          <section className="rounded-[26px] border border-slate-300/70 bg-white p-5 shadow-[0_2px_6px_rgba(15,23,42,0.04),0_12px_30px_rgba(15,23,42,0.07)] sm:p-6">
             {selectedTask ? (
               <div>
                 <div className="flex items-start justify-between gap-4">
@@ -974,25 +980,25 @@ export default function CognitiveLab() {
                 </div>
 
                 <div className="mt-5 grid gap-3 sm:grid-cols-3">
-                  <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
+                  <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-[0_5px_16px_rgba(15,23,42,0.055)] shadow-[0_5px_16px_rgba(15,23,42,0.055)]">
                     <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-500">Working version</p>
                     <p className="mt-2 text-sm font-semibold text-slate-900">{versionFor(selectedTask.id)?.version_label || "Draft v1"}</p>
                     <p className="mt-1 text-[10px] capitalize text-slate-400">{versionFor(selectedTask.id)?.status || "draft"}</p>
                   </div>
-                  <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
+                  <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-[0_5px_16px_rgba(15,23,42,0.055)] shadow-[0_5px_16px_rgba(15,23,42,0.055)]">
                     <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-500">Study-ready version</p>
                     <p className="mt-2 text-sm font-semibold text-slate-900">{publishedVersionFor(selectedTask.id)?.version_label || "Not published yet"}</p>
                     <p className="mt-1 text-[10px] text-slate-400">Study Builder only uses frozen published versions</p>
                   </div>
-                  <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
+                  <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-[0_5px_16px_rgba(15,23,42,0.055)] shadow-[0_5px_16px_rgba(15,23,42,0.055)]">
                     <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-500">Source</p>
                     <p className="mt-2 text-sm font-semibold text-slate-900">{selectedTask.source_template_id ? "PsyLattice template" : "Blank custom task"}</p>
                   </div>
                 </div>
 
-                <div className="mt-5 rounded-2xl border border-sky-100 bg-gradient-to-r from-sky-50/80 to-cyan-50/70 p-4">
-                  <p className="text-sm font-semibold text-sky-950">Personal Cognitive Task Library</p>
-                  <p className="mt-1 text-xs leading-5 text-sky-900/70">
+                <div className="mt-5 rounded-2xl border border-cyan-200/80 bg-cyan-50/55 shadow-[0_7px_20px_rgba(8,145,178,0.07)] p-4">
+                  <p className="text-sm font-semibold text-cyan-950">Personal Cognitive Task Library</p>
+                  <p className="mt-1 text-xs leading-5 text-cyan-900/70">
                     Preview and pilot your working draft. When it is ready, publish that exact version for studies. Published versions stay frozen so later edits cannot silently change an existing protocol.
                   </p>
                 </div>
@@ -1001,7 +1007,7 @@ export default function CognitiveLab() {
                   <button
                     type="button"
                     onClick={() => setBuilderTaskId(selectedTask.id)}
-                    className="inline-flex w-full items-center justify-center gap-2 rounded-xl border border-slate-200 bg-white px-4 py-3 text-xs font-semibold text-slate-700 transition hover:border-sky-200"
+                    className="inline-flex w-full items-center justify-center gap-2 rounded-xl border border-slate-200 bg-white px-4 py-3 text-xs font-semibold text-slate-700 transition hover:border-cyan-200"
                   >
                     {versionFor(selectedTask.id)?.status === "draft" ? "Open Task Builder" : "View Task Builder"}
                     <ArrowRight className="h-3.5 w-3.5" />
@@ -1043,13 +1049,13 @@ export default function CognitiveLab() {
         </div>
       ) : (
         <div className="space-y-5">
-          <section className="rounded-[26px] border border-slate-200 bg-white p-5 sm:p-6">
+          <section className="rounded-[26px] border border-slate-300/70 bg-white p-5 shadow-[0_2px_6px_rgba(15,23,42,0.04),0_12px_30px_rgba(15,23,42,0.07)] sm:p-6">
             <div className="flex flex-col gap-5 xl:flex-row xl:items-start xl:justify-between">
               <div className="max-w-2xl">
                 <div className="flex items-center gap-2">
-                  <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-sky-50 text-sky-700"><Link2 className="h-4 w-4" /></span>
+                  <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-cyan-50 text-cyan-700"><Link2 className="h-4 w-4" /></span>
                   <div>
-                    <p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-sky-700">Pilot Sessions</p>
+                    <p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-cyan-700">Pilot Sessions</p>
                     <h3 className="mt-1 text-xl font-semibold text-slate-950">Share a real task before putting it in a study.</h3>
                   </div>
                 </div>
@@ -1058,28 +1064,28 @@ export default function CognitiveLab() {
                 </p>
               </div>
               <div className="grid min-w-[240px] grid-cols-2 gap-3">
-                <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4"><p className="text-2xl font-semibold text-slate-950">{activePilotLinks}</p><p className="mt-1 text-[10px] text-slate-500">Active links</p></div>
-                <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4"><p className="text-2xl font-semibold text-slate-950">{completedPilots}</p><p className="mt-1 text-[10px] text-slate-500">Completed runs</p></div>
+                <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-[0_5px_16px_rgba(15,23,42,0.055)] shadow-[0_5px_16px_rgba(15,23,42,0.055)]"><p className="text-2xl font-semibold text-slate-950">{activePilotLinks}</p><p className="mt-1 text-[10px] text-slate-500">Active links</p></div>
+                <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-[0_5px_16px_rgba(15,23,42,0.055)] shadow-[0_5px_16px_rgba(15,23,42,0.055)]"><p className="text-2xl font-semibold text-slate-950">{completedPilots}</p><p className="mt-1 text-[10px] text-slate-500">Completed runs</p></div>
               </div>
             </div>
 
-            <div className="mt-6 rounded-2xl border border-sky-100 bg-gradient-to-r from-sky-50/80 to-cyan-50/60 p-4">
-              <p className="text-sm font-semibold text-sky-950">Create pilot link</p>
+            <div className="mt-6 rounded-2xl border border-cyan-200/80 bg-cyan-50/55 shadow-[0_7px_20px_rgba(8,145,178,0.07)] p-4">
+              <p className="text-sm font-semibold text-cyan-950">Create pilot link</p>
               {tasks.length === 0 ? (
-                <p className="mt-2 text-xs leading-5 text-sky-900/70">Create or clone a cognitive task first, then save it in the Task Builder.</p>
+                <p className="mt-2 text-xs leading-5 text-cyan-900/70">Create or clone a cognitive task first, then save it in the Task Builder.</p>
               ) : (
                 <div className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-[1.4fr_1fr_.7fr_.7fr_auto]">
-                  <label className="block"><span className="text-[10px] font-semibold text-slate-600">Task</span><select value={pilotTaskId} onChange={(event) => setPilotTaskId(event.target.value)} className="mt-1.5 w-full rounded-xl border border-sky-200 bg-white px-3 py-2.5 text-xs text-slate-700">{tasks.map((task) => <option key={task.id} value={task.id}>{task.title}</option>)}</select></label>
-                  <label className="block"><span className="text-[10px] font-semibold text-slate-600">Pilot name</span><input value={pilotLabel} onChange={(event) => setPilotLabel(event.target.value)} className="mt-1.5 w-full rounded-xl border border-sky-200 bg-white px-3 py-2.5 text-xs outline-none focus:border-cyan-400" /></label>
-                  <label className="block"><span className="text-[10px] font-semibold text-slate-600">Max runs</span><input type="number" min="1" value={pilotLimit} onChange={(event) => setPilotLimit(event.target.value)} placeholder="No limit" className="mt-1.5 w-full rounded-xl border border-sky-200 bg-white px-3 py-2.5 text-xs outline-none focus:border-cyan-400" /></label>
-                  <label className="block"><span className="text-[10px] font-semibold text-slate-600">Expires in</span><div className="mt-1.5 flex items-center gap-1.5"><input type="number" min="1" value={pilotExpiryDays} onChange={(event) => setPilotExpiryDays(event.target.value)} className="w-full rounded-xl border border-sky-200 bg-white px-3 py-2.5 text-xs outline-none focus:border-cyan-400" /><span className="text-[10px] text-slate-500">days</span></div></label>
-                  <button type="button" onClick={() => void createPilotLink()} disabled={creatingPilot || !pilotTaskId} className="self-end rounded-xl bg-slate-950 px-4 py-2.5 text-xs font-semibold text-white disabled:opacity-50">{creatingPilot ? "Creating…" : "Create link"}</button>
+                  <label className="block"><span className="text-[10px] font-semibold text-slate-600">Task</span><select value={pilotTaskId} onChange={(event) => setPilotTaskId(event.target.value)} className="mt-1.5 w-full rounded-full border border-slate-300/80 bg-white px-3 py-2.5 text-xs shadow-[0_4px_14px_rgba(15,23,42,0.05)] text-slate-700">{tasks.map((task) => <option key={task.id} value={task.id}>{task.title}</option>)}</select></label>
+                  <label className="block"><span className="text-[10px] font-semibold text-slate-600">Pilot name</span><input value={pilotLabel} onChange={(event) => setPilotLabel(event.target.value)} className="mt-1.5 w-full rounded-full border border-slate-300/80 bg-white px-3 py-2.5 text-xs shadow-[0_4px_14px_rgba(15,23,42,0.05)] outline-none focus:border-cyan-400" /></label>
+                  <label className="block"><span className="text-[10px] font-semibold text-slate-600">Max runs</span><input type="number" min="1" value={pilotLimit} onChange={(event) => setPilotLimit(event.target.value)} placeholder="No limit" className="mt-1.5 w-full rounded-full border border-slate-300/80 bg-white px-3 py-2.5 text-xs shadow-[0_4px_14px_rgba(15,23,42,0.05)] outline-none focus:border-cyan-400" /></label>
+                  <label className="block"><span className="text-[10px] font-semibold text-slate-600">Expires in</span><div className="mt-1.5 flex items-center gap-1.5"><input type="number" min="1" value={pilotExpiryDays} onChange={(event) => setPilotExpiryDays(event.target.value)} className="w-full rounded-xl border border-cyan-200 bg-white px-3 py-2.5 text-xs outline-none focus:border-cyan-400" /><span className="text-[10px] text-slate-500">days</span></div></label>
+                  <button type="button" onClick={() => void createPilotLink()} disabled={creatingPilot || !pilotTaskId} className="self-end rounded-full bg-slate-950 px-4 py-2.5 shadow-[0_4px_10px_rgba(15,23,42,0.16),0_10px_24px_rgba(15,23,42,0.12)] transition hover:-translate-y-px text-xs font-semibold text-white disabled:opacity-50">{creatingPilot ? "Creating…" : "Create link"}</button>
                 </div>
               )}
             </div>
           </section>
 
-          <section className="rounded-[26px] border border-slate-200 bg-white p-5 sm:p-6">
+          <section className="rounded-[26px] border border-slate-300/70 bg-white p-5 shadow-[0_2px_6px_rgba(15,23,42,0.04),0_12px_30px_rgba(15,23,42,0.07)] sm:p-6">
             <div className="flex items-center justify-between gap-4"><div><p className="text-[10px] font-semibold uppercase tracking-[0.15em] text-slate-400">Shareable pilots</p><h3 className="mt-1 text-lg font-semibold text-slate-950">Pilot links</h3></div></div>
             {pilotLinks.length === 0 ? (
               <div className="mt-5"><EmptyState icon={Link2} title="No pilot links yet" text="Choose a saved task above and create a link. Each link keeps its own immutable task snapshot." /></div>
@@ -1091,17 +1097,17 @@ export default function CognitiveLab() {
                   const exhausted = link.max_completions !== null && link.completion_count >= link.max_completions;
                   const live = link.status === "active" && !expired && !exhausted;
                   return (
-                    <div key={link.id} className="rounded-2xl border border-slate-200 p-4">
+                    <div key={link.id} className="rounded-2xl border border-slate-200 bg-white p-4 shadow-[0_5px_16px_rgba(15,23,42,0.055)]">
                       <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
                         <div className="min-w-0">
-                          <div className="flex flex-wrap items-center gap-2"><p className="text-sm font-semibold text-slate-950">{link.label}</p><span className={`rounded-full px-2 py-1 text-[9px] font-semibold ${live ? "bg-emerald-50 text-emerald-700" : "bg-slate-100 text-slate-500"}`}>{live ? "Active" : expired ? "Expired" : exhausted ? "Limit reached" : "Closed"}</span></div>
+                          <div className="flex flex-wrap items-center gap-2"><p className="text-sm font-semibold text-slate-950">{link.label}</p><span className={`rounded-full px-2 py-1 text-[9px] font-semibold ${live ? "border border-cyan-200 bg-cyan-50 text-cyan-900 shadow-[0_4px_12px_rgba(8,145,178,0.08)]" : "bg-slate-100 text-slate-500"}`}>{live ? "Active" : expired ? "Expired" : exhausted ? "Limit reached" : "Closed"}</span></div>
                           <p className="mt-1 text-[11px] text-slate-500">{task?.title || "Cognitive task"} · {link.completion_count}{link.max_completions !== null ? ` / ${link.max_completions}` : ""} completed · Created {formatDate(link.created_at)}</p>
                           <p className="mt-1 truncate font-mono text-[9px] text-slate-400">{pilotUrl(link.token)}</p>
                         </div>
                         <div className="flex flex-wrap gap-2">
-                          <button type="button" onClick={() => void copyPilotLink(link.token)} className="inline-flex items-center gap-1.5 rounded-xl border border-slate-200 bg-white px-3 py-2 text-[10px] font-semibold text-slate-600"><Copy className="h-3.5 w-3.5" /> Copy</button>
-                          {live && <a href={pilotUrl(link.token)} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1.5 rounded-xl border border-slate-200 bg-white px-3 py-2 text-[10px] font-semibold text-slate-600"><ExternalLink className="h-3.5 w-3.5" /> Test</a>}
-                          <button type="button" onClick={() => void setPilotLinkStatus(link, link.status === "active" ? "closed" : "active")} className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-[10px] font-semibold text-slate-600">{link.status === "active" ? "Close link" : "Reopen"}</button>
+                          <button type="button" onClick={() => void copyPilotLink(link.token)} className="inline-flex items-center gap-1.5 rounded-full border border-slate-200 bg-white px-3 py-2 shadow-[0_4px_12px_rgba(15,23,42,0.05)] transition hover:-translate-y-px text-[10px] font-semibold text-slate-600"><Copy className="h-3.5 w-3.5" /> Copy</button>
+                          {live && <a href={pilotUrl(link.token)} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1.5 rounded-full border border-slate-200 bg-white px-3 py-2 shadow-[0_4px_12px_rgba(15,23,42,0.05)] transition hover:-translate-y-px text-[10px] font-semibold text-slate-600"><ExternalLink className="h-3.5 w-3.5" /> Test</a>}
+                          <button type="button" onClick={() => void setPilotLinkStatus(link, link.status === "active" ? "closed" : "active")} className="rounded-full border border-slate-200 bg-white px-3 py-2 shadow-[0_4px_12px_rgba(15,23,42,0.05)] transition hover:-translate-y-px text-[10px] font-semibold text-slate-600">{link.status === "active" ? "Close link" : "Reopen"}</button>
                         </div>
                       </div>
                     </div>
@@ -1111,7 +1117,7 @@ export default function CognitiveLab() {
             )}
           </section>
 
-          <section className="rounded-[26px] border border-slate-200 bg-white p-5 sm:p-6">
+          <section className="rounded-[26px] border border-slate-300/70 bg-white p-5 shadow-[0_2px_6px_rgba(15,23,42,0.04),0_12px_30px_rgba(15,23,42,0.07)] sm:p-6">
             <div><p className="text-[10px] font-semibold uppercase tracking-[0.15em] text-slate-400">Incoming runs</p><h3 className="mt-1 text-lg font-semibold text-slate-950">Recent pilot sessions</h3></div>
             {pilotSessions.length === 0 ? (
               <div className="mt-5"><EmptyState icon={Clock3} title="No pilot runs yet" text="Completed and abandoned pilot runs will appear here after testers open your pilot links." /></div>
@@ -1130,10 +1136,10 @@ export default function CognitiveLab() {
 
       {showCreate && (
         <div className="fixed inset-0 z-[80] flex items-center justify-center bg-slate-950/45 p-4 backdrop-blur-sm">
-          <div className="w-full max-w-lg rounded-[26px] border border-slate-200 bg-white p-5 shadow-2xl sm:p-6">
+          <div className="w-full max-w-lg rounded-[26px] border border-slate-300/70 bg-white shadow-[0_2px_6px_rgba(15,23,42,0.04),0_12px_30px_rgba(15,23,42,0.07)] p-5 shadow-2xl sm:p-6">
             <div className="flex items-start justify-between gap-4">
               <div>
-                <p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-sky-700">New cognitive task</p>
+                <p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-cyan-700">New cognitive task</p>
                 <h3 className="mt-2 text-xl font-semibold text-slate-950">Create a blank reusable task.</h3>
               </div>
               <button
@@ -1152,7 +1158,7 @@ export default function CognitiveLab() {
                   value={newTaskTitle}
                   onChange={(event) => setNewTaskTitle(event.target.value)}
                   placeholder="e.g. Emotional Stroop"
-                  className="mt-2 w-full rounded-xl border border-slate-200 px-3.5 py-3 text-sm outline-none transition focus:border-sky-300"
+                  className="mt-2 w-full rounded-xl border border-slate-200 px-3.5 py-3 text-sm outline-none transition focus:border-cyan-300"
                 />
               </label>
 
@@ -1181,7 +1187,7 @@ export default function CognitiveLab() {
                   onChange={(event) => setNewTaskDescription(event.target.value)}
                   rows={4}
                   placeholder="What will this task measure or manipulate?"
-                  className="mt-2 w-full resize-none rounded-xl border border-slate-200 px-3.5 py-3 text-sm outline-none transition focus:border-sky-300"
+                  className="mt-2 w-full resize-none rounded-xl border border-slate-200 px-3.5 py-3 text-sm outline-none transition focus:border-cyan-300"
                 />
               </label>
             </div>

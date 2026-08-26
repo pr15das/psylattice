@@ -19776,8 +19776,8 @@ export default function ResearcherWorkspace() {
 
       {/* Header */}
 
-      <header className="sticky top-0 z-50 border-b border-slate-300/65 bg-white/92 shadow-[0_1px_0_rgba(15,23,42,0.04),0_12px_34px_rgba(15,23,42,0.06)] backdrop-blur-xl">
-        <div className="flex min-h-20 items-center justify-between gap-4 px-5 lg:px-7">
+      <header className="sticky top-3 z-50 mx-3 rounded-[28px] border border-slate-200/90 bg-white/95 shadow-[0_16px_38px_rgba(15,23,42,0.09),0_2px_10px_rgba(8,145,178,0.055)] backdrop-blur-xl sm:mx-4">
+        <div className="flex min-h-[66px] items-center justify-between gap-4 px-5 lg:px-7">
           <div className="flex items-center gap-3">
            <div>
   <PsyLatticeLogo size={38} />
@@ -19822,8 +19822,8 @@ export default function ResearcherWorkspace() {
         {/* Sidebar */}
 
         <aside
-          className={`fixed bottom-0 left-0 top-20 z-40 hidden overflow-y-auto border-r border-slate-200/80 bg-[#fbfdfd] p-3 shadow-[10px_0_34px_rgba(15,23,42,0.05)] transition-[width] duration-200 lg:block ${
-            sidebarCollapsed ? "w-[76px]" : "w-[245px]"
+          className={`fixed bottom-3 left-3 top-[92px] z-40 hidden overflow-y-auto rounded-[28px] border border-slate-200/90 bg-white/95 p-3 shadow-[0_18px_46px_rgba(15,23,42,0.085),0_2px_10px_rgba(8,145,178,0.045)] backdrop-blur-xl transition-[width] duration-200 lg:block ${
+            sidebarCollapsed ? "w-[76px]" : "w-[250px]"
           }`}
         >
           <div
@@ -19963,8 +19963,8 @@ export default function ResearcherWorkspace() {
         <section
           className={`min-w-0 p-5 transition-[margin] duration-200 sm:p-6 lg:p-8 ${
             sidebarCollapsed
-              ? "lg:ml-[76px]"
-              : "lg:ml-[245px]"
+              ? "lg:ml-[94px]"
+              : "lg:ml-[268px]"
           }`}
         >
           <div className="mx-auto max-w-[1450px]">

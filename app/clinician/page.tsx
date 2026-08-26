@@ -12,12 +12,12 @@ import {
   HeartPulse,
   LayoutDashboard,
   MessageSquare,
-  NotebookPen,
   Settings2,
   ShieldCheck,
+  Stethoscope,
   UserRound,
   Users,
-  Watch,
+  Workflow,
   type LucideIcon,
 } from "lucide-react";
 import PsyLatticeLogo from "@/components/PsyLatticeLogo";
@@ -91,13 +91,13 @@ const sidebarIcons: Record<Screen, LucideIcon> = {
   overview: UserRound,
   assessments: ClipboardCheck,
   ambulatory: Activity,
-  wearables: Watch,
+  wearables: HeartPulse,
   timeline: BarChart3,
-  notes: NotebookPen,
-  care: HeartPulse,
+  notes: FileText,
+  care: Workflow,
   appointments: CalendarDays,
   messages: MessageSquare,
-  reports: FileText,
+  reports: Stethoscope,
   permissions: ShieldCheck,
   settings: Settings2,
 };
@@ -150,7 +150,7 @@ function StatCard({
   detail: string;
 }) {
   return (
-    <div className="rounded-2xl border border-slate-200 bg-white p-5">
+    <div className="rounded-[22px] border border-slate-300/75 bg-white p-5 shadow-[0_2px_5px_rgba(15,23,42,0.055),0_10px_26px_rgba(15,23,42,0.075),0_28px_64px_rgba(15,23,42,0.055)] transition-all duration-200 hover:-translate-y-0.5 hover:border-cyan-200/80 hover:shadow-[0_3px_7px_rgba(15,23,42,0.05),0_14px_32px_rgba(15,23,42,0.09),0_32px_72px_rgba(8,145,178,0.055)]">
       <p className="text-xs font-medium text-slate-400">{label}</p>
 
       <p className="mt-2 text-2xl font-semibold tracking-tight">{value}</p>
@@ -170,7 +170,7 @@ function Panel({
   children: ReactNode;
 }) {
   return (
-    <section className="rounded-2xl border border-slate-200 bg-white">
+    <section className="overflow-hidden rounded-[24px] border border-slate-300/75 bg-white shadow-[0_2px_6px_rgba(15,23,42,0.05),0_14px_36px_rgba(15,23,42,0.085),0_34px_80px_rgba(15,23,42,0.055)]">
       <div className="border-b border-slate-100 px-5 py-4">
         <h2 className="font-semibold">{title}</h2>
 
@@ -194,15 +194,19 @@ function Status({
   type?: "neutral" | "success" | "warning" | "accent";
 }) {
   const styles = {
-    neutral: "bg-slate-100 text-slate-600",
-    success: "bg-emerald-50 text-emerald-700",
-    warning: "bg-amber-50 text-amber-800",
-    accent: "bg-cyan-50 text-cyan-800",
+    neutral:
+      "border border-slate-200 bg-white text-slate-600 shadow-[0_4px_12px_rgba(15,23,42,0.06)]",
+    success:
+      "border border-cyan-200 bg-cyan-50/80 text-cyan-900 shadow-[0_5px_14px_rgba(8,145,178,0.09)]",
+    warning:
+      "border border-slate-300 bg-slate-50 text-slate-700 shadow-[0_5px_14px_rgba(15,23,42,0.06)]",
+    accent:
+      "border border-cyan-200 bg-white text-cyan-900 shadow-[0_5px_16px_rgba(8,145,178,0.11)]",
   };
 
   return (
     <span
-      className={`rounded-full px-3 py-1 text-xs font-medium ${styles[type]}`}
+      className={`rounded-full px-3 py-1 text-xs font-semibold ${styles[type]}`}
     >
       {children}
     </span>
@@ -1030,7 +1034,7 @@ function ConnectedClients({
               return (
                 <div
                   key={client.connection_id}
-                  className="rounded-2xl border border-slate-200 bg-white p-5 transition hover:border-cyan-200 hover:shadow-sm"
+                  className="rounded-[22px] border border-slate-200/90 bg-white p-5 shadow-[0_10px_26px_rgba(15,23,42,0.06)] transition hover:-translate-y-0.5 hover:border-cyan-200 hover:shadow-[0_16px_34px_rgba(15,23,42,0.08)]"
                 >
                   <div className="flex items-start gap-4">
                     <PersonAvatar
@@ -2124,7 +2128,7 @@ function ClientOverview({
                     key={definition.key}
                     className={`rounded-xl border p-4 ${
                       shared
-                        ? "border-emerald-100 bg-emerald-50/60"
+                        ? "border-cyan-200 bg-cyan-50/70"
                         : "border-slate-200 bg-slate-50"
                     }`}
                   >
@@ -2135,7 +2139,7 @@ function ClientOverview({
                     <p
                       className={`mt-2 text-xs font-semibold ${
                         shared
-                          ? "text-emerald-700"
+                          ? "text-cyan-800"
                           : "text-slate-400"
                       }`}
                     >
@@ -2667,7 +2671,7 @@ function Assessments({
         description="Send a curated Self questionnaire to this client. Assignment does not automatically grant access to the result."
       >
         {assignmentSuccess && (
-          <div className="mb-4 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-800">
+          <div className="mb-4 rounded-xl border border-cyan-200 bg-cyan-50/70 px-4 py-3 text-sm text-cyan-900">
             {assignmentSuccess}
           </div>
         )}
@@ -7012,7 +7016,7 @@ function Ambulatory({
   return (
     <div className="space-y-5">
       {requestMessage && (
-        <div className="rounded-2xl border border-emerald-200 bg-emerald-50 px-5 py-4 text-sm text-emerald-800">
+        <div className="rounded-2xl border border-cyan-200 bg-cyan-50/70 px-5 py-4 text-sm text-cyan-900">
           {requestMessage}
         </div>
       )}
@@ -9292,11 +9296,114 @@ export default function ClinicianWorkspace() {
   ]);
 
   return (
-    <main className="min-h-screen bg-[#f6f8f8] text-slate-950">
+    <main className="psy-clinical-theme min-h-screen bg-[#f4f8f9] text-slate-950">
+      <style>{`
+        .psy-clinical-theme {
+          --psy-cyan: #07869b;
+          --psy-cyan-dark: #075f70;
+          --psy-cyan-soft: #eefbfd;
+          --psy-border: #dbe5e8;
+          --psy-ink: #0b1220;
+        }
+
+        .psy-clinical-theme button,
+        .psy-clinical-theme select,
+        .psy-clinical-theme input,
+        .psy-clinical-theme textarea {
+          transition: border-color 160ms ease, box-shadow 160ms ease, transform 160ms ease, background-color 160ms ease, color 160ms ease;
+        }
+
+        .psy-clinical-theme button[class*="rounded"]:not(.clinical-nav-item),
+        .psy-clinical-theme select[class*="rounded"],
+        .psy-clinical-theme input[class*="rounded"] {
+          box-shadow: 0 5px 15px rgba(15,23,42,.06), 0 1px 4px rgba(8,145,178,.035);
+        }
+
+        .psy-clinical-theme button[class*="rounded"]:not(.clinical-nav-item):hover:not(:disabled) {
+          transform: translateY(-1px);
+          box-shadow: 0 9px 22px rgba(15,23,42,.08), 0 2px 7px rgba(8,145,178,.055);
+        }
+
+        /* Clinical content follows the same floating hierarchy as Research. */
+        .psy-clinical-theme .clinical-content div[class*="rounded"][class*="border"][class*="bg-white"],
+        .psy-clinical-theme .clinical-content section[class*="rounded"][class*="border"][class*="bg-white"],
+        .psy-clinical-theme .clinical-content article[class*="rounded"][class*="border"][class*="bg-white"] {
+          box-shadow: 0 2px 5px rgba(15,23,42,.045), 0 9px 24px rgba(15,23,42,.065), 0 24px 54px rgba(15,23,42,.035);
+        }
+
+        .psy-clinical-theme .clinical-content div[class*="rounded"][class*="border"][class*="bg-slate-50"],
+        .psy-clinical-theme .clinical-content section[class*="rounded"][class*="border"][class*="bg-slate-50"] {
+          box-shadow: 0 2px 6px rgba(15,23,42,.035), 0 8px 20px rgba(15,23,42,.045);
+        }
+
+        .psy-clinical-theme .clinical-content div[class*="rounded"][class*="border"][class*="bg-cyan-50"],
+        .psy-clinical-theme .clinical-content section[class*="rounded"][class*="border"][class*="bg-cyan-50"] {
+          box-shadow: 0 2px 6px rgba(8,145,178,.045), 0 10px 26px rgba(8,145,178,.07);
+        }
+
+        .psy-clinical-theme .clinical-content div[class*="rounded"][class*="border"],
+        .psy-clinical-theme .clinical-content section[class*="rounded"][class*="border"] {
+          transition: border-color 160ms ease, box-shadow 160ms ease, transform 160ms ease, background-color 160ms ease;
+        }
+
+        .psy-clinical-theme .clinical-content button[class*="rounded"] {
+          border-color: rgba(203,213,225,.9);
+        }
+
+        .psy-clinical-theme input:focus,
+        .psy-clinical-theme select:focus,
+        .psy-clinical-theme textarea:focus {
+          border-color: rgba(8,145,178,.62) !important;
+          box-shadow: 0 0 0 4px rgba(34,211,238,.10), 0 9px 22px rgba(15,23,42,.06) !important;
+          outline: none;
+        }
+
+        /* Remove generic dashboard success/warning palettes inside embedded modules. */
+        .psy-clinical-theme [class*="bg-emerald-50"],
+        .psy-clinical-theme [class*="bg-emerald-100"],
+        .psy-clinical-theme [class*="bg-green-50"],
+        .psy-clinical-theme [class*="bg-green-100"],
+        .psy-clinical-theme [class*="bg-amber-50"],
+        .psy-clinical-theme [class*="bg-amber-100"],
+        .psy-clinical-theme [class*="bg-orange-50"],
+        .psy-clinical-theme [class*="bg-yellow-50"],
+        .psy-clinical-theme [class*="bg-violet-50"],
+        .psy-clinical-theme [class*="bg-purple-50"] {
+          background-color: #eefbfd !important;
+        }
+
+        .psy-clinical-theme [class*="border-emerald-"],
+        .psy-clinical-theme [class*="border-green-"],
+        .psy-clinical-theme [class*="border-amber-"],
+        .psy-clinical-theme [class*="border-orange-"],
+        .psy-clinical-theme [class*="border-yellow-"],
+        .psy-clinical-theme [class*="border-violet-"],
+        .psy-clinical-theme [class*="border-purple-"] {
+          border-color: #bfe8ef !important;
+        }
+
+        .psy-clinical-theme [class*="text-emerald-"],
+        .psy-clinical-theme [class*="text-green-"],
+        .psy-clinical-theme [class*="text-amber-"],
+        .psy-clinical-theme [class*="text-orange-"],
+        .psy-clinical-theme [class*="text-yellow-"],
+        .psy-clinical-theme [class*="text-violet-"],
+        .psy-clinical-theme [class*="text-purple-"] {
+          color: #075f70 !important;
+        }
+
+        .psy-clinical-theme table tbody tr {
+          transition: background-color 140ms ease;
+        }
+        .psy-clinical-theme table tbody tr:hover {
+          background-color: rgba(236,254,255,.58);
+        }
+      `}</style>
+
       {/* TOPBAR */}
 
-      <header className="sticky top-0 z-50 border-b border-slate-200 bg-white/95 backdrop-blur">
-        <div className="flex min-h-20 items-center justify-between gap-4 px-5 lg:px-7">
+      <header className="sticky top-3 z-50 mx-3 rounded-[28px] border border-slate-200/90 bg-white/96 shadow-[0_2px_7px_rgba(15,23,42,0.04),0_14px_34px_rgba(15,23,42,0.09),0_30px_70px_rgba(8,145,178,0.045)] backdrop-blur-xl sm:mx-4">
+        <div className="flex min-h-[66px] items-center justify-between gap-4 px-5 lg:px-7">
           <div>
   <PsyLatticeLogo size={38} />
 
@@ -9322,7 +9429,7 @@ export default function ClinicianWorkspace() {
 
               <Link
                 href="/signin"
-                className="rounded-xl border border-slate-200 px-4 py-2 text-xs font-semibold text-slate-600"
+                className="rounded-full border border-slate-200 bg-white px-4 py-2 text-xs font-semibold text-slate-600 shadow-[0_5px_14px_rgba(15,23,42,0.06)] hover:border-cyan-200 hover:text-slate-950"
               >
                 Sign out
               </Link>
@@ -9333,7 +9440,7 @@ export default function ClinicianWorkspace() {
               onChange={(event) =>
                 setScreen(event.target.value as Screen)
               }
-              className="max-w-[170px] rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm lg:hidden sm:max-w-[210px]"
+              className="max-w-[170px] rounded-full border border-slate-200 bg-white px-4 py-2 text-sm shadow-[0_6px_18px_rgba(15,23,42,0.06)] lg:hidden sm:max-w-[210px]"
             >
               {navigation.map((item) => (
                 <option key={item.id} value={item.id}>
@@ -9349,7 +9456,7 @@ export default function ClinicianWorkspace() {
         {/* SIDEBAR */}
 
         <aside
-          className={`fixed bottom-0 left-0 top-20 z-40 hidden overflow-y-auto border-r border-slate-200 bg-white p-3 transition-[width] duration-200 lg:block ${
+          className={`fixed bottom-3 left-3 top-[92px] z-40 hidden overflow-y-auto rounded-[28px] border border-slate-200/90 bg-white/96 p-3 shadow-[0_2px_8px_rgba(15,23,42,0.04),0_18px_46px_rgba(15,23,42,0.075),0_34px_80px_rgba(8,145,178,0.035)] backdrop-blur-xl transition-[width] duration-200 lg:block ${
             sidebarCollapsed ? "w-[76px]" : "w-[250px]"
           }`}
         >
@@ -9373,7 +9480,7 @@ export default function ClinicianWorkspace() {
                   ? "Expand sidebar"
                   : "Collapse sidebar"
               }
-              className="flex h-9 w-9 items-center justify-center rounded-xl border border-slate-200 bg-white text-lg font-semibold text-slate-500 transition hover:bg-slate-50 hover:text-slate-950"
+              className="flex h-9 w-9 items-center justify-center rounded-full border border-slate-300/70 bg-white text-lg font-semibold text-slate-500 shadow-[0_5px_16px_rgba(15,23,42,0.075),0_1px_3px_rgba(15,23,42,0.04)] transition hover:-translate-y-px hover:border-cyan-200 hover:text-slate-950 hover:shadow-[0_7px_18px_rgba(15,23,42,0.08)]"
             >
               {sidebarCollapsed ? "›" : "‹"}
             </button>
@@ -9412,23 +9519,23 @@ export default function ClinicianWorkspace() {
                             : undefined
                         }
                         aria-label={item.label}
-                        className={`flex w-full items-center rounded-xl py-2.5 text-sm transition ${
+                        className={`clinical-nav-item relative flex w-full items-center rounded-full border py-2.5 text-sm transition-all ${
                           sidebarCollapsed
                             ? "justify-center px-2"
                             : "gap-3 px-3 text-left"
                         } ${
                           active
-                            ? "bg-cyan-50 font-semibold text-cyan-900"
-                            : "text-slate-500 hover:bg-slate-50 hover:text-slate-950"
+                            ? "border-cyan-200/70 bg-white font-semibold text-cyan-900 shadow-[0_6px_16px_rgba(8,145,178,0.16),0_14px_30px_rgba(15,23,42,0.07)]"
+                            : "border-transparent bg-transparent text-slate-500 shadow-none hover:-translate-y-px hover:border-slate-200/70 hover:bg-white hover:text-slate-950 hover:shadow-[0_3px_10px_rgba(15,23,42,0.035)]"
                         }`}
                       >
                         <span
-                          className={`relative flex h-8 w-8 shrink-0 items-center justify-center rounded-lg ${
-                            sidebarCollapsed && active ? "bg-cyan-100" : ""
+                          className={`relative flex h-8 w-8 shrink-0 items-center justify-center rounded-full transition-all ${
+                            sidebarCollapsed && active ? "bg-cyan-100/80" : ""
                           }`}
                         >
                           <NavIcon
-                            className={`h-[17px] w-[17px] ${
+                            className={`h-[17px] w-[17px] transition-colors ${
                               active ? "text-cyan-700" : "text-slate-400"
                             }`}
                             strokeWidth={1.8}
@@ -9488,17 +9595,17 @@ export default function ClinicianWorkspace() {
           {sidebarCollapsed ? (
             <div
               title="Client-controlled access"
-              className="mx-auto mt-8 flex h-10 w-10 items-center justify-center rounded-xl bg-slate-950 text-xs font-semibold text-cyan-200"
+              className="mx-auto mt-8 flex h-10 w-10 items-center justify-center rounded-full border border-cyan-200 bg-cyan-50 text-xs font-semibold text-cyan-900 shadow-[0_6px_16px_rgba(8,145,178,0.10)]"
             >
               C
             </div>
           ) : (
-            <div className="mt-8 rounded-2xl bg-slate-950 p-4 text-white">
-              <p className="text-xs font-medium text-cyan-200">
+            <div className="mt-8 rounded-[22px] border border-cyan-200/80 bg-cyan-50/70 p-4 shadow-[0_10px_28px_rgba(8,145,178,0.08)]">
+              <p className="text-xs font-semibold text-cyan-900">
                 Client-controlled access
               </p>
 
-              <p className="mt-2 text-xs leading-5 text-slate-400">
+              <p className="mt-2 text-xs leading-5 text-slate-600">
                 Assessment and monitoring views use real connected-client data
                 and remain permission-gated. Unimplemented clinical-record tabs
                 no longer display fictional client records.
@@ -9510,16 +9617,16 @@ export default function ClinicianWorkspace() {
         {/* CONTENT */}
 
         <section
-          className={`min-w-0 p-5 transition-[margin] duration-200 sm:p-6 lg:p-8 ${
+          className={`clinical-content min-w-0 p-5 pt-8 transition-[margin] duration-200 sm:p-6 sm:pt-9 lg:p-8 lg:pt-10 ${
             sidebarCollapsed
-              ? "lg:ml-[76px]"
-              : "lg:ml-[250px]"
+              ? "lg:ml-[94px]"
+              : "lg:ml-[268px]"
           }`}
         >
           <div className="mx-auto max-w-[1450px]">
             <div className="mb-7">
               <div className="mb-2 flex flex-wrap items-center gap-2">
-                <Status type="accent">Clinician workspace</Status>
+                <Status type="accent">Clinical workspace</Status>
 
                 <span className="text-xs text-slate-400">
                   Connected clinical workspace

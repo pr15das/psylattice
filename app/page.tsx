@@ -920,7 +920,7 @@ function MobileEcosystemVisual() {
       </div>
 
       <div className="relative mt-6 flex flex-wrap justify-center gap-2">
-        <span className="rounded-full border border-emerald-200 bg-emerald-50 px-3 py-1.5 text-[10px] font-semibold text-emerald-800">
+        <span className="rounded-full border border-cyan-200 bg-cyan-50 px-3 py-1.5 text-[10px] font-semibold text-cyan-800">
           Android beta · available now
         </span>
         <span className="rounded-full border border-slate-200 bg-white px-3 py-1.5 text-[10px] font-semibold text-slate-500">
@@ -949,19 +949,19 @@ function UpcomingCapabilitiesShowcase() {
       chips: ["Task Builder", "Reaction time", "Templates", "Longitudinal cognition"],
       statA: "10+ launch templates",
       statB: "Trial-level exports",
-      accent: "from-violet-500/20 via-cyan-100 to-white",
-      panelTint: "border-violet-200 bg-violet-50/85 text-violet-900",
+      accent: "from-cyan-300/22 via-cyan-50 to-white",
+      panelTint: "border-cyan-200 bg-cyan-50/85 text-cyan-900",
       illustration: (
         <div className="space-y-3">
           <div className="rounded-2xl border border-slate-200 bg-white p-3 shadow-sm">
             <div className="flex items-center justify-between gap-3 border-b border-slate-200 pb-2.5">
               <div>
-                <p className="text-[10px] font-semibold uppercase tracking-[0.15em] text-violet-800">
+                <p className="text-[10px] font-semibold uppercase tracking-[0.15em] text-cyan-800">
                   Task Builder
                 </p>
                 <p className="mt-1 text-xs font-semibold text-slate-900">Emotional Stroop · draft</p>
               </div>
-              <span className="rounded-full border border-violet-200 bg-violet-50 px-2.5 py-1 text-[9px] font-semibold text-violet-800">
+              <span className="rounded-full border border-cyan-200 bg-cyan-50 px-2.5 py-1 text-[9px] font-semibold text-cyan-800">
                 Preview
               </span>
             </div>
@@ -981,7 +981,7 @@ function UpcomingCapabilitiesShowcase() {
           </div>
           <div className="grid grid-cols-2 gap-3">
             <div className="rounded-2xl border border-slate-200 bg-white p-3 shadow-sm">
-              <FlaskConical className="h-4 w-4 text-violet-700" />
+              <FlaskConical className="h-4 w-4 text-cyan-700" />
               <p className="mt-2 text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-500">Trial table</p>
               <p className="mt-1 text-xs font-semibold text-slate-900">Conditions + correct responses</p>
             </div>
@@ -1013,7 +1013,7 @@ function UpcomingCapabilitiesShowcase() {
       panelTint: "border-cyan-200 bg-cyan-50/85 text-cyan-900",
       illustration: (
         <div className="space-y-3">
-          <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
+          <div className="rounded-[22px] border border-slate-200/90 bg-white p-4 shadow-[0_2px_5px_rgba(15,23,42,.035),0_12px_28px_rgba(15,23,42,.07)]">
             <div className="grid gap-3 sm:grid-cols-[1fr_auto_1fr_auto_1fr] sm:items-center">
               <div className="rounded-2xl border border-slate-200 bg-slate-50 px-3 py-3 text-center">
                 <Watch className="mx-auto h-5 w-5 text-cyan-700" />
@@ -1034,7 +1034,7 @@ function UpcomingCapabilitiesShowcase() {
           <div className="rounded-2xl border border-slate-200 bg-white p-3 shadow-sm">
             <div className="flex items-center justify-between">
               <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-500">Storage strategy</p>
-              <span className="rounded-full border border-emerald-200 bg-emerald-50 px-2.5 py-1 text-[9px] font-semibold text-emerald-800">Lean by default</span>
+              <span className="rounded-full border border-cyan-200 bg-cyan-50 px-2.5 py-1 text-[9px] font-semibold text-cyan-800">Lean by default</span>
             </div>
             <div className="mt-3 grid grid-cols-2 gap-2">
               <div className="rounded-xl border border-slate-200 bg-slate-50 p-3">
@@ -1139,8 +1139,8 @@ function UpcomingCapabilitiesShowcase() {
       chips: ["Wear OS", "Apple Watch", "Micro-prompts", "Real-world research"],
       statA: "Wrist prompts",
       statB: "Companion workflows",
-      accent: "from-amber-400/20 via-white to-cyan-100",
-      panelTint: "border-amber-200 bg-amber-50/90 text-amber-900",
+      accent: "from-cyan-400/20 via-white to-cyan-100",
+      panelTint: "border-cyan-200 bg-cyan-50/90 text-cyan-900",
       illustration: (
         <div className="space-y-3">
           <div className="grid gap-3 sm:grid-cols-2">
@@ -1229,11 +1229,11 @@ function UpcomingCapabilitiesShowcase() {
 
   return (
     <div className="relative mx-auto w-full max-w-[1180px]">
-      <div className={`pointer-events-none absolute inset-x-12 top-10 h-[360px] rounded-[56px] bg-gradient-to-br ${active.accent} blur-3xl`} />
-      <div className="relative overflow-hidden rounded-[34px] border border-slate-200 bg-white/75 p-5 shadow-[0_34px_100px_-48px_rgba(15,23,42,0.28)] backdrop-blur-xl sm:p-6 lg:p-7">
+      <div className={`pointer-events-none absolute inset-x-12 top-10 h-[340px] rounded-[56px] bg-gradient-to-br ${active.accent} blur-3xl opacity-80`} />
+      <div className="relative overflow-hidden rounded-[34px] border border-slate-200/90 bg-white/92 p-5 shadow-[0_4px_10px_rgba(15,23,42,.04),0_30px_76px_rgba(15,23,42,.11)] backdrop-blur-xl sm:p-6 lg:p-7">
         <div className="grid gap-8 lg:grid-cols-[.9fr_1.1fr] lg:items-start">
           <div>
-            <div className="inline-flex items-center gap-2 rounded-full border border-cyan-200 bg-white px-3.5 py-2 text-[11px] font-semibold text-cyan-800 shadow-sm">
+            <div className="inline-flex items-center gap-2 rounded-full border border-cyan-200 bg-white px-3.5 py-2 text-[11px] font-semibold text-cyan-800 shadow-[0_2px_5px_rgba(15,23,42,.035),0_10px_24px_rgba(8,145,178,.09)]">
               <Sparkles className="h-3.5 w-3.5" />
               Coming next for PsyLattice Research
             </div>
@@ -1278,7 +1278,7 @@ function UpcomingCapabilitiesShowcase() {
           </div>
 
           <div>
-            <div className="rounded-[28px] border border-slate-200 bg-[#f7faf9]/90 p-4 sm:p-5 lg:p-6">
+            <div className="rounded-[28px] border border-slate-200/90 bg-[#f8fbfb] p-4 shadow-[0_2px_5px_rgba(15,23,42,.03),0_14px_30px_rgba(15,23,42,.06)] sm:p-5 lg:p-6">
               <div className="flex flex-wrap items-start justify-between gap-3">
                 <div>
                   <p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-slate-500">{active.eyebrow}</p>
@@ -1292,11 +1292,11 @@ function UpcomingCapabilitiesShowcase() {
               <div className="mt-5">{active.illustration}</div>
 
               <div className="mt-5 grid gap-3 sm:grid-cols-2">
-                <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
+                <div className="rounded-[22px] border border-slate-200/90 bg-white p-4 shadow-[0_2px_5px_rgba(15,23,42,.035),0_12px_28px_rgba(15,23,42,.07)]">
                   <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-500">Launch value</p>
                   <p className="mt-2 text-sm font-semibold text-slate-900">{active.statA}</p>
                 </div>
-                <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
+                <div className="rounded-[22px] border border-slate-200/90 bg-white p-4 shadow-[0_2px_5px_rgba(15,23,42,.035),0_12px_28px_rgba(15,23,42,.07)]">
                   <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-500">Research payoff</p>
                   <p className="mt-2 text-sm font-semibold text-slate-900">{active.statB}</p>
                 </div>
@@ -1375,8 +1375,8 @@ function HeroWorkspaceStage({
           <div className="flex items-center gap-3">
             <div className="flex gap-1.5" aria-hidden="true">
               <span className="h-2.5 w-2.5 rounded-full bg-red-400" />
-              <span className="h-2.5 w-2.5 rounded-full bg-amber-300" />
-              <span className="h-2.5 w-2.5 rounded-full bg-emerald-400" />
+              <span className="h-2.5 w-2.5 rounded-full bg-cyan-300" />
+              <span className="h-2.5 w-2.5 rounded-full bg-cyan-400" />
             </div>
             <div className="hidden w-52 rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-[10px] font-medium text-slate-400 sm:block">
               psylattice.com
@@ -1631,7 +1631,7 @@ function HeroResearchPreview() {
             14-day ambulatory protocol
           </p>
         </div>
-        <span className="rounded-full bg-emerald-50 px-2.5 py-1 text-[8px] font-semibold text-emerald-700">
+        <span className="rounded-full bg-cyan-50 px-2.5 py-1 text-[8px] font-semibold text-cyan-700">
           Live
         </span>
       </div>
@@ -1926,7 +1926,7 @@ function ExplorerSelfCore({ slideId }: { slideId: string }) {
                 const done = checkins[item.key as keyof typeof checkins];
                 return <button key={item.key} type="button" onClick={() => setCheckins((c) => ({...c,[item.key]:!done}))} className="flex w-full items-center justify-between rounded-xl bg-slate-50 px-3 py-3 text-left transition hover:bg-slate-100">
                   <div><p className="text-[11px] font-medium text-slate-800">{item.label}</p><p className="text-[9px] text-slate-400">{item.time}</p></div>
-                  <span className={`rounded-full px-2 py-1 text-[9px] font-semibold ${done ? "bg-emerald-50 text-emerald-700" : "bg-cyan-50 text-cyan-700"}`}>{done ? "Done" : "Open"}</span>
+                  <span className={`rounded-full px-2 py-1 text-[9px] font-semibold ${done ? "bg-cyan-50 text-cyan-700" : "bg-cyan-50 text-cyan-700"}`}>{done ? "Done" : "Open"}</span>
                 </button>;
               })}
             </div>
@@ -1965,7 +1965,7 @@ function ExplorerSelfCore({ slideId }: { slideId: string }) {
 
   if (slideId === "regulation") {
     const list=[{key:"grounding",title:"2-minute grounding",meta:"5 of 7 days"},{key:"winddown",title:"Evening wind-down",meta:"4 of 7 days"},{key:"rehearsal",title:"Presentation rehearsal",meta:"2 of 3 sessions"}] as const;
-    return <div><ExplorerScreenTitle eyebrow="Self-regulation" title="Current routines" action="Add routine" onAction={()=>setNotice("Routine builder opened.")}/>{notice&&<ExplorerNotice text={notice}/>}<div className="space-y-3">{list.map((item,index)=>{const done=routines[item.key];return <ExplorerCard key={item.key} className="p-4" highlight={index===0}><div className="flex items-center justify-between gap-3"><button onClick={()=>setRoutines(c=>({...c,[item.key]:!done}))} className="flex items-center gap-3 text-left"><span className={`flex h-7 w-7 items-center justify-center rounded-full ${done?"bg-emerald-100 text-emerald-700":"bg-slate-100 text-slate-400"}`}>{done?<Check className="h-3.5 w-3.5"/>:index+1}</span><div><p className="text-xs font-semibold text-slate-900">{item.title}</p><p className="mt-1 text-[10px] text-slate-500">{item.meta}</p></div></button><ExplorerToggle enabled={done} onToggle={()=>setRoutines(c=>({...c,[item.key]:!done}))}/></div></ExplorerCard>})}</div></div>;
+    return <div><ExplorerScreenTitle eyebrow="Self-regulation" title="Current routines" action="Add routine" onAction={()=>setNotice("Routine builder opened.")}/>{notice&&<ExplorerNotice text={notice}/>}<div className="space-y-3">{list.map((item,index)=>{const done=routines[item.key];return <ExplorerCard key={item.key} className="p-4" highlight={index===0}><div className="flex items-center justify-between gap-3"><button onClick={()=>setRoutines(c=>({...c,[item.key]:!done}))} className="flex items-center gap-3 text-left"><span className={`flex h-7 w-7 items-center justify-center rounded-full ${done?"bg-cyan-100 text-cyan-700":"bg-slate-100 text-slate-400"}`}>{done?<Check className="h-3.5 w-3.5"/>:index+1}</span><div><p className="text-xs font-semibold text-slate-900">{item.title}</p><p className="mt-1 text-[10px] text-slate-500">{item.meta}</p></div></button><ExplorerToggle enabled={done} onToggle={()=>setRoutines(c=>({...c,[item.key]:!done}))}/></div></ExplorerCard>})}</div></div>;
   }
 
   if (slideId === "progress") {
@@ -2019,7 +2019,7 @@ function ExplorerResearchCore({ slideId }: { slideId: string }) {
   ].filter(s=>studyFilter==="All"||s.status===studyFilter);
 
   if (slideId === "studies") {
-    return <div><ExplorerScreenTitle eyebrow="Research workspace" title="Studies" action="New study" onAction={()=>setNotice("A new draft study was created.")} secondary="Refresh" onSecondary={()=>setNotice("Study list refreshed.")}/>{notice&&<ExplorerNotice text={notice}/>}<div className="grid grid-cols-1 gap-3 sm:grid-cols-3"><ExplorerMiniStat label="Active studies" value="4" helper="2 collecting today"/><ExplorerMiniStat label="Participants" value="128" helper="across live studies"/><ExplorerMiniStat label="Due today" value="7" helper="follow-ups + EMA"/></div><div className="my-3 flex flex-wrap gap-2">{(["All","Active","Draft"] as const).map(f=><button key={f} onClick={()=>setStudyFilter(f)} className={`rounded-lg px-3 py-1.5 text-[9px] font-semibold ${studyFilter===f?"bg-slate-950 text-white":"border border-slate-200 bg-white text-slate-500"}`}>{f}</button>)}</div><div className="grid gap-3 sm:grid-cols-2">{studies.map((study,index)=><button key={study.name} onClick={()=>setSelectedStudy(study.name)} className="text-left"><ExplorerCard className="p-4" highlight={selectedStudy===study.name}><div className="flex items-start justify-between gap-3"><div><p className="text-xs font-semibold text-slate-900">{study.name}</p><p className="mt-1 text-[9px] text-slate-400">{study.people} participants · updated {index+1}h ago</p></div><span className={`rounded-full px-2 py-1 text-[8px] font-semibold ${study.status==="Active"?"bg-emerald-50 text-emerald-700":"bg-amber-50 text-amber-700"}`}>{study.status}</span></div><div className="mt-3 h-1.5 overflow-hidden rounded-full bg-slate-100"><div className="h-full rounded-full bg-cyan-600" style={{width:`${study.progress}%`}}/></div></ExplorerCard></button>)}</div></div>;
+    return <div><ExplorerScreenTitle eyebrow="Research workspace" title="Studies" action="New study" onAction={()=>setNotice("A new draft study was created.")} secondary="Refresh" onSecondary={()=>setNotice("Study list refreshed.")}/>{notice&&<ExplorerNotice text={notice}/>}<div className="grid grid-cols-1 gap-3 sm:grid-cols-3"><ExplorerMiniStat label="Active studies" value="4" helper="2 collecting today"/><ExplorerMiniStat label="Participants" value="128" helper="across live studies"/><ExplorerMiniStat label="Due today" value="7" helper="follow-ups + EMA"/></div><div className="my-3 flex flex-wrap gap-2">{(["All","Active","Draft"] as const).map(f=><button key={f} onClick={()=>setStudyFilter(f)} className={`rounded-lg px-3 py-1.5 text-[9px] font-semibold ${studyFilter===f?"bg-slate-950 text-white":"border border-slate-200 bg-white text-slate-500"}`}>{f}</button>)}</div><div className="grid gap-3 sm:grid-cols-2">{studies.map((study,index)=><button key={study.name} onClick={()=>setSelectedStudy(study.name)} className="text-left"><ExplorerCard className="p-4" highlight={selectedStudy===study.name}><div className="flex items-start justify-between gap-3"><div><p className="text-xs font-semibold text-slate-900">{study.name}</p><p className="mt-1 text-[9px] text-slate-400">{study.people} participants · updated {index+1}h ago</p></div><span className={`rounded-full px-2 py-1 text-[8px] font-semibold ${study.status==="Active"?"bg-cyan-50 text-cyan-700":"bg-cyan-50 text-cyan-700"}`}>{study.status}</span></div><div className="mt-3 h-1.5 overflow-hidden rounded-full bg-slate-100"><div className="h-full rounded-full bg-cyan-600" style={{width:`${study.progress}%`}}/></div></ExplorerCard></button>)}</div></div>;
   }
 
   if (slideId === "study-builder") {
@@ -2035,7 +2035,7 @@ function ExplorerResearchCore({ slideId }: { slideId: string }) {
 
   if (slideId === "custom-questionnaires") {
     const types=["Intro text","Single choice","Multiple choice","Image choice","Slider","Free text","Matrix"];
-    return <div><ExplorerScreenTitle eyebrow="Custom Questionnaire" title="Image preference task" action="Preview" onAction={()=>setNotice("Participant preview opened.")} secondary="Save" onSecondary={()=>setNotice("Custom questionnaire saved.")}/>{notice&&<ExplorerNotice text={notice}/>}<ExplorerCard className="p-4" highlight><div className="grid gap-3 lg:grid-cols-[.72fr_1.28fr]"><div><p className="mb-2 text-[9px] font-semibold uppercase tracking-[0.12em] text-slate-400">Items</p><div className="space-y-2">{types.map(item=><button key={item} onClick={()=>setCustomItem(item)} className={`flex w-full items-center justify-between rounded-xl border px-3 py-2.5 text-left text-[10px] font-medium ${customItem===item?"border-cyan-300 bg-cyan-50 text-cyan-800":"border-slate-200 bg-white text-slate-600 hover:bg-slate-50"}`}><span>{item}</span><ChevronRight className="h-3 w-3"/></button>)}</div></div><div className="rounded-xl border border-slate-200 bg-slate-50 p-4"><div className="flex items-center justify-between"><div><p className="text-[9px] font-semibold uppercase tracking-[.12em] text-cyan-800">Live preview</p><p className="mt-1 text-[11px] font-semibold text-slate-800">{customItem}</p></div><span className="rounded-full bg-white px-2 py-1 text-[8px] text-slate-500">Required</span></div>{customItem==="Image choice"?<><p className="mt-4 text-[10px] font-semibold text-slate-800">Which image do you prefer?</p><div className="mt-3 grid grid-cols-2 gap-2">{['A','B'].map(opt=><button key={opt} onClick={()=>setCustomOption(opt)} className={`rounded-xl border bg-white p-3 text-left ${customOption===opt?"border-cyan-400 ring-2 ring-cyan-100":"border-slate-200"}`}><div className={`h-24 rounded-lg ${opt==='A'?"bg-gradient-to-br from-cyan-100 to-slate-100":"bg-gradient-to-br from-amber-100 to-slate-100"}`}/><p className="mt-2 text-[9px] font-medium text-slate-600">Option {opt}</p></button>)}</div></>:<div className="mt-4 space-y-3"><input className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-[10px]" defaultValue="Edit the item prompt here..."/><div className="h-24 rounded-xl border border-dashed border-slate-300 bg-white"/></div>}</div></div></ExplorerCard></div>;
+    return <div><ExplorerScreenTitle eyebrow="Custom Questionnaire" title="Image preference task" action="Preview" onAction={()=>setNotice("Participant preview opened.")} secondary="Save" onSecondary={()=>setNotice("Custom questionnaire saved.")}/>{notice&&<ExplorerNotice text={notice}/>}<ExplorerCard className="p-4" highlight><div className="grid gap-3 lg:grid-cols-[.72fr_1.28fr]"><div><p className="mb-2 text-[9px] font-semibold uppercase tracking-[0.12em] text-slate-400">Items</p><div className="space-y-2">{types.map(item=><button key={item} onClick={()=>setCustomItem(item)} className={`flex w-full items-center justify-between rounded-xl border px-3 py-2.5 text-left text-[10px] font-medium ${customItem===item?"border-cyan-300 bg-cyan-50 text-cyan-800":"border-slate-200 bg-white text-slate-600 hover:bg-slate-50"}`}><span>{item}</span><ChevronRight className="h-3 w-3"/></button>)}</div></div><div className="rounded-xl border border-slate-200 bg-slate-50 p-4"><div className="flex items-center justify-between"><div><p className="text-[9px] font-semibold uppercase tracking-[.12em] text-cyan-800">Live preview</p><p className="mt-1 text-[11px] font-semibold text-slate-800">{customItem}</p></div><span className="rounded-full bg-white px-2 py-1 text-[8px] text-slate-500">Required</span></div>{customItem==="Image choice"?<><p className="mt-4 text-[10px] font-semibold text-slate-800">Which image do you prefer?</p><div className="mt-3 grid grid-cols-2 gap-2">{['A','B'].map(opt=><button key={opt} onClick={()=>setCustomOption(opt)} className={`rounded-xl border bg-white p-3 text-left ${customOption===opt?"border-cyan-400 ring-2 ring-cyan-100":"border-slate-200"}`}><div className={`h-24 rounded-lg ${opt==='A'?"bg-gradient-to-br from-cyan-100 to-slate-100":"bg-gradient-to-br from-cyan-100 to-slate-100"}`}/><p className="mt-2 text-[9px] font-medium text-slate-600">Option {opt}</p></button>)}</div></>:<div className="mt-4 space-y-3"><input className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-[10px]" defaultValue="Edit the item prompt here..."/><div className="h-24 rounded-xl border border-dashed border-slate-300 bg-white"/></div>}</div></div></ExplorerCard></div>;
   }
 
   if (slideId === "ambulatory") {
@@ -2357,7 +2357,7 @@ function ExplorerClinicalCore({ slideId }: { slideId: string }) {
 
   if (slideId === "assessments") {
     const measures=["Perceived Stress Scale","WHO-5 Well-Being","General Self-Efficacy Scale","Sleep Quality Check"];
-    return <div><ExplorerScreenTitle eyebrow="Assessments" title={selectedClient} action="Assign measure" onAction={()=>setNotice("Measure picker opened.")}/>{notice&&<ExplorerNotice text={notice}/>}<div className="space-y-3">{measures.map((name,index)=>{const isAssigned=assigned.includes(name);return <ExplorerCard key={name} className="p-4" highlight={index===0}><div className="flex flex-wrap items-center justify-between gap-3"><div><p className="text-xs font-semibold text-slate-900">{name}</p><p className="mt-1 text-[9px] text-slate-400">{isAssigned?"Assigned · completed 1 week ago":"Available to assign"}</p></div><div className="flex gap-2"><button onClick={()=>setNotice(`${name} result opened.`)} className="rounded-lg border border-slate-200 px-2.5 py-1.5 text-[8px] font-semibold text-slate-600">Review</button><button onClick={()=>setAssigned(c=>isAssigned?c.filter(x=>x!==name):[...c,name])} className={`rounded-lg px-2.5 py-1.5 text-[8px] font-semibold ${isAssigned?"bg-emerald-50 text-emerald-700":"bg-slate-950 text-white"}`}>{isAssigned?"Assigned":"Assign"}</button></div></div></ExplorerCard>})}</div></div>;
+    return <div><ExplorerScreenTitle eyebrow="Assessments" title={selectedClient} action="Assign measure" onAction={()=>setNotice("Measure picker opened.")}/>{notice&&<ExplorerNotice text={notice}/>}<div className="space-y-3">{measures.map((name,index)=>{const isAssigned=assigned.includes(name);return <ExplorerCard key={name} className="p-4" highlight={index===0}><div className="flex flex-wrap items-center justify-between gap-3"><div><p className="text-xs font-semibold text-slate-900">{name}</p><p className="mt-1 text-[9px] text-slate-400">{isAssigned?"Assigned · completed 1 week ago":"Available to assign"}</p></div><div className="flex gap-2"><button onClick={()=>setNotice(`${name} result opened.`)} className="rounded-lg border border-slate-200 px-2.5 py-1.5 text-[8px] font-semibold text-slate-600">Review</button><button onClick={()=>setAssigned(c=>isAssigned?c.filter(x=>x!==name):[...c,name])} className={`rounded-lg px-2.5 py-1.5 text-[8px] font-semibold ${isAssigned?"bg-cyan-50 text-cyan-700":"bg-slate-950 text-white"}`}>{isAssigned?"Assigned":"Assign"}</button></div></div></ExplorerCard>})}</div></div>;
   }
 
   if (slideId === "monitoring") {
@@ -2367,7 +2367,7 @@ function ExplorerClinicalCore({ slideId }: { slideId: string }) {
 
   if (slideId === "progress") {
     const isWell=progressMetric==="Well-being"; const vals=isWell?[48,50,57,61,66,71]:[82,75,70,64,58,52];
-    return <div><ExplorerScreenTitle eyebrow="Progress" title="Longitudinal view"/><div className="mb-3 flex gap-2">{(["Well-being","Stress"] as const).map(x=><button key={x} onClick={()=>setProgressMetric(x)} className={`rounded-xl px-3 py-2 text-[9px] font-semibold ${progressMetric===x?"bg-slate-950 text-white":"border border-slate-200 bg-white text-slate-500"}`}>{x}</button>)}</div><ExplorerCard className="p-4" highlight><div className="flex items-center justify-between"><p className="text-xs font-semibold text-slate-900">{progressMetric}</p><span className={`text-[10px] font-semibold ${isWell?"text-emerald-700":"text-cyan-700"}`}>{isWell?"Improving":"Decreasing"}</span></div><div className="mt-4 flex h-36 items-end gap-2 rounded-xl bg-slate-50 p-4">{vals.map((h,i)=><div key={i} className={`flex-1 rounded-t-md ${isWell?"bg-emerald-200":"bg-cyan-200"}`} style={{height:`${h}px`}}/>)}</div></ExplorerCard></div>;
+    return <div><ExplorerScreenTitle eyebrow="Progress" title="Longitudinal view"/><div className="mb-3 flex gap-2">{(["Well-being","Stress"] as const).map(x=><button key={x} onClick={()=>setProgressMetric(x)} className={`rounded-xl px-3 py-2 text-[9px] font-semibold ${progressMetric===x?"bg-slate-950 text-white":"border border-slate-200 bg-white text-slate-500"}`}>{x}</button>)}</div><ExplorerCard className="p-4" highlight><div className="flex items-center justify-between"><p className="text-xs font-semibold text-slate-900">{progressMetric}</p><span className={`text-[10px] font-semibold ${isWell?"text-cyan-700":"text-cyan-700"}`}>{isWell?"Improving":"Decreasing"}</span></div><div className="mt-4 flex h-36 items-end gap-2 rounded-xl bg-slate-50 p-4">{vals.map((h,i)=><div key={i} className={`flex-1 rounded-t-md ${isWell?"bg-cyan-200":"bg-cyan-200"}`} style={{height:`${h}px`}}/>)}</div></ExplorerCard></div>;
   }
 
   if (slideId === "care-pathway") {
@@ -2589,7 +2589,7 @@ function ExplorerClinicalCore({ slideId }: { slideId: string }) {
                           {noteItem.title}
                         </p>
                         {noteItem.pinned && (
-                          <span title="Pinned" className="text-xs text-amber-500">
+                          <span title="Pinned" className="text-xs text-cyan-500">
                             ★
                           </span>
                         )}
@@ -2638,7 +2638,7 @@ function ExplorerClinicalCore({ slideId }: { slideId: string }) {
                   <button
                     type="button"
                     onClick={createClinicalNote}
-                    className="mt-5 rounded-xl bg-slate-950 px-5 py-3 text-sm font-semibold text-white"
+                    className="mt-5 rounded-full bg-slate-950 px-5 py-3 text-sm font-semibold text-white"
                   >
                     Create first note
                   </button>
@@ -2713,7 +2713,7 @@ function ExplorerClinicalCore({ slideId }: { slideId: string }) {
                         }}
                         className={`rounded-xl border px-3 py-2 text-xs font-semibold ${
                           clinicalPinned
-                            ? "border-amber-200 bg-amber-50 text-amber-700"
+                            ? "border-cyan-200 bg-cyan-50 text-cyan-700"
                             : "border-slate-200 text-slate-500"
                         }`}
                       >
@@ -2900,7 +2900,7 @@ function ExplorerClinicalCore({ slideId }: { slideId: string }) {
               <div className="flex min-w-0 items-center gap-3">
                 <div className="relative flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-slate-950 text-sm font-semibold text-white shadow-sm">
                   ✦
-                  <span className="absolute -right-1 -top-1 h-3 w-3 rounded-full border-2 border-white bg-emerald-500" />
+                  <span className="absolute -right-1 -top-1 h-3 w-3 rounded-full border-2 border-white bg-cyan-500" />
                 </div>
 
                 <div className="min-w-0">
@@ -2908,7 +2908,7 @@ function ExplorerClinicalCore({ slideId }: { slideId: string }) {
                     <h2 className="text-base font-semibold text-slate-950">
                       Secure Messages
                     </h2>
-                    <span className="rounded-full border border-emerald-100 bg-emerald-50 px-2.5 py-1 text-[10px] font-semibold text-emerald-700">
+                    <span className="rounded-full border border-cyan-100 bg-cyan-50 px-2.5 py-1 text-[10px] font-semibold text-cyan-700">
                       Live
                     </span>
                     {unreadTotal > 0 && (
@@ -2937,14 +2937,14 @@ function ExplorerClinicalCore({ slideId }: { slideId: string }) {
                   onClick={() => setMessageEmailAlerts((current) => !current)}
                   className={`rounded-xl border px-3 py-2 text-[10px] font-semibold transition ${
                     messageEmailAlerts
-                      ? "border-emerald-200 bg-emerald-50 text-emerald-700 hover:bg-emerald-100"
+                      ? "border-cyan-200 bg-cyan-50 text-cyan-700 hover:bg-cyan-100"
                       : "border-slate-200 bg-white text-slate-500 hover:bg-slate-50"
                   }`}
                 >
                   {messageEmailAlerts ? "✉ Email alerts on" : "✉ Email alerts off"}
                 </button>
 
-                <div className="rounded-xl border border-amber-100 bg-amber-50 px-3 py-2 text-[10px] font-medium text-amber-800">
+                <div className="rounded-xl border border-cyan-100 bg-cyan-50 px-3 py-2 text-[10px] font-medium text-cyan-800">
                   Not for urgent or emergency support
                 </div>
               </div>
@@ -3036,7 +3036,7 @@ function ExplorerClinicalCore({ slideId }: { slideId: string }) {
                     <div className="flex min-w-0 items-center gap-3">
                       <div className="relative flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-cyan-50 text-sm font-semibold text-cyan-900">
                         {messageInitials(selectedThread.peer)}
-                        <span className="absolute bottom-0 right-0 h-3 w-3 rounded-full border-2 border-white bg-emerald-500" />
+                        <span className="absolute bottom-0 right-0 h-3 w-3 rounded-full border-2 border-white bg-cyan-500" />
                       </div>
 
                       <div className="min-w-0">
@@ -3313,7 +3313,7 @@ function ResearchParticipantLinksView() {
           <div className="mt-3 flex gap-2">{["LIVE","TEST"].map(x=><button key={x} onClick={()=>setKind(x)} className={`rounded-lg px-3 py-2 text-[9px] font-semibold ${kind===x?"bg-slate-950 text-white":"border border-slate-200 text-slate-500"}`}>{x}</button>)}</div>
           <label className="mt-4 block text-[9px] font-semibold text-slate-500">Maximum participants<input type="number" defaultValue={150} className="mt-1 w-full rounded-xl border border-slate-200 px-3 py-2.5 text-[10px]"/></label>
         </ExplorerCard>
-        <div className="space-y-3">{links.map((link,index)=><ExplorerCard key={`${link.token}-${index}`} className="p-4" highlight={index===0}><div className="flex flex-wrap items-start justify-between gap-3"><div><span className={`rounded-full px-2 py-1 text-[8px] font-semibold ${link.type==="TEST"?"bg-amber-50 text-amber-700":"bg-emerald-50 text-emerald-700"}`}>{link.type}</span><p className="mt-3 text-xs font-semibold text-slate-900">{link.name}</p><p className="mt-1 font-mono text-[8px] text-slate-400">psylattice.com/study/{link.token}</p></div><button onClick={()=>navigator.clipboard?.writeText(`https://psylattice.com/study/${link.token}`)} className="rounded-lg border border-slate-200 px-2.5 py-1.5 text-[8px] font-semibold text-slate-600">Copy link</button></div></ExplorerCard>)}</div>
+        <div className="space-y-3">{links.map((link,index)=><ExplorerCard key={`${link.token}-${index}`} className="p-4" highlight={index===0}><div className="flex flex-wrap items-start justify-between gap-3"><div><span className={`rounded-full px-2 py-1 text-[8px] font-semibold ${link.type==="TEST"?"bg-cyan-50 text-cyan-700":"bg-cyan-50 text-cyan-700"}`}>{link.type}</span><p className="mt-3 text-xs font-semibold text-slate-900">{link.name}</p><p className="mt-1 font-mono text-[8px] text-slate-400">psylattice.com/study/{link.token}</p></div><button onClick={()=>navigator.clipboard?.writeText(`https://psylattice.com/study/${link.token}`)} className="rounded-lg border border-slate-200 px-2.5 py-1.5 text-[8px] font-semibold text-slate-600">Copy link</button></div></ExplorerCard>)}</div>
       </div>
     </div>
   );
@@ -3321,7 +3321,7 @@ function ResearchParticipantLinksView() {
 
 function ResearchEthicsView() {
   const [consentVersion, setConsentVersion] = useState(1);
-  return <div><ExplorerScreenTitle eyebrow="Ethics & Consent" title="Study governance" action="New consent version" onAction={()=>setConsentVersion(v=>v+1)}/><div className="grid gap-3 lg:grid-cols-2"><ExplorerCard className="p-4" highlight><div className="flex items-start justify-between"><div><p className="text-xs font-semibold text-slate-900">Ethics approval</p><p className="mt-1 text-[9px] text-slate-400">Daily Stress in University Students</p></div><span className="rounded-full bg-emerald-50 px-2 py-1 text-[8px] font-semibold text-emerald-700">Approved</span></div><div className="mt-4 grid gap-2 sm:grid-cols-2"><label className="text-[9px] font-semibold text-slate-500">Reference<input defaultValue="PSY-2026-041" className="mt-1 w-full rounded-xl border border-slate-200 px-3 py-2.5 text-[10px]"/></label><label className="text-[9px] font-semibold text-slate-500">Approval date<input type="date" defaultValue="2026-06-12" className="mt-1 w-full rounded-xl border border-slate-200 px-3 py-2.5 text-[10px]"/></label></div></ExplorerCard><ExplorerCard className="p-4"><p className="text-xs font-semibold text-slate-900">Consent versions</p><div className="mt-3 space-y-2">{Array.from({length:consentVersion}).map((_,i)=><button key={i} className="flex w-full items-center justify-between rounded-xl border border-slate-200 px-3 py-3 text-left"><div><p className="text-[10px] font-semibold text-slate-700">Version {i+1}.0</p><p className="mt-0.5 text-[8px] text-slate-400">Participant information + consent items</p></div><span className={`rounded-full px-2 py-1 text-[8px] font-semibold ${i===consentVersion-1?"bg-emerald-50 text-emerald-700":"bg-slate-100 text-slate-500"}`}>{i===consentVersion-1?"Active":"Archived"}</span></button>)}</div></ExplorerCard></div></div>;
+  return <div><ExplorerScreenTitle eyebrow="Ethics & Consent" title="Study governance" action="New consent version" onAction={()=>setConsentVersion(v=>v+1)}/><div className="grid gap-3 lg:grid-cols-2"><ExplorerCard className="p-4" highlight><div className="flex items-start justify-between"><div><p className="text-xs font-semibold text-slate-900">Ethics approval</p><p className="mt-1 text-[9px] text-slate-400">Daily Stress in University Students</p></div><span className="rounded-full bg-cyan-50 px-2 py-1 text-[8px] font-semibold text-cyan-700">Approved</span></div><div className="mt-4 grid gap-2 sm:grid-cols-2"><label className="text-[9px] font-semibold text-slate-500">Reference<input defaultValue="PSY-2026-041" className="mt-1 w-full rounded-xl border border-slate-200 px-3 py-2.5 text-[10px]"/></label><label className="text-[9px] font-semibold text-slate-500">Approval date<input type="date" defaultValue="2026-06-12" className="mt-1 w-full rounded-xl border border-slate-200 px-3 py-2.5 text-[10px]"/></label></div></ExplorerCard><ExplorerCard className="p-4"><p className="text-xs font-semibold text-slate-900">Consent versions</p><div className="mt-3 space-y-2">{Array.from({length:consentVersion}).map((_,i)=><button key={i} className="flex w-full items-center justify-between rounded-xl border border-slate-200 px-3 py-3 text-left"><div><p className="text-[10px] font-semibold text-slate-700">Version {i+1}.0</p><p className="mt-0.5 text-[8px] text-slate-400">Participant information + consent items</p></div><span className={`rounded-full px-2 py-1 text-[8px] font-semibold ${i===consentVersion-1?"bg-cyan-50 text-cyan-700":"bg-slate-100 text-slate-500"}`}>{i===consentVersion-1?"Active":"Archived"}</span></button>)}</div></ExplorerCard></div></div>;
 }
 
 function ResearchTeamView() {
@@ -3338,7 +3338,7 @@ function ClinicalNotificationsView() {
 
 function ClinicalWearablesView() {
   const [permission]=useState({sleep:true,activity:true,heart:false});
-  return <div><ExplorerScreenTitle eyebrow="Wearables & Physiology" title="Arjun K."/><div className="grid grid-cols-1 gap-3 sm:grid-cols-3"><ExplorerMiniStat label="Sleep" value="7h 11m" helper="7-day average"/><ExplorerMiniStat label="Steps" value="8,920" helper="daily average"/><ExplorerMiniStat label="Resting HR" value="61 bpm" helper="7-day average"/></div><ExplorerCard className="mt-3 p-4" highlight><div className="space-y-2">{([['sleep','Sleep summary'],['activity','Activity summary'],['heart','Heart-rate summary']] as const).map(([key,label])=><div key={key} className="flex items-center justify-between rounded-xl border border-slate-200 px-3 py-3"><div><p className="text-[10px] font-semibold text-slate-700">{label}</p><p className="mt-0.5 text-[8px] text-slate-400">{permission[key]?"Shared by client":"Not shared by client"}</p></div><span className={`rounded-full px-2 py-1 text-[8px] font-semibold ${permission[key]?"bg-emerald-50 text-emerald-700":"bg-slate-100 text-slate-500"}`}>{permission[key]?"Shared":"Private"}</span></div>)}</div></ExplorerCard></div>;
+  return <div><ExplorerScreenTitle eyebrow="Wearables & Physiology" title="Arjun K."/><div className="grid grid-cols-1 gap-3 sm:grid-cols-3"><ExplorerMiniStat label="Sleep" value="7h 11m" helper="7-day average"/><ExplorerMiniStat label="Steps" value="8,920" helper="daily average"/><ExplorerMiniStat label="Resting HR" value="61 bpm" helper="7-day average"/></div><ExplorerCard className="mt-3 p-4" highlight><div className="space-y-2">{([['sleep','Sleep summary'],['activity','Activity summary'],['heart','Heart-rate summary']] as const).map(([key,label])=><div key={key} className="flex items-center justify-between rounded-xl border border-slate-200 px-3 py-3"><div><p className="text-[10px] font-semibold text-slate-700">{label}</p><p className="mt-0.5 text-[8px] text-slate-400">{permission[key]?"Shared by client":"Not shared by client"}</p></div><span className={`rounded-full px-2 py-1 text-[8px] font-semibold ${permission[key]?"bg-cyan-50 text-cyan-700":"bg-slate-100 text-slate-500"}`}>{permission[key]?"Shared":"Private"}</span></div>)}</div></ExplorerCard></div>;
 }
 
 function ClinicalReportsView() {
@@ -3348,7 +3348,7 @@ function ClinicalReportsView() {
 
 function ClinicalPermissionsView() {
   const [permissions] = useState({assessments:true,monitoring:true,progress:true,wearables:false,regulation:false});
-  return <div><ExplorerScreenTitle eyebrow="Consent & Data Access" title="Arjun K."/><ExplorerCard className="p-4" highlight><p className="text-[10px] leading-5 text-slate-500">The client controls these categories from Self → Privacy & Sharing. Clinical reflects the resulting access state.</p><div className="mt-4 space-y-2">{Object.entries(permissions).map(([key,enabled])=><div key={key} className="flex items-center justify-between rounded-xl border border-slate-200 px-3 py-3"><div><p className="text-[10px] font-semibold capitalize text-slate-700">{key}</p><p className="mt-0.5 text-[8px] text-slate-400">Category-specific permission</p></div><span className={`rounded-full px-2 py-1 text-[8px] font-semibold ${enabled?"bg-emerald-50 text-emerald-700":"bg-slate-100 text-slate-500"}`}>{enabled?"Shared":"Not shared"}</span></div>)}</div></ExplorerCard></div>;
+  return <div><ExplorerScreenTitle eyebrow="Consent & Data Access" title="Arjun K."/><ExplorerCard className="p-4" highlight><p className="text-[10px] leading-5 text-slate-500">The client controls these categories from Self → Privacy & Sharing. Clinical reflects the resulting access state.</p><div className="mt-4 space-y-2">{Object.entries(permissions).map(([key,enabled])=><div key={key} className="flex items-center justify-between rounded-xl border border-slate-200 px-3 py-3"><div><p className="text-[10px] font-semibold capitalize text-slate-700">{key}</p><p className="mt-0.5 text-[8px] text-slate-400">Category-specific permission</p></div><span className={`rounded-full px-2 py-1 text-[8px] font-semibold ${enabled?"bg-cyan-50 text-cyan-700":"bg-slate-100 text-slate-500"}`}>{enabled?"Shared":"Not shared"}</span></div>)}</div></ExplorerCard></div>;
 }
 
 function ClinicalSettingsView() {
@@ -3452,12 +3452,12 @@ function ProductExplorer({ activeWorkspace, onWorkspaceChange }: { activeWorkspa
         ? "clinician"
         : "self";
   return (
-    <div className="rounded-[30px] border border-slate-200 bg-[#edf1f1] p-3 sm:p-4">
-      <div className="mb-3 flex flex-col gap-3 rounded-[22px] border border-slate-200 bg-white px-4 py-4 sm:flex-row sm:items-center sm:justify-between">
-        <div className="flex flex-wrap gap-2">{workspaces.map(workspace=>{const Icon=workspace.icon; const selected=workspace.id===activeWorkspace; return <button key={workspace.id} onClick={()=>{onWorkspaceChange(workspace.id);setResetKey(0)}} className={`inline-flex items-center gap-2 rounded-xl border px-4 py-2.5 text-xs font-semibold transition ${selected?"border-slate-950 bg-slate-950 text-white":"border-slate-200 bg-white text-slate-500 hover:border-slate-300 hover:text-slate-900"}`}><Icon className="h-4 w-4"/>{workspace.id==="research"?"Researcher":workspace.navLabel}</button>})}</div>
-        <button onClick={()=>setResetKey(v=>v+1)} className="rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-xs font-semibold text-slate-600 hover:bg-slate-50">Reset workspace</button>
+    <div className="rounded-[32px] border border-slate-200/90 bg-white/75 p-3 shadow-[0_4px_10px_rgba(15,23,42,.045),0_28px_70px_rgba(15,23,42,.11)] backdrop-blur sm:p-4">
+      <div className="mb-3 flex flex-col gap-3 rounded-[24px] border border-slate-200/90 bg-white px-4 py-4 shadow-[0_2px_5px_rgba(15,23,42,.035),0_10px_24px_rgba(15,23,42,.06)] sm:flex-row sm:items-center sm:justify-between">
+        <div className="flex flex-wrap gap-2">{workspaces.map(workspace=>{const Icon=workspace.icon; const selected=workspace.id===activeWorkspace; return <button key={workspace.id} onClick={()=>{onWorkspaceChange(workspace.id);setResetKey(0)}} className={`inline-flex items-center gap-2 rounded-xl border px-4 py-2.5 text-xs font-semibold transition ${selected?"border-cyan-300 bg-cyan-50 text-cyan-950 shadow-[0_2px_6px_rgba(8,145,178,.08),0_10px_24px_rgba(8,145,178,.12)]":"border-transparent bg-transparent text-slate-500 hover:border-slate-200 hover:bg-white hover:text-slate-900 hover:shadow-[0_2px_5px_rgba(15,23,42,.04),0_8px_18px_rgba(15,23,42,.06)]"}`}><Icon className="h-4 w-4"/>{workspace.id==="research"?"Researcher":workspace.navLabel}</button>})}</div>
+        <button onClick={()=>setResetKey(v=>v+1)} className="rounded-full border border-slate-200 bg-white px-4 py-2.5 text-xs font-semibold text-slate-600 shadow-[0_2px_5px_rgba(15,23,42,.035),0_8px_18px_rgba(15,23,42,.055)] transition hover:-translate-y-px hover:border-cyan-200">Reset workspace</button>
       </div>
-      <div key={`${explorerWorkspace}-${resetKey}`} className="overflow-hidden rounded-[24px] border border-slate-200 bg-white shadow-[0_28px_90px_-50px_rgba(15,23,42,.34)]"><ExactWorkspaceEnvironment workspace={explorerWorkspace}/></div>
+      <div key={`${explorerWorkspace}-${resetKey}`} className="overflow-hidden rounded-[26px] border border-slate-200/90 bg-white shadow-[0_4px_10px_rgba(15,23,42,.045),0_28px_72px_rgba(15,23,42,.13)]"><ExactWorkspaceEnvironment workspace={explorerWorkspace}/></div>
     </div>
   );
 }
@@ -3485,7 +3485,7 @@ export default function Home() {
   const activeProcess = process[processStep];
 
   return (
-    <main className="min-h-screen bg-[#f7faf9] text-slate-950">
+    <main className="psylattice-public-shell min-h-screen bg-[#f4f8f8] text-slate-950">
       <style>{`
         @keyframes heroPanelIn {
           from {
@@ -3519,11 +3519,21 @@ export default function Home() {
             animation: none !important;
           }
         }
+
+        .psylattice-public-shell {
+          --pl-shadow-soft: 0 2px 5px rgba(15,23,42,.035), 0 12px 30px rgba(15,23,42,.07);
+          --pl-shadow-float: 0 3px 8px rgba(15,23,42,.045), 0 20px 50px rgba(15,23,42,.10);
+          --pl-shadow-cyan: 0 3px 8px rgba(8,145,178,.07), 0 18px 44px rgba(8,145,178,.13);
+        }
+        .psylattice-public-shell button,
+        .psylattice-public-shell a {
+          -webkit-tap-highlight-color: transparent;
+        }
       `}</style>
 
       {/* Navigation */}
-      <header className="sticky top-0 z-50 border-b border-slate-200/80 bg-[#f7faf9]/92 backdrop-blur-xl">
-        <div className="mx-auto flex h-[76px] max-w-7xl items-center justify-between px-6 lg:px-8">
+      <header className="sticky top-3 z-50 px-4 sm:px-6 lg:px-8">
+        <div className="mx-auto flex h-[68px] max-w-7xl items-center justify-between rounded-[26px] border border-slate-200/90 bg-white/95 px-5 shadow-[0_3px_8px_rgba(15,23,42,.05),0_18px_42px_rgba(15,23,42,.10)] backdrop-blur-xl sm:px-6">
           <PsyLatticeLogo />
 
           <nav className="hidden items-center gap-7 text-sm text-slate-600 lg:flex">
@@ -3556,13 +3566,13 @@ export default function Home() {
           <div className="flex items-center gap-3">
             <Link
               href="/signin"
-              className="hidden rounded-xl px-4 py-2.5 text-sm font-medium text-slate-700 transition hover:bg-white sm:block"
+              className="hidden rounded-full border border-slate-200 bg-white px-4 py-2.5 text-sm font-medium text-slate-700 shadow-[0_2px_5px_rgba(15,23,42,.04),0_8px_20px_rgba(15,23,42,.06)] transition hover:-translate-y-px hover:border-cyan-200 sm:block"
             >
               Sign in
             </Link>
             <Link
               href="/signin"
-              className="inline-flex items-center gap-2 rounded-xl bg-slate-950 px-5 py-2.5 text-sm font-medium text-white transition hover:bg-slate-800"
+              className="inline-flex items-center gap-2 rounded-full bg-slate-950 px-5 py-2.5 text-sm font-medium text-white shadow-[0_4px_10px_rgba(15,23,42,.18),0_12px_26px_rgba(15,23,42,.14)] transition hover:-translate-y-px hover:bg-slate-800"
             >
               Get started
               <ArrowRight className="h-4 w-4" />
@@ -3585,7 +3595,7 @@ export default function Home() {
 
         <div className="relative mx-auto grid max-w-7xl gap-10 px-6 pb-24 pt-20 lg:grid-cols-[.94fr_1.06fr] lg:px-8 lg:pb-28 lg:pt-28">
           <div className="flex flex-col justify-center">
-            <div className="inline-flex w-fit items-center gap-2 rounded-full border border-slate-200 bg-white/85 px-4 py-2 text-xs font-medium text-slate-600 shadow-sm">
+            <div className="inline-flex w-fit items-center gap-2 rounded-full border border-cyan-200/90 bg-white px-4 py-2 text-xs font-medium text-slate-600 shadow-[0_2px_5px_rgba(15,23,42,.04),0_10px_24px_rgba(8,145,178,.08)]">
               <span className="h-1.5 w-1.5 rounded-full bg-cyan-600" />
               A unified psychological measurement ecosystem
             </div>
@@ -3607,7 +3617,7 @@ export default function Home() {
             <div className="mt-6 flex flex-wrap items-center gap-3">
               <a
                 href="#mobile"
-                className="inline-flex items-center gap-2 rounded-full border border-emerald-200 bg-emerald-50 px-4 py-2 text-xs font-semibold text-emerald-900 transition hover:border-emerald-300"
+                className="inline-flex items-center gap-2 rounded-full border border-cyan-200 bg-cyan-50 px-4 py-2 text-xs font-semibold text-cyan-900 transition hover:border-cyan-300"
               >
                 <Smartphone className="h-3.5 w-3.5" />
                 Android beta available
@@ -3631,7 +3641,7 @@ export default function Home() {
             <div className="mt-7 flex flex-wrap gap-3">
               <Link
                 href="/signin"
-                className="inline-flex items-center gap-2 rounded-xl bg-slate-950 px-6 py-3.5 text-sm font-medium text-white transition hover:bg-slate-800"
+                className="inline-flex items-center gap-2 rounded-full bg-slate-950 px-6 py-3.5 text-sm font-medium text-white shadow-[0_4px_10px_rgba(15,23,42,.18),0_14px_30px_rgba(15,23,42,.14)] transition hover:-translate-y-px hover:bg-slate-800"
               >
                 Explore PsyLattice
                 <ArrowRight className="h-4 w-4" />
@@ -3639,7 +3649,7 @@ export default function Home() {
 
               <a
                 href="#platform"
-                className="inline-flex items-center gap-2 rounded-xl border border-slate-300 bg-white px-6 py-3.5 text-sm font-medium text-slate-800 transition hover:border-slate-400"
+                className="inline-flex items-center gap-2 rounded-full border border-slate-200 bg-white px-6 py-3.5 text-sm font-medium text-slate-800 shadow-[0_2px_5px_rgba(15,23,42,.04),0_10px_24px_rgba(15,23,42,.07)] transition hover:-translate-y-px hover:border-cyan-200"
               >
                 Try the interactive tour
                 <ChevronRight className="h-4 w-4" />
@@ -3659,7 +3669,7 @@ export default function Home() {
               ))}
             </div>
 
-            <div className="mt-8 rounded-2xl border border-slate-200 bg-white/80 p-4 backdrop-blur">
+            <div className="mt-8 rounded-[24px] border border-slate-200/90 bg-white/95 p-4 shadow-[0_2px_5px_rgba(15,23,42,.04),0_14px_34px_rgba(15,23,42,.08)] backdrop-blur">
               <p className="text-[10px] font-semibold uppercase tracking-[0.15em] text-cyan-800">
                 Selected workspace
               </p>
@@ -3691,13 +3701,13 @@ export default function Home() {
       {/* PsyLattice Mobile */}
       <section
         id="mobile"
-        className="scroll-mt-24 border-y border-slate-200 bg-[#eef5f4] py-20 lg:py-28"
+        className="scroll-mt-24 border-y border-slate-200/80 bg-[#f2f8f8] py-20 lg:py-28"
       >
         <div className="mx-auto max-w-7xl px-6 lg:px-8">
           <div className="grid items-center gap-14 lg:grid-cols-[.9fr_1.1fr] lg:gap-16">
             <div>
-              <div className="inline-flex items-center gap-2 rounded-full border border-emerald-200 bg-white px-3.5 py-2 text-[11px] font-semibold text-emerald-800 shadow-sm">
-                <span className="h-2 w-2 rounded-full bg-emerald-500" />
+              <div className="inline-flex items-center gap-2 rounded-full border border-cyan-200 bg-white px-3.5 py-2 text-[11px] font-semibold text-cyan-800 shadow-[0_2px_5px_rgba(15,23,42,.035),0_10px_24px_rgba(8,145,178,.09)]">
+                <span className="h-2 w-2 rounded-full bg-cyan-500" />
                 Android beta available now
               </div>
 
@@ -3719,7 +3729,7 @@ export default function Home() {
                   href={ANDROID_BETA_URL}
                   target="_blank"
                   rel="noreferrer"
-                  className="inline-flex items-center gap-2 rounded-xl bg-slate-950 px-6 py-3.5 text-sm font-semibold text-white transition hover:bg-slate-800"
+                  className="inline-flex items-center gap-2 rounded-full bg-slate-950 px-6 py-3.5 text-sm font-semibold text-white shadow-[0_4px_10px_rgba(15,23,42,.18),0_14px_30px_rgba(15,23,42,.14)] transition hover:-translate-y-px hover:bg-slate-800"
                 >
                   <FileDown className="h-4 w-4" />
                   Download Android Beta
@@ -3728,7 +3738,7 @@ export default function Home() {
                   href={ANDROID_BETA_DRIVE_URL}
                   target="_blank"
                   rel="noreferrer"
-                  className="inline-flex items-center gap-2 rounded-xl border border-slate-300 bg-white px-6 py-3.5 text-sm font-semibold text-slate-700 transition hover:border-slate-400"
+                  className="inline-flex items-center gap-2 rounded-full border border-slate-200 bg-white px-6 py-3.5 text-sm font-semibold text-slate-700 shadow-[0_2px_5px_rgba(15,23,42,.035),0_10px_24px_rgba(15,23,42,.07)] transition hover:-translate-y-px hover:border-cyan-200"
                 >
                   Open in Google Drive
                   <ArrowRight className="h-4 w-4" />
@@ -3768,7 +3778,7 @@ export default function Home() {
                   return (
                     <div
                       key={item.title}
-                      className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm"
+                      className="rounded-[22px] border border-slate-200/90 bg-white p-4 shadow-[0_2px_5px_rgba(15,23,42,.035),0_12px_28px_rgba(15,23,42,.07)]"
                     >
                       <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-cyan-50 text-cyan-800">
                         <Icon className="h-4 w-4" />
@@ -3801,17 +3811,17 @@ export default function Home() {
             </div>
           </div>
 
-          <div className="mt-14 grid gap-4 rounded-[28px] border border-slate-200 bg-slate-950 p-5 text-white sm:grid-cols-4 sm:p-6">
+          <div className="mt-14 grid gap-4 rounded-[30px] border border-slate-200/90 bg-white p-5 text-slate-950 shadow-[0_4px_10px_rgba(15,23,42,.04),0_24px_58px_rgba(15,23,42,.10)] sm:grid-cols-4 sm:p-6">
             {[
               ["01", "Measure in context", "Repeated self-report while experiences are happening."],
               ["02", "Connect permitted data", "Health Connect adds optional contextual signals to supported Android workflows."],
               ["03", "Follow over time", "Longitudinal protocols keep days, phases and follow-up linked."],
               ["04", "Bring it back to the workspace", "Research and clinical views remain structured around role and permission."],
             ].map(([number, title, description]) => (
-              <div key={number} className="rounded-2xl border border-white/10 bg-white/[0.04] p-4">
-                <p className="text-[10px] font-semibold text-cyan-300">{number}</p>
+              <div key={number} className="rounded-[22px] border border-slate-200 bg-[#f8fbfb] p-4 shadow-[0_2px_5px_rgba(15,23,42,.03),0_10px_22px_rgba(15,23,42,.055)]">
+                <p className="text-[10px] font-semibold text-cyan-700">{number}</p>
                 <p className="mt-2 text-sm font-semibold">{title}</p>
-                <p className="mt-2 text-xs leading-5 text-slate-400">{description}</p>
+                <p className="mt-2 text-xs leading-5 text-slate-500">{description}</p>
               </div>
             ))}
           </div>
@@ -3970,7 +3980,7 @@ export default function Home() {
                     14-day ambulatory protocol
                   </p>
                 </div>
-                <span className="rounded-full bg-emerald-50 px-3 py-1 text-xs font-medium text-emerald-700">
+                <span className="rounded-full bg-cyan-50 px-3 py-1 text-xs font-medium text-cyan-700">
                   Live
                 </span>
               </div>
@@ -4496,17 +4506,17 @@ export default function Home() {
               </div>
 
               <div className="px-6 pt-6 sm:px-8 sm:pt-8">
-                <div className="rounded-[22px] border border-emerald-200 bg-emerald-50/80 p-5">
+                <div className="rounded-[22px] border border-cyan-200 bg-cyan-50/80 p-5">
                   <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                     <div>
-                      <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-emerald-800">
+                      <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-cyan-800">
                         Your first live study is on us
                       </p>
-                      <p className="mt-2 text-sm leading-6 text-emerald-950">
+                      <p className="mt-2 text-sm leading-6 text-cyan-950">
                         Create, configure and test for free, then publish your first real PsyLattice study without payment.
                       </p>
                     </div>
-                    <span className="w-fit rounded-full bg-white px-4 py-2 text-xs font-semibold text-emerald-800 shadow-sm">
+                    <span className="w-fit rounded-full bg-white px-4 py-2 text-xs font-semibold text-cyan-800 shadow-sm">
                       1 free study credit
                     </span>
                   </div>
@@ -4530,7 +4540,7 @@ export default function Home() {
                         card.id === "research-pro-monthly"
                           ? "border-cyan-300 shadow-lg shadow-cyan-100/50"
                           : card.id === "research-pro-annual"
-                            ? "border-emerald-300 shadow-lg shadow-emerald-100/50"
+                            ? "border-cyan-300 shadow-lg shadow-cyan-100/50"
                             : "border-slate-200"
                       }`}
                     >
@@ -4550,7 +4560,7 @@ export default function Home() {
                           </span>
                         )}
                         {card.id === "research-pro-annual" && (
-                          <span className="rounded-full bg-emerald-700 px-3 py-1 text-[10px] font-semibold text-white">
+                          <span className="rounded-full bg-cyan-700 px-3 py-1 text-[10px] font-semibold text-white">
                             Best value
                           </span>
                         )}
@@ -4598,7 +4608,7 @@ export default function Home() {
                             card.id === "research-pro-monthly"
                               ? "bg-cyan-950 text-white hover:bg-cyan-900"
                               : card.id === "research-pro-annual"
-                                ? "bg-emerald-700 text-white hover:bg-emerald-600"
+                                ? "bg-cyan-700 text-white hover:bg-cyan-600"
                                 : "bg-slate-950 text-white hover:bg-slate-800"
                           }`}
                         >

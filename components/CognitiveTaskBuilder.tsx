@@ -295,7 +295,7 @@ function TextField(props: React.InputHTMLAttributes<HTMLInputElement>) {
   return (
     <input
       {...props}
-      className={`mt-1.5 w-full rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm text-slate-800 outline-none transition focus:border-cyan-400 ${props.className || ""}`}
+      className={`mt-1.5 w-full rounded-full border border-slate-300/80 bg-white px-3.5 py-2.5 text-sm text-slate-800 shadow-[0_4px_14px_rgba(15,23,42,0.05)] outline-none transition focus:border-cyan-300 focus:shadow-[0_5px_18px_rgba(8,145,178,0.10)] ${props.className || ""}`}
     />
   );
 }
@@ -304,14 +304,14 @@ function SelectField(props: React.SelectHTMLAttributes<HTMLSelectElement>) {
   return (
     <select
       {...props}
-      className={`mt-1.5 w-full rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm text-slate-700 outline-none transition focus:border-cyan-400 ${props.className || ""}`}
+      className={`mt-1.5 w-full rounded-full border border-slate-300/80 bg-white px-3.5 py-2.5 text-sm text-slate-700 shadow-[0_4px_14px_rgba(15,23,42,0.05)] outline-none transition focus:border-cyan-300 focus:shadow-[0_5px_18px_rgba(8,145,178,0.10)] ${props.className || ""}`}
     />
   );
 }
 
 function Toggle({ checked, onChange, label }: { checked: boolean; onChange: (value: boolean) => void; label: string }) {
   return (
-    <button type="button" onClick={() => onChange(!checked)} className="flex w-full items-center justify-between gap-3 rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-left">
+    <button type="button" onClick={() => onChange(!checked)} className="flex w-full items-center justify-between gap-3 rounded-[18px] border border-slate-200 bg-white px-3.5 py-3 text-left shadow-[0_4px_14px_rgba(15,23,42,0.045)] transition hover:border-cyan-200">
       <span className="text-xs font-medium text-slate-700">{label}</span>
       <span className={`relative h-5 w-9 rounded-full transition ${checked ? "bg-cyan-600" : "bg-slate-200"}`}>
         <span className={`absolute top-0.5 h-4 w-4 rounded-full bg-white shadow transition ${checked ? "left-[18px]" : "left-0.5"}`} />
@@ -766,7 +766,7 @@ export default function CognitiveTaskBuilder({
 
   if (loading) {
     return (
-      <div className="flex min-h-[520px] items-center justify-center rounded-[28px] border border-slate-200 bg-white">
+      <div className="flex min-h-[520px] items-center justify-center rounded-[28px] border border-slate-300/70 bg-white shadow-[0_2px_6px_rgba(15,23,42,0.04),0_16px_40px_rgba(15,23,42,0.08)]">
         <div className="flex items-center gap-3 text-sm text-slate-500"><Loader2 className="h-4 w-4 animate-spin" /> Loading Task Builder…</div>
       </div>
     );
@@ -774,7 +774,7 @@ export default function CognitiveTaskBuilder({
 
   if (!task || !version) {
     return (
-      <div className="rounded-[28px] border border-red-200 bg-red-50 p-6 text-sm text-red-700">
+      <div className="rounded-[28px] border border-rose-200 bg-white p-6 text-sm text-rose-700 shadow-[0_2px_6px_rgba(15,23,42,0.04),0_16px_40px_rgba(15,23,42,0.08)]">
         {notice?.text || "This cognitive task could not be opened."}
       </div>
     );
@@ -784,17 +784,17 @@ export default function CognitiveTaskBuilder({
 
   return (
     <div className="space-y-5">
-      <section className="overflow-hidden rounded-[28px] border border-slate-200 bg-white shadow-sm">
+      <section className="overflow-hidden rounded-[28px] border border-slate-300/75 bg-white shadow-[0_3px_8px_rgba(15,23,42,0.05),0_18px_44px_rgba(15,23,42,0.085),0_34px_80px_rgba(8,145,178,0.04)]">
         <div className="flex flex-col gap-5 border-b border-slate-100 px-5 py-5 lg:flex-row lg:items-center lg:justify-between lg:px-6">
           <div className="flex items-start gap-4">
-            <button type="button" onClick={back} className="mt-0.5 flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-slate-200 bg-white text-slate-500 transition hover:bg-slate-50 hover:text-slate-950" aria-label="Back to Cognitive Lab">
+            <button type="button" onClick={back} className="mt-0.5 flex h-10 w-10 shrink-0 items-center justify-center rounded-full border border-slate-300/80 bg-white text-slate-500 shadow-[0_5px_16px_rgba(15,23,42,0.06)] transition hover:-translate-y-px hover:border-cyan-200 hover:text-slate-950" aria-label="Back to Cognitive Lab">
               <ArrowLeft className="h-4 w-4" />
             </button>
             <div>
               <div className="flex flex-wrap items-center gap-2">
-                <span className="rounded-full border border-cyan-200 bg-cyan-50 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.14em] text-cyan-800">Cognitive Task Builder · Phase 1D Beta</span>
-                <span className={`rounded-full border px-2.5 py-1 text-[10px] font-semibold ${locked ? "border-amber-200 bg-amber-50 text-amber-800" : "border-emerald-200 bg-emerald-50 text-emerald-700"}`}>{version.version_label} · {version.status}</span>
-                {dirty && <span className="text-[10px] font-semibold text-amber-700">Unsaved changes</span>}
+                <span className="rounded-full border border-cyan-200 bg-cyan-50 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.14em] text-cyan-800">Cognitive Task Builder</span>
+                <span className={`rounded-full border px-2.5 py-1 text-[10px] font-semibold shadow-[0_4px_12px_rgba(15,23,42,0.045)] ${locked ? "border-slate-200 bg-white text-slate-600" : "border-cyan-200 bg-cyan-50 text-cyan-900"}`}>{version.version_label} · {version.status}</span>
+                {dirty && <span className="rounded-full border border-slate-200 bg-white px-2.5 py-1 text-[10px] font-semibold text-slate-600 shadow-[0_4px_12px_rgba(15,23,42,0.045)]">Unsaved changes</span>}
               </div>
               <h2 className="mt-2 text-2xl font-semibold tracking-[-0.03em] text-slate-950">{task.title}</h2>
               <p className="mt-1 text-xs text-slate-500">Build the task definition here, save it, then run an isolated browser Preview with reaction-time capture and timing diagnostics.</p>
@@ -806,12 +806,12 @@ export default function CognitiveTaskBuilder({
               onClick={() => setPreviewOpen(true)}
               disabled={saving || dirty || blocks.length === 0}
               title={dirty ? "Save the draft before previewing it" : blocks.length === 0 ? "Add at least one block first" : "Run browser preview"}
-              className="inline-flex items-center gap-2 rounded-xl border border-cyan-200 bg-cyan-50 px-4 py-2.5 text-xs font-semibold text-cyan-900 transition hover:bg-cyan-100 disabled:cursor-not-allowed disabled:border-slate-200 disabled:bg-slate-50 disabled:text-slate-400"
+              className="inline-flex items-center gap-2 rounded-full border border-cyan-200 bg-white px-4 py-2.5 text-xs font-semibold text-cyan-900 shadow-[0_5px_16px_rgba(8,145,178,0.10)] transition hover:-translate-y-px disabled:cursor-not-allowed disabled:border-slate-200 disabled:text-slate-400 disabled:shadow-none"
             >
               <Monitor className="h-4 w-4" />
               {dirty ? "Save to preview" : "Preview task"}
             </button>
-            <button type="button" onClick={() => void save()} disabled={saving || locked} className="inline-flex items-center gap-2 rounded-xl bg-slate-950 px-4 py-2.5 text-xs font-semibold text-white disabled:opacity-50">
+            <button type="button" onClick={() => void save()} disabled={saving || locked} className="inline-flex items-center gap-2 rounded-full bg-slate-950 px-4 py-2.5 text-xs font-semibold text-white shadow-[0_4px_10px_rgba(15,23,42,0.16),0_12px_26px_rgba(15,23,42,0.13)] transition hover:-translate-y-px disabled:opacity-50">
               {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
               Save draft
             </button>
@@ -819,14 +819,15 @@ export default function CognitiveTaskBuilder({
         </div>
 
         {notice && (
-          <div className={`border-b px-5 py-3 text-xs ${notice.type === "success" ? "border-emerald-100 bg-emerald-50 text-emerald-800" : "border-red-100 bg-red-50 text-red-700"}`}>
-            {notice.text}
+          <div className={`flex items-start gap-3 border-b border-slate-100 px-5 py-3 text-xs ${notice.type === "success" ? "text-cyan-900" : "text-rose-700"}`}>
+            <span className={`mt-0.5 h-3.5 w-1 rounded-full ${notice.type === "success" ? "bg-cyan-500" : "bg-rose-500"}`} aria-hidden="true" />
+            <span className="leading-5">{notice.text}</span>
           </div>
         )}
 
         <div className="grid min-h-[720px] lg:grid-cols-[245px_minmax(0,1fr)_310px]">
           {/* Structure */}
-          <aside className="border-b border-slate-200 bg-slate-50/70 p-4 lg:border-b-0 lg:border-r">
+          <aside className="border-b border-slate-200 bg-[#fbfdfd] p-4 lg:border-b-0 lg:border-r">
             <div className="flex items-center justify-between gap-3">
               <div>
                 <p className="text-[10px] font-semibold uppercase tracking-[0.15em] text-slate-400">Structure</p>
@@ -836,12 +837,12 @@ export default function CognitiveTaskBuilder({
                 <button
                   type="button"
                   onClick={() => setBlockMenuOpen((open) => !open)}
-                  className="inline-flex items-center gap-1.5 rounded-xl border border-slate-200 bg-white px-3 py-2 text-[11px] font-semibold text-slate-700 transition hover:border-cyan-300"
+                  className="inline-flex items-center gap-1.5 rounded-full border border-slate-300/80 bg-white px-3 py-2 text-[11px] font-semibold text-slate-700 shadow-[0_4px_14px_rgba(15,23,42,0.05)] transition hover:-translate-y-px hover:border-cyan-300"
                 >
                   <Plus className="h-3.5 w-3.5" /> Add block <ChevronDown className="h-3 w-3" />
                 </button>
                 {blockMenuOpen && (
-                  <div className="absolute right-0 top-11 z-40 w-48 rounded-2xl border border-slate-200 bg-white p-2 shadow-2xl">
+                  <div className="absolute right-0 top-11 z-40 w-48 rounded-[20px] border border-slate-200 bg-white p-2 shadow-[0_18px_50px_rgba(15,23,42,0.16)]">
                     {BLOCK_TYPES.map((item) => (
                       <button
                         key={item.value}
@@ -861,7 +862,7 @@ export default function CognitiveTaskBuilder({
               {blocks.map((block, index) => {
                 const active = block.local_id === selectedBlockId;
                 return (
-                  <button key={block.local_id} type="button" onClick={() => { setSelectedBlockId(block.local_id); setSelectedComponentId(""); }} className={`w-full rounded-2xl border p-3 text-left transition ${active ? "border-cyan-300 bg-cyan-50" : "border-slate-200 bg-white hover:border-cyan-200"}`}>
+                  <button key={block.local_id} type="button" onClick={() => { setSelectedBlockId(block.local_id); setSelectedComponentId(""); }} className={`w-full rounded-2xl border p-3 text-left transition ${active ? "border-cyan-300 bg-white shadow-[0_6px_18px_rgba(8,145,178,0.13)]" : "border-slate-200 bg-white shadow-[0_3px_10px_rgba(15,23,42,0.035)] hover:border-cyan-200 hover:shadow-[0_5px_16px_rgba(15,23,42,0.06)]"}`}>
                     <div className="flex items-start gap-2.5">
                       <span className={`mt-0.5 flex h-6 w-6 shrink-0 items-center justify-center rounded-lg text-[10px] font-semibold ${active ? "bg-cyan-700 text-white" : "bg-slate-100 text-slate-500"}`}>{String(index + 1).padStart(2, "0")}</span>
                       <div className="min-w-0 flex-1">
@@ -894,14 +895,14 @@ export default function CognitiveTaskBuilder({
 
           {/* Main editor */}
           <section className="min-w-0 bg-white p-4 sm:p-5">
-            <div className="flex flex-wrap gap-2 rounded-2xl border border-slate-200 bg-slate-50 p-2">
+            <div className="flex flex-wrap gap-2 rounded-[22px] border border-slate-200 bg-white p-2 shadow-[0_5px_16px_rgba(15,23,42,0.05)]">
               {[
                 ["timeline", "Trial timeline", Layers3],
                 ["trials", "Trial table", ListChecks],
                 ["randomization", "Randomisation", Shuffle],
                 ["scoring", "Scoring & devices", BarChart3],
               ].map(([id, label, Icon]) => (
-                <button key={id as string} type="button" onClick={() => setEditorTab(id as EditorTab)} className={`inline-flex items-center gap-2 rounded-xl px-3 py-2 text-xs font-semibold transition ${editorTab === id ? "bg-white text-cyan-900 shadow-sm ring-1 ring-slate-200" : "text-slate-500 hover:text-slate-900"}`}>
+                <button key={id as string} type="button" onClick={() => setEditorTab(id as EditorTab)} className={`inline-flex items-center gap-2 rounded-full px-3 py-2 text-xs font-semibold transition ${editorTab === id ? "border border-cyan-200 bg-white text-cyan-950 shadow-[0_5px_16px_rgba(8,145,178,0.12)]" : "border border-transparent text-slate-500 hover:border-slate-200 hover:bg-white hover:text-slate-900 hover:shadow-[0_4px_12px_rgba(15,23,42,0.045)]"}`}>
                   <Icon className="h-3.5 w-3.5" /> {label as string}
                 </button>
               ))}
@@ -919,7 +920,7 @@ export default function CognitiveTaskBuilder({
                     <button
                       type="button"
                       onClick={addCommonTrial}
-                      className="inline-flex items-center gap-2 rounded-xl border border-cyan-200 bg-cyan-50 px-3.5 py-2.5 text-xs font-semibold text-cyan-900 transition hover:bg-cyan-100"
+                      className="inline-flex items-center gap-2 rounded-full border border-cyan-200 bg-white px-3.5 py-2.5 text-xs font-semibold text-cyan-900 shadow-[0_5px_16px_rgba(8,145,178,0.10)] transition hover:-translate-y-px"
                       title="Adds Fixation → Stimulus → Response → ITI"
                     >
                       <Sparkles className="h-3.5 w-3.5" /> Quick trial
@@ -928,7 +929,7 @@ export default function CognitiveTaskBuilder({
                       <button
                         type="button"
                         onClick={() => setComponentMenuOpen((open) => !open)}
-                        className="inline-flex items-center gap-2 rounded-xl bg-slate-950 px-3.5 py-2.5 text-xs font-semibold text-white"
+                        className="inline-flex items-center gap-2 rounded-full bg-slate-950 px-3.5 py-2.5 text-xs font-semibold text-white shadow-[0_4px_10px_rgba(15,23,42,0.16),0_12px_24px_rgba(15,23,42,0.12)] transition hover:-translate-y-px"
                       >
                         <Plus className="h-3.5 w-3.5" /> Add step <ChevronDown className="h-3.5 w-3.5" />
                       </button>
@@ -963,7 +964,7 @@ export default function CognitiveTaskBuilder({
                     const Icon = item?.icon || Settings2;
                     const active = component.local_id === selectedComponentId;
                     return (
-                      <button key={component.local_id} type="button" onClick={() => setSelectedComponentId(component.local_id)} className={`flex w-full items-center gap-3 rounded-2xl border p-3.5 text-left transition ${active ? "border-cyan-300 bg-cyan-50/70" : "border-slate-200 bg-white hover:border-cyan-200"}`}>
+                      <button key={component.local_id} type="button" onClick={() => setSelectedComponentId(component.local_id)} className={`flex w-full items-center gap-3 rounded-2xl border p-3.5 text-left transition ${active ? "border-cyan-300 bg-white shadow-[0_6px_18px_rgba(8,145,178,0.13)]" : "border-slate-200 bg-white shadow-[0_3px_10px_rgba(15,23,42,0.035)] hover:border-cyan-200 hover:shadow-[0_5px_16px_rgba(15,23,42,0.06)]"}`}>
                         <div className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-xl ${active ? "bg-cyan-700 text-white" : "bg-slate-100 text-slate-600"}`}><Icon className="h-4 w-4" /></div>
                         <div className="min-w-0 flex-1">
                           <div className="flex flex-wrap items-center gap-2"><p className="text-xs font-semibold text-slate-900">{item?.label || component.component_type}</p><span className="text-[9px] font-medium text-slate-400">Step {index + 1}</span></div>
@@ -1055,7 +1056,7 @@ export default function CognitiveTaskBuilder({
           </section>
 
           {/* Settings */}
-          <aside className="border-t border-slate-200 bg-slate-50/70 p-4 lg:border-l lg:border-t-0">
+          <aside className="border-t border-slate-200 bg-[#fbfdfd] p-4 lg:border-l lg:border-t-0">
             <div className="flex items-center gap-2"><Settings2 className="h-4 w-4 text-cyan-700" /><p className="text-xs font-semibold text-slate-900">Settings</p></div>
 
             <div className="mt-4 space-y-4">
@@ -1073,22 +1074,22 @@ export default function CognitiveTaskBuilder({
                   <label className="block"><FieldLabel>Block key</FieldLabel><TextField value={selectedBlock.block_key} onChange={(event) => updateBlock(selectedBlock.local_id, { block_key: event.target.value.replace(/\s+/g, "_").toLowerCase() })} /></label>
                   <label className="block"><FieldLabel>Block type</FieldLabel><SelectField value={selectedBlock.block_type} onChange={(event) => updateBlock(selectedBlock.local_id, { block_type: event.target.value as BlockType })}>{BLOCK_TYPES.map((item) => <option key={item.value} value={item.value}>{item.label}</option>)}</SelectField></label>
                   <label className="block"><FieldLabel>Repeat count</FieldLabel><TextField type="number" min="1" value={selectedBlock.repeat_count} onChange={(event) => updateBlock(selectedBlock.local_id, { repeat_count: Math.max(1, safeNumber(event.target.value, 1)) })} /></label>
-                  {selectedBlock.block_type === "instructions" && <label className="block"><FieldLabel>Instruction screen text</FieldLabel><textarea value={String(selectedBlock.config.screen_text || "")} onChange={(event) => updateBlock(selectedBlock.local_id, { config: { ...selectedBlock.config, screen_text: event.target.value } })} rows={6} className="mt-1.5 w-full resize-none rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm outline-none focus:border-cyan-400" /></label>}
+                  {selectedBlock.block_type === "instructions" && <label className="block"><FieldLabel>Instruction screen text</FieldLabel><textarea value={String(selectedBlock.config.screen_text || "")} onChange={(event) => updateBlock(selectedBlock.local_id, { config: { ...selectedBlock.config, screen_text: event.target.value } })} rows={6} className="mt-1.5 w-full resize-none rounded-[18px] border border-slate-300/80 bg-white px-3 py-2.5 text-sm shadow-[0_4px_14px_rgba(15,23,42,0.05)] outline-none focus:border-cyan-300" /></label>}
                   {selectedBlock.block_type === "practice" && <PracticeSettings block={selectedBlock} onChange={(continue_rule) => updateBlock(selectedBlock.local_id, { continue_rule })} />}
                 </>
               ) : (
                 <>
                   <label className="block"><FieldLabel>Task title</FieldLabel><TextField value={task.title} onChange={(event) => updateTask({ title: event.target.value })} /></label>
                   <label className="block"><FieldLabel>Domain</FieldLabel><SelectField value={task.domain} onChange={(event) => updateTask({ domain: event.target.value })}>{DOMAINS.map(([value, label]) => <option key={value} value={value}>{label}</option>)}</SelectField></label>
-                  <label className="block"><FieldLabel>Description</FieldLabel><textarea value={task.description} onChange={(event) => updateTask({ description: event.target.value })} rows={5} className="mt-1.5 w-full resize-none rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm outline-none focus:border-cyan-400" /></label>
+                  <label className="block"><FieldLabel>Description</FieldLabel><textarea value={task.description} onChange={(event) => updateTask({ description: event.target.value })} rows={5} className="mt-1.5 w-full resize-none rounded-[18px] border border-slate-300/80 bg-white px-3 py-2.5 text-sm shadow-[0_4px_14px_rgba(15,23,42,0.05)] outline-none focus:border-cyan-300" /></label>
                 </>
               )}
 
               <div className="border-t border-slate-200 pt-4">
-                <button type="button" onClick={() => { setSelectedComponentId(""); setSelectedBlockId(""); }} className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-xs font-semibold text-slate-600">Task-level settings</button>
+                <button type="button" onClick={() => { setSelectedComponentId(""); setSelectedBlockId(""); }} className="w-full rounded-full border border-slate-300/80 bg-white px-3 py-2.5 text-xs font-semibold text-slate-600 shadow-[0_4px_14px_rgba(15,23,42,0.05)] transition hover:-translate-y-px hover:border-cyan-200">Task-level settings</button>
               </div>
 
-              <label className="block"><FieldLabel>Participant instructions</FieldLabel><textarea value={version.participant_instructions || ""} onChange={(event) => updateVersion("participant_instructions", event.target.value)} rows={5} className="mt-1.5 w-full resize-none rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm outline-none focus:border-cyan-400" /></label>
+              <label className="block"><FieldLabel>Participant instructions</FieldLabel><textarea value={version.participant_instructions || ""} onChange={(event) => updateVersion("participant_instructions", event.target.value)} rows={5} className="mt-1.5 w-full resize-none rounded-[18px] border border-slate-300/80 bg-white px-3 py-2.5 text-sm shadow-[0_4px_14px_rgba(15,23,42,0.05)] outline-none focus:border-cyan-300" /></label>
 
               <div className="rounded-2xl border border-cyan-100 bg-cyan-50 p-3"><div className="flex items-start gap-2"><Sparkles className="mt-0.5 h-4 w-4 shrink-0 text-cyan-700" /><p className="text-[11px] leading-5 text-cyan-900">Phase 1D keeps Preview execution the saved definition with high-resolution browser timing and stores timing diagnostics separately from future Pilot and Study sessions. Browser timing is measured, not assumed to equal dedicated laboratory hardware.</p></div></div>
             </div>
@@ -1114,8 +1115,8 @@ export default function CognitiveTaskBuilder({
 function PracticeSettings({ block, onChange }: { block: BuilderBlock; onChange: (value: Record<string, unknown>) => void }) {
   const rule = block.continue_rule || {};
   return (
-    <div className="rounded-2xl border border-amber-200 bg-amber-50 p-3">
-      <p className="text-[10px] font-semibold uppercase tracking-[0.13em] text-amber-800">Practice criteria</p>
+    <div className="rounded-2xl border border-cyan-200 bg-cyan-50/55 p-3 shadow-[0_5px_16px_rgba(8,145,178,0.07)]">
+      <p className="text-[10px] font-semibold uppercase tracking-[0.13em] text-cyan-900">Practice criteria</p>
       <div className="mt-3 space-y-3">
         <label className="block"><FieldLabel>Minimum accuracy</FieldLabel><TextField type="number" min="0" max="1" step="0.05" value={safeNumber(rule.min_accuracy, 0.8)} onChange={(event) => onChange({ ...rule, min_accuracy: Math.min(1, Math.max(0, safeNumber(event.target.value, 0.8))) })} /></label>
         <label className="block"><FieldLabel>If criterion is not met</FieldLabel><SelectField value={String(rule.on_fail || "repeat")} onChange={(event) => onChange({ ...rule, on_fail: event.target.value })}><option value="repeat">Repeat practice</option><option value="continue">Continue anyway</option><option value="show_instructions">Show instructions again</option></SelectField></label>
@@ -1168,7 +1169,7 @@ function ComponentSettings({
           {(type === "image" || type === "audio" || type === "video") && <><label className="block"><FieldLabel>Read asset from trial column</FieldLabel><TextField value={String(config.asset_variable || type)} onChange={(event) => onConfig("asset_variable", event.target.value)} /></label><label className="block"><FieldLabel>Fallback asset URL</FieldLabel><TextField value={String(config.asset_url || "")} onChange={(event) => onConfig("asset_url", event.target.value)} placeholder="https://…" /></label><Duration config={config} onConfig={onConfig} /></>}
           {type === "shape" && <><label className="block"><FieldLabel>Shape</FieldLabel><SelectField value={String(config.shape || "circle")} onChange={(event) => onConfig("shape", event.target.value)}><option value="circle">Circle</option><option value="square">Square</option><option value="rectangle">Rectangle</option></SelectField></label><label className="block"><FieldLabel>Colour</FieldLabel><TextField value={String(config.color || "#0f172a")} onChange={(event) => onConfig("color", event.target.value)} /></label><label className="block"><FieldLabel>Size (px)</FieldLabel><TextField type="number" min="1" value={safeNumber(config.size_px, 70)} onChange={(event) => onConfig("size_px", safeNumber(event.target.value, 70))} /></label><Duration config={config} onConfig={onConfig} /></>}
           {type === "iti" && <><label className="block"><FieldLabel>Shortest interval (ms)</FieldLabel><TextField type="number" min="0" value={safeNumber(config.min_ms, 500)} onChange={(event) => onConfig("min_ms", safeNumber(event.target.value, 500))} /></label><label className="block"><FieldLabel>Longest interval (ms)</FieldLabel><TextField type="number" min="0" value={safeNumber(config.max_ms, 1000)} onChange={(event) => onConfig("max_ms", safeNumber(event.target.value, 1000))} /></label><label className="block"><FieldLabel>Timing</FieldLabel><SelectField value={String(config.distribution || "uniform")} onChange={(event) => onConfig("distribution", event.target.value)}><option value="uniform">Random between min and max</option><option value="fixed">Fixed interval</option></SelectField></label></>}
-          {type === "html" && <label className="block"><FieldLabel>HTML content</FieldLabel><textarea value={String(config.html || "")} onChange={(event) => onConfig("html", event.target.value)} rows={8} className="mt-1.5 w-full resize-none rounded-xl border border-slate-200 bg-white px-3 py-2.5 font-mono text-xs outline-none focus:border-cyan-400" /></label>}
+          {type === "html" && <label className="block"><FieldLabel>HTML content</FieldLabel><textarea value={String(config.html || "")} onChange={(event) => onConfig("html", event.target.value)} rows={8} className="mt-1.5 w-full resize-none rounded-[18px] border border-slate-300/80 bg-white px-3 py-2.5 font-mono text-xs shadow-[0_4px_14px_rgba(15,23,42,0.05)] outline-none focus:border-cyan-300" /></label>}
         </>
       )}
     </>
@@ -1269,15 +1270,15 @@ function ResponseSettings({
                   {variables.length === 0 ? <option value="correct">correct</option> : variables.map((variable) => <option key={variable} value={variable}>{variable}</option>)}
                 </SelectField>
               </label>
-              <div className="mt-3 rounded-xl border border-emerald-200 bg-emerald-50 p-3">
-                <div className="flex items-center gap-2 text-[10px] font-semibold text-emerald-800"><Check className="h-3.5 w-3.5" /> Response keys update automatically</div>
-                <p className="mt-1 text-[10px] leading-4 text-emerald-700">PsyLattice reads the unique responses in <strong>{correctVariable || "correct"}</strong>. Change the Trial Table and the accepted keys change with it when you save.</p>
+              <div className="mt-3 rounded-xl border border-cyan-200/80 bg-cyan-50/60 p-3">
+                <div className="flex items-center gap-2 text-[10px] font-semibold text-cyan-900"><Check className="h-3.5 w-3.5" /> Response keys update automatically</div>
+                <p className="mt-1 text-[10px] leading-4 text-cyan-800">PsyLattice reads the unique responses in <strong>{correctVariable || "correct"}</strong>. Change the Trial Table and the accepted keys change with it when you save.</p>
                 <div className="mt-2 flex flex-wrap gap-1.5">
-                  {automaticResponses.map((response) => <span key={response} className="rounded-lg border border-emerald-200 bg-white px-2.5 py-1.5 text-[10px] font-semibold text-emerald-900">{response === "space" ? "SPACE" : response.toUpperCase()}</span>)}
-                  {hasNoResponseRows && <span className="rounded-lg border border-amber-200 bg-amber-50 px-2.5 py-1.5 text-[10px] font-semibold text-amber-800">NO RESPONSE</span>}
-                  {automaticResponses.length === 0 && !hasNoResponseRows && <span className="text-[10px] text-emerald-700">Add values to this Trial Table column.</span>}
+                  {automaticResponses.map((response) => <span key={response} className="rounded-lg border border-cyan-200 bg-white px-2.5 py-1.5 text-[10px] font-semibold text-cyan-950">{response === "space" ? "SPACE" : response.toUpperCase()}</span>)}
+                  {hasNoResponseRows && <span className="rounded-lg border border-slate-200 bg-white px-2.5 py-1.5 text-[10px] font-semibold text-cyan-900">NO RESPONSE</span>}
+                  {automaticResponses.length === 0 && !hasNoResponseRows && <span className="text-[10px] text-cyan-800">Add values to this Trial Table column.</span>}
                 </div>
-                {hasNoResponseRows && <p className="mt-2 text-[10px] leading-4 text-amber-700">A blank cell in the correct-response column means the participant should withhold their response for that trial.</p>}
+                {hasNoResponseRows && <p className="mt-2 text-[10px] leading-4 text-slate-600">A blank cell in the correct-response column means the participant should withhold their response for that trial.</p>}
               </div>
 
               <details className="mt-3 rounded-xl border border-slate-200 bg-white px-3 py-2.5">
@@ -1340,7 +1341,7 @@ function ResponseSettings({
         </SelectField>
       </label>
 
-      <label className="block"><FieldLabel>Maximum response time</FieldLabel><div className="mt-1.5 flex items-center gap-2"><input type="number" min="0" value={safeNumber(config.deadline_ms, 1500)} onChange={(event) => onConfig("deadline_ms", safeNumber(event.target.value, 1500))} className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm outline-none focus:border-cyan-400" /><span className="text-xs font-medium text-slate-400">ms</span></div></label>
+      <label className="block"><FieldLabel>Maximum response time</FieldLabel><div className="mt-1.5 flex items-center gap-2"><input type="number" min="0" value={safeNumber(config.deadline_ms, 1500)} onChange={(event) => onConfig("deadline_ms", safeNumber(event.target.value, 1500))} className="w-full rounded-[18px] border border-slate-300/80 bg-white px-3 py-2.5 text-sm shadow-[0_4px_14px_rgba(15,23,42,0.05)] outline-none focus:border-cyan-300" /><span className="text-xs font-medium text-slate-400">ms</span></div></label>
       <Toggle checked={config.end_trial_on_response === true} onChange={(value) => onConfig("end_trial_on_response", value)} label="Move on immediately after a valid response" />
       <details className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-2.5">
         <summary className="cursor-pointer text-[10px] font-semibold text-slate-500">Advanced: internal response-step name</summary>

@@ -155,7 +155,7 @@ function StatCard({
   detail: string;
 }) {
   return (
-    <div className="rounded-2xl border border-slate-200 bg-white p-5">
+    <div className="rounded-[24px] border border-slate-300/75 bg-white p-5 shadow-[0_2px_5px_rgba(15,23,42,0.055),0_10px_26px_rgba(15,23,42,0.075),0_28px_64px_rgba(15,23,42,0.055)] transition-all duration-200 hover:-translate-y-0.5 hover:border-cyan-200/80 hover:shadow-[0_3px_7px_rgba(15,23,42,0.05),0_14px_32px_rgba(15,23,42,0.09),0_32px_72px_rgba(8,145,178,0.055)]">
       <p className="text-xs font-medium text-slate-400">{label}</p>
 
       <p className="mt-2 text-2xl font-semibold tracking-tight text-slate-950">
@@ -177,7 +177,7 @@ function Panel({
   children: ReactNode;
 }) {
   return (
-    <section className="rounded-2xl border border-slate-200 bg-white">
+    <section className="rounded-[26px] border border-slate-300/75 bg-white shadow-[0_2px_6px_rgba(15,23,42,0.05),0_12px_30px_rgba(15,23,42,0.075),0_30px_70px_rgba(15,23,42,0.055)]">
       <div className="border-b border-slate-100 px-5 py-4">
         <h2 className="font-semibold text-slate-950">{title}</h2>
 
@@ -12429,20 +12429,69 @@ const [
   }
 
   return (
-    <main className="h-screen overflow-hidden bg-[#f6f8f8] text-slate-950">
+    <main className="psy-self-theme h-screen overflow-hidden bg-[#f6fafb] text-slate-950">
+      <style jsx global>{`
+        .psy-self-theme [class*="bg-emerald-"],
+        .psy-self-theme [class*="bg-green-"],
+        .psy-self-theme [class*="bg-amber-"],
+        .psy-self-theme [class*="bg-orange-"],
+        .psy-self-theme [class*="bg-yellow-"],
+        .psy-self-theme [class*="bg-violet-"],
+        .psy-self-theme [class*="bg-purple-"] {
+          background-color: #ecfbff !important;
+        }
+        .psy-self-theme [class*="border-emerald-"],
+        .psy-self-theme [class*="border-green-"],
+        .psy-self-theme [class*="border-amber-"],
+        .psy-self-theme [class*="border-orange-"],
+        .psy-self-theme [class*="border-yellow-"],
+        .psy-self-theme [class*="border-violet-"],
+        .psy-self-theme [class*="border-purple-"] {
+          border-color: rgba(103, 232, 249, .72) !important;
+        }
+        .psy-self-theme [class*="text-emerald-"],
+        .psy-self-theme [class*="text-green-"],
+        .psy-self-theme [class*="text-amber-"],
+        .psy-self-theme [class*="text-orange-"],
+        .psy-self-theme [class*="text-yellow-"],
+        .psy-self-theme [class*="text-violet-"],
+        .psy-self-theme [class*="text-purple-"] {
+          color: #075f70 !important;
+        }
+        .psy-self-theme :where(div,section,article)[class*="rounded-2xl"][class*="border"][class*="bg-white"] {
+          box-shadow: 0 2px 5px rgba(15,23,42,.045), 0 9px 24px rgba(15,23,42,.065), 0 22px 54px rgba(15,23,42,.045);
+        }
+        .psy-self-theme :where(div,section,article)[class*="rounded-xl"][class*="border"][class*="bg-white"] {
+          box-shadow: 0 2px 5px rgba(15,23,42,.04), 0 7px 18px rgba(15,23,42,.055);
+        }
+        .psy-self-theme input[class*="border"],
+        .psy-self-theme select[class*="border"],
+        .psy-self-theme textarea[class*="border"] {
+          box-shadow: 0 2px 5px rgba(15,23,42,.035), 0 7px 18px rgba(15,23,42,.05);
+        }
+        .psy-self-theme button[class*="rounded-"]:not(.psy-self-nav-item) {
+          box-shadow: 0 2px 5px rgba(15,23,42,.04), 0 7px 18px rgba(15,23,42,.055);
+        }
+        .psy-self-theme table tbody tr {
+          transition: background-color 140ms ease;
+        }
+        .psy-self-theme table tbody tr:hover {
+          background-color: rgba(236,254,255,.58);
+        }
+      `}</style>
+
       {/* TOP BAR */}
 
-      <header className="sticky top-0 z-50 border-b border-slate-200 bg-white/95 backdrop-blur">
-        <div className="flex min-h-20 items-center justify-between gap-4 px-5 lg:px-7">
+      <header className="sticky top-3 z-50 mx-3 mb-4 rounded-[28px] border border-slate-200/90 bg-white/95 shadow-[0_16px_38px_rgba(15,23,42,0.09),0_2px_10px_rgba(8,145,178,0.055)] backdrop-blur-xl sm:mx-4">
+        <div className="flex min-h-[62px] items-center justify-between gap-4 px-5 lg:px-7">
           {/* Logo */}
 
-   <div>
-  <PsyLatticeLogo size={38} />
-
-  <p className="mt-0 pl-[50px] text-xs text-slate-400">
-    Personal workspace
-  </p>
-</div>
+          <div className="flex min-w-0 items-center gap-3">
+            <PsyLatticeLogo size={31} />
+            <span className="hidden rounded-full border border-cyan-200/80 bg-white px-3 py-1.5 text-[11px] font-semibold text-cyan-900 shadow-[0_4px_14px_rgba(8,145,178,0.08)] md:inline-flex">
+              Self workspace
+            </span>
+          </div>
 
           <div className="flex items-center gap-2 sm:gap-3">
             <UnifiedNotificationBell
@@ -12452,10 +12501,6 @@ const [
 
             {/* Desktop account controls */}
             <div className="hidden items-center gap-3 sm:flex">
-              <span className="rounded-full bg-cyan-50 px-3 py-1.5 text-xs font-medium text-cyan-800">
-                For myself
-              </span>
-
               <AccountSwitcher
                 initials={initials}
                 currentWorkspace="self"
@@ -12466,7 +12511,7 @@ const [
                 type="button"
                 onClick={() => void handleSignOut()}
                 disabled={signingOut}
-                className="rounded-xl border border-slate-200 bg-white px-4 py-2 text-xs font-semibold text-slate-600 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50"
+                className="rounded-full border border-slate-300/70 bg-white px-4 py-2 text-xs font-semibold text-slate-600 shadow-[0_5px_16px_rgba(15,23,42,0.075),0_1px_3px_rgba(15,23,42,0.04)] transition hover:-translate-y-px hover:border-cyan-200 hover:text-slate-950 hover:shadow-[0_7px_18px_rgba(15,23,42,0.08)] disabled:cursor-not-allowed disabled:opacity-50"
               >
                 {signingOut ? "Signing out..." : "Sign out"}
               </button>
@@ -12478,7 +12523,7 @@ const [
               onChange={(event) =>
                 setScreen(event.target.value as Screen)
               }
-              className="max-w-[165px] rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm lg:hidden sm:max-w-[190px]"
+              className="max-w-[165px] rounded-full border border-slate-300/70 bg-white px-4 py-2 text-sm shadow-[0_6px_18px_rgba(15,23,42,0.06)] lg:hidden sm:max-w-[190px]"
             >
               {navigation.map((item) => (
                 <option key={item.id} value={item.id}>
@@ -12495,21 +12540,21 @@ const [
       </header>
 
       <div
-  className={`grid h-[calc(100vh-80px)] transition-[grid-template-columns] duration-300 ${
+  className={`grid h-[calc(100vh-106px)] gap-3 px-3 pb-3 transition-[grid-template-columns] duration-300 sm:px-4 sm:pb-4 ${
     sidebarCollapsed
-      ? "lg:grid-cols-[80px_minmax(0,1fr)]"
-      : "lg:grid-cols-[240px_minmax(0,1fr)]"
+      ? "lg:grid-cols-[72px_minmax(0,1fr)]"
+      : "lg:grid-cols-[245px_minmax(0,1fr)]"
   }`}
 >
         {/* SIDEBAR */}
 
-        <aside className="hidden h-full overflow-y-auto border-r border-slate-200 bg-white lg:flex lg:flex-col">
+        <aside className={`hidden h-full overflow-y-auto rounded-[28px] border border-slate-200/90 bg-white/95 shadow-[0_18px_46px_rgba(15,23,42,0.085),0_2px_10px_rgba(8,145,178,0.045)] backdrop-blur-xl lg:flex lg:flex-col ${sidebarCollapsed ? "p-2" : "p-3"}`}>
   {/* Collapse button */}
   <div
-    className={`flex border-b border-slate-100 p-3 ${
+    className={`flex ${
       sidebarCollapsed
-        ? "justify-center"
-        : "justify-end"
+        ? "mb-3 justify-center pt-1"
+        : "mb-4 justify-end"
     }`}
   >
     <button
@@ -12524,7 +12569,7 @@ const [
           ? "Expand sidebar"
           : "Collapse sidebar"
       }
-      className="flex h-9 w-9 items-center justify-center rounded-xl border border-slate-200 bg-white text-slate-500 transition hover:bg-slate-50 hover:text-slate-950"
+      className="flex h-9 w-9 items-center justify-center rounded-full border border-slate-300/70 bg-white text-slate-500 shadow-[0_5px_16px_rgba(15,23,42,0.075),0_1px_3px_rgba(15,23,42,0.04)] transition hover:-translate-y-px hover:border-cyan-200 hover:text-slate-950 hover:shadow-[0_7px_18px_rgba(15,23,42,0.08)]"
     >
       <svg
         viewBox="0 0 20 20"
@@ -12547,18 +12592,17 @@ const [
     </button>
   </div>
 
-  {/* Personal space */}
   {!sidebarCollapsed && (
-    <p className="px-7 pb-3 pt-5 text-[10px] font-semibold uppercase tracking-[0.17em] text-slate-400">
-      Personal space
+    <p className="px-3 pb-2 pt-2 text-[10px] font-semibold uppercase tracking-[0.17em] text-slate-400">
+      Self
     </p>
   )}
 
   <nav
-    className={`space-y-1 ${
+    className={`${
       sidebarCollapsed
-        ? "px-3 pt-4"
-        : "px-4"
+        ? "space-y-2 px-0 pt-1"
+        : "space-y-1 px-4"
     }`}
   >
     {navigation.slice(0, 10).map((item) => {
@@ -12575,19 +12619,23 @@ const [
               : undefined
           }
           onClick={() => setScreen(item.id)}
-          className={`flex w-full items-center rounded-xl py-2.5 text-sm transition ${
+          className={`psy-self-nav-item relative flex w-full items-center border text-sm transition-all ${
             sidebarCollapsed
-              ? "justify-center px-2"
-              : "gap-3 px-3 text-left"
+              ? "h-11 justify-center rounded-2xl p-0"
+              : "rounded-full gap-3 px-3 py-2.5 text-left"
           } ${
             active
-              ? "bg-cyan-50 font-semibold text-cyan-900"
-              : "text-slate-500 hover:bg-slate-50 hover:text-slate-950"
+              ? sidebarCollapsed
+                ? "border-cyan-200/80 bg-cyan-50/75 text-cyan-900 shadow-[0_5px_16px_rgba(8,145,178,0.18),0_12px_26px_rgba(15,23,42,0.065)]"
+                : "border-cyan-200/70 bg-white font-semibold text-cyan-900 shadow-[0_6px_16px_rgba(8,145,178,0.16),0_14px_30px_rgba(15,23,42,0.07)]"
+              : sidebarCollapsed
+                ? "border-transparent text-slate-500 hover:border-slate-200/80 hover:bg-white hover:text-slate-950 hover:shadow-[0_4px_12px_rgba(15,23,42,0.05)]"
+                : "border-transparent text-slate-500 hover:border-slate-200/70 hover:bg-white hover:text-slate-950 hover:shadow-[0_3px_10px_rgba(15,23,42,0.035)]"
           }`}
         >
           <span
-            className={`relative flex h-8 w-8 shrink-0 items-center justify-center rounded-lg ${
-              sidebarCollapsed && active ? "bg-cyan-100" : ""
+            className={`relative flex h-8 w-8 shrink-0 items-center justify-center rounded-full transition ${
+              sidebarCollapsed && active ? "bg-white/70" : ""
             }`}
           >
             <NavIcon
@@ -12640,12 +12688,6 @@ const [
       />
     )}
 
-    {item.id === "ai" && (
-      <span className="rounded-full border border-yellow-500 bg-yellow-200 px-2 py-0.5 text-[9px] font-bold uppercase tracking-[0.12em] text-yellow-600">
-        New
-      </span>
-    )}
-
     {item.id === "monitoring" &&
       pendingMonitoringRequests > 0 && (
         <span
@@ -12672,7 +12714,7 @@ const [
     })}
   </nav>
 
-  <div className="mx-4 my-5 h-px bg-slate-100" />
+  <div className={`${sidebarCollapsed ? "mx-2 my-3" : "mx-4 my-5"} h-px bg-slate-100`} />
 
   {/* Account */}
   {!sidebarCollapsed && (
@@ -12684,7 +12726,7 @@ const [
   <div
     className={
       sidebarCollapsed
-        ? "px-3"
+        ? "px-0"
         : "px-4"
     }
   >
@@ -12696,30 +12738,27 @@ const [
           : undefined
       }
       onClick={() => setScreen("privacy")}
-      className={`flex w-full items-center rounded-xl py-2.5 text-sm ${
+      className={`psy-self-nav-item flex w-full items-center border text-sm transition-all ${
         sidebarCollapsed
-          ? "justify-center px-2"
-          : "gap-3 px-3 text-left"
+          ? "h-11 justify-center rounded-2xl p-0"
+          : "rounded-full gap-3 px-3 py-2.5 text-left"
       } ${
         screen === "privacy"
-          ? "bg-cyan-50 font-semibold text-cyan-900"
-          : "text-slate-500 hover:bg-slate-50"
+          ? sidebarCollapsed
+            ? "border-cyan-200/80 bg-cyan-50/75 text-cyan-900 shadow-[0_5px_16px_rgba(8,145,178,0.18),0_12px_26px_rgba(15,23,42,0.065)]"
+            : "border-cyan-200/70 bg-white font-semibold text-cyan-900 shadow-[0_6px_16px_rgba(8,145,178,0.16),0_14px_30px_rgba(15,23,42,0.07)]"
+          : sidebarCollapsed
+            ? "border-transparent text-slate-500 hover:border-slate-200/80 hover:bg-white hover:text-slate-950 hover:shadow-[0_4px_12px_rgba(15,23,42,0.05)]"
+            : "border-transparent text-slate-500 hover:border-slate-200/70 hover:bg-white hover:text-slate-950 hover:shadow-[0_3px_10px_rgba(15,23,42,0.035)]"
       }`}
     >
-      <span
-        className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-lg ${
-          sidebarCollapsed && screen === "privacy" ? "bg-cyan-100" : ""
-        }`}
-      >
+      <span className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-full ${screen === "privacy" && sidebarCollapsed ? "bg-white/70" : ""}`}>
         <ShieldCheck
-          className={`h-[17px] w-[17px] ${
-            screen === "privacy" ? "text-cyan-700" : "text-slate-400"
-          }`}
+          className={`h-[17px] w-[17px] ${screen === "privacy" ? "text-cyan-700" : "text-slate-400"}`}
           strokeWidth={1.8}
           aria-hidden="true"
         />
       </span>
-
       {!sidebarCollapsed && <span>Privacy & Sharing</span>}
     </button>
   </div>
@@ -12727,12 +12766,12 @@ const [
   {/* Bottom info card */}
   {!sidebarCollapsed && (
     <div className="mt-auto p-4">
-      <div className="rounded-2xl bg-slate-950 p-4 text-white">
-        <p className="text-xs font-medium text-cyan-200">
-          PsyLattice
+      <div className="rounded-[22px] border border-cyan-200/80 bg-cyan-50/65 p-4 shadow-[0_10px_28px_rgba(8,145,178,0.08)]">
+        <p className="text-xs font-semibold text-cyan-900">
+          PsyLattice Self
         </p>
 
-        <p className="mt-2 text-xs leading-5 text-slate-400">
+        <p className="mt-2 text-xs leading-5 text-slate-600">
           Assessment, monitoring and clinician
           connection information shown in the
           active Self workspace is loaded from
@@ -12745,7 +12784,7 @@ const [
 
         {/* CONTENT */}
 
-        <section className="min-w-0 overflow-y-auto p-5 sm:p-6 lg:p-8">
+        <section className="min-w-0 overflow-y-auto rounded-[28px] border border-slate-200/70 bg-white/22 p-5 shadow-[inset_0_1px_0_rgba(255,255,255,0.7)] sm:p-6 lg:p-8">
           <div className="mx-auto max-w-[1400px]">
             <div className="mb-7 flex items-end justify-between gap-5">
               <div>

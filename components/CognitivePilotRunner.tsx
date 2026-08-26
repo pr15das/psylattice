@@ -361,7 +361,7 @@ function buildSummary(results: PilotTrialResult[]) {
 
 function BrowserBadge({ ok, children }: { ok: boolean; children: ReactNode }) {
   return (
-    <div className={`flex items-center gap-2 rounded-xl border px-3 py-2 text-xs ${ok ? "border-emerald-200 bg-emerald-50 text-emerald-800" : "border-amber-200 bg-amber-50 text-amber-800"}`}>
+    <div className={`flex items-center gap-2 rounded-xl border px-3 py-2 text-xs ${ok ? "border-cyan-200/80 bg-cyan-50/60 text-cyan-900 shadow-[0_4px_14px_rgba(8,145,178,0.06)]" : "border-slate-200 bg-white text-slate-600 shadow-[0_4px_14px_rgba(15,23,42,0.045)]"}`}>
       {ok ? <Check className="h-3.5 w-3.5" /> : <AlertTriangle className="h-3.5 w-3.5" />}
       {children}
     </div>
@@ -1007,16 +1007,16 @@ export default function CognitivePilotRunner({
   const progressPercent = progress.total > 0 ? Math.min(100, (progress.current / progress.total) * 100) : 0;
 
   return (
-    <div className="fixed inset-0 z-[100] overflow-y-auto bg-slate-950/70 p-3 backdrop-blur-sm sm:p-5">
-      <div className="mx-auto min-h-[calc(100vh-24px)] max-w-[1500px] overflow-hidden rounded-[30px] border border-slate-700/60 bg-white shadow-2xl sm:min-h-[calc(100vh-40px)]">
-        <header className="flex items-center justify-between gap-4 border-b border-slate-200 bg-white px-4 py-3 sm:px-5">
+    <div className="fixed inset-0 z-[100] overflow-y-auto bg-slate-950/48 p-3 backdrop-blur-md sm:p-5">
+      <div className="mx-auto min-h-[calc(100vh-24px)] max-w-[1500px] overflow-hidden rounded-[30px] border border-slate-200/90 bg-white shadow-[0_26px_80px_rgba(15,23,42,0.22),0_5px_20px_rgba(8,145,178,0.08)] sm:min-h-[calc(100vh-40px)]">
+        <header className="m-3 flex items-center justify-between gap-4 rounded-[22px] border border-slate-200/90 bg-white px-4 py-3 shadow-[0_8px_24px_rgba(15,23,42,0.075),0_2px_8px_rgba(8,145,178,0.045)] sm:px-5">
           <div className="flex min-w-0 items-center gap-3">
-            <button type="button" onClick={() => void exitPilot()} className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border border-slate-200 text-slate-500 hover:bg-slate-50" aria-label="Exit pilot">
+            <button type="button" onClick={() => void exitPilot()} className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full border border-slate-200 bg-white text-slate-500 shadow-[0_4px_12px_rgba(15,23,42,0.06)] transition hover:-translate-y-px hover:border-cyan-200 hover:text-cyan-900" aria-label="Exit pilot">
               <ArrowLeft className="h-4 w-4" />
             </button>
             <div className="min-w-0">
               <div className="flex flex-wrap items-center gap-2">
-                <span className="rounded-full border border-cyan-200 bg-cyan-50 px-2.5 py-1 text-[9px] font-semibold uppercase tracking-[0.14em] text-cyan-800">Pilot Session · Phase 1D</span>
+                <span className="rounded-full border border-cyan-200 bg-cyan-50 px-2.5 py-1 text-[9px] font-semibold uppercase tracking-[0.14em] text-cyan-800">Pilot session</span>
                 {version && <span className="text-[10px] font-semibold text-slate-400">{version.version_label}</span>}
               </div>
               <p className="mt-1 truncate text-sm font-semibold text-slate-900">{task?.title || "Cognitive task"}</p>
@@ -1028,7 +1028,7 @@ export default function CognitivePilotRunner({
               <div className="mt-1.5 h-1.5 overflow-hidden rounded-full bg-slate-100"><div className="h-full rounded-full bg-cyan-600 transition-all" style={{ width: `${progressPercent}%` }} /></div>
             </div>
           )}
-          <button type="button" onClick={() => void exitPilot()} className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border border-slate-200 text-slate-400 hover:border-red-200 hover:bg-red-50 hover:text-red-600" aria-label="Close pilot">
+          <button type="button" onClick={() => void exitPilot()} className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full border border-slate-200 bg-white text-slate-400 shadow-[0_4px_12px_rgba(15,23,42,0.06)] transition hover:-translate-y-px hover:border-rose-200 hover:text-rose-700" aria-label="Close pilot">
             <X className="h-4 w-4" />
           </button>
         </header>
@@ -1037,13 +1037,13 @@ export default function CognitivePilotRunner({
           <div className="mx-auto max-w-5xl px-5 py-8 sm:px-8 sm:py-10">
             <div className="grid gap-7 lg:grid-cols-[1fr_.8fr] lg:items-start">
               <section>
-                <span className="inline-flex items-center gap-2 rounded-full bg-slate-950 px-3 py-1.5 text-[10px] font-semibold uppercase tracking-[0.14em] text-cyan-200"><Gauge className="h-3.5 w-3.5" /> Timing preflight</span>
+                <span className="inline-flex items-center gap-2 rounded-full border border-cyan-200 bg-white px-3 py-1.5 text-[10px] font-semibold uppercase tracking-[0.14em] text-cyan-900 shadow-[0_5px_16px_rgba(8,145,178,0.10)]"><Gauge className="h-3.5 w-3.5" /> Timing preflight</span>
                 <h2 className="mt-5 text-3xl font-semibold tracking-[-0.04em] text-slate-950 sm:text-4xl">Run this PsyLattice cognitive pilot.</h2>
                 <p className="mt-4 max-w-2xl text-sm leading-7 text-slate-500">This pilot uses an immutable snapshot of the researcher’s saved task. PsyLattice will execute its blocks and trial rows in your browser, record responses with <code className="rounded bg-slate-100 px-1 py-0.5 text-xs">performance.now()</code>, and store this run separately as Pilot data.</p>
-                <div className="mt-6 rounded-2xl border border-amber-200 bg-amber-50 p-4 text-xs leading-5 text-amber-900"><strong>Timing note:</strong> browser measurements can be high resolution, but operating-system scheduling, display hardware, browser load and input devices still affect observed timing. Pilot timing diagnostics help the researcher evaluate the task before live study deployment.</div>
+                <div className="mt-6 rounded-[20px] border border-cyan-200/80 bg-cyan-50/55 p-4 text-xs leading-5 text-slate-700 shadow-[0_8px_22px_rgba(8,145,178,0.06)]"><strong>Timing note:</strong> browser measurements can be high resolution, but operating-system scheduling, display hardware, browser load and input devices still affect observed timing. Pilot timing diagnostics help the researcher evaluate the task before live study deployment.</div>
               </section>
 
-              <section className="rounded-[26px] border border-slate-200 bg-slate-50 p-5">
+              <section className="rounded-[26px] border border-slate-200/90 bg-white p-5 shadow-[0_12px_34px_rgba(15,23,42,0.08),0_2px_8px_rgba(8,145,178,0.04)]">
                 <p className="text-[10px] font-semibold uppercase tracking-[0.15em] text-slate-400">Environment</p>
                 {loading ? (
                   <div className="mt-5 flex items-center gap-3 text-sm text-slate-500"><Loader2 className="h-4 w-4 animate-spin" /> Loading task and preloading assets…</div>
@@ -1055,19 +1055,19 @@ export default function CognitivePilotRunner({
                     <BrowserBadge ok={deviceAllowed}>{preflight.device_class} · {deviceAllowed ? "allowed by task" : "blocked by task settings"}</BrowserBadge>
                     <BrowserBadge ok={preflight.assets_failed.length === 0}>{preflight.assets_loaded}/{preflight.assets_total} media assets preloaded{preflight.assets_failed.length ? ` · ${preflight.assets_failed.length} failed` : ""}</BrowserBadge>
                     <div className="grid grid-cols-2 gap-2 pt-1">
-                      <div className="rounded-xl border border-slate-200 bg-white p-3"><p className="text-[10px] text-slate-400">Estimated refresh</p><p className="mt-1 text-lg font-semibold text-slate-900">{preflight.refresh_hz ? `${preflight.refresh_hz} Hz` : "—"}</p></div>
-                      <div className="rounded-xl border border-slate-200 bg-white p-3"><p className="text-[10px] text-slate-400">Frame interval</p><p className="mt-1 text-lg font-semibold text-slate-900">{preflight.frame_interval_ms ? `${preflight.frame_interval_ms} ms` : "—"}</p></div>
+                      <div className="rounded-[18px] border border-slate-200 bg-white p-3 shadow-[0_5px_16px_rgba(15,23,42,0.05)]"><p className="text-[10px] text-slate-400">Estimated refresh</p><p className="mt-1 text-lg font-semibold text-slate-900">{preflight.refresh_hz ? `${preflight.refresh_hz} Hz` : "—"}</p></div>
+                      <div className="rounded-[18px] border border-slate-200 bg-white p-3 shadow-[0_5px_16px_rgba(15,23,42,0.05)]"><p className="text-[10px] text-slate-400">Frame interval</p><p className="mt-1 text-lg font-semibold text-slate-900">{preflight.frame_interval_ms ? `${preflight.frame_interval_ms} ms` : "—"}</p></div>
                     </div>
                   </div>
                 )}
               </section>
             </div>
 
-            {error && <div className="mt-5 rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">{error}</div>}
+            {error && <div className="mt-5 border-l-2 border-rose-400 py-1 pl-3 text-sm text-rose-700">{error}</div>}
 
             <div className="mt-7 flex flex-wrap gap-3">
-              <button type="button" onClick={() => void requestFullscreen()} className="inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-4 py-3 text-xs font-semibold text-slate-700"><Expand className="h-4 w-4" /> Enter fullscreen</button>
-              <button type="button" onClick={() => void startPilot()} disabled={!canStart || !preflight.visibility_ok} className="inline-flex items-center gap-2 rounded-xl bg-slate-950 px-5 py-3 text-xs font-semibold text-white disabled:cursor-not-allowed disabled:opacity-40"><Play className="h-4 w-4" /> Start pilot</button>
+              <button type="button" onClick={() => void requestFullscreen()} className="inline-flex items-center gap-2 rounded-full border border-slate-200 bg-white px-4 py-3 text-xs font-semibold text-slate-700 shadow-[0_6px_18px_rgba(15,23,42,0.07)] transition hover:-translate-y-px hover:border-cyan-200"><Expand className="h-4 w-4" /> Enter fullscreen</button>
+              <button type="button" onClick={() => void startPilot()} disabled={!canStart || !preflight.visibility_ok} className="inline-flex items-center gap-2 rounded-full bg-slate-950 px-5 py-3 text-xs font-semibold text-white shadow-[0_6px_18px_rgba(15,23,42,0.18)] transition hover:-translate-y-px disabled:cursor-not-allowed disabled:opacity-40"><Play className="h-4 w-4" /> Start pilot</button>
             </div>
           </div>
         )}
@@ -1077,10 +1077,10 @@ export default function CognitivePilotRunner({
             <div className="pointer-events-none absolute inset-x-0 top-0 h-px bg-slate-200" />
             <div className="w-full max-w-5xl text-center">
               {display.kind === "message" && (
-                <div className="mx-auto max-w-2xl rounded-[28px] border border-slate-200 bg-white p-7 shadow-sm sm:p-9">
+                <div className="mx-auto max-w-2xl rounded-[28px] border border-slate-200/90 bg-white p-7 shadow-[0_18px_50px_rgba(15,23,42,0.11),0_3px_12px_rgba(8,145,178,0.045)] sm:p-9">
                   <h2 className="text-2xl font-semibold tracking-[-0.03em] text-slate-950">{display.title}</h2>
                   <p className="mx-auto mt-4 whitespace-pre-line text-sm leading-7 text-slate-600">{display.text}</p>
-                  <button type="button" onClick={() => continueRef.current?.()} className="mt-6 rounded-xl bg-slate-950 px-5 py-3 text-xs font-semibold text-white">{display.actionLabel || "Continue"}</button>
+                  <button type="button" onClick={() => continueRef.current?.()} className="mt-6 rounded-full bg-slate-950 px-5 py-3 text-xs font-semibold text-white shadow-[0_6px_18px_rgba(15,23,42,0.18)] transition hover:-translate-y-px">{display.actionLabel || "Continue"}</button>
                 </div>
               )}
               {display.kind === "fixation" && <div className="text-6xl font-medium text-slate-900">{display.symbol}</div>}
@@ -1096,7 +1096,7 @@ export default function CognitivePilotRunner({
               {responseOptions.length > 0 && display.kind !== "message" && (
                 <div className="mt-10 flex flex-wrap justify-center gap-3">
                   {responseOptions.map((option) => (
-                    <button key={option} type="button" onPointerDown={() => responseHandlerRef.current?.(option, performance.now())} className="min-w-20 rounded-xl border border-slate-300 bg-white px-5 py-3 text-sm font-semibold text-slate-800 shadow-sm">{option === "space" ? "Space" : option}</button>
+                    <button key={option} type="button" onPointerDown={() => responseHandlerRef.current?.(option, performance.now())} className="min-w-20 rounded-full border border-slate-200 bg-white px-5 py-3 text-sm font-semibold text-slate-800 shadow-[0_7px_20px_rgba(15,23,42,0.08)] transition hover:-translate-y-px hover:border-cyan-300 hover:shadow-[0_8px_24px_rgba(8,145,178,0.10)]">{option === "space" ? "Space" : option}</button>
                   ))}
                 </div>
               )}
@@ -1111,7 +1111,7 @@ export default function CognitivePilotRunner({
         {phase === "complete" && summary && (
           <div className="mx-auto max-w-5xl px-5 py-8 sm:px-8 sm:py-10">
             <div className="flex flex-wrap items-start justify-between gap-4">
-              <div><span className="rounded-full border border-emerald-200 bg-emerald-50 px-3 py-1.5 text-[10px] font-semibold uppercase tracking-[0.14em] text-emerald-800">Pilot submitted</span><h2 className="mt-4 text-3xl font-semibold tracking-[-0.04em] text-slate-950">Pilot complete.</h2><p className="mt-2 text-sm text-slate-500">Your pilot results were submitted. They are kept separate from final Study participation.</p></div>
+              <div><span className="rounded-full border border-cyan-200 bg-white px-3 py-1.5 text-[10px] font-semibold uppercase tracking-[0.14em] text-cyan-900 shadow-[0_5px_16px_rgba(8,145,178,0.10)]">Pilot submitted</span><h2 className="mt-4 text-3xl font-semibold tracking-[-0.04em] text-slate-950">Pilot complete.</h2><p className="mt-2 text-sm text-slate-500">Your pilot results were submitted. They are kept separate from final Study participation.</p></div>
               {savingResults && <div className="flex items-center gap-2 text-xs text-slate-500"><Loader2 className="h-4 w-4 animate-spin" /> Saving diagnostics…</div>}
             </div>
 
@@ -1122,28 +1122,28 @@ export default function CognitivePilotRunner({
                 [summary.mean_rt_ms === null ? "—" : `${summary.mean_rt_ms} ms`, "Mean RT", Gauge],
                 [preflight.refresh_hz ? `${preflight.refresh_hz} Hz` : "—", "Display estimate", Monitor],
               ].map(([value, label, Icon]) => (
-                <div key={String(label)} className="rounded-2xl border border-slate-200 bg-white p-4"><Icon className="h-4 w-4 text-cyan-700" /><p className="mt-4 text-2xl font-semibold text-slate-950">{String(value)}</p><p className="mt-1 text-[11px] text-slate-400">{String(label)}</p></div>
+                <div key={String(label)} className="rounded-[20px] border border-slate-200 bg-white p-4 shadow-[0_8px_24px_rgba(15,23,42,0.07)]"><Icon className="h-4 w-4 text-cyan-700" /><p className="mt-4 text-2xl font-semibold text-slate-950">{String(value)}</p><p className="mt-1 text-[11px] text-slate-400">{String(label)}</p></div>
               ))}
             </div>
 
-            <div className="mt-6 rounded-[24px] border border-slate-200 bg-slate-50 p-5">
-              <div className="flex items-center justify-between"><div><p className="text-xs font-semibold text-slate-900">Timing diagnostics</p><p className="mt-1 text-[11px] text-slate-500">Visibility interruptions: {visibilityInterruptions}</p></div><span className={`rounded-full px-2.5 py-1 text-[10px] font-semibold ${visibilityInterruptions === 0 ? "bg-emerald-100 text-emerald-800" : "bg-amber-100 text-amber-800"}`}>{visibilityInterruptions === 0 ? "Clean pilot" : "Review timing"}</span></div>
+            <div className="mt-6 rounded-[24px] border border-slate-200 bg-white p-5 shadow-[0_10px_28px_rgba(15,23,42,0.07)]">
+              <div className="flex items-center justify-between"><div><p className="text-xs font-semibold text-slate-900">Timing diagnostics</p><p className="mt-1 text-[11px] text-slate-500">Visibility interruptions: {visibilityInterruptions}</p></div><span className={`rounded-full px-2.5 py-1 text-[10px] font-semibold ${visibilityInterruptions === 0 ? "border border-cyan-200 bg-cyan-50 text-cyan-900" : "border border-slate-200 bg-white text-slate-600"}`}>{visibilityInterruptions === 0 ? "Clean pilot" : "Review timing"}</span></div>
               <p className="mt-3 text-xs leading-5 text-slate-500">Pilot sessions help validate task logic, usability and timing conditions across real participant hardware. Browser measurements remain hardware- and environment-dependent.</p>
             </div>
 
             <div className="mt-6 flex flex-wrap gap-3">
-              <button type="button" onClick={() => { setPhase("preflight"); setSessionId(""); setResults([]); setSummary(null); }} className="inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-4 py-3 text-xs font-semibold text-slate-700"><RotateCcw className="h-4 w-4" /> Run pilot again</button>
-              <button type="button" onClick={() => void exitPilot()} className="rounded-xl bg-slate-950 px-5 py-3 text-xs font-semibold text-white">Exit pilot</button>
+              <button type="button" onClick={() => { setPhase("preflight"); setSessionId(""); setResults([]); setSummary(null); }} className="inline-flex items-center gap-2 rounded-full border border-slate-200 bg-white px-4 py-3 text-xs font-semibold text-slate-700 shadow-[0_6px_18px_rgba(15,23,42,0.07)] transition hover:-translate-y-px hover:border-cyan-200"><RotateCcw className="h-4 w-4" /> Run pilot again</button>
+              <button type="button" onClick={() => void exitPilot()} className="rounded-full bg-slate-950 px-5 py-3 text-xs font-semibold text-white shadow-[0_6px_18px_rgba(15,23,42,0.18)] transition hover:-translate-y-px">Exit pilot</button>
             </div>
           </div>
         )}
 
         {phase === "error" && (
           <div className="mx-auto max-w-3xl px-5 py-10 text-center">
-            <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-2xl bg-red-50 text-red-600"><AlertTriangle className="h-5 w-5" /></div>
+            <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-2xl border border-rose-200 bg-white text-rose-700 shadow-[0_7px_20px_rgba(190,24,93,0.07)]"><AlertTriangle className="h-5 w-5" /></div>
             <h2 className="mt-4 text-2xl font-semibold text-slate-950">Pilot stopped</h2>
             <p className="mt-2 text-sm leading-6 text-slate-500">{error || "The pilot could not continue."}</p>
-            <div className="mt-6 flex justify-center gap-3"><button type="button" onClick={() => { setPhase("preflight"); setError(""); }} className="rounded-xl border border-slate-200 px-4 py-3 text-xs font-semibold text-slate-700">Return to device check</button><button type="button" onClick={() => void exitPilot()} className="rounded-xl bg-slate-950 px-4 py-3 text-xs font-semibold text-white">Close</button></div>
+            <div className="mt-6 flex justify-center gap-3"><button type="button" onClick={() => { setPhase("preflight"); setError(""); }} className="rounded-full border border-slate-200 bg-white px-4 py-3 text-xs font-semibold text-slate-700 shadow-[0_6px_18px_rgba(15,23,42,0.07)]">Return to device check</button><button type="button" onClick={() => void exitPilot()} className="rounded-full bg-slate-950 px-4 py-3 text-xs font-semibold text-white shadow-[0_6px_18px_rgba(15,23,42,0.18)]">Close</button></div>
           </div>
         )}
       </div>

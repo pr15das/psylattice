@@ -1394,12 +1394,7 @@ function HeroWorkspaceStage({
             <PsyLatticeLogo size={34} />
             <div className="hidden h-7 w-px bg-slate-200 sm:block" />
             <div>
-              <p className="text-[10px] font-semibold text-slate-800">
-                One account
-              </p>
-              <p className="mt-0.5 text-[9px] text-slate-400">
-                Switch context without changing login
-              </p>
+              
             </div>
           </div>
 

@@ -52,6 +52,15 @@ type CognitiveTask = {
     typical_outputs?: string[];
     default_structure?: string;
     launch_note?: string;
+    library_order?: number;
+    what_it_measures?: string;
+    estimated_minutes?: string;
+    difficulty?: string;
+    trial_flow?: string[];
+    researcher_controls?: string[];
+    recommended_for?: string[];
+    interpretation_note?: string;
+    recommended_device?: string;
   } | null;
   created_at: string;
   updated_at: string;
@@ -111,25 +120,65 @@ const templateProfiles: Record<string, TemplateProfile> = {
     kicker: "Choice speed",
     fallbackOutputs: ["Correct RT", "Accuracy", "Choice errors"],
   },
-  stroop: {
-    icon: BrainCircuit,
-    kicker: "Interference",
-    fallbackOutputs: ["Congruent RT", "Incongruent RT", "Accuracy", "Interference"],
-  },
-  flanker: {
-    icon: Target,
-    kicker: "Selective attention",
-    fallbackOutputs: ["Congruent RT", "Incongruent RT", "Accuracy", "Conflict effect"],
+  pvt: {
+    icon: Clock3,
+    kicker: "Vigilance",
+    fallbackOutputs: ["Median RT", "Mean RT", "Lapses", "False starts"],
   },
   go_nogo: {
     icon: Activity,
     kicker: "Response inhibition",
     fallbackOutputs: ["Go RT", "Go accuracy", "Commission errors", "Omissions"],
   },
+  sart: {
+    icon: Activity,
+    kicker: "Sustained attention",
+    fallbackOutputs: ["Commission errors", "Omissions", "Go RT", "RT variability"],
+  },
+  flanker: {
+    icon: Target,
+    kicker: "Selective attention",
+    fallbackOutputs: ["Congruent RT", "Incongruent RT", "Accuracy", "Conflict effect"],
+  },
+  stroop: {
+    icon: BrainCircuit,
+    kicker: "Interference",
+    fallbackOutputs: ["Congruent RT", "Incongruent RT", "Accuracy", "Interference"],
+  },
+  posner_cueing: {
+    icon: Target,
+    kicker: "Attentional orienting",
+    fallbackOutputs: ["Valid RT", "Invalid RT", "Neutral RT", "Cueing cost"],
+  },
+  visual_search: {
+    icon: Search,
+    kicker: "Visual attention",
+    fallbackOutputs: ["Present RT", "Absent RT", "Accuracy", "Set-size effect"],
+  },
   n_back: {
     icon: Layers3,
     kicker: "Working memory",
     fallbackOutputs: ["Hits", "Misses", "False alarms", "Accuracy", "Correct RT"],
+  },
+  sternberg: {
+    icon: Library,
+    kicker: "Memory scanning",
+    fallbackOutputs: ["Positive-probe RT", "Negative-probe RT", "Accuracy", "Set-size effect"],
+  },
+  ax_cpt: {
+    icon: BrainCircuit,
+    kicker: "Context processing",
+    fallbackOutputs: ["AX accuracy", "AY errors", "BX errors", "Condition RT"],
+  },
+  task_switching: {
+    icon: Layers3,
+    kicker: "Cognitive flexibility",
+    fallbackOutputs: ["Repeat RT", "Switch RT", "Accuracy", "Switch cost"],
+  },
+  lexical_decision: {
+    icon: BookOpenCheck,
+    kicker: "Lexical processing",
+    fallbackOutputs: ["Word RT", "Nonword RT", "Accuracy", "Lexical errors"],
   },
 };
 
@@ -153,8 +202,8 @@ function formatDate(value: string | null | undefined) {
 
 function StagePill({ stage }: { stage: CognitiveTask["template_stage"] }) {
   const copy = {
-    foundation: "Foundation",
-    builder_ready: "Builder ready",
+    foundation: "Reference only",
+    builder_ready: "Ready to customise",
     runner_ready: "Runner ready",
   }[stage];
 
@@ -174,6 +223,7 @@ function StagePill({ stage }: { stage: CognitiveTask["template_stage"] }) {
 function DevicePills({ support }: { support: Record<string, boolean> | null }) {
   const devices = [
     { key: "desktop", label: "Desktop", icon: Monitor },
+    { key: "laptop", label: "Laptop", icon: Monitor },
     { key: "tablet", label: "Tablet", icon: Tablet },
     { key: "phone", label: "Phone", icon: Smartphone },
   ];
@@ -234,6 +284,7 @@ export default function CognitiveLab() {
   const [search, setSearch] = useState("");
   const [selectedDomain, setSelectedDomain] = useState("all");
   const [selectedTaskId, setSelectedTaskId] = useState("");
+  const [selectedTemplateId, setSelectedTemplateId] = useState("");
   const [showCreate, setShowCreate] = useState(false);
   const [newTaskTitle, setNewTaskTitle] = useState("");
   const [newTaskDescription, setNewTaskDescription] = useState("");
@@ -361,17 +412,35 @@ export default function CognitiveLab() {
 
   const filteredTemplates = useMemo(() => {
     const query = search.trim().toLowerCase();
-    return templates.filter((task) => {
-      if (selectedDomain !== "all" && task.domain !== selectedDomain) return false;
-      if (!query) return true;
-      return [task.title, task.short_title || "", task.description, ...(task.tags || [])]
-        .join(" ")
-        .toLowerCase()
-        .includes(query);
-    });
+    return templates
+      .filter((task) => {
+        if (selectedDomain !== "all" && task.domain !== selectedDomain) return false;
+        if (!query) return true;
+        const meta = task.library_metadata || {};
+        return [
+          task.title,
+          task.short_title || "",
+          task.description,
+          ...(task.tags || []),
+          meta.what_it_measures || "",
+          ...(meta.recommended_for || []),
+          ...(meta.researcher_controls || []),
+          ...(meta.typical_outputs || []),
+        ]
+          .join(" ")
+          .toLowerCase()
+          .includes(query);
+      })
+      .sort(
+        (a, b) =>
+          Number(a.library_metadata?.library_order ?? 999) -
+            Number(b.library_metadata?.library_order ?? 999) ||
+          a.title.localeCompare(b.title)
+      );
   }, [templates, search, selectedDomain]);
 
   const selectedTask = tasks.find((task) => task.id === selectedTaskId) || null;
+  const selectedTemplate = templates.find((task) => task.id === selectedTemplateId) || null;
   const completedPilots = pilotSessions.filter((session) => session.status === "completed").length;
   const activePilotLinks = pilotLinks.filter((link) => link.status === "active" && (!link.expires_at || new Date(link.expires_at).getTime() > Date.now())).length;
 
@@ -478,6 +547,7 @@ export default function CognitiveLab() {
 
     const clonedTaskId = typeof data === "object" && data && "task_id" in data ? String((data as { task_id?: string }).task_id || "") : "";
     setNotice({ type: "success", text: `${task.title} was added to My Cognitive Tasks as an editable draft.` });
+    setSelectedTemplateId("");
     setBusyTaskId("");
     await load();
     setTab("tasks");
@@ -794,28 +864,34 @@ export default function CognitiveLab() {
       ) : tab === "library" ? (
         <div className="space-y-5">
           <section className="rounded-[26px] border border-slate-300/70 bg-white p-5 shadow-[0_2px_6px_rgba(15,23,42,0.04),0_12px_30px_rgba(15,23,42,0.07)] sm:p-6">
-            <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
-              <div>
-                <p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-cyan-700">Cognitive Task Library</p>
-                <h3 className="mt-2 text-xl font-semibold text-slate-950">Starter task structures for common cognitive paradigms.</h3>
+            <div className="flex flex-col gap-5 xl:flex-row xl:items-end xl:justify-between">
+              <div className="max-w-3xl">
+                <div className="flex flex-wrap items-center gap-2">
+                  <p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-cyan-700">Cognitive Task Library</p>
+                  <span className="rounded-full border border-slate-200 bg-white px-2.5 py-1 text-[9px] font-semibold text-slate-500 shadow-[0_4px_12px_rgba(15,23,42,0.04)]">
+                    {templates.length} templates
+                  </span>
+                </div>
+                <h3 className="mt-2 text-xl font-semibold text-slate-950">Start from a real paradigm, then make the protocol yours.</h3>
                 <p className="mt-2 max-w-3xl text-sm leading-6 text-slate-500">
-                  These are configurable implementation templates. A template name does not by itself make a particular configuration psychometrically or experimentally valid for every protocol.
+                  Every Ready to customise task below contains an actual starter timeline and trial table that can be cloned into your Task Builder. Use Details to understand the paradigm before editing it.
                 </p>
               </div>
+
               <div className="flex flex-col gap-2 sm:flex-row">
                 <label className="relative">
                   <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
                   <input
                     value={search}
                     onChange={(event) => setSearch(event.target.value)}
-                    placeholder="Search cognitive tasks"
-                    className="w-full rounded-xl border border-slate-200 bg-white py-2.5 pl-9 pr-3 text-sm outline-none transition focus:border-cyan-300 sm:w-64"
+                    placeholder="Search task, construct or output"
+                    className="w-full rounded-full border border-slate-200 bg-white py-2.5 pl-9 pr-3 text-sm shadow-[0_4px_14px_rgba(15,23,42,0.045)] outline-none transition focus:border-cyan-300 sm:w-72"
                   />
                 </label>
                 <select
                   value={selectedDomain}
                   onChange={(event) => setSelectedDomain(event.target.value)}
-                  className="rounded-full border border-slate-200 bg-white px-3 py-2 shadow-[0_4px_12px_rgba(15,23,42,0.05)] transition hover:-translate-y-px.5 text-sm text-slate-600"
+                  className="rounded-full border border-slate-200 bg-white px-3 py-2 text-sm text-slate-600 shadow-[0_4px_12px_rgba(15,23,42,0.05)] transition hover:-translate-y-px"
                 >
                   <option value="all">All domains</option>
                   {domains.map((domain) => (
@@ -824,50 +900,107 @@ export default function CognitiveLab() {
                 </select>
               </div>
             </div>
+
+            <div className="mt-5 flex flex-wrap items-center gap-2 border-t border-slate-100 pt-4">
+              <span className="mr-1 text-[10px] font-semibold uppercase tracking-[0.13em] text-slate-400">Quick filters</span>
+              {[
+                ["all", "All"],
+                ["attention", "Attention"],
+                ["inhibitory_control", "Control & inhibition"],
+                ["working_memory", "Working memory"],
+                ["perception", "Perception"],
+              ].map(([value, label]) => (
+                <button
+                  key={value}
+                  type="button"
+                  onClick={() => setSelectedDomain(value)}
+                  className={`rounded-full border px-3 py-1.5 text-[10px] font-semibold transition ${
+                    selectedDomain === value
+                      ? "border-cyan-300 bg-cyan-50 text-cyan-900 shadow-[0_5px_16px_rgba(8,145,178,0.10)]"
+                      : "border-slate-200 bg-white text-slate-500 hover:border-cyan-200 hover:text-slate-800"
+                  }`}
+                >
+                  {label}
+                </button>
+              ))}
+            </div>
           </section>
 
           <div className="grid gap-4 lg:grid-cols-2 2xl:grid-cols-3">
             {filteredTemplates.map((task) => {
               const profile = templateProfiles[task.template_key || ""];
               const Icon = profile?.icon || BrainCircuit;
-              const outputs = task.library_metadata?.typical_outputs || profile?.fallbackOutputs || [];
+              const meta = task.library_metadata || {};
+              const outputs = meta.typical_outputs || profile?.fallbackOutputs || [];
               const cloning = busyTaskId === task.id;
+
               return (
-                <article key={task.id} className="rounded-[24px] border border-slate-200 bg-white p-5 shadow-sm">
+                <article
+                  key={task.id}
+                  className="group flex min-h-[350px] flex-col rounded-[24px] border border-slate-200 bg-white p-5 shadow-[0_3px_8px_rgba(15,23,42,0.04),0_12px_28px_rgba(15,23,42,0.06)] transition duration-200 hover:-translate-y-0.5 hover:border-cyan-200 hover:shadow-[0_5px_12px_rgba(15,23,42,0.05),0_18px_38px_rgba(8,145,178,0.08)]"
+                >
                   <div className="flex items-start justify-between gap-4">
-                    <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-cyan-50 text-cyan-700">
+                    <div className="flex h-11 w-11 items-center justify-center rounded-2xl border border-cyan-100 bg-cyan-50 text-cyan-700 shadow-[0_5px_16px_rgba(8,145,178,0.06)]">
                       <Icon className="h-5 w-5" />
                     </div>
                     <StagePill stage={task.template_stage} />
                   </div>
+
                   <p className="mt-5 text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-400">
                     {profile?.kicker || formatDomain(task.domain)}
                   </p>
                   <h4 className="mt-1 text-lg font-semibold text-slate-950">{task.title}</h4>
-                  <p className="mt-2 min-h-12 text-xs leading-5 text-slate-500">{task.description}</p>
+                  <p className="mt-2 text-xs leading-5 text-slate-500">{meta.what_it_measures || task.description}</p>
 
-                  <div className="mt-4 rounded-2xl border border-slate-200 bg-slate-50 p-3">
+                  <div className="mt-4 flex flex-wrap gap-1.5">
+                    {meta.estimated_minutes && (
+                      <span className="rounded-full border border-slate-200 bg-white px-2.5 py-1 text-[9px] font-semibold text-slate-500">
+                        {meta.estimated_minutes}
+                      </span>
+                    )}
+                    {meta.difficulty && (
+                      <span className="rounded-full border border-slate-200 bg-white px-2.5 py-1 text-[9px] font-semibold text-slate-500">
+                        {meta.difficulty}
+                      </span>
+                    )}
+                    <span className="rounded-full border border-slate-200 bg-white px-2.5 py-1 text-[9px] font-semibold text-slate-500">
+                      {formatDomain(task.domain)}
+                    </span>
+                  </div>
+
+                  <div className="mt-4 rounded-2xl border border-slate-200 bg-slate-50/75 p-3">
                     <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-500">Typical outputs</p>
                     <div className="mt-2 flex flex-wrap gap-1.5">
                       {outputs.slice(0, 4).map((output) => (
-                        <span key={output} className="rounded-full bg-white px-2.5 py-1 text-[9px] font-semibold text-slate-600">
+                        <span key={output} className="rounded-full bg-white px-2.5 py-1 text-[9px] font-semibold text-slate-600 shadow-[0_2px_6px_rgba(15,23,42,0.035)]">
                           {output}
                         </span>
                       ))}
                     </div>
                   </div>
 
-                  <div className="mt-4 flex items-center justify-between gap-3">
-                    <DevicePills support={task.default_device_support} />
-                    <button
-                      type="button"
-                      onClick={() => void cloneTemplate(task)}
-                      disabled={cloning}
-                      className="inline-flex shrink-0 items-center gap-2 rounded-full bg-slate-950 px-3.5 py-2.5 shadow-[0_4px_10px_rgba(15,23,42,0.16),0_10px_24px_rgba(15,23,42,0.12)] transition hover:-translate-y-px text-xs font-semibold text-white disabled:opacity-60"
-                    >
-                      {cloning ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Plus className="h-3.5 w-3.5" />}
-                      Use template
-                    </button>
+                  <div className="mt-auto pt-4">
+                    <div className="mb-3">
+                      <DevicePills support={task.default_device_support} />
+                    </div>
+                    <div className="grid grid-cols-[1fr_auto] gap-2">
+                      <button
+                        type="button"
+                        onClick={() => setSelectedTemplateId(task.id)}
+                        className="rounded-full border border-slate-200 bg-white px-3.5 py-2.5 text-xs font-semibold text-slate-600 shadow-[0_4px_12px_rgba(15,23,42,0.045)] transition hover:-translate-y-px hover:border-cyan-200 hover:text-slate-900"
+                      >
+                        Details
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => void cloneTemplate(task)}
+                        disabled={cloning}
+                        className="inline-flex shrink-0 items-center justify-center gap-2 rounded-full bg-slate-950 px-3.5 py-2.5 text-xs font-semibold text-white shadow-[0_4px_10px_rgba(15,23,42,0.16),0_10px_24px_rgba(15,23,42,0.12)] transition hover:-translate-y-px disabled:opacity-60"
+                      >
+                        {cloning ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Plus className="h-3.5 w-3.5" />}
+                        Use template
+                      </button>
+                    </div>
                   </div>
                 </article>
               );
@@ -877,6 +1010,167 @@ export default function CognitiveLab() {
           {filteredTemplates.length === 0 && (
             <EmptyState icon={Search} title="No matching task templates" text="Try another search term or cognitive domain." />
           )}
+
+          <section className="rounded-[24px] border border-slate-200 bg-white p-5 shadow-[0_4px_16px_rgba(15,23,42,0.045)] sm:p-6">
+            <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+              <div className="max-w-3xl">
+                <p className="text-[10px] font-semibold uppercase tracking-[0.15em] text-slate-400">Dedicated runner tasks</p>
+                <h4 className="mt-1 text-base font-semibold text-slate-950">Some paradigms need more than another template card.</h4>
+                <p className="mt-2 text-xs leading-5 text-slate-500">
+                  Stop-Signal, Corsi Block Tapping, Wisconsin Card Sorting, BART and true image-based Mental Rotation need dedicated adaptive, spatial or stateful runner logic. PsyLattice will only mark them ready when their behaviour is implemented properly.
+                </p>
+              </div>
+              <div className="flex flex-wrap gap-1.5 lg:max-w-sm lg:justify-end">
+                {["Stop-Signal", "Corsi", "WCST", "BART", "Mental Rotation"].map((name) => (
+                  <span key={name} className="rounded-full border border-slate-200 bg-slate-50 px-2.5 py-1.5 text-[9px] font-semibold text-slate-500">
+                    {name} · dedicated engine
+                  </span>
+                ))}
+              </div>
+            </div>
+          </section>
+
+          {selectedTemplate && (() => {
+            const profile = templateProfiles[selectedTemplate.template_key || ""];
+            const Icon = profile?.icon || BrainCircuit;
+            const meta = selectedTemplate.library_metadata || {};
+            const outputs = meta.typical_outputs || profile?.fallbackOutputs || [];
+            const cloning = busyTaskId === selectedTemplate.id;
+
+            return (
+              <div
+                className="fixed inset-0 z-[90] flex justify-end bg-slate-950/35 backdrop-blur-[2px]"
+                onMouseDown={(event) => {
+                  if (event.target === event.currentTarget) setSelectedTemplateId("");
+                }}
+              >
+                <aside className="h-full w-full max-w-xl overflow-y-auto border-l border-slate-200 bg-[#f7fafb] shadow-[-24px_0_70px_rgba(15,23,42,0.16)]">
+                  <div className="sticky top-0 z-10 border-b border-slate-200/90 bg-white/95 px-5 py-4 backdrop-blur-xl sm:px-6">
+                    <div className="flex items-center justify-between gap-4">
+                      <div className="flex items-center gap-3">
+                        <div className="flex h-10 w-10 items-center justify-center rounded-2xl border border-cyan-100 bg-cyan-50 text-cyan-700">
+                          <Icon className="h-5 w-5" />
+                        </div>
+                        <div>
+                          <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-cyan-700">{profile?.kicker || formatDomain(selectedTemplate.domain)}</p>
+                          <p className="text-sm font-semibold text-slate-950">Task details</p>
+                        </div>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => setSelectedTemplateId("")}
+                        className="flex h-9 w-9 items-center justify-center rounded-full border border-slate-200 bg-white text-lg leading-none text-slate-500 shadow-[0_4px_12px_rgba(15,23,42,0.05)]"
+                        aria-label="Close task details"
+                      >
+                        ×
+                      </button>
+                    </div>
+                  </div>
+
+                  <div className="space-y-4 p-5 sm:p-6">
+                    <section className="rounded-[24px] border border-slate-200 bg-white p-5 shadow-[0_4px_16px_rgba(15,23,42,0.05),0_16px_36px_rgba(15,23,42,0.055)]">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <StagePill stage={selectedTemplate.template_stage} />
+                        {meta.estimated_minutes && <span className="rounded-full border border-slate-200 px-2.5 py-1 text-[9px] font-semibold text-slate-500">{meta.estimated_minutes}</span>}
+                        {meta.difficulty && <span className="rounded-full border border-slate-200 px-2.5 py-1 text-[9px] font-semibold text-slate-500">{meta.difficulty}</span>}
+                      </div>
+                      <h3 className="mt-4 text-2xl font-semibold tracking-[-0.025em] text-slate-950">{selectedTemplate.title}</h3>
+                      <p className="mt-2 text-sm leading-6 text-slate-500">{selectedTemplate.description}</p>
+
+                      <div className="mt-5 border-t border-slate-100 pt-4">
+                        <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-400">What it measures</p>
+                        <p className="mt-2 text-sm leading-6 text-slate-700">{meta.what_it_measures || selectedTemplate.description}</p>
+                      </div>
+                    </section>
+
+                    {meta.trial_flow && meta.trial_flow.length > 0 && (
+                      <section className="rounded-[24px] border border-slate-200 bg-white p-5 shadow-[0_4px_16px_rgba(15,23,42,0.045)]">
+                        <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-400">Typical trial flow</p>
+                        <div className="mt-3 flex flex-wrap items-center gap-2">
+                          {meta.trial_flow.map((step, index) => (
+                            <div key={`${step}-${index}`} className="flex items-center gap-2">
+                              <span className="rounded-full border border-cyan-200 bg-white px-3 py-2 text-[10px] font-semibold text-cyan-900 shadow-[0_4px_12px_rgba(8,145,178,0.06)]">
+                                {step}
+                              </span>
+                              {index < meta.trial_flow!.length - 1 && <ArrowRight className="h-3.5 w-3.5 text-slate-300" />}
+                            </div>
+                          ))}
+                        </div>
+                        {meta.default_structure && <p className="mt-3 text-[11px] leading-5 text-slate-500">{meta.default_structure}</p>}
+                      </section>
+                    )}
+
+                    <section className="grid gap-4 sm:grid-cols-2">
+                      <div className="rounded-[22px] border border-slate-200 bg-white p-4 shadow-[0_4px_14px_rgba(15,23,42,0.04)]">
+                        <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-400">Typical outputs</p>
+                        <div className="mt-3 flex flex-wrap gap-1.5">
+                          {outputs.map((output) => (
+                            <span key={output} className="rounded-full bg-slate-50 px-2.5 py-1.5 text-[9px] font-semibold text-slate-600">{output}</span>
+                          ))}
+                        </div>
+                      </div>
+                      <div className="rounded-[22px] border border-slate-200 bg-white p-4 shadow-[0_4px_14px_rgba(15,23,42,0.04)]">
+                        <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-400">Device guidance</p>
+                        <p className="mt-3 text-xs font-semibold text-slate-800">{meta.recommended_device || "Check your protocol and input method"}</p>
+                        <div className="mt-3"><DevicePills support={selectedTemplate.default_device_support} /></div>
+                      </div>
+                    </section>
+
+                    {meta.recommended_for && meta.recommended_for.length > 0 && (
+                      <section className="rounded-[22px] border border-slate-200 bg-white p-4 shadow-[0_4px_14px_rgba(15,23,42,0.04)]">
+                        <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-400">Useful for</p>
+                        <div className="mt-3 grid gap-2 sm:grid-cols-2">
+                          {meta.recommended_for.map((item) => (
+                            <div key={item} className="flex items-start gap-2 text-xs leading-5 text-slate-600">
+                              <Check className="mt-0.5 h-3.5 w-3.5 shrink-0 text-cyan-700" />
+                              <span>{item}</span>
+                            </div>
+                          ))}
+                        </div>
+                      </section>
+                    )}
+
+                    {meta.researcher_controls && meta.researcher_controls.length > 0 && (
+                      <section className="rounded-[22px] border border-slate-200 bg-white p-4 shadow-[0_4px_14px_rgba(15,23,42,0.04)]">
+                        <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-400">What you can customise</p>
+                        <div className="mt-3 flex flex-wrap gap-1.5">
+                          {meta.researcher_controls.map((item) => (
+                            <span key={item} className="rounded-full border border-slate-200 bg-white px-2.5 py-1.5 text-[9px] font-semibold text-slate-600">{item}</span>
+                          ))}
+                        </div>
+                      </section>
+                    )}
+
+                    {meta.interpretation_note && (
+                      <section className="rounded-[22px] border border-cyan-200/80 bg-cyan-50/45 p-4 shadow-[0_5px_16px_rgba(8,145,178,0.055)]">
+                        <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-cyan-800">Research note</p>
+                        <p className="mt-2 text-xs leading-5 text-cyan-950/75">{meta.interpretation_note}</p>
+                      </section>
+                    )}
+
+                    <section className="rounded-[22px] border border-slate-200 bg-white p-4">
+                      <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-400">Important</p>
+                      <p className="mt-2 text-xs leading-5 text-slate-500">
+                        PsyLattice provides a configurable starter implementation. The task name alone does not validate your final timing, stimuli, scoring, population or interpretation. Review the cloned configuration against the paradigm and methods you intend to cite.
+                      </p>
+                    </section>
+                  </div>
+
+                  <div className="sticky bottom-0 border-t border-slate-200 bg-white/96 p-4 backdrop-blur-xl sm:px-6">
+                    <button
+                      type="button"
+                      onClick={() => void cloneTemplate(selectedTemplate)}
+                      disabled={cloning}
+                      className="inline-flex w-full items-center justify-center gap-2 rounded-full bg-slate-950 px-4 py-3 text-xs font-semibold text-white shadow-[0_5px_14px_rgba(15,23,42,0.18),0_12px_28px_rgba(15,23,42,0.12)] disabled:opacity-60"
+                    >
+                      {cloning ? <Loader2 className="h-4 w-4 animate-spin" /> : <Plus className="h-4 w-4" />}
+                      Add to My Cognitive Tasks
+                    </button>
+                  </div>
+                </aside>
+              </div>
+            );
+          })()}
         </div>
       ) : tab === "tasks" ? (
         <div className="grid gap-5 xl:grid-cols-[1fr_.8fr]">

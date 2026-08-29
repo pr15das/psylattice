@@ -452,10 +452,45 @@ async function estimateRefreshRate(sampleCount = 90) {
 }
 
 function deviceClass(): Preflight["device_class"] {
-  if (typeof window === "undefined") return "desktop";
-  const width = Math.min(window.screen.width, window.screen.height);
-  if (width < 600) return "phone";
-  if (width < 1024) return "tablet";
+  if (typeof window === "undefined" || typeof navigator === "undefined") return "desktop";
+
+  const ua = navigator.userAgent.toLowerCase();
+  const platform = navigator.platform.toLowerCase();
+  const touchPoints = navigator.maxTouchPoints || 0;
+  const shortSide = Math.min(window.screen.width, window.screen.height);
+  const coarsePointer =
+    typeof window.matchMedia === "function" &&
+    window.matchMedia("(pointer: coarse)").matches;
+
+  // Do not infer "tablet" from screen height alone. Smaller MacBook displays,
+  // browser zoom and scaled desktop displays can all have a short side < 1024.
+  const isiPad =
+    ua.includes("ipad") ||
+    (platform === "macintel" && touchPoints > 1);
+
+  const isAndroid = ua.includes("android");
+  const isAndroidPhone = isAndroid && ua.includes("mobile");
+  const isOtherPhone =
+    /iphone|ipod|windows phone|blackberry|bb10|opera mini/.test(ua);
+
+  if (
+    isAndroidPhone ||
+    isOtherPhone ||
+    (coarsePointer && touchPoints > 0 && shortSide < 600)
+  ) {
+    return "phone";
+  }
+
+  const isTablet =
+    isiPad ||
+    (isAndroid && !ua.includes("mobile")) ||
+    /tablet|kindle|silk|playbook/.test(ua) ||
+    (coarsePointer && touchPoints > 1 && shortSide >= 600 && shortSide < 1024);
+
+  if (isTablet) return "tablet";
+
+  // Conventional desktop/laptop browsers stay desktop regardless of physical
+  // screen height. This includes Safari on smaller MacBook displays.
   return "desktop";
 }
 
@@ -493,7 +528,7 @@ function buildSummary(results: PreviewTrialResult[]) {
 
 function BrowserBadge({ ok, children }: { ok: boolean; children: ReactNode }) {
   return (
-    <div className={`flex items-center gap-2 rounded-xl border px-3 py-2 text-xs ${ok ? "border-emerald-200 bg-emerald-50 text-emerald-800" : "border-amber-200 bg-amber-50 text-amber-800"}`}>
+    <div className={`flex items-center gap-2 rounded-xl border px-3 py-2 text-xs ${ok ? "border-cyan-200 bg-cyan-50 text-cyan-800" : "border-violet-200 bg-violet-50 text-violet-800"}`}>
       {ok ? <Check className="h-3.5 w-3.5" /> : <AlertTriangle className="h-3.5 w-3.5" />}
       {children}
     </div>
@@ -691,7 +726,10 @@ export default function CognitiveStudyRunner({
     const config = version.device_config || {};
     if (preflight.device_class === "phone") return config.phone !== false;
     if (preflight.device_class === "tablet") return config.tablet !== false;
-    return config.desktop !== false && config.laptop !== false;
+
+    // The browser runner groups laptops and desktop computers into one class.
+    // Allow that class when either desktop OR laptop support is enabled.
+    return config.desktop !== false || config.laptop !== false;
   }, [preflight.device_class, version]);
 
   const canStart = !loading && !!task && !!version && blocks.length > 0 && preflight.timing_api && preflight.animation_frame && deviceAllowed;
@@ -1281,12 +1319,12 @@ export default function CognitiveStudyRunner({
 
   return (
     <div className="fixed inset-0 z-[100] overflow-y-auto bg-slate-950/70 p-3 backdrop-blur-sm sm:p-5">
-      <div className="mx-auto min-h-[calc(100vh-24px)] max-w-[1500px] overflow-hidden rounded-[30px] border border-slate-700/60 bg-white shadow-2xl sm:min-h-[calc(100vh-40px)]">
+      <div className="mx-auto min-h-[calc(100vh-24px)] max-w-[1500px] overflow-hidden rounded-[30px] border border-slate-300/80 bg-white shadow-[0_4px_12px_rgba(15,23,42,0.08),0_24px_64px_rgba(15,23,42,0.13),0_42px_110px_rgba(8,145,178,0.08)] sm:min-h-[calc(100vh-40px)]">
         <header className="flex items-center justify-between gap-4 border-b border-slate-200 bg-white px-4 py-3 sm:px-5">
           <div className="flex min-w-0 items-center gap-3">
             <div className="min-w-0">
               <div className="flex flex-wrap items-center gap-2">
-                <span className="rounded-full border border-cyan-200 bg-cyan-50 px-2.5 py-1 text-[9px] font-semibold uppercase tracking-[0.14em] text-cyan-800">Study cognitive task</span>
+                <span className="rounded-full border border-cyan-300/80 bg-[#ecfbff] px-3 py-1.5 text-[9px] font-semibold uppercase tracking-[0.14em] text-cyan-900 shadow-[0_2px_4px_rgba(15,23,42,0.04),0_7px_18px_rgba(8,145,178,0.10)]">Study cognitive task</span>
                 {version && <span className="text-[10px] font-semibold text-slate-400">{version.version_label}</span>}
               </div>
               <p className="mt-1 truncate text-sm font-semibold text-slate-900">{task?.title || "Cognitive task"}</p>
@@ -1298,7 +1336,7 @@ export default function CognitiveStudyRunner({
               <div className="mt-1.5 h-1.5 overflow-hidden rounded-full bg-slate-100"><div className="h-full rounded-full bg-cyan-600 transition-all" style={{ width: `${progressPercent}%` }} /></div>
             </div>
           )}
-          <button type="button" onClick={() => void exitPreview()} className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border border-slate-200 text-slate-400 hover:border-red-200 hover:bg-red-50 hover:text-red-600" aria-label="Close cognitive task">
+          <button type="button" onClick={() => void exitPreview()} className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full border border-slate-300/80 text-slate-400 hover:border-red-200 hover:bg-red-50 hover:text-red-600" aria-label="Close cognitive task">
             <X className="h-4 w-4" />
           </button>
         </header>
@@ -1310,10 +1348,10 @@ export default function CognitiveStudyRunner({
                 <span className="inline-flex items-center gap-2 rounded-full bg-slate-950 px-3 py-1.5 text-[10px] font-semibold uppercase tracking-[0.14em] text-cyan-200"><Gauge className="h-3.5 w-3.5" /> Timing preflight</span>
                 <h2 className="mt-5 text-3xl font-semibold tracking-[-0.04em] text-slate-950 sm:text-4xl">Check your device before beginning.</h2>
                 <p className="mt-4 max-w-2xl text-sm leading-7 text-slate-500">PsyLattice will run this study task in your browser, record responses with <code className="rounded bg-slate-100 px-1 py-0.5 text-xs">performance.now()</code>, and store this run with your study participation.</p>
-                <div className="mt-6 rounded-2xl border border-amber-200 bg-amber-50 p-4 text-xs leading-5 text-amber-900"><strong>Timing note:</strong> browser measurements can be high resolution, but operating-system scheduling, display hardware, browser load and input devices still affect observed timing. Your device timing is measured so the research team can assess data quality.</div>
+                <div className="mt-6 rounded-[22px] border border-violet-300/75 bg-[#f7f4ff] p-4 text-xs leading-5 text-violet-950 shadow-[0_2px_4px_rgba(15,23,42,0.035),0_9px_24px_rgba(109,40,217,0.09)]"><strong>Timing note:</strong> browser measurements can be high resolution, but operating-system scheduling, display hardware, browser load and input devices still affect observed timing. Your device timing is measured so the research team can assess data quality.</div>
               </section>
 
-              <section className="rounded-[26px] border border-slate-200 bg-slate-50 p-5">
+              <section className="rounded-[26px] border border-slate-300/75 bg-[#f8fbfc] p-5 shadow-[0_2px_5px_rgba(15,23,42,0.04),0_12px_28px_rgba(15,23,42,0.07)]">
                 <p className="text-[10px] font-semibold uppercase tracking-[0.15em] text-slate-400">Environment</p>
                 {loading ? (
                   <div className="mt-5 flex items-center gap-3 text-sm text-slate-500"><Loader2 className="h-4 w-4 animate-spin" /> Loading task and preloading assets…</div>
@@ -1328,13 +1366,13 @@ export default function CognitiveStudyRunner({
                       <BrowserBadge ok={refreshStable}>{refreshStable ? `Refresh sampling stable · ${Math.round((preflight.refresh_stability || 0) * 100)}% consistent frames` : "Refresh timing varied during calibration · consider fullscreen or recalibrate"}</BrowserBadge>
                     )}
 
-                    <div className="rounded-2xl border border-slate-200 bg-white p-4">
+                    <div className="rounded-[22px] border border-slate-300/75 bg-white p-4 shadow-[0_2px_4px_rgba(15,23,42,0.04),0_8px_20px_rgba(15,23,42,0.065)]">
                       <div className="flex flex-wrap items-start justify-between gap-3">
                         <div>
                           <p className="text-[10px] font-semibold uppercase tracking-[0.12em] text-slate-400">Display calibration</p>
                           <p className="mt-1 text-xs leading-5 text-slate-500">PsyLattice detects this display automatically and converts visual durations to whole frames.</p>
                         </div>
-                        <button type="button" onClick={() => void calibrateRefresh()} disabled={calibratingRefresh} className="inline-flex items-center gap-1.5 rounded-lg border border-slate-200 px-2.5 py-1.5 text-[10px] font-semibold text-slate-600 disabled:opacity-50"><RotateCcw className={`h-3 w-3 ${calibratingRefresh ? "animate-spin" : ""}`} />{calibratingRefresh ? "Calibrating…" : "Recalibrate"}</button>
+                        <button type="button" onClick={() => void calibrateRefresh()} disabled={calibratingRefresh} className="inline-flex items-center gap-1.5 rounded-full border border-slate-300/80 px-2.5 py-1.5 text-[10px] font-semibold text-slate-600 disabled:opacity-50"><RotateCcw className={`h-3 w-3 ${calibratingRefresh ? "animate-spin" : ""}`} />{calibratingRefresh ? "Calibrating…" : "Recalibrate"}</button>
                       </div>
 
                       <div className="mt-3 grid grid-cols-2 gap-2">
@@ -1350,10 +1388,10 @@ export default function CognitiveStudyRunner({
                       {refreshMode === "override" && (
                         <label className="mt-3 block">
                           <span className="text-[10px] font-semibold text-slate-500">Display refresh rate</span>
-                          <select value={String(refreshOverrideHz)} onChange={(event) => setRefreshOverrideHz(Number(event.target.value))} className="mt-1.5 w-full rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-xs font-semibold text-slate-700 outline-none focus:border-cyan-400">
+                          <select value={String(refreshOverrideHz)} onChange={(event) => setRefreshOverrideHz(Number(event.target.value))} className="mt-1.5 w-full rounded-full border border-slate-300/80 bg-white px-3 py-2.5 text-xs font-semibold text-slate-700 outline-none focus:border-cyan-400">
                             {[30, 50, 60, 75, 90, 100, 120, 144, 165, 180, 240].map((hz) => <option key={hz} value={hz}>{hz} Hz</option>)}
                           </select>
-                          <p className="mt-1.5 text-[9px] leading-4 text-amber-700">Use override only when you know the display refresh rate and automatic detection is incorrect or unstable.</p>
+                          <p className="mt-1.5 text-[9px] leading-4 text-violet-700">Use override only when you know the display refresh rate and automatic detection is incorrect or unstable.</p>
                         </label>
                       )}
                     </div>
@@ -1362,12 +1400,12 @@ export default function CognitiveStudyRunner({
               </section>
             </div>
 
-            {error && <div className="mt-5 rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">{error}</div>}
+            {error && <div role="alert" className="mt-5 border-l-2 border-rose-300 py-1 pl-3 text-sm leading-6 text-slate-600">{error}</div>}
 
             <div className="mt-7 flex flex-wrap gap-3">
-              <button type="button" onClick={() => void requestFullscreen()} className="inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-4 py-3 text-xs font-semibold text-slate-700"><Expand className="h-4 w-4" /> Enter fullscreen</button>
-              <button type="button" onClick={() => void startPreview()} disabled={!canStart || !preflight.visibility_ok} className="inline-flex items-center gap-2 rounded-xl bg-slate-950 px-5 py-3 text-xs font-semibold text-white disabled:cursor-not-allowed disabled:opacity-40"><Play className="h-4 w-4" /> Start task</button>
-              {!required && <button type="button" onClick={() => void skipOptionalTask()} className="inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-4 py-3 text-xs font-semibold text-slate-600">Skip optional task</button>}
+              <button type="button" onClick={() => void requestFullscreen()} className="inline-flex items-center gap-2 rounded-full border border-slate-300/80 bg-white px-4 py-3 text-xs font-semibold text-slate-700 shadow-[0_2px_4px_rgba(15,23,42,0.04),0_7px_18px_rgba(15,23,42,0.07)] transition hover:-translate-y-px"><Expand className="h-4 w-4" /> Enter fullscreen</button>
+              <button type="button" onClick={() => void startPreview()} disabled={!canStart || !preflight.visibility_ok} className="inline-flex items-center gap-2 rounded-full bg-slate-950 px-5 py-3 text-xs font-semibold text-white disabled:cursor-not-allowed disabled:opacity-40"><Play className="h-4 w-4" /> Start task</button>
+              {!required && <button type="button" onClick={() => void skipOptionalTask()} className="inline-flex items-center gap-2 rounded-full border border-slate-300/80 bg-white px-4 py-3 text-xs font-semibold text-slate-600">Skip optional task</button>}
             </div>
           </div>
         )}
@@ -1377,10 +1415,10 @@ export default function CognitiveStudyRunner({
             <div className="pointer-events-none absolute inset-x-0 top-0 h-px bg-slate-200" />
             <div className="w-full max-w-5xl text-center">
               {display.kind === "message" && (
-                <div className="mx-auto max-w-2xl rounded-[28px] border border-slate-200 bg-white p-7 shadow-sm sm:p-9">
+                <div className="mx-auto max-w-2xl rounded-[28px] border border-slate-300/75 bg-white p-7 shadow-[0_2px_5px_rgba(15,23,42,0.04),0_14px_36px_rgba(15,23,42,0.09),0_30px_70px_rgba(8,145,178,0.06)] sm:p-9">
                   <h2 className="text-2xl font-semibold tracking-[-0.03em] text-slate-950">{display.title}</h2>
                   <p className="mx-auto mt-4 whitespace-pre-line text-sm leading-7 text-slate-600">{display.text}</p>
-                  <button type="button" onClick={() => continueRef.current?.()} className="mt-6 rounded-xl bg-slate-950 px-5 py-3 text-xs font-semibold text-white">{display.actionLabel || "Continue"}</button>
+                  <button type="button" onClick={() => continueRef.current?.()} className="mt-6 rounded-full bg-slate-950 px-5 py-3 text-xs font-semibold text-white">{display.actionLabel || "Continue"}</button>
                 </div>
               )}
               {display.kind === "fixation" && <div className="text-6xl font-medium text-slate-900">{display.symbol}</div>}
@@ -1396,26 +1434,26 @@ export default function CognitiveStudyRunner({
               {responseOptions.length > 0 && display.kind !== "message" && (
                 <div className="mt-10 flex flex-wrap justify-center gap-3">
                   {responseOptions.map((option) => (
-                    <button key={option} type="button" onPointerDown={() => responseHandlerRef.current?.(option, performance.now())} className="min-w-20 rounded-xl border border-slate-300 bg-white px-5 py-3 text-sm font-semibold text-slate-800 shadow-sm">{option === "space" ? "Space" : option}</button>
+                    <button key={option} type="button" onPointerDown={() => responseHandlerRef.current?.(option, performance.now())} className="min-w-20 rounded-full border border-slate-300/80 bg-white px-5 py-3 text-sm font-semibold text-slate-800 shadow-sm">{option === "space" ? "Space" : option}</button>
                   ))}
                 </div>
               )}
 
               {responseOptions.length === 0 && display.kind !== "message" && (
-                <div className="fixed bottom-7 left-1/2 -translate-x-1/2 rounded-full border border-slate-200 bg-white/90 px-3 py-1.5 text-[10px] font-medium text-slate-400 shadow-sm backdrop-blur"><Keyboard className="mr-1.5 inline h-3 w-3" /> Use the configured response keys</div>
+                <div className="fixed bottom-7 left-1/2 -translate-x-1/2 rounded-full border border-slate-200 bg-white/90 px-3 py-1.5 text-[10px] font-medium text-slate-400 shadow-[0_2px_5px_rgba(15,23,42,0.06),0_10px_28px_rgba(15,23,42,0.10)] backdrop-blur"><Keyboard className="mr-1.5 inline h-3 w-3" /> Use the configured response keys</div>
               )}
             </div>
           </div>
         )}
         {phase === "complete" && summary && (
           <div className="mx-auto max-w-3xl px-5 py-10 sm:px-8 sm:py-14">
-            <div className="rounded-[28px] border border-emerald-200 bg-white p-7 text-center shadow-sm sm:p-10">
-              <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-2xl bg-emerald-50 text-emerald-700"><Check className="h-5 w-5" /></div>
-              <span className="mt-5 inline-flex rounded-full border border-emerald-200 bg-emerald-50 px-3 py-1.5 text-[10px] font-semibold uppercase tracking-[0.14em] text-emerald-800">Task saved</span>
+            <div className="rounded-[28px] border border-cyan-200 bg-white p-7 text-center shadow-sm sm:p-10">
+              <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-[22px] border border-cyan-200/80 bg-[#ecfbff] text-cyan-800 shadow-[0_2px_4px_rgba(15,23,42,0.04),0_9px_22px_rgba(8,145,178,0.10)]"><Check className="h-5 w-5" /></div>
+              <span className="mt-5 inline-flex rounded-full border border-cyan-300/80 bg-[#ecfbff] px-3 py-1.5 text-[10px] font-semibold uppercase tracking-[0.14em] text-cyan-900 shadow-[0_2px_4px_rgba(8,145,178,0.08)]">Task saved</span>
               <h2 className="mt-4 text-3xl font-semibold tracking-[-0.04em] text-slate-950">Cognitive task complete.</h2>
               <p className="mx-auto mt-3 max-w-xl text-sm leading-6 text-slate-500">Your responses have been saved with this study session. Performance scores are kept for the research team rather than shown during participation.</p>
               {savingResults && <div className="mt-4 flex items-center justify-center gap-2 text-xs text-slate-500"><Loader2 className="h-4 w-4 animate-spin" /> Saving study data…</div>}
-              <button type="button" disabled={savingResults} onClick={() => onComplete({ skipped: false })} className="mt-7 rounded-xl bg-slate-950 px-6 py-3 text-sm font-semibold text-white disabled:opacity-50">Continue study</button>
+              <button type="button" disabled={savingResults} onClick={() => onComplete({ skipped: false })} className="mt-7 rounded-full bg-slate-950 px-6 py-3 text-sm font-semibold text-white disabled:opacity-50">Continue study</button>
             </div>
           </div>
         )}
@@ -1425,7 +1463,7 @@ export default function CognitiveStudyRunner({
             <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-2xl bg-red-50 text-red-600"><AlertTriangle className="h-5 w-5" /></div>
             <h2 className="mt-4 text-2xl font-semibold text-slate-950">Task stopped</h2>
             <p className="mt-2 text-sm leading-6 text-slate-500">{error || "The cognitive task could not continue."}</p>
-            <div className="mt-6 flex justify-center gap-3"><button type="button" onClick={() => { setPhase("preflight"); setError(""); }} className="rounded-xl border border-slate-200 px-4 py-3 text-xs font-semibold text-slate-700">Return to device check</button><button type="button" onClick={() => void exitPreview()} className="rounded-xl bg-slate-950 px-4 py-3 text-xs font-semibold text-white">Return to study</button></div>
+            <div className="mt-6 flex justify-center gap-3"><button type="button" onClick={() => { setPhase("preflight"); setError(""); }} className="rounded-full border border-slate-300/80 px-4 py-3 text-xs font-semibold text-slate-700">Return to device check</button><button type="button" onClick={() => void exitPreview()} className="rounded-full bg-slate-950 px-4 py-3 text-xs font-semibold text-white shadow-[0_4px_10px_rgba(15,23,42,0.18),0_12px_26px_rgba(15,23,42,0.15)] transition hover:-translate-y-px">Return to study</button></div>
           </div>
         )}
       </div>

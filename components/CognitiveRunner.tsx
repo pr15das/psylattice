@@ -413,10 +413,45 @@ async function estimateRefreshRate(sampleCount = 90) {
 }
 
 function deviceClass(): Preflight["device_class"] {
-  if (typeof window === "undefined") return "desktop";
-  const width = Math.min(window.screen.width, window.screen.height);
-  if (width < 600) return "phone";
-  if (width < 1024) return "tablet";
+  if (typeof window === "undefined" || typeof navigator === "undefined") return "desktop";
+
+  const ua = navigator.userAgent.toLowerCase();
+  const platform = navigator.platform.toLowerCase();
+  const touchPoints = navigator.maxTouchPoints || 0;
+  const shortSide = Math.min(window.screen.width, window.screen.height);
+  const coarsePointer =
+    typeof window.matchMedia === "function" &&
+    window.matchMedia("(pointer: coarse)").matches;
+
+  // Do not infer "tablet" from screen height alone. Smaller MacBook displays,
+  // browser zoom and scaled desktop displays can all have a short side < 1024.
+  const isiPad =
+    ua.includes("ipad") ||
+    (platform === "macintel" && touchPoints > 1);
+
+  const isAndroid = ua.includes("android");
+  const isAndroidPhone = isAndroid && ua.includes("mobile");
+  const isOtherPhone =
+    /iphone|ipod|windows phone|blackberry|bb10|opera mini/.test(ua);
+
+  if (
+    isAndroidPhone ||
+    isOtherPhone ||
+    (coarsePointer && touchPoints > 0 && shortSide < 600)
+  ) {
+    return "phone";
+  }
+
+  const isTablet =
+    isiPad ||
+    (isAndroid && !ua.includes("mobile")) ||
+    /tablet|kindle|silk|playbook/.test(ua) ||
+    (coarsePointer && touchPoints > 1 && shortSide >= 600 && shortSide < 1024);
+
+  if (isTablet) return "tablet";
+
+  // Conventional desktop/laptop browsers stay desktop regardless of physical
+  // screen height. This includes Safari on smaller MacBook displays.
   return "desktop";
 }
 
@@ -664,7 +699,10 @@ export default function CognitiveRunner_PHASE_1C_BROWSER_PREVIEW({
     const config = version.device_config || {};
     if (preflight.device_class === "phone") return config.phone !== false;
     if (preflight.device_class === "tablet") return config.tablet !== false;
-    return config.desktop !== false && config.laptop !== false;
+
+    // The browser runner groups laptops and desktop computers into one class.
+    // Allow that class when either desktop OR laptop support is enabled.
+    return config.desktop !== false || config.laptop !== false;
   }, [preflight.device_class, version]);
 
   const canStart = !loading && !!task && !!version && blocks.length > 0 && preflight.timing_api && preflight.animation_frame && deviceAllowed;

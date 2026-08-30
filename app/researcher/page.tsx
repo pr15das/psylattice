@@ -23,6 +23,7 @@ import PsyLatticeLogo from "@/components/PsyLatticeLogo";
 import AccountSwitcher from "@/components/AccountSwitcher";
 import FollowupManager from "@/components/FollowupManager";
 import ResearchAiAssistant from "@/components/ResearchAiAssistant";
+import ResearchStudyAssociations from "@/components/ResearchStudyAssociations";
 import CognitiveLab from "../../components/CognitiveLab";
 import {
   buildCognitiveAttachmentAnalysis,
@@ -10177,6 +10178,8 @@ type ResearchDatasetType =
   | "cognitive_sessions"
   | "cognitive_trials"
   | "cognitive_participant_summary"
+  | "stop_signal_summary"
+  | "stop_signal_trials"
   | "consent"
   | "ambulatory_checkins"
   | "ambulatory_responses"
@@ -10654,6 +10657,8 @@ const researchDatasetLabels: Record<ResearchDatasetType, string> = {
   cognitive_sessions: "Cognitive task sessions",
   cognitive_trials: "Cognitive trials — raw data",
   cognitive_participant_summary: "Cognitive participant summaries",
+  stop_signal_summary: "Stop-Signal summaries — participant level",
+  stop_signal_trials: "Stop-Signal trials — raw staircase data",
   consent: "Consent records",
   ambulatory_checkins: "Ambulatory check-ins — one row per check-in",
   ambulatory_responses: "Ambulatory responses — one row per item response",
@@ -11338,6 +11343,37 @@ function researchMean(values: number[]) {
   return values.reduce((sum, value) => sum + value, 0) / values.length;
 }
 
+
+function researchStopSignalSummary(
+  session: ResearchDataCognitiveSession | null | undefined
+): Record<string, unknown> | null {
+  const raw = session?.summary_scores?.stop_signal;
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) return null;
+  const value = raw as Record<string, unknown>;
+  if (String(value.paradigm || "stop_signal") !== "stop_signal") return null;
+  return value;
+}
+
+function researchStopSignalRuntime(
+  trial: ResearchDataCognitiveTrial
+): Record<string, unknown> | null {
+  const raw = trial.stimulus_payload?.runtime_data;
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) return null;
+  const value = raw as Record<string, unknown>;
+  return String(value.paradigm || "") === "stop_signal" ? value : null;
+}
+
+function researchAttachmentHasStopSignal(
+  bundle: ResearchDataBundle,
+  attachmentId: string
+) {
+  return bundle.cognitiveSessions.some(
+    (session) =>
+      session.study_cognitive_task_id === attachmentId &&
+      researchStopSignalSummary(session) !== null
+  );
+}
+
 function researchCognitiveParticipantSummary(
   bundle: ResearchDataBundle,
   participantId: string,
@@ -11353,7 +11389,15 @@ function researchCognitiveParticipantSummary(
     .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())[0] || null;
 
   if (!session) {
-    return { session: null, trials: [] as ResearchDataCognitiveTrial[], accuracy: null, meanRt: null, medianRt: null, omissions: 0 };
+    return {
+      session: null,
+      trials: [] as ResearchDataCognitiveTrial[],
+      accuracy: null,
+      meanRt: null,
+      medianRt: null,
+      omissions: 0,
+      stopSignal: null as Record<string, unknown> | null,
+    };
   }
 
   const trials = bundle.cognitiveTrials.filter((trial) => trial.session_id === session.id);
@@ -11374,6 +11418,7 @@ function researchCognitiveParticipantSummary(
     meanRt: researchMean(rts),
     medianRt: researchMedian(rts),
     omissions,
+    stopSignal: researchStopSignalSummary(session),
   };
 }
 
@@ -11385,6 +11430,13 @@ function researchCognitiveAnalysisVariables(attachment: ResearchDataCognitiveAtt
     meanRt: `${base}_mean_rt_ms`,
     medianRt: `${base}_median_rt_ms`,
     omissions: `${base}_omissions`,
+    ssrt: `${base}_ssrt_ms`,
+    meanSsd: `${base}_mean_ssd_ms`,
+    stopSuccess: `${base}_stop_success_rate`,
+    pRespondSignal: `${base}_p_respond_signal`,
+    meanGoRt: `${base}_mean_go_rt_ms`,
+    goOmissions: `${base}_go_omissions`,
+    goChoiceErrors: `${base}_go_choice_errors`,
   };
 }
 
@@ -12974,6 +13026,7 @@ function researchBuildRows(
         );
         if (!participant || !attachment) return [];
         const summary = session.summary_scores || {};
+        const stopSignal = researchStopSignalSummary(session);
         const timing = session.timing_quality || {};
         const device = session.device_info || {};
         return [{
@@ -12991,6 +13044,18 @@ function researchBuildRows(
           mean_rt_ms: researchNumber(summary.mean_rt_ms) ?? "",
           median_rt_ms: researchNumber(summary.median_rt_ms) ?? "",
           response_observations: researchNumber(summary.response_observations) ?? "",
+          paradigm: stopSignal ? "stop_signal" : "",
+          ssrt_ms: stopSignal ? researchNumber(stopSignal.ssrt_integration_ms) ?? "" : "",
+          mean_ssd_ms: stopSignal ? researchNumber(stopSignal.mean_ssd_ms) ?? "" : "",
+          stop_success_rate: stopSignal ? researchNumber(stopSignal.stop_success_rate) ?? "" : "",
+          p_respond_signal: stopSignal ? researchNumber(stopSignal.p_respond_signal) ?? "" : "",
+          mean_go_rt_ms: stopSignal ? researchNumber(stopSignal.mean_go_rt_ms) ?? "" : "",
+          median_go_rt_ms: stopSignal ? researchNumber(stopSignal.median_go_rt_ms) ?? "" : "",
+          mean_failed_stop_rt_ms: stopSignal ? researchNumber(stopSignal.mean_failed_stop_rt_ms) ?? "" : "",
+          go_omissions: stopSignal ? researchNumber(stopSignal.go_omissions) ?? "" : "",
+          go_choice_errors: stopSignal ? researchNumber(stopSignal.go_choice_errors) ?? "" : "",
+          stop_trials: stopSignal ? researchNumber(stopSignal.stop_trials) ?? "" : "",
+          stop_signal_quality_flags_json: stopSignal ? researchValueText(stopSignal.quality_flags || []) : "",
           refresh_hz: researchNumber(timing.refresh_hz) ?? researchNumber(device.refresh_hz) ?? "",
           refresh_stability: researchNumber(timing.refresh_stability) ?? "",
           visibility_interruptions: researchNumber(timing.visibility_interruptions) ?? "",
@@ -13014,6 +13079,7 @@ function researchBuildRows(
       if (!participant || !attachment) return [];
       const response = trial.response_payload || {};
       const stimulus = trial.stimulus_payload || {};
+      const stopRuntime = researchStopSignalRuntime(trial);
       return [{
         participant: identityMap.get(participant.id) || "",
         is_test: participant.is_test,
@@ -13028,6 +13094,17 @@ function researchBuildRows(
         correct_response: response.correct_response ?? "",
         correct: trial.correct ?? "",
         reaction_time_ms: trial.reaction_time_ms ?? "",
+        paradigm: stopRuntime ? "stop_signal" : "",
+        stop_signal_trial_type: stopRuntime ? String(stopRuntime.trial_type || "") : "",
+        requested_ssd_ms: stopRuntime ? researchNumber(stopRuntime.requested_ssd_ms) ?? "" : "",
+        actual_ssd_ms: stopRuntime ? researchNumber(stopRuntime.actual_ssd_ms) ?? "" : "",
+        ssd_after_trial_ms: stopRuntime ? researchNumber(stopRuntime.ssd_after_trial_ms) ?? "" : "",
+        stop_signal_presented: stopRuntime ? Boolean(stopRuntime.stop_signal_presented) : "",
+        stop_success: stopRuntime && stopRuntime.stop_success !== null && stopRuntime.stop_success !== undefined ? Boolean(stopRuntime.stop_success) : "",
+        response_before_stop_signal: stopRuntime && stopRuntime.response_before_stop_signal !== null && stopRuntime.response_before_stop_signal !== undefined ? Boolean(stopRuntime.response_before_stop_signal) : "",
+        go_correct: stopRuntime && stopRuntime.go_correct !== null && stopRuntime.go_correct !== undefined ? Boolean(stopRuntime.go_correct) : "",
+        go_correct_response: stopRuntime ? String(stopRuntime.go_correct_response ?? "") : "",
+        go_stimulus: stopRuntime ? String(stopRuntime.go_stimulus ?? "") : "",
         stimulus_variables_json: researchValueText(stimulus.variables || {}),
         stimulus_payload_json: researchValueText(stimulus),
         response_payload_json: researchValueText(response),
@@ -13059,6 +13136,18 @@ function researchBuildRows(
           mean_rt_ms: summary.meanRt ?? researchNumber(scores.mean_rt_ms) ?? "",
           median_rt_ms: summary.medianRt ?? researchNumber(scores.median_rt_ms) ?? "",
           omissions: summary.omissions,
+          paradigm: summary.stopSignal ? "stop_signal" : "",
+          ssrt_ms: summary.stopSignal ? researchNumber(summary.stopSignal.ssrt_integration_ms) ?? "" : "",
+          mean_ssd_ms: summary.stopSignal ? researchNumber(summary.stopSignal.mean_ssd_ms) ?? "" : "",
+          stop_success_rate: summary.stopSignal ? researchNumber(summary.stopSignal.stop_success_rate) ?? "" : "",
+          p_respond_signal: summary.stopSignal ? researchNumber(summary.stopSignal.p_respond_signal) ?? "" : "",
+          mean_go_rt_ms: summary.stopSignal ? researchNumber(summary.stopSignal.mean_go_rt_ms) ?? "" : "",
+          median_go_rt_ms: summary.stopSignal ? researchNumber(summary.stopSignal.median_go_rt_ms) ?? "" : "",
+          mean_failed_stop_rt_ms: summary.stopSignal ? researchNumber(summary.stopSignal.mean_failed_stop_rt_ms) ?? "" : "",
+          go_omissions: summary.stopSignal ? researchNumber(summary.stopSignal.go_omissions) ?? "" : "",
+          go_choice_errors: summary.stopSignal ? researchNumber(summary.stopSignal.go_choice_errors) ?? "" : "",
+          stop_trials: summary.stopSignal ? researchNumber(summary.stopSignal.stop_trials) ?? "" : "",
+          stop_signal_quality_flags_json: summary.stopSignal ? researchValueText(summary.stopSignal.quality_flags || []) : "",
           refresh_hz: researchNumber(timing.refresh_hz) ?? "",
           refresh_stability: researchNumber(timing.refresh_stability) ?? "",
           visibility_interruptions: researchNumber(timing.visibility_interruptions) ?? "",
@@ -13067,6 +13156,26 @@ function researchBuildRows(
       }
     }
     return rows;
+  }
+
+  if (datasetType === "stop_signal_summary") {
+    return researchBuildRows(
+      bundle,
+      "cognitive_participant_summary",
+      identityMode,
+      includeTestData,
+      includeDirectIdentifiers
+    ).filter((row) => row.paradigm === "stop_signal");
+  }
+
+  if (datasetType === "stop_signal_trials") {
+    return researchBuildRows(
+      bundle,
+      "cognitive_trials",
+      identityMode,
+      includeTestData,
+      includeDirectIdentifiers
+    ).filter((row) => row.paradigm === "stop_signal");
   }
 
   if (datasetType === "consent") {
@@ -13207,6 +13316,15 @@ function researchBuildRows(
       row[variables.meanRt] = summary.meanRt ?? "";
       row[variables.medianRt] = summary.medianRt ?? "";
       row[variables.omissions] = summary.session ? summary.omissions : "";
+      if (summary.stopSignal) {
+        row[variables.ssrt] = researchNumber(summary.stopSignal.ssrt_integration_ms) ?? "";
+        row[variables.meanSsd] = researchNumber(summary.stopSignal.mean_ssd_ms) ?? "";
+        row[variables.stopSuccess] = researchNumber(summary.stopSignal.stop_success_rate) ?? "";
+        row[variables.pRespondSignal] = researchNumber(summary.stopSignal.p_respond_signal) ?? "";
+        row[variables.meanGoRt] = researchNumber(summary.stopSignal.mean_go_rt_ms) ?? "";
+        row[variables.goOmissions] = researchNumber(summary.stopSignal.go_omissions) ?? "";
+        row[variables.goChoiceErrors] = researchNumber(summary.stopSignal.go_choice_errors) ?? "";
+      }
     }
 
     return row;
@@ -13566,6 +13684,15 @@ function researchBuildCodebook(
       ["accuracy", "Accuracy proportion", "numeric 0-1", "summary_scores", "Correct / scorable trials; blank when the task has no scorable trials."],
       ["mean_rt_ms", "Mean reaction time", "milliseconds", "summary_scores", "Mean of recorded reaction times."],
       ["median_rt_ms", "Median reaction time", "milliseconds", "summary_scores", "Median of recorded reaction times."],
+      ["paradigm", "Dedicated cognitive paradigm", "text", "summary_scores", "stop_signal when the administration used PsyLattice's dedicated Stop-Signal runtime."],
+      ["ssrt_ms", "Stop-signal reaction time", "milliseconds", "summary_scores.stop_signal", "Deterministic integration-method SSRT with Go-omission replacement; blank when quality conditions prevent estimation."],
+      ["mean_ssd_ms", "Mean stop-signal delay", "milliseconds", "summary_scores.stop_signal", "Mean observed SSD across experimental Stop trials."],
+      ["stop_success_rate", "Stop success rate", "numeric 0-1", "summary_scores.stop_signal", "Successful inhibitions divided by experimental Stop trials."],
+      ["p_respond_signal", "p(respond | signal)", "numeric 0-1", "summary_scores.stop_signal", "Failed Stop trials divided by Stop trials."],
+      ["mean_go_rt_ms", "Mean Go RT", "milliseconds", "summary_scores.stop_signal", "Mean response latency on experimental Go responses."],
+      ["go_omissions", "Go omissions", "integer", "summary_scores.stop_signal", "Experimental Go trials with no response."],
+      ["go_choice_errors", "Go choice errors", "integer", "summary_scores.stop_signal", "Go responses that used the wrong mapped key."],
+      ["stop_signal_quality_flags_json", "Stop-Signal quality flags", "JSON", "summary_scores.stop_signal", "Deterministic review prompts. Flags do not automatically exclude participant data."],
       ["refresh_hz", "Effective refresh rate", "Hz", "timing_quality", "Display refresh rate used for frame-aware task timing."],
       ["refresh_stability", "Refresh stability", "proportion", "timing_quality", "Runner refresh-sampling stability diagnostic."],
       ["condition_summary_json", "Condition summaries", "JSON", "summary_scores", "Deterministic per-condition trial count, accuracy and mean RT summaries."],
@@ -13585,6 +13712,17 @@ function researchBuildCodebook(
       ["correct_response", "Correct response", "text/JSON", "response_payload", "Resolved correct answer for the executed trial."],
       ["correct", "Correctness", "boolean/null", "cognitive_trial_results", "NULL means the trial was not scorable."],
       ["reaction_time_ms", "Reaction time", "milliseconds", "cognitive_trial_results", "RT relative to the configured response anchor."],
+      ["paradigm", "Dedicated cognitive paradigm", "text", "stimulus_payload.runtime_data", "stop_signal for dedicated Stop-Signal trials."],
+      ["stop_signal_trial_type", "Stop-Signal trial type", "categorical", "stimulus_payload.runtime_data", "go or stop."],
+      ["requested_ssd_ms", "Requested SSD", "milliseconds", "stimulus_payload.runtime_data", "Staircase SSD requested before presentation."],
+      ["actual_ssd_ms", "Observed SSD", "milliseconds", "stimulus_payload.runtime_data", "Observed delay from Go onset to Stop-signal onset."],
+      ["ssd_after_trial_ms", "SSD after staircase update", "milliseconds", "stimulus_payload.runtime_data", "SSD carried forward after the Stop trial."],
+      ["stop_signal_presented", "Stop signal presented", "boolean", "stimulus_payload.runtime_data", "TRUE on dedicated Stop trials."],
+      ["stop_success", "Successful inhibition", "boolean", "stimulus_payload.runtime_data", "TRUE when no response occurred during a Stop trial."],
+      ["response_before_stop_signal", "Premature Stop-trial response", "boolean", "stimulus_payload.runtime_data", "TRUE when a response occurred before the Stop signal appeared."],
+      ["go_correct", "Go mapping correct", "boolean", "stimulus_payload.runtime_data", "Whether the participant response matched the Go mapping."],
+      ["go_correct_response", "Mapped Go correct response", "text", "stimulus_payload.runtime_data", "Resolved response key for the Go stimulus."],
+      ["go_stimulus", "Go stimulus", "text", "stimulus_payload.runtime_data", "Stimulus displayed at Go onset."],
       ["stimulus_variables_json", "Trial variables", "JSON", "stimulus_payload", "Lossless Trial Table variables for the executed trial."],
       ["timing_json", "Component timing", "JSON", "cognitive_trial_results", "Per-component requested/actual timing and frame diagnostics."],
     ].map(([variable, label, type, source, notes]) => ({ variable, label, type, source, notes }));
@@ -13595,14 +13733,64 @@ function researchBuildCodebook(
       ["participant", "Participant", "text", "study_participants", "Pseudonymous or export-scoped anonymous participant identifier."],
       ["administration_position", "Study-flow administration position", "integer", "study_cognitive_tasks", "Identifies the task placement in this study."],
       ["cognitive_task", "Cognitive task", "text", "cognitive_tasks", "Task title."],
+      ["version", "Pinned task version", "text", "cognitive_task_versions", "Frozen version used in this study administration."],
       ["completed", "Completed administration", "binary", "derived", "1/TRUE when the study-mode task session is completed."],
+      ["session_status", "Session status", "categorical", "cognitive_task_sessions", "Current/final cognitive session state."],
       ["trials", "Recorded trials", "integer", "derived", "Number of stored raw trial rows."],
       ["accuracy", "Accuracy proportion", "numeric 0-1", "derived", "Correct / scorable trials."],
       ["mean_rt_ms", "Mean reaction time", "milliseconds", "derived", "Mean participant RT across recorded RT trials."],
       ["median_rt_ms", "Median reaction time", "milliseconds", "derived", "Median participant RT across recorded RT trials."],
       ["omissions", "Omitted responses", "integer", "derived", "Trials with no participant response value."],
+      ["paradigm", "Dedicated cognitive paradigm", "text", "summary_scores", "stop_signal when this administration used the dedicated Stop-Signal engine."],
+      ["ssrt_ms", "SSRT", "milliseconds", "summary_scores.stop_signal", "Integration-method Stop-Signal Reaction Time; blank when the deterministic quality rule suppresses estimation."],
+      ["mean_ssd_ms", "Mean SSD", "milliseconds", "summary_scores.stop_signal", "Mean observed experimental stop-signal delay."],
+      ["stop_success_rate", "Stop success rate", "numeric 0-1", "summary_scores.stop_signal", "Proportion of experimental Stop trials successfully inhibited."],
+      ["p_respond_signal", "p(respond | signal)", "numeric 0-1", "summary_scores.stop_signal", "Probability of responding on Stop trials."],
+      ["mean_go_rt_ms", "Mean Go RT", "milliseconds", "summary_scores.stop_signal", "Mean experimental Go response latency."],
+      ["median_go_rt_ms", "Median Go RT", "milliseconds", "summary_scores.stop_signal", "Median experimental Go response latency."],
+      ["mean_failed_stop_rt_ms", "Mean failed-Stop RT", "milliseconds", "summary_scores.stop_signal", "Mean RT on failed Stop trials."],
+      ["go_omissions", "Go omissions", "integer", "summary_scores.stop_signal", "Experimental Go trials with no response."],
+      ["go_choice_errors", "Go choice errors", "integer", "summary_scores.stop_signal", "Incorrect mapped Go responses."],
+      ["stop_trials", "Experimental Stop trials", "integer", "summary_scores.stop_signal", "Stop trials included in the deterministic Stop-Signal summary."],
+      ["stop_signal_quality_flags_json", "Stop-Signal quality flags", "JSON", "summary_scores.stop_signal", "Deterministic review prompts. A blank SSRT can be intentional when the stored quality rule prevents estimation."],
       ["refresh_hz", "Effective refresh rate", "Hz", "timing_quality", "Display refresh rate used for the session."],
+      ["refresh_stability", "Refresh stability", "proportion", "timing_quality", "Display refresh calibration stability."],
+      ["visibility_interruptions", "Visibility interruptions", "integer", "timing_quality", "Number of tab/page visibility interruptions recorded during execution."],
+      ["completed_at", "Completion timestamp", "ISO timestamp", "cognitive_task_sessions", "Timestamp when the cognitive administration completed."],
     ].map(([variable, label, type, source, notes]) => ({ variable, label, type, source, notes }));
+  }
+
+  if (datasetType === "stop_signal_summary") {
+    return researchBuildCodebook(
+      bundle,
+      "cognitive_participant_summary",
+      includeDirectIdentifiers
+    ).filter((row) =>
+      [
+        "participant","is_test","administration_position","cognitive_task","version","completed",
+        "session_status","ssrt_ms","mean_ssd_ms","stop_success_rate","p_respond_signal",
+        "mean_go_rt_ms","median_go_rt_ms","mean_failed_stop_rt_ms","go_omissions",
+        "go_choice_errors","stop_trials","refresh_hz","refresh_stability","visibility_interruptions",
+        "completed_at","stop_signal_quality_flags_json"
+      ].includes(row.variable)
+    );
+  }
+
+  if (datasetType === "stop_signal_trials") {
+    return researchBuildCodebook(
+      bundle,
+      "cognitive_trials",
+      includeDirectIdentifiers
+    ).filter((row) =>
+      [
+        "participant","is_test","administration_position","cognitive_task","version",
+        "cognitive_session_id","block_key","trial_index","condition","response","correct_response",
+        "correct","reaction_time_ms","stop_signal_trial_type","requested_ssd_ms","actual_ssd_ms",
+        "ssd_after_trial_ms","stop_signal_presented","stop_success","response_before_stop_signal",
+        "go_correct","go_correct_response","go_stimulus","stimulus_variables_json","stimulus_payload_json",
+        "response_payload_json","timing_json","recorded_at"
+      ].includes(row.variable)
+    );
   }
 
   if (datasetType === "consent") {
@@ -13724,6 +13912,18 @@ function researchBuildCodebook(
       { variable: variables.medianRt, label: `${attachment.title} — median RT (ms)`, type: "Numeric milliseconds", source: "cognitive_trial_results", notes: baseNotes },
       { variable: variables.omissions, label: `${attachment.title} — omissions`, type: "Integer", source: "cognitive_trial_results", notes: baseNotes }
     );
+
+    if (researchAttachmentHasStopSignal(bundle, attachment.id)) {
+      rows.push(
+        { variable: variables.ssrt, label: `${attachment.title} — SSRT (ms)`, type: "Numeric milliseconds", source: "cognitive_task_sessions.summary_scores.stop_signal", notes: `${baseNotes} · Integration-method SSRT with Go-omission replacement; blank when deterministic quality rules suppress estimation.` },
+        { variable: variables.meanSsd, label: `${attachment.title} — mean SSD (ms)`, type: "Numeric milliseconds", source: "cognitive_task_sessions.summary_scores.stop_signal", notes: `${baseNotes} · Mean experimental stop-signal delay.` },
+        { variable: variables.stopSuccess, label: `${attachment.title} — stop success rate`, type: "Numeric proportion", source: "cognitive_task_sessions.summary_scores.stop_signal", notes: `${baseNotes} · Successful inhibition proportion.` },
+        { variable: variables.pRespondSignal, label: `${attachment.title} — p(respond | signal)`, type: "Numeric proportion", source: "cognitive_task_sessions.summary_scores.stop_signal", notes: `${baseNotes} · Probability of responding on Stop trials.` },
+        { variable: variables.meanGoRt, label: `${attachment.title} — mean Go RT (ms)`, type: "Numeric milliseconds", source: "cognitive_task_sessions.summary_scores.stop_signal", notes: baseNotes },
+        { variable: variables.goOmissions, label: `${attachment.title} — Go omissions`, type: "Integer", source: "cognitive_task_sessions.summary_scores.stop_signal", notes: baseNotes },
+        { variable: variables.goChoiceErrors, label: `${attachment.title} — Go choice errors`, type: "Integer", source: "cognitive_task_sessions.summary_scores.stop_signal", notes: baseNotes }
+      );
+    }
   }
 
   return rows;
@@ -14108,6 +14308,53 @@ function researchBuildDataQualitySheets(
         automatic_exclusion: 0,
       });
     }
+
+    const stopSessions = bundle.cognitiveSessions.filter(
+      (session) =>
+        session.study_cognitive_task_id === attachment.id &&
+        session.participant_id &&
+        participantIds.has(session.participant_id) &&
+        session.session_mode === "study"
+    );
+
+    for (const session of stopSessions) {
+      const stopSignal = researchStopSignalSummary(session);
+      const participantId = session.participant_id;
+      if (!stopSignal || !participantId) continue;
+      const participant = bundle.participants.find((candidate) => candidate.id === participantId);
+      if (!participant) continue;
+      const flags = Array.isArray(stopSignal.quality_flags)
+        ? stopSignal.quality_flags as Array<Record<string, unknown>>
+        : [];
+
+      for (const flag of flags) {
+        const code = String(flag.code || "stop_signal_review");
+        const detail = String(flag.message || "Review the Stop-Signal session.");
+        const label = code.replaceAll("_", " ");
+        const entry = {
+          code,
+          label,
+          detail,
+          domain: `Stop-Signal · ${attachment.title} · position ${attachment.position}`,
+          sessionId: session.id,
+        };
+        const current = flagsByParticipant.get(participantId) || [];
+        current.push(entry);
+        flagsByParticipant.set(participantId, current);
+        qualityFlagRows.push({
+          participant: identityMap.get(participantId) || "",
+          is_test: participant.is_test ? 1 : 0,
+          domain: entry.domain,
+          administration_position: attachment.position,
+          flag_code: code,
+          severity: String(flag.level || "review"),
+          flag_label: label,
+          detail,
+          source_session_id: session.id,
+          automatic_exclusion: 0,
+        });
+      }
+    }
   }
 
   const requiredDemographics = bundle.demographicQuestions.filter((question) => question.required);
@@ -14328,7 +14575,17 @@ function researchBuildUniversalWorkbook(
       "cognitive_participant_summary",
       "Cognitive_Summary",
       "clean",
-      "Participant × cognitive-task-administration summaries with accuracy, RT and omissions.",
+      "Participant × cognitive-task-administration summaries with accuracy, RT, omissions and dedicated-paradigm metrics when available.",
+      identityMode,
+      includeTestData,
+      includeDirectIdentifiers
+    ),
+    researchWorkbookDatasetSheet(
+      bundle,
+      "stop_signal_summary",
+      "StopSignal_Summary",
+      "clean",
+      "Clean participant-level Stop-Signal outcomes including SSRT, SSD, inhibition rate, Go performance and quality flags.",
       identityMode,
       includeTestData,
       includeDirectIdentifiers
@@ -14436,6 +14693,16 @@ function researchBuildUniversalWorkbook(
       includeTestData,
       includeDirectIdentifiers
     ),
+    researchWorkbookDatasetSheet(
+      bundle,
+      "stop_signal_trials",
+      "StopSignal_Trials_RAW",
+      "raw",
+      "Every dedicated Stop-Signal trial with flattened Go/Stop type, requested/observed SSD, staircase update, inhibition outcome and timing data.",
+      identityMode,
+      includeTestData,
+      includeDirectIdentifiers
+    ),
     {
       name: "Ambulatory_Prompts_RAW",
       kind: "raw",
@@ -14493,6 +14760,7 @@ function researchBuildUniversalWorkbook(
           "demographics",
           "questionnaire_scores",
           "cognitive_participant_summary",
+          "stop_signal_summary",
           "ambulatory_wide",
           "ambulatory_participant_days",
         ]
@@ -14503,6 +14771,7 @@ function researchBuildUniversalWorkbook(
             "participant_uploads",
             "cognitive_sessions",
             "cognitive_trials",
+            "stop_signal_trials",
             "ambulatory_checkins",
             "ambulatory_responses",
             "consent",
@@ -14517,6 +14786,8 @@ function researchBuildUniversalWorkbook(
             "cognitive_sessions",
             "cognitive_trials",
             "cognitive_participant_summary",
+            "stop_signal_summary",
+            "stop_signal_trials",
             "consent",
             "ambulatory_checkins",
             "ambulatory_responses",
@@ -14846,6 +15117,283 @@ function ResearchAmbulatoryDataPanel({
   );
 }
 
+
+function ResearchStopSignalInsightPanel({
+  sessions,
+  trials,
+  compact = false,
+}: {
+  sessions: ResearchDataCognitiveSession[];
+  trials: ResearchDataCognitiveTrial[];
+  compact?: boolean;
+}) {
+  const summaries = sessions
+    .map((session) => ({
+      session,
+      summary: researchStopSignalSummary(session),
+    }))
+    .filter(
+      (item): item is {
+        session: ResearchDataCognitiveSession;
+        summary: Record<string, unknown>;
+      } => item.summary !== null
+    );
+
+  if (summaries.length === 0) return null;
+
+  const ssrtValues = summaries
+    .map((item) => researchNumber(item.summary.ssrt_integration_ms))
+    .filter((value): value is number => value !== null);
+  const meanSsdValues = summaries
+    .map((item) => researchNumber(item.summary.mean_ssd_ms))
+    .filter((value): value is number => value !== null);
+  const stopSuccessValues = summaries
+    .map((item) => researchNumber(item.summary.stop_success_rate))
+    .filter((value): value is number => value !== null);
+  const goRtValues = summaries
+    .map((item) => researchNumber(item.summary.mean_go_rt_ms))
+    .filter((value): value is number => value !== null);
+
+  const qualityFlagCount = summaries.reduce((sum, item) => {
+    const flags = Array.isArray(item.summary.quality_flags)
+      ? item.summary.quality_flags
+      : [];
+    return sum + flags.length;
+  }, 0);
+
+  const latest = [...summaries].sort(
+    (a, b) =>
+      new Date(b.session.completed_at || b.session.created_at).getTime() -
+      new Date(a.session.completed_at || a.session.created_at).getTime()
+  )[0];
+
+  const latestStopTrials = latest
+    ? trials
+        .filter((trial) => trial.session_id === latest.session.id)
+        .map((trial) => ({
+          trial,
+          runtime: researchStopSignalRuntime(trial),
+        }))
+        .filter(
+          (item): item is {
+            trial: ResearchDataCognitiveTrial;
+            runtime: Record<string, unknown>;
+          } =>
+            item.runtime !== null &&
+            String(item.runtime.trial_type || "") === "stop"
+        )
+        .map((item) => ({
+          index: item.trial.trial_index,
+          ssd:
+            researchNumber(item.runtime.actual_ssd_ms) ??
+            researchNumber(item.runtime.requested_ssd_ms),
+          success:
+            item.runtime.stop_success === null ||
+            item.runtime.stop_success === undefined
+              ? null
+              : Boolean(item.runtime.stop_success),
+        }))
+        .filter(
+          (item): item is {
+            index: number;
+            ssd: number;
+            success: boolean | null;
+          } => item.ssd !== null
+        )
+        .sort((a, b) => a.index - b.index)
+    : [];
+
+  const width = 680;
+  const height = 220;
+  const left = 44;
+  const right = 18;
+  const top = 16;
+  const bottom = 32;
+  const plotW = width - left - right;
+  const plotH = height - top - bottom;
+  const maxSsd = latestStopTrials.length
+    ? Math.max(...latestStopTrials.map((item) => item.ssd), 100)
+    : 100;
+  const minSsd = latestStopTrials.length
+    ? Math.min(...latestStopTrials.map((item) => item.ssd), 0)
+    : 0;
+  const span = Math.max(1, maxSsd - minSsd);
+
+  const pointX = (index: number) =>
+    left +
+    (latestStopTrials.length <= 1
+      ? plotW / 2
+      : (index / (latestStopTrials.length - 1)) * plotW);
+  const pointY = (ssd: number) =>
+    top + plotH - ((ssd - minSsd) / span) * plotH;
+
+  const path = latestStopTrials
+    .map(
+      (item, index) =>
+        `${index === 0 ? "M" : "L"} ${pointX(index)} ${pointY(item.ssd)}`
+    )
+    .join(" ");
+
+  return (
+    <div
+      className={`${
+        compact ? "mt-4" : "mt-5"
+      } rounded-[24px] border border-cyan-200/80 bg-white p-5 shadow-[0_2px_5px_rgba(15,23,42,0.045),0_10px_28px_rgba(8,145,178,0.07)]`}
+    >
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <p className="text-[10px] font-semibold uppercase tracking-[0.15em] text-cyan-700">
+            Dedicated Stop-Signal analysis
+          </p>
+          <h4 className="mt-1 text-base font-semibold text-slate-950">
+            Inhibition and staircase performance
+          </h4>
+          <p className="mt-1 text-[11px] leading-5 text-slate-500">
+            Participant summaries come from the deterministic Stop-Signal
+            runtime. SSRT is never inferred by AI.
+          </p>
+        </div>
+
+        <Status type={qualityFlagCount > 0 ? "warning" : "success"}>
+          {qualityFlagCount} review flag{qualityFlagCount === 1 ? "" : "s"}
+        </Status>
+      </div>
+
+      <div className="mt-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
+        <StatCard
+          label="Mean SSRT"
+          value={
+            ssrtValues.length
+              ? `${researchFormatEstimate(researchMean(ssrtValues), 1)} ms`
+              : "—"
+          }
+          detail={`${ssrtValues.length}/${summaries.length} participants with estimable SSRT`}
+        />
+        <StatCard
+          label="Mean SSD"
+          value={
+            meanSsdValues.length
+              ? `${researchFormatEstimate(researchMean(meanSsdValues), 1)} ms`
+              : "—"
+          }
+          detail="Participant-level mean"
+        />
+        <StatCard
+          label="Stop success"
+          value={
+            stopSuccessValues.length
+              ? `${researchFormatEstimate(
+                  (researchMean(stopSuccessValues) || 0) * 100,
+                  1
+                )}%`
+              : "—"
+          }
+          detail="Mean participant inhibition rate"
+        />
+        <StatCard
+          label="Mean Go RT"
+          value={
+            goRtValues.length
+              ? `${researchFormatEstimate(researchMean(goRtValues), 1)} ms`
+              : "—"
+          }
+          detail="Participant-level mean"
+        />
+        <StatCard
+          label="Completed runs"
+          value={String(summaries.length)}
+          detail={`${Math.max(
+            0,
+            summaries.length - ssrtValues.length
+          )} without estimable SSRT`}
+        />
+      </div>
+
+      {latestStopTrials.length > 1 && (
+        <div className="mt-4 rounded-[22px] border border-slate-300/70 bg-slate-50/65 p-4 shadow-[0_5px_18px_rgba(15,23,42,0.04)]">
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <div>
+              <p className="text-xs font-semibold text-slate-900">
+                SSD staircase — latest completed run
+              </p>
+              <p className="mt-1 text-[10px] text-slate-500">
+                Each point is one Stop trial. Cyan = successful inhibition;
+                slate = failed inhibition.
+              </p>
+            </div>
+            <span className="rounded-full border border-slate-300/70 bg-white px-2.5 py-1 text-[9px] font-semibold text-slate-500 shadow-[0_3px_10px_rgba(15,23,42,0.05)]">
+              {latestStopTrials.length} Stop trials
+            </span>
+          </div>
+
+          <div className="mt-3 overflow-hidden rounded-2xl border border-slate-200 bg-white">
+            <svg
+              viewBox={`0 0 ${width} ${height}`}
+              className="h-auto w-full"
+              role="img"
+              aria-label="Stop-signal delay staircase"
+            >
+              {[0, 0.25, 0.5, 0.75, 1].map((fraction) => {
+                const y = top + fraction * plotH;
+                return (
+                  <line
+                    key={fraction}
+                    x1={left}
+                    y1={y}
+                    x2={left + plotW}
+                    y2={y}
+                    stroke="#e2e8f0"
+                    strokeWidth="1"
+                  />
+                );
+              })}
+
+              <path
+                d={path}
+                fill="none"
+                stroke="#64748b"
+                strokeWidth="2"
+                strokeLinejoin="round"
+                strokeLinecap="round"
+              />
+
+              {latestStopTrials.map((item, index) => (
+                <circle
+                  key={`${item.index}-${index}`}
+                  cx={pointX(index)}
+                  cy={pointY(item.ssd)}
+                  r="4.3"
+                  fill={item.success ? "#0891b2" : "#64748b"}
+                  stroke="#ffffff"
+                  strokeWidth="1.2"
+                />
+              ))}
+
+              <text x={8} y={top + 8} fontSize="10" fill="#64748b">
+                {Math.round(maxSsd)} ms
+              </text>
+              <text x={8} y={top + plotH} fontSize="10" fill="#64748b">
+                {Math.round(minSsd)} ms
+              </text>
+              <text
+                x={left + plotW / 2}
+                y={height - 9}
+                textAnchor="middle"
+                fontSize="10"
+                fontWeight="600"
+                fill="#475569"
+              >
+                Stop-trial sequence
+              </text>
+            </svg>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+
 function ResearchCognitiveDataPanel({
   bundle,
   includeTestData = false,
@@ -14881,6 +15429,9 @@ function ResearchCognitiveDataPanel({
               session.session_mode === "study"
           );
           const completedSessions = sessions.filter((session) => session.status === "completed");
+          const stopSignalSessions = completedSessions.filter(
+            (session) => researchStopSignalSummary(session) !== null
+          );
           const sessionIds = new Set(completedSessions.map((session) => session.id));
           const trials = bundle.cognitiveTrials.filter((trial) => sessionIds.has(trial.session_id));
           const scorable = trials.filter((trial) => trial.correct !== null);
@@ -14944,6 +15495,14 @@ function ResearchCognitiveDataPanel({
                     </tbody>
                   </table>
                 </div>
+              )}
+
+              {stopSignalSessions.length > 0 && (
+                <ResearchStopSignalInsightPanel
+                  sessions={stopSignalSessions}
+                  trials={trials}
+                  compact
+                />
               )}
 
               <p className="mt-3 text-[11px] leading-5 text-slate-400">
@@ -15110,6 +15669,34 @@ function ResearchCognitiveAnalysisPanel({
       ? compareConditions(analysis, conditionA, conditionB)
       : null;
 
+  const analysisParticipantIds = new Set(
+    bundle.participants
+      .filter(
+        (participant) =>
+          participant.status !== "withdrawn" &&
+          (includeTestData || !participant.is_test)
+      )
+      .map((participant) => participant.id)
+  );
+
+  const selectedStopSignalSessions = bundle.cognitiveSessions.filter(
+    (session) =>
+      session.study_cognitive_task_id === selectedAttachment.id &&
+      session.participant_id &&
+      analysisParticipantIds.has(session.participant_id) &&
+      session.session_mode === "study" &&
+      session.status === "completed" &&
+      researchStopSignalSummary(session) !== null
+  );
+
+  const selectedStopSessionIds = new Set(
+    selectedStopSignalSessions.map((session) => session.id)
+  );
+
+  const selectedStopSignalTrials = bundle.cognitiveTrials.filter((trial) =>
+    selectedStopSessionIds.has(trial.session_id)
+  );
+
   const participantById = new Map(
     bundle.participants.map((participant) => [participant.id, participant])
   );
@@ -15119,6 +15706,21 @@ function ResearchCognitiveAnalysisPanel({
   const reviewCount = analysis.qualityFlags.filter(
     (flag) => flag.severity === "review"
   ).length;
+
+  const stopSignalQualityFlags = selectedStopSignalSessions.flatMap((session) => {
+    const summary = researchStopSignalSummary(session);
+    if (!summary || !Array.isArray(summary.quality_flags)) return [];
+    return (summary.quality_flags as Array<Record<string, unknown>>).map(
+      (flag) => ({
+        sessionId: session.id,
+        participantId: session.participant_id || "",
+        code: String(flag.code || "stop_signal_review"),
+        label: String(flag.code || "stop signal review").replaceAll("_", " "),
+        detail: String(flag.message || "Review the Stop-Signal session."),
+        severity: String(flag.level || "review"),
+      })
+    );
+  });
 
   return (
     <Panel
@@ -15164,6 +15766,13 @@ function ResearchCognitiveAnalysisPanel({
           </Status>
         </div>
       </div>
+
+      {selectedStopSignalSessions.length > 0 && (
+        <ResearchStopSignalInsightPanel
+          sessions={selectedStopSignalSessions}
+          trials={selectedStopSignalTrials}
+        />
+      )}
 
       <div className="mt-5 overflow-x-auto rounded-2xl border shadow-[0_8px_24px_rgba(15,23,42,0.065),0_2px_6px_rgba(15,23,42,0.035)] border-slate-200">
         <table className="w-full min-w-[820px] text-left text-xs">
@@ -15212,7 +15821,7 @@ function ResearchCognitiveAnalysisPanel({
         </table>
       </div>
 
-      {analysis.conditionLabels.length >= 2 && (
+      {selectedStopSignalSessions.length === 0 && analysis.conditionLabels.length >= 2 && (
         <div className="mt-5 space-y-4">
           <div className="rounded-2xl border shadow-[0_8px_24px_rgba(15,23,42,0.065),0_2px_6px_rgba(15,23,42,0.035)] border-cyan-100 bg-cyan-50/40 p-4">
             <p className="text-sm font-semibold text-cyan-950">Compare two conditions</p>
@@ -15292,12 +15901,22 @@ function ResearchCognitiveAnalysisPanel({
               Flags identify sessions worth inspecting. PsyLattice does not remove participants or trials automatically; the researcher retains the exclusion decision and the raw record remains exportable.
             </p>
           </div>
-          <Status type={analysis.qualityFlags.length ? "warning" : "success"}>
-            {analysis.qualityFlags.length} flag{analysis.qualityFlags.length === 1 ? "" : "s"}
+          <Status
+            type={
+              analysis.qualityFlags.length + stopSignalQualityFlags.length
+                ? "warning"
+                : "success"
+            }
+          >
+            {analysis.qualityFlags.length + stopSignalQualityFlags.length} flag
+            {analysis.qualityFlags.length + stopSignalQualityFlags.length === 1
+              ? ""
+              : "s"}
           </Status>
         </div>
 
-        {analysis.qualityFlags.length === 0 ? (
+        {analysis.qualityFlags.length === 0 &&
+        stopSignalQualityFlags.length === 0 ? (
           <div className="mt-4 rounded-xl border shadow-[0_5px_18px_rgba(15,23,42,0.06),0_1px_4px_rgba(15,23,42,0.035)] border-cyan-200 bg-cyan-50 px-4 py-3 text-xs text-cyan-800">
             No built-in review flags were triggered for the current live participant sessions.
           </div>
@@ -15322,6 +15941,37 @@ function ResearchCognitiveAnalysisPanel({
                 </div>
               );
             })}
+            {stopSignalQualityFlags.slice(0, 24).map((flag, index) => {
+              const participant = participantById.get(flag.participantId);
+              return (
+                <div
+                  key={`stop-${flag.sessionId}-${flag.code}-${index}`}
+                  className="flex flex-col gap-2 rounded-xl border shadow-[0_5px_18px_rgba(15,23,42,0.06),0_1px_4px_rgba(15,23,42,0.035)] border-slate-300/70 bg-white px-4 py-3 sm:flex-row sm:items-start sm:justify-between"
+                >
+                  <div>
+                    <p className="text-xs font-semibold text-slate-900">
+                      {participant?.public_id ||
+                        `Participant ${flag.participantId.slice(0, 8)}`}{" "}
+                      · {flag.label}
+                    </p>
+                    <p className="mt-1 text-[11px] leading-5 text-slate-500">
+                      {flag.detail}
+                    </p>
+                  </div>
+                  <Status
+                    type={
+                      flag.severity === "warning" ||
+                      flag.severity === "caution"
+                        ? "warning"
+                        : "neutral"
+                    }
+                  >
+                    {flag.severity}
+                  </Status>
+                </div>
+              );
+            })}
+
             {analysis.qualityFlags.length > 24 && (
               <p className="pt-2 text-xs text-slate-400">
                 Showing the first 24 flags. Participant-level cognitive exports retain the complete session/timing information for further review.
@@ -15332,7 +15982,7 @@ function ResearchCognitiveAnalysisPanel({
       </div>
 
       <div className="mt-5 rounded-xl border shadow-[0_5px_18px_rgba(15,23,42,0.06),0_1px_4px_rgba(15,23,42,0.035)] border-slate-300/70 bg-white px-4 py-3 text-[11px] leading-5 text-slate-500">
-        <span className="font-semibold text-slate-700">Analysis boundary:</span> the current engine provides participant-level descriptive summaries, 95% confidence intervals, paired t-tests for selected two-condition contrasts, Cohen’s dz, and transparent quality flags. It does not automatically choose a complex statistical model or claim that a hypothesis is supported. Trial-level mixed models, regression, questionnaire–cognitive associations and preregistered analysis plans are later analysis modules.
+        <span className="font-semibold text-slate-700">Analysis boundary:</span> the current engine provides participant-level descriptive summaries, 95% confidence intervals, paired t-tests for selected two-condition contrasts, Cohen’s dz, and transparent quality flags. It does not automatically choose a complex statistical model or claim that a hypothesis is supported. Dedicated Stop-Signal summaries use the stored deterministic SSRT/SSD engine. The Study Associations panel below can calculate researcher-selected Pearson/Spearman participant-level associations; trial-level mixed models, regression and preregistered analysis plans remain later modules.
       </div>
     </Panel>
   );
@@ -17453,6 +18103,23 @@ function DataExplorer() {
 
       <ResearchCognitiveAnalysisPanel bundle={bundle} />
 
+      <ResearchStudyAssociations
+        rows={researchBuildRows(
+          bundle,
+          "analysis_wide",
+          "pseudonymous",
+          false,
+          false
+        )}
+        rowsWithTest={researchBuildRows(
+          bundle,
+          "analysis_wide",
+          "pseudonymous",
+          true,
+          false
+        )}
+      />
+
       {selectedStudy && (
         <ResearchAiAssistant
           studyId={selectedStudy.id}
@@ -17601,6 +18268,7 @@ function ExportData() {
         "Quality_Flags",
         "Questionnaire_Scores",
         "Cognitive_Summary",
+        "StopSignal_Summary",
         "Cognitive_Conditions",
         "Variable_Map",
         "Import_Guide",

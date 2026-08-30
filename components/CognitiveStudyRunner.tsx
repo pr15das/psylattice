@@ -13,6 +13,14 @@ import {
   X,
 } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
+import {
+  buildStopSignalSummary,
+  isStopSignalRuntime,
+  nextStopSignalSsd,
+  planStopSignalTrials,
+  stopSignalSettingsFromTaskConfig,
+  type StopSignalSettings,
+} from "@/lib/research/stopSignal";
 
 type TaskRow = {
   id: string;
@@ -25,7 +33,9 @@ type VersionRow = {
   task_id: string;
   version_label: string;
   status: string;
+  runtime_engine: string;
   participant_instructions: string;
+  task_config: Record<string, unknown>;
   randomization_config: Record<string, unknown>;
   scoring_config: Record<string, unknown>;
   timing_config: Record<string, unknown>;
@@ -52,7 +62,9 @@ export type StudyCognitiveDefinition = {
     task_id: string;
     version_label: string;
     status: string;
+    runtime_engine?: string;
     participant_instructions: string;
+    task_config?: Record<string, unknown>;
     randomization_config: Record<string, unknown>;
     scoring_config: Record<string, unknown>;
     timing_config: Record<string, unknown>;
@@ -162,6 +174,7 @@ type PreviewTrialResult = {
   response_timestamp_ms: number | null;
   anchor_timestamp_ms: number | null;
   component_timings: ComponentTiming[];
+  runtime_data?: Record<string, unknown>;
 };
 
 type RunnerPhase = "preflight" | "running" | "complete" | "error";
@@ -602,7 +615,9 @@ export default function CognitiveStudyRunner({
         task_id: String(definition.version.task_id),
         version_label: String(definition.version.version_label || "Version"),
         status: String(definition.version.status || "published"),
+        runtime_engine: String(definition.version.runtime_engine || "psylattice_v1"),
         participant_instructions: String(definition.version.participant_instructions || ""),
+        task_config: definition.version.task_config || {},
         randomization_config: definition.version.randomization_config || {},
         scoring_config: definition.version.scoring_config || {},
         timing_config: definition.version.timing_config || {},
@@ -731,6 +746,12 @@ export default function CognitiveStudyRunner({
     // Allow that class when either desktop OR laptop support is enabled.
     return config.desktop !== false || config.laptop !== false;
   }, [preflight.device_class, version]);
+
+  const stopSignalRuntime = !!version && isStopSignalRuntime(version.runtime_engine, version.task_config);
+  const stopSignalSettings = useMemo(
+    () => stopSignalSettingsFromTaskConfig(version?.task_config),
+    [version?.task_config]
+  );
 
   const canStart = !loading && !!task && !!version && blocks.length > 0 && preflight.timing_api && preflight.animation_frame && deviceAllowed;
 
@@ -1077,6 +1098,230 @@ export default function CognitiveStudyRunner({
     } satisfies PreviewTrialResult;
   }
 
+
+  async function runStopSignalTrial(
+    block: RunnerBlock,
+    planned: { source: RunnerTrial; trial_type: "go" | "stop"; sequence_index: number },
+    globalIndex: number,
+    blockAttempt: number,
+    blockRepeat: number,
+    state: { currentSsdMs: number },
+    settings: StopSignalSettings
+  ) {
+    const trial = planned.source;
+    const components = [...block.components].sort((a, b) => a.position - b.position);
+    const textComponent = components.find((component) => component.component_type === "text") || null;
+    const responseComponent = components.find((component) => component.component_type === "response") || null;
+
+    const goStimulus =
+      trial.variables.stimulus ||
+      trial.variables.go_stimulus ||
+      trial.variables.target ||
+      "←";
+
+    const responseConfig = {
+      ...(responseComponent?.config || {}),
+      input: text(responseComponent?.config?.input, "keyboard"),
+      correct_variable: text(responseComponent?.config?.correct_variable, "correct"),
+      deadline_ms: settings.go_deadline_ms,
+      end_trial_on_response: planned.trial_type === "go",
+      rt_anchor: "go_stimulus",
+    };
+
+    const controller = responseController(responseConfig, trial.variables);
+    const timings: ComponentTiming[] = [];
+
+    if (settings.fixation_ms > 0) {
+      timings.push(
+        await runTimedDisplay(
+          { kind: "fixation", symbol: "+" },
+          settings.fixation_ms,
+          "sst_fixation",
+          "fixation"
+        )
+      );
+    }
+
+    const goDisplay: DisplayState = {
+      kind: "text",
+      text: goStimulus,
+      color: text(textComponent?.config?.color, "#0f172a") || "#0f172a",
+      fontSize: Math.max(24, numeric(textComponent?.config?.font_size_px, 72)),
+      fontWeight: Math.max(100, numeric(textComponent?.config?.font_weight, 700)),
+      fontFamily: text(textComponent?.config?.font_family, "inherit"),
+    };
+
+    setDisplay(goDisplay);
+    await nextAnimationFrame();
+    const goOnset = performance.now();
+    controller.startAnchor(goOnset);
+
+    const requestedSsd =
+      planned.trial_type === "stop"
+        ? Math.min(state.currentSsdMs, Math.max(0, settings.go_deadline_ms - 16))
+        : null;
+
+    let actualStopOnset: number | null = null;
+
+    if (planned.trial_type === "go") {
+      const start = goOnset;
+      await Promise.race([sleep(settings.go_deadline_ms), controller.responseArrived]);
+      controller.finishWait();
+      const end = performance.now();
+      timings.push({
+        key: "go_stimulus",
+        type: "text",
+        requested_ms: settings.go_deadline_ms,
+        requested_frames: null,
+        target_frame_ms: null,
+        timing_mode: "timer",
+        frame_interval_ms: effectiveFrameIntervalMs,
+        actual_frames: null,
+        actual_ms: end - start,
+        started_at_ms: start,
+        ended_at_ms: end,
+      });
+    } else {
+      const ssd = requestedSsd || 0;
+      if (ssd > 0) await sleep(ssd);
+
+      setDisplay({
+        kind: "text",
+        text: settings.stop_signal_text,
+        color: settings.stop_signal_color,
+        fontSize: Math.max(32, numeric(textComponent?.config?.font_size_px, 72)),
+        fontWeight: 800,
+        fontFamily: text(textComponent?.config?.font_family, "inherit"),
+      });
+      await nextAnimationFrame();
+      actualStopOnset = performance.now();
+
+      const elapsedAtStop = actualStopOnset - goOnset;
+      const remainingAfterStop = Math.max(0, settings.go_deadline_ms - elapsedAtStop);
+      const signalDuration = Math.min(settings.stop_signal_duration_ms, remainingAfterStop);
+
+      if (signalDuration > 0) {
+        const signalStart = actualStopOnset;
+        await sleep(signalDuration);
+        const signalEnd = performance.now();
+        timings.push({
+          key: "stop_signal",
+          type: "stop_signal",
+          requested_ms: signalDuration,
+          requested_frames: null,
+          target_frame_ms: null,
+          timing_mode: "timer",
+          frame_interval_ms: effectiveFrameIntervalMs,
+          actual_frames: null,
+          actual_ms: signalEnd - signalStart,
+          started_at_ms: signalStart,
+          ended_at_ms: signalEnd,
+        });
+      }
+
+      const elapsedAfterSignal = performance.now() - goOnset;
+      const remaining = Math.max(0, settings.go_deadline_ms - elapsedAfterSignal);
+      if (remaining > 0) {
+        setDisplay(goDisplay);
+        await sleep(remaining);
+      }
+
+      controller.finishWait();
+      const stopWindowEnd = performance.now();
+      timings.push({
+        key: "go_window",
+        type: "stop_signal_trial",
+        requested_ms: settings.go_deadline_ms,
+        requested_frames: null,
+        target_frame_ms: null,
+        timing_mode: "timer",
+        frame_interval_ms: effectiveFrameIntervalMs,
+        actual_frames: null,
+        actual_ms: stopWindowEnd - goOnset,
+        started_at_ms: goOnset,
+        ended_at_ms: stopWindowEnd,
+      });
+    }
+
+    controller.stop();
+    const response = controller.result();
+    const goCorrect =
+      response.response !== null && response.expected !== null
+        ? response.response === response.expected
+        : false;
+
+    const stopSuccess = planned.trial_type === "stop" ? response.response === null : null;
+    const responseBeforeStopSignal =
+      planned.trial_type === "stop" &&
+      response.responseTime !== null &&
+      actualStopOnset !== null
+        ? response.responseTime < actualStopOnset
+        : planned.trial_type === "stop" && response.responseTime !== null
+          ? true
+          : null;
+
+    const actualSsd =
+      planned.trial_type === "stop" && actualStopOnset !== null
+        ? Math.max(0, actualStopOnset - goOnset)
+        : null;
+
+    const ssdAfter =
+      planned.trial_type === "stop" && stopSuccess !== null
+        ? nextStopSignalSsd(requestedSsd || state.currentSsdMs, stopSuccess, settings)
+        : null;
+
+    if (ssdAfter !== null) state.currentSsdMs = ssdAfter;
+
+    if (settings.iti_ms > 0) {
+      timings.push(
+        await runTimedDisplay(
+          { kind: "blank" },
+          settings.iti_ms,
+          "sst_iti",
+          "iti"
+        )
+      );
+    } else {
+      setDisplay({ kind: "blank" });
+    }
+
+    return {
+      block_key: block.block_key,
+      block_type: block.block_type,
+      block_attempt: blockAttempt,
+      block_repeat: blockRepeat,
+      trial_index: globalIndex,
+      source_trial_id: trial.id,
+      source_trial_position: trial.position,
+      condition_label: planned.trial_type,
+      variables: {
+        ...trial.variables,
+        sst_trial_type: planned.trial_type,
+        sst_sequence_index: String(planned.sequence_index),
+      },
+      response: response.response,
+      correct_response: planned.trial_type === "stop" ? null : response.expected,
+      correct: planned.trial_type === "stop" ? stopSuccess : goCorrect,
+      reaction_time_ms: response.reactionTime,
+      response_timestamp_ms: response.responseTime,
+      anchor_timestamp_ms: response.anchor,
+      component_timings: timings,
+      runtime_data: {
+        paradigm: "stop_signal",
+        trial_type: planned.trial_type,
+        requested_ssd_ms: requestedSsd,
+        actual_ssd_ms: actualSsd,
+        ssd_after_trial_ms: ssdAfter,
+        stop_signal_presented: planned.trial_type === "stop",
+        stop_success: stopSuccess,
+        response_before_stop_signal: responseBeforeStopSignal,
+        go_correct: goCorrect,
+        go_correct_response: response.expected,
+        go_stimulus: goStimulus,
+      },
+    } satisfies PreviewTrialResult;
+  }
+
   async function createSession() {
     const supabase = createClient();
     const device = {
@@ -1115,7 +1360,7 @@ export default function CognitiveStudyRunner({
       .filter((timing) => timing.requested_ms !== null)
       .map((timing) => timing.actual_ms - (timing.requested_ms || 0));
     const timingQuality = {
-      engine: "psylattice_browser_study_v1_frame_calibrated",
+      engine: stopSignalRuntime ? "psylattice_stop_signal_study_v1" : "psylattice_browser_study_v1_frame_calibrated",
       clock: "performance.now",
       detected_refresh_hz: preflight.refresh_hz,
       detected_frame_interval_ms: preflight.frame_interval_ms,
@@ -1146,6 +1391,7 @@ export default function CognitiveStudyRunner({
         block_type: result.block_type,
         block_attempt: result.block_attempt,
         block_repeat: result.block_repeat,
+        runtime_data: result.runtime_data || null,
       },
       response_payload: {
         response: result.response,
@@ -1193,12 +1439,19 @@ export default function CognitiveStudyRunner({
       const runSeed = `${id}:${Date.now()}`;
       const totalPlanned = blocks.reduce((sum, block) => {
         if (!["practice", "experimental", "custom"].includes(block.block_type)) return sum;
+        if (stopSignalRuntime && block.block_type === "practice") {
+          return sum + stopSignalSettings.practice_trials * Math.max(1, block.repeat_count);
+        }
+        if (stopSignalRuntime && block.block_type === "experimental") {
+          return sum + stopSignalSettings.experimental_trials * Math.max(1, block.repeat_count);
+        }
         return sum + expandedTrials(block.trials).length * Math.max(1, block.repeat_count);
       }, 0);
       setProgress({ current: 0, total: totalPlanned, block: "" });
 
       const collected: PreviewTrialResult[] = [];
       let globalIndex = 0;
+      const stopSignalState = { currentSsdMs: stopSignalSettings.initial_ssd_ms };
 
       for (const block of [...blocks].sort((a, b) => a.position - b.position)) {
         if (cancelledRef.current) throw new Error("Task cancelled");
@@ -1215,14 +1468,47 @@ export default function CognitiveStudyRunner({
           let practiceDone = false;
 
           while (!practiceDone && attempt <= maxAttempts) {
-            const trials = orderedTrials(block, version.randomization_config || {}, `${runSeed}:${repeat}:${attempt}`);
+            const dedicatedStopBlock =
+              stopSignalRuntime &&
+              (block.block_type === "practice" || block.block_type === "experimental");
+
+            if (dedicatedStopBlock && block.trials.filter((trial) => trial.enabled !== false).length === 0) {
+              throw new Error("Stop-Signal requires at least one enabled Go mapping in the Trial Table.");
+            }
+
+            if (dedicatedStopBlock && attempt === 1 && repeat === 1) {
+              stopSignalState.currentSsdMs = stopSignalSettings.initial_ssd_ms;
+            }
+
+            const trials = dedicatedStopBlock
+              ? planStopSignalTrials(
+                  block.trials.filter((trial) => trial.enabled !== false),
+                  block.block_type === "practice"
+                    ? stopSignalSettings.practice_trials
+                    : stopSignalSettings.experimental_trials,
+                  stopSignalSettings.stop_probability,
+                  stopSignalSettings.max_consecutive_stops,
+                  `${runSeed}:${block.block_key}:${repeat}:${attempt}`
+                )
+              : orderedTrials(block, version.randomization_config || {}, `${runSeed}:${repeat}:${attempt}`);
+
             const attemptResults: PreviewTrialResult[] = [];
             setProgress((current) => ({ ...current, block: block.name }));
 
-            for (const trial of trials) {
+            for (const planned of trials) {
               globalIndex += 1;
               setProgress((current) => ({ current: globalIndex, total: Math.max(current.total, globalIndex), block: block.name }));
-              const result = await runTrial(block, trial, globalIndex, attempt, repeat);
+              const result = dedicatedStopBlock
+                ? await runStopSignalTrial(
+                    block,
+                    planned as { source: RunnerTrial; trial_type: "go" | "stop"; sequence_index: number },
+                    globalIndex,
+                    attempt,
+                    repeat,
+                    stopSignalState,
+                    stopSignalSettings
+                  )
+                : await runTrial(block, planned as RunnerTrial, globalIndex, attempt, repeat);
               collected.push(result);
               attemptResults.push(result);
             }
@@ -1255,7 +1541,18 @@ export default function CognitiveStudyRunner({
       }
 
       setResults(collected);
-      const finalSummary = buildSummary(collected);
+      const genericSummary = buildSummary(collected);
+      const stopSummary = stopSignalRuntime
+        ? buildStopSignalSummary(collected, stopSignalSettings)
+        : null;
+      const finalSummary = stopSummary
+        ? {
+            ...genericSummary,
+            paradigm: "stop_signal",
+            ssrt_ms: stopSummary.ssrt_integration_ms,
+            stop_signal: stopSummary,
+          }
+        : genericSummary;
       setSummary(finalSummary);
       await completeSession(id, collected, finalSummary, device);
       setPhase("complete");

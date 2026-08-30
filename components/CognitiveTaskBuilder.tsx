@@ -104,7 +104,7 @@ type BuilderBlock = {
   trials: BuilderTrial[];
 };
 
-type EditorTab = "timeline" | "trials" | "randomization" | "scoring";
+type EditorTab = "paradigm" | "timeline" | "trials" | "randomization" | "scoring";
 
 type Notice = { type: "success" | "error"; text: string } | null;
 
@@ -320,6 +320,205 @@ function Toggle({ checked, onChange, label }: { checked: boolean; onChange: (val
   );
 }
 
+
+const STOP_SIGNAL_DEFAULTS = {
+  stop_probability: 0.25,
+  initial_ssd_ms: 250,
+  staircase_step_ms: 50,
+  min_ssd_ms: 50,
+  max_ssd_ms: 900,
+  practice_trials: 16,
+  experimental_trials: 200,
+  go_deadline_ms: 1000,
+  fixation_ms: 500,
+  iti_ms: 700,
+  stop_signal_duration_ms: 250,
+  max_consecutive_stops: 2,
+  stop_signal_text: "STOP",
+  stop_signal_color: "#ef4444",
+};
+
+function isStopSignalTaskConfig(config: Record<string, unknown> | null | undefined) {
+  if (!config) return false;
+  return (
+    String(config.runtime || "").toLowerCase() === "stop_signal" ||
+    String(config.template_key || "").toLowerCase() === "stop_signal"
+  );
+}
+
+function StopSignalSettingsPanel({
+  taskConfig,
+  onChange,
+}: {
+  taskConfig: Record<string, unknown>;
+  onChange: (key: string, value: unknown) => void;
+}) {
+  const raw =
+    typeof taskConfig.stop_signal === "object" && taskConfig.stop_signal !== null
+      ? (taskConfig.stop_signal as Record<string, unknown>)
+      : {};
+
+  const value = (key: keyof typeof STOP_SIGNAL_DEFAULTS) =>
+    raw[key] ?? STOP_SIGNAL_DEFAULTS[key];
+
+  const experimentalTrials = Math.max(20, safeNumber(value("experimental_trials"), 200));
+  const stopProbability = Math.min(0.5, Math.max(0.05, safeNumber(value("stop_probability"), 0.25)));
+  const expectedStopTrials = Math.round(experimentalTrials * stopProbability);
+
+  return (
+    <div className="mt-5 max-w-4xl space-y-5">
+      <div className="rounded-[24px] border border-cyan-200/80 bg-white p-5 shadow-[0_7px_24px_rgba(8,145,178,0.08)]">
+        <div className="flex flex-wrap items-start justify-between gap-4">
+          <div className="max-w-2xl">
+            <p className="text-[10px] font-semibold uppercase tracking-[0.15em] text-cyan-700">
+              Dedicated paradigm
+            </p>
+            <h3 className="mt-1 text-xl font-semibold text-slate-950">Stop-Signal Task</h3>
+            <p className="mt-2 text-xs leading-5 text-slate-500">
+              PsyLattice generates Go and Stop trials from the Go mappings in the Trial Table,
+              presents the stop signal after an adaptive SSD, and updates the staircase after
+              every Stop trial. The Trial Table defines the Go stimulus and correct response;
+              the dedicated engine controls Stop-trial assignment and SSD tracking.
+            </p>
+          </div>
+          <span className="rounded-full border border-cyan-200 bg-cyan-50 px-3 py-1.5 text-[10px] font-semibold text-cyan-900">
+            Adaptive runtime
+          </span>
+        </div>
+
+        <div className="mt-5 grid gap-3 sm:grid-cols-4">
+          <div className="rounded-2xl border border-slate-200 bg-slate-50 p-3">
+            <p className="text-[9px] font-semibold uppercase tracking-[0.12em] text-slate-400">Stop trials</p>
+            <p className="mt-1 text-lg font-semibold text-slate-950">{Math.round(stopProbability * 100)}%</p>
+          </div>
+          <div className="rounded-2xl border border-slate-200 bg-slate-50 p-3">
+            <p className="text-[9px] font-semibold uppercase tracking-[0.12em] text-slate-400">Initial SSD</p>
+            <p className="mt-1 text-lg font-semibold text-slate-950">{safeNumber(value("initial_ssd_ms"), 250)} ms</p>
+          </div>
+          <div className="rounded-2xl border border-slate-200 bg-slate-50 p-3">
+            <p className="text-[9px] font-semibold uppercase tracking-[0.12em] text-slate-400">SSD step</p>
+            <p className="mt-1 text-lg font-semibold text-slate-950">{safeNumber(value("staircase_step_ms"), 50)} ms</p>
+          </div>
+          <div className="rounded-2xl border border-slate-200 bg-slate-50 p-3">
+            <p className="text-[9px] font-semibold uppercase tracking-[0.12em] text-slate-400">Experimental Stop trials</p>
+            <p className="mt-1 text-lg font-semibold text-slate-950">≈ {expectedStopTrials}</p>
+          </div>
+        </div>
+      </div>
+
+      <section className="rounded-[24px] border border-slate-200 bg-white p-5 shadow-[0_6px_20px_rgba(15,23,42,0.05)]">
+        <div>
+          <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-400">Adaptive stopping</p>
+          <h4 className="mt-1 text-base font-semibold text-slate-950">Stop-signal staircase</h4>
+        </div>
+        <div className="mt-4 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+          <label>
+            <FieldLabel>Stop-trial probability</FieldLabel>
+            <div className="mt-1.5 flex items-center gap-2">
+              <input
+                type="number"
+                min="5"
+                max="50"
+                step="1"
+                value={Math.round(stopProbability * 100)}
+                onChange={(event) => onChange("stop_probability", Math.min(0.5, Math.max(0.05, safeNumber(event.target.value, 25) / 100)))}
+                className="w-full rounded-[18px] border border-slate-300/80 bg-white px-3 py-2.5 text-sm shadow-[0_4px_14px_rgba(15,23,42,0.05)] outline-none focus:border-cyan-300"
+              />
+              <span className="text-xs text-slate-400">%</span>
+            </div>
+          </label>
+
+          <label>
+            <FieldLabel>Initial SSD</FieldLabel>
+            <div className="mt-1.5 flex items-center gap-2">
+              <input type="number" min="0" step="10" value={safeNumber(value("initial_ssd_ms"), 250)} onChange={(event) => onChange("initial_ssd_ms", safeNumber(event.target.value, 250))} className="w-full rounded-[18px] border border-slate-300/80 bg-white px-3 py-2.5 text-sm shadow-[0_4px_14px_rgba(15,23,42,0.05)] outline-none focus:border-cyan-300" />
+              <span className="text-xs text-slate-400">ms</span>
+            </div>
+          </label>
+
+          <label>
+            <FieldLabel>Staircase step</FieldLabel>
+            <div className="mt-1.5 flex items-center gap-2">
+              <input type="number" min="1" step="1" value={safeNumber(value("staircase_step_ms"), 50)} onChange={(event) => onChange("staircase_step_ms", Math.max(1, safeNumber(event.target.value, 50)))} className="w-full rounded-[18px] border border-slate-300/80 bg-white px-3 py-2.5 text-sm shadow-[0_4px_14px_rgba(15,23,42,0.05)] outline-none focus:border-cyan-300" />
+              <span className="text-xs text-slate-400">ms</span>
+            </div>
+          </label>
+
+          <label>
+            <FieldLabel>Minimum SSD</FieldLabel>
+            <div className="mt-1.5 flex items-center gap-2">
+              <input type="number" min="0" step="10" value={safeNumber(value("min_ssd_ms"), 50)} onChange={(event) => onChange("min_ssd_ms", Math.max(0, safeNumber(event.target.value, 50)))} className="w-full rounded-[18px] border border-slate-300/80 bg-white px-3 py-2.5 text-sm shadow-[0_4px_14px_rgba(15,23,42,0.05)] outline-none focus:border-cyan-300" />
+              <span className="text-xs text-slate-400">ms</span>
+            </div>
+          </label>
+
+          <label>
+            <FieldLabel>Maximum SSD</FieldLabel>
+            <div className="mt-1.5 flex items-center gap-2">
+              <input type="number" min="50" step="10" value={safeNumber(value("max_ssd_ms"), 900)} onChange={(event) => onChange("max_ssd_ms", Math.max(50, safeNumber(event.target.value, 900)))} className="w-full rounded-[18px] border border-slate-300/80 bg-white px-3 py-2.5 text-sm shadow-[0_4px_14px_rgba(15,23,42,0.05)] outline-none focus:border-cyan-300" />
+              <span className="text-xs text-slate-400">ms</span>
+            </div>
+          </label>
+
+          <label>
+            <FieldLabel>Maximum consecutive Stop trials</FieldLabel>
+            <TextField
+              type="number"
+              min="1"
+              value={safeNumber(value("max_consecutive_stops"), 2)}
+              onChange={(event) => onChange("max_consecutive_stops", Math.max(1, Math.round(safeNumber(event.target.value, 2))))}
+            />
+          </label>
+        </div>
+
+        <div className="mt-4 rounded-2xl border border-slate-200 bg-slate-50 p-4 text-[11px] leading-5 text-slate-600">
+          <strong className="text-slate-900">Tracking rule:</strong> successful Stop → SSD increases;
+          failed Stop → SSD decreases. The default 50 ms step and 25% Stop-trial probability follow
+          common Stop-Signal recommendations and are editable for the research protocol.
+        </div>
+      </section>
+
+      <section className="rounded-[24px] border border-slate-200 bg-white p-5 shadow-[0_6px_20px_rgba(15,23,42,0.05)]">
+        <div>
+          <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-400">Task length & timing</p>
+          <h4 className="mt-1 text-base font-semibold text-slate-950">Participant experience</h4>
+        </div>
+        <div className="mt-4 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+          <label><FieldLabel>Practice trials</FieldLabel><TextField type="number" min="4" value={safeNumber(value("practice_trials"), 16)} onChange={(event) => onChange("practice_trials", Math.max(4, Math.round(safeNumber(event.target.value, 16))))} /></label>
+          <label><FieldLabel>Experimental trials</FieldLabel><TextField type="number" min="20" value={experimentalTrials} onChange={(event) => onChange("experimental_trials", Math.max(20, Math.round(safeNumber(event.target.value, 200))))} /></label>
+          <label><FieldLabel>Go response deadline (ms)</FieldLabel><TextField type="number" min="250" value={safeNumber(value("go_deadline_ms"), 1000)} onChange={(event) => onChange("go_deadline_ms", Math.max(250, safeNumber(event.target.value, 1000)))} /></label>
+          <label><FieldLabel>Fixation (ms)</FieldLabel><TextField type="number" min="0" value={safeNumber(value("fixation_ms"), 500)} onChange={(event) => onChange("fixation_ms", Math.max(0, safeNumber(event.target.value, 500)))} /></label>
+          <label><FieldLabel>ITI (ms)</FieldLabel><TextField type="number" min="0" value={safeNumber(value("iti_ms"), 700)} onChange={(event) => onChange("iti_ms", Math.max(0, safeNumber(event.target.value, 700)))} /></label>
+          <label><FieldLabel>Stop signal duration (ms)</FieldLabel><TextField type="number" min="16" value={safeNumber(value("stop_signal_duration_ms"), 250)} onChange={(event) => onChange("stop_signal_duration_ms", Math.max(16, safeNumber(event.target.value, 250)))} /></label>
+          <label><FieldLabel>Stop signal text</FieldLabel><TextField value={String(value("stop_signal_text") || "STOP")} onChange={(event) => onChange("stop_signal_text", event.target.value.slice(0, 12))} /></label>
+          <label><FieldLabel>Stop signal colour</FieldLabel><TextField type="color" value={String(value("stop_signal_color") || "#ef4444")} onChange={(event) => onChange("stop_signal_color", event.target.value)} /></label>
+        </div>
+      </section>
+
+      <section className="rounded-[24px] border border-slate-200 bg-[#fbfdfd] p-5">
+        <p className="text-xs font-semibold text-slate-900">Deterministic SSRT output</p>
+        <p className="mt-2 text-xs leading-5 text-slate-500">
+          PsyLattice calculates SSRT with the integration method and replaces Go omissions with
+          the configured maximum Go response time. Practice trials are excluded from the SSRT
+          estimate. Raw SSD values, Stop success/failure, premature responses and staircase changes
+          are retained trial by trial.
+        </p>
+        {expectedStopTrials < 50 && (
+          <div className="pl-inline-warning mt-4 text-xs">
+            This configuration yields about {expectedStopTrials} experimental Stop trials. For a
+            stronger SSRT estimate, consider at least 50 Stop trials when your protocol permits.
+          </div>
+        )}
+        {safeNumber(value("max_ssd_ms"), 900) >= safeNumber(value("go_deadline_ms"), 1000) && (
+          <div className="pl-inline-warning mt-3 text-xs">
+            Maximum SSD should stay below the Go response deadline so the Stop signal has time to appear before the trial ends. The runtime will clamp impossible SSD values, but it is better to correct the saved configuration here.
+          </div>
+        )}
+      </section>
+    </div>
+  );
+}
+
 export default function CognitiveTaskBuilder({
   taskId,
   onBack,
@@ -448,6 +647,7 @@ export default function CognitiveTaskBuilder({
     setBlocks(nextBlocks);
     setSelectedBlockId((current) => current && nextBlocks.some((block) => block.local_id === current) ? current : nextBlocks[0]?.local_id || "");
     setSelectedComponentId("");
+    setEditorTab(isStopSignalTaskConfig(versionData.task_config) ? "paradigm" : "timeline");
     setDirty(false);
     setLoading(false);
   }, [taskId]);
@@ -458,6 +658,25 @@ export default function CognitiveTaskBuilder({
 
   const selectedBlock = blocks.find((block) => block.local_id === selectedBlockId) || null;
   const selectedComponent = selectedBlock?.components.find((component) => component.local_id === selectedComponentId) || null;
+  const stopSignalTask = !!version && isStopSignalTaskConfig(version.task_config);
+
+  function updateStopSignalSetting(key: string, value: unknown) {
+    if (!version) return;
+    const current =
+      typeof version.task_config.stop_signal === "object" && version.task_config.stop_signal !== null
+        ? (version.task_config.stop_signal as Record<string, unknown>)
+        : {};
+    updateVersion("task_config", {
+      ...version.task_config,
+      template_key: "stop_signal",
+      runtime: "stop_signal",
+      stop_signal: {
+        ...STOP_SIGNAL_DEFAULTS,
+        ...current,
+        [key]: value,
+      },
+    });
+  }
 
   const trialVariables = useMemo(() => {
     if (!selectedBlock) return [];
@@ -897,10 +1116,11 @@ export default function CognitiveTaskBuilder({
           <section className="min-w-0 bg-white p-4 sm:p-5">
             <div className="flex flex-wrap gap-2 rounded-[22px] border border-slate-200 bg-white p-2 shadow-[0_5px_16px_rgba(15,23,42,0.05)]">
               {[
-                ["timeline", "Trial timeline", Layers3],
-                ["trials", "Trial table", ListChecks],
-                ["randomization", "Randomisation", Shuffle],
-                ["scoring", "Scoring & devices", BarChart3],
+                ...(stopSignalTask ? [["paradigm", "Stop-Signal setup", CircleDot] as const] : []),
+                ["timeline", "Trial timeline", Layers3] as const,
+                ["trials", "Trial table", ListChecks] as const,
+                ["randomization", "Randomisation", Shuffle] as const,
+                ["scoring", "Scoring & devices", BarChart3] as const,
               ].map(([id, label, Icon]) => (
                 <button key={id as string} type="button" onClick={() => setEditorTab(id as EditorTab)} className={`inline-flex items-center gap-2 rounded-full px-3 py-2 text-xs font-semibold transition ${editorTab === id ? "border border-cyan-200 bg-white text-cyan-950 shadow-[0_5px_16px_rgba(8,145,178,0.12)]" : "border border-transparent text-slate-500 hover:border-slate-200 hover:bg-white hover:text-slate-900 hover:shadow-[0_4px_12px_rgba(15,23,42,0.045)]"}`}>
                   <Icon className="h-3.5 w-3.5" /> {label as string}
@@ -912,6 +1132,8 @@ export default function CognitiveTaskBuilder({
               <div className="mt-5 flex min-h-[480px] items-center justify-center rounded-[24px] border border-dashed border-slate-300 bg-slate-50/50 text-center">
                 <div className="max-w-sm px-6"><Layers3 className="mx-auto h-7 w-7 text-slate-300" /><p className="mt-3 text-sm font-semibold text-slate-800">Add or select a block</p><p className="mt-1 text-xs leading-5 text-slate-500">Blocks define the participant journey. Trial-level stimuli and responses live inside Practice and Experimental blocks.</p></div>
               </div>
+            ) : editorTab === "paradigm" && stopSignalTask ? (
+              <StopSignalSettingsPanel taskConfig={version.task_config} onChange={updateStopSignalSetting} />
             ) : editorTab === "timeline" ? (
               <div className="mt-5">
                 <div className="flex flex-wrap items-start justify-between gap-4">

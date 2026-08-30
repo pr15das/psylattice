@@ -70,6 +70,7 @@ type CognitiveSession = {
   session_mode: string;
   status: string;
   timing_quality: Record<string, unknown> | null;
+  summary_scores: Record<string, unknown> | null;
   created_at: string;
 };
 
@@ -124,6 +125,14 @@ function rounded(value: number | null, digits = 3) {
   if (value === null) return null;
   const factor = 10 ** digits;
   return Math.round(value * factor) / factor;
+}
+
+
+function storedStopSignalSummary(session: CognitiveSession) {
+  const raw = session.summary_scores?.stop_signal;
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) return null;
+  const value = raw as Record<string, unknown>;
+  return String(value.paradigm || "stop_signal") === "stop_signal" ? value : null;
 }
 
 function compactComparison(comparison: ReturnType<typeof compareConditions>) {
@@ -262,6 +271,45 @@ function buildCognitiveContext(args: {
       }
     }
 
+    const stopSignalSessions = args.sessions
+      .filter(
+        (session) =>
+          session.study_cognitive_task_id === attachment.id &&
+          session.participant_id &&
+          participantById.has(session.participant_id) &&
+          session.session_mode === "study" &&
+          session.status === "completed"
+      )
+      .map((session) => ({
+        session,
+        summary: storedStopSignalSummary(session),
+      }))
+      .filter(
+        (item): item is { session: CognitiveSession; summary: Record<string, unknown> } =>
+          item.summary !== null
+      );
+
+    const stopSsrts = stopSignalSessions
+      .map((item) => numeric(item.summary.ssrt_integration_ms))
+      .filter((value): value is number => value !== null);
+    const stopSsds = stopSignalSessions
+      .map((item) => numeric(item.summary.mean_ssd_ms))
+      .filter((value): value is number => value !== null);
+    const stopSuccesses = stopSignalSessions
+      .map((item) => numeric(item.summary.stop_success_rate))
+      .filter((value): value is number => value !== null);
+    const stopGoRts = stopSignalSessions
+      .map((item) => numeric(item.summary.mean_go_rt_ms))
+      .filter((value): value is number => value !== null);
+    const stopQualityFlagCount = stopSignalSessions.reduce(
+      (sum, item) =>
+        sum +
+        (Array.isArray(item.summary.quality_flags)
+          ? item.summary.quality_flags.length
+          : 0),
+      0
+    );
+
     taskSummaries.push({
       administration_position: attachment.position,
       task: attachment.title,
@@ -282,7 +330,65 @@ function buildCognitiveContext(args: {
         omissions: summary.omissions,
       })),
       paired_comparisons: comparisons,
-      quality_flag_count: analysis.qualityFlags.length,
+      dedicated_stop_signal:
+        stopSignalSessions.length > 0
+          ? {
+              numerical_source: "stored cognitive_task_sessions.summary_scores.stop_signal",
+              method: "integration_with_go_omission_replacement",
+              completed_runs: stopSignalSessions.length,
+              participants_with_estimable_ssrt: stopSsrts.length,
+              mean_ssrt_ms: rounded(average(stopSsrts)),
+              median_ssrt_ms: rounded(median(stopSsrts)),
+              mean_ssd_ms: rounded(average(stopSsds)),
+              mean_stop_success_rate: rounded(average(stopSuccesses)),
+              mean_go_rt_ms: rounded(average(stopGoRts)),
+              stored_quality_flag_count: stopQualityFlagCount,
+              note:
+                "These values were computed and stored by the deterministic PsyLattice Stop-Signal runtime. The AI must not recalculate SSRT from participant rows.",
+            }
+          : null,
+      quality_flag_count: analysis.qualityFlags.length + stopQualityFlagCount,
+    });
+
+    stopSignalSessions.forEach(({ session, summary }) => {
+      if (!session.participant_id) return;
+      participantRows.push({
+        participant:
+          participantById.get(session.participant_id)?.public_id ||
+          "pseudonymous participant",
+        administration_position: attachment.position,
+        task: attachment.title,
+        paradigm: "stop_signal",
+        ssrt_ms: rounded(numeric(summary.ssrt_integration_ms)),
+        mean_ssd_ms: rounded(numeric(summary.mean_ssd_ms)),
+        stop_success_rate: rounded(numeric(summary.stop_success_rate)),
+        p_respond_signal: rounded(numeric(summary.p_respond_signal)),
+        mean_go_rt_ms: rounded(numeric(summary.mean_go_rt_ms)),
+        go_omissions: numeric(summary.go_omissions),
+        go_choice_errors: numeric(summary.go_choice_errors),
+        stored_summary_only: true,
+      });
+
+      const flags = Array.isArray(summary.quality_flags)
+        ? summary.quality_flags as Array<Record<string, unknown>>
+        : [];
+      flags.forEach((flag) => {
+        qualityFlags.push({
+          participant:
+            participantById.get(session.participant_id as string)?.public_id ||
+            "pseudonymous participant",
+          administration_position: attachment.position,
+          task: attachment.title,
+          severity: String(flag.level || "review"),
+          code: String(flag.code || "stop_signal_review"),
+          label: String(flag.code || "stop signal review").replaceAll("_", " "),
+          detail: String(flag.message || "Review the Stop-Signal session."),
+          researcher_action:
+            "Review only; PsyLattice has not excluded this participant.",
+          numerical_source:
+            "cognitive_task_sessions.summary_scores.stop_signal",
+        });
+      });
     });
 
     analysis.participantMetrics.forEach((metric) => {
@@ -465,7 +571,7 @@ async function loadStudyAiContext(
   if (attachmentIds.length) {
     const { data, error } = await supabase
       .from("cognitive_task_sessions")
-      .select("id,study_cognitive_task_id,participant_id,session_mode,status,timing_quality,created_at")
+      .select("id,study_cognitive_task_id,participant_id,session_mode,status,timing_quality,summary_scores,created_at")
       .in("study_cognitive_task_id", attachmentIds)
       .eq("session_mode", "study");
     if (error) throw new Error("Cognitive sessions could not be loaded.");
@@ -513,7 +619,7 @@ async function loadStudyAiContext(
   ).length;
 
   const summary: ResearchAiContext = {
-    context_version: "psylattice_research_ai_phase_1i",
+    context_version: "psylattice_research_ai_phase_2c_stop_signal",
     generated_at: new Date().toISOString(),
     source_policy: {
       numerical_source: "PsyLattice deterministic study data and analysis engine",
@@ -570,6 +676,8 @@ async function loadStudyAiContext(
       quality_flags: cognitiveContext.qualityFlags,
       quality_policy:
         "Flags are review prompts only. PsyLattice has not automatically excluded participants or trials.",
+      dedicated_paradigm_policy:
+        "When dedicated_stop_signal is present, SSRT/SSD/Stop-success values come from stored deterministic session summaries. The assistant may explain those values but must not recompute them.",
     },
     ambulatory: {
       prompt_instances: countForIncluded(ambulatoryPromptResult.data as any[]),
@@ -579,6 +687,7 @@ async function loadStudyAiContext(
     },
     analysis_boundaries: [
       "Cognitive condition summaries, 95% confidence intervals, paired t-tests and Cohen's dz are authoritative only when explicitly present in cognitive_tasks.verified_analyses.",
+      "Stop-Signal SSRT, SSD, inhibition rate and associated quality flags are authoritative only when explicitly present in a stored dedicated_stop_signal summary. Do not derive SSRT from participant-level rows.",
       "Questionnaire score summaries are descriptive only in this phase unless a separate inferential result is explicitly present.",
       "Questionnaire–cognitive associations, regression, mixed models and trial-level generalized models have not been run by Phase 1I.",
       "The AI must not calculate or invent missing p-values, confidence intervals, correlations, effect sizes or exclusions.",

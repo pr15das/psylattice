@@ -10180,6 +10180,10 @@ type ResearchDatasetType =
   | "cognitive_participant_summary"
   | "stop_signal_summary"
   | "stop_signal_trials"
+  | "corsi_summary"
+  | "corsi_trials"
+  | "card_sorting_summary"
+  | "card_sorting_trials"
   | "consent"
   | "ambulatory_checkins"
   | "ambulatory_responses"
@@ -10659,6 +10663,10 @@ const researchDatasetLabels: Record<ResearchDatasetType, string> = {
   cognitive_participant_summary: "Cognitive participant summaries",
   stop_signal_summary: "Stop-Signal summaries — participant level",
   stop_signal_trials: "Stop-Signal trials — raw staircase data",
+  corsi_summary: "Corsi summaries — participant level",
+  corsi_trials: "Corsi trials — raw spatial sequences",
+  card_sorting_summary: "Card Sorting summaries — participant level",
+  card_sorting_trials: "Card Sorting trials — raw rule-shift data",
   consent: "Consent records",
   ambulatory_checkins: "Ambulatory check-ins — one row per check-in",
   ambulatory_responses: "Ambulatory responses — one row per item response",
@@ -11374,6 +11382,77 @@ function researchAttachmentHasStopSignal(
   );
 }
 
+
+function researchCorsiSummary(
+  session: ResearchDataCognitiveSession | null | undefined
+): Record<string, unknown> | null {
+  const raw = session?.summary_scores?.corsi;
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) return null;
+  const value = raw as Record<string, unknown>;
+  if (String(value.paradigm || "corsi") !== "corsi") return null;
+  return value;
+}
+
+function researchCorsiRuntime(
+  trial: ResearchDataCognitiveTrial
+): Record<string, unknown> | null {
+  const raw = trial.stimulus_payload?.runtime_data;
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) return null;
+  const value = raw as Record<string, unknown>;
+  return String(value.paradigm || "") === "corsi" ? value : null;
+}
+
+function researchAttachmentHasCorsi(
+  bundle: ResearchDataBundle,
+  attachmentId: string
+) {
+  return bundle.cognitiveSessions.some(
+    (session) =>
+      session.study_cognitive_task_id === attachmentId &&
+      researchCorsiSummary(session) !== null
+  );
+}
+
+function researchCorsiModeSummary(
+  summary: Record<string, unknown>,
+  mode: "forward" | "backward"
+): Record<string, unknown> | null {
+  const raw = summary[mode];
+  return raw && typeof raw === "object" && !Array.isArray(raw)
+    ? (raw as Record<string, unknown>)
+    : null;
+}
+
+function researchCardSortSummary(
+  session: ResearchDataCognitiveSession | null | undefined
+): Record<string, unknown> | null {
+  const raw = session?.summary_scores?.card_sorting;
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) return null;
+  const value = raw as Record<string, unknown>;
+  if (String(value.paradigm || "card_sorting") !== "card_sorting") return null;
+  return value;
+}
+
+function researchCardSortRuntime(
+  trial: ResearchDataCognitiveTrial
+): Record<string, unknown> | null {
+  const raw = trial.stimulus_payload?.runtime_data;
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) return null;
+  const value = raw as Record<string, unknown>;
+  return String(value.paradigm || "") === "card_sorting" ? value : null;
+}
+
+function researchAttachmentHasCardSort(
+  bundle: ResearchDataBundle,
+  attachmentId: string
+) {
+  return bundle.cognitiveSessions.some(
+    (session) =>
+      session.study_cognitive_task_id === attachmentId &&
+      researchCardSortSummary(session) !== null
+  );
+}
+
 function researchCognitiveParticipantSummary(
   bundle: ResearchDataBundle,
   participantId: string,
@@ -11397,6 +11476,8 @@ function researchCognitiveParticipantSummary(
       medianRt: null,
       omissions: 0,
       stopSignal: null as Record<string, unknown> | null,
+      corsi: null as Record<string, unknown> | null,
+      cardSort: null as Record<string, unknown> | null,
     };
   }
 
@@ -11419,6 +11500,8 @@ function researchCognitiveParticipantSummary(
     medianRt: researchMedian(rts),
     omissions,
     stopSignal: researchStopSignalSummary(session),
+    corsi: researchCorsiSummary(session),
+    cardSort: researchCardSortSummary(session),
   };
 }
 
@@ -11437,6 +11520,27 @@ function researchCognitiveAnalysisVariables(attachment: ResearchDataCognitiveAtt
     meanGoRt: `${base}_mean_go_rt_ms`,
     goOmissions: `${base}_go_omissions`,
     goChoiceErrors: `${base}_go_choice_errors`,
+    corsiForwardSpan: `${base}_corsi_forward_span`,
+    corsiBackwardSpan: `${base}_corsi_backward_span`,
+    corsiForwardProduct: `${base}_corsi_forward_product_score`,
+    corsiBackwardProduct: `${base}_corsi_backward_product_score`,
+    corsiForwardAccuracy: `${base}_corsi_forward_sequence_accuracy`,
+    corsiBackwardAccuracy: `${base}_corsi_backward_sequence_accuracy`,
+    corsiOverallAccuracy: `${base}_corsi_overall_sequence_accuracy`,
+    corsiForwardFirstTap: `${base}_corsi_forward_first_tap_latency_ms`,
+    corsiBackwardFirstTap: `${base}_corsi_backward_first_tap_latency_ms`,
+    corsiForwardCompletion: `${base}_corsi_forward_completion_latency_ms`,
+    corsiBackwardCompletion: `${base}_corsi_backward_completion_latency_ms`,
+    cardSortCategories: `${base}_card_sort_categories_completed`,
+    cardSortTotalErrors: `${base}_card_sort_total_errors`,
+    cardSortPerseverativeErrors: `${base}_card_sort_perseverative_errors`,
+    cardSortPerseverativeRate: `${base}_card_sort_perseverative_error_rate`,
+    cardSortPerseverativeShare: `${base}_card_sort_perseverative_share_of_errors`,
+    cardSortNonperseverativeErrors: `${base}_card_sort_nonperseverative_errors`,
+    cardSortFailuresMaintain: `${base}_card_sort_failures_to_maintain_set`,
+    cardSortTrialsFirstCategory: `${base}_card_sort_trials_to_first_category`,
+    cardSortMeanLatency: `${base}_card_sort_mean_response_latency_ms`,
+    cardSortAccuracy: `${base}_card_sort_accuracy`,
   };
 }
 
@@ -13027,6 +13131,10 @@ function researchBuildRows(
         if (!participant || !attachment) return [];
         const summary = session.summary_scores || {};
         const stopSignal = researchStopSignalSummary(session);
+        const corsi = researchCorsiSummary(session);
+        const cardSort = researchCardSortSummary(session);
+        const corsiForward = corsi ? researchCorsiModeSummary(corsi, "forward") : null;
+        const corsiBackward = corsi ? researchCorsiModeSummary(corsi, "backward") : null;
         const timing = session.timing_quality || {};
         const device = session.device_info || {};
         return [{
@@ -13044,7 +13152,13 @@ function researchBuildRows(
           mean_rt_ms: researchNumber(summary.mean_rt_ms) ?? "",
           median_rt_ms: researchNumber(summary.median_rt_ms) ?? "",
           response_observations: researchNumber(summary.response_observations) ?? "",
-          paradigm: stopSignal ? "stop_signal" : "",
+          paradigm: stopSignal
+            ? "stop_signal"
+            : corsi
+              ? "corsi"
+              : cardSort
+                ? "card_sorting"
+                : "",
           ssrt_ms: stopSignal ? researchNumber(stopSignal.ssrt_integration_ms) ?? "" : "",
           mean_ssd_ms: stopSignal ? researchNumber(stopSignal.mean_ssd_ms) ?? "" : "",
           stop_success_rate: stopSignal ? researchNumber(stopSignal.stop_success_rate) ?? "" : "",
@@ -13056,6 +13170,39 @@ function researchBuildRows(
           go_choice_errors: stopSignal ? researchNumber(stopSignal.go_choice_errors) ?? "" : "",
           stop_trials: stopSignal ? researchNumber(stopSignal.stop_trials) ?? "" : "",
           stop_signal_quality_flags_json: stopSignal ? researchValueText(stopSignal.quality_flags || []) : "",
+          corsi_forward_span: corsiForward ? researchNumber(corsiForward.span) ?? "" : "",
+          corsi_backward_span: corsiBackward ? researchNumber(corsiBackward.span) ?? "" : "",
+          corsi_forward_product_score: corsiForward ? researchNumber(corsiForward.product_score) ?? "" : "",
+          corsi_backward_product_score: corsiBackward ? researchNumber(corsiBackward.product_score) ?? "" : "",
+          corsi_forward_sequence_accuracy: corsiForward ? researchNumber(corsiForward.sequence_accuracy) ?? "" : "",
+          corsi_backward_sequence_accuracy: corsiBackward ? researchNumber(corsiBackward.sequence_accuracy) ?? "" : "",
+          corsi_overall_sequence_accuracy: corsi ? researchNumber(corsi.overall_sequence_accuracy) ?? "" : "",
+          corsi_total_correct_sequences: corsi ? researchNumber(corsi.total_correct_sequences) ?? "" : "",
+          corsi_total_sequences_attempted: corsi ? researchNumber(corsi.total_sequences_attempted) ?? "" : "",
+          corsi_forward_mean_first_tap_latency_ms: corsiForward ? researchNumber(corsiForward.mean_first_tap_latency_ms) ?? "" : "",
+          corsi_backward_mean_first_tap_latency_ms: corsiBackward ? researchNumber(corsiBackward.mean_first_tap_latency_ms) ?? "" : "",
+          corsi_forward_mean_completion_latency_ms: corsiForward ? researchNumber(corsiForward.mean_completion_latency_ms) ?? "" : "",
+          corsi_backward_mean_completion_latency_ms: corsiBackward ? researchNumber(corsiBackward.mean_completion_latency_ms) ?? "" : "",
+          corsi_quality_flags_json: corsi ? researchValueText(corsi.quality_flags || []) : "",
+          card_sort_scoring_system: cardSort ? String(cardSort.scoring_system || "psylattice_transparent_v1") : "",
+          card_sort_categories_completed: cardSort ? researchNumber(cardSort.categories_completed) ?? "" : "",
+          card_sort_total_trials: cardSort ? researchNumber(cardSort.total_trials) ?? "" : "",
+          card_sort_total_correct: cardSort ? researchNumber(cardSort.total_correct) ?? "" : "",
+          card_sort_total_errors: cardSort ? researchNumber(cardSort.total_errors) ?? "" : "",
+          card_sort_accuracy: cardSort ? researchNumber(cardSort.accuracy) ?? "" : "",
+          card_sort_error_rate: cardSort ? researchNumber(cardSort.error_rate) ?? "" : "",
+          card_sort_perseverative_errors: cardSort ? researchNumber(cardSort.perseverative_errors) ?? "" : "",
+          card_sort_perseverative_error_rate: cardSort ? researchNumber(cardSort.perseverative_error_rate) ?? "" : "",
+          card_sort_perseverative_share_of_errors: cardSort ? researchNumber(cardSort.perseverative_share_of_errors) ?? "" : "",
+          card_sort_nonperseverative_errors: cardSort ? researchNumber(cardSort.nonperseverative_errors) ?? "" : "",
+          card_sort_failures_to_maintain_set: cardSort ? researchNumber(cardSort.failures_to_maintain_set) ?? "" : "",
+          card_sort_trials_to_first_category: cardSort ? researchNumber(cardSort.trials_to_first_category) ?? "" : "",
+          card_sort_mean_response_latency_ms: cardSort ? researchNumber(cardSort.mean_response_latency_ms) ?? "" : "",
+          card_sort_median_response_latency_ms: cardSort ? researchNumber(cardSort.median_response_latency_ms) ?? "" : "",
+          card_sort_timed_out_trials: cardSort ? researchNumber(cardSort.timed_out_trials) ?? "" : "",
+          card_sort_max_trials_reached: cardSort ? Boolean(cardSort.max_trials_reached) : "",
+          card_sort_category_summaries_json: cardSort ? researchValueText(cardSort.category_summaries || []) : "",
+          card_sort_quality_flags_json: cardSort ? researchValueText(cardSort.quality_flags || []) : "",
           refresh_hz: researchNumber(timing.refresh_hz) ?? researchNumber(device.refresh_hz) ?? "",
           refresh_stability: researchNumber(timing.refresh_stability) ?? "",
           visibility_interruptions: researchNumber(timing.visibility_interruptions) ?? "",
@@ -13080,6 +13227,8 @@ function researchBuildRows(
       const response = trial.response_payload || {};
       const stimulus = trial.stimulus_payload || {};
       const stopRuntime = researchStopSignalRuntime(trial);
+      const corsiRuntime = researchCorsiRuntime(trial);
+      const cardSortRuntime = researchCardSortRuntime(trial);
       return [{
         participant: identityMap.get(participant.id) || "",
         is_test: participant.is_test,
@@ -13094,7 +13243,13 @@ function researchBuildRows(
         correct_response: response.correct_response ?? "",
         correct: trial.correct ?? "",
         reaction_time_ms: trial.reaction_time_ms ?? "",
-        paradigm: stopRuntime ? "stop_signal" : "",
+        paradigm: stopRuntime
+          ? "stop_signal"
+          : corsiRuntime
+            ? "corsi"
+            : cardSortRuntime
+              ? "card_sorting"
+              : "",
         stop_signal_trial_type: stopRuntime ? String(stopRuntime.trial_type || "") : "",
         requested_ssd_ms: stopRuntime ? researchNumber(stopRuntime.requested_ssd_ms) ?? "" : "",
         actual_ssd_ms: stopRuntime ? researchNumber(stopRuntime.actual_ssd_ms) ?? "" : "",
@@ -13105,6 +13260,38 @@ function researchBuildRows(
         go_correct: stopRuntime && stopRuntime.go_correct !== null && stopRuntime.go_correct !== undefined ? Boolean(stopRuntime.go_correct) : "",
         go_correct_response: stopRuntime ? String(stopRuntime.go_correct_response ?? "") : "",
         go_stimulus: stopRuntime ? String(stopRuntime.go_stimulus ?? "") : "",
+        corsi_mode: corsiRuntime ? String(corsiRuntime.mode || "") : "",
+        corsi_practice: corsiRuntime ? Boolean(corsiRuntime.practice) : "",
+        corsi_span_length: corsiRuntime ? researchNumber(corsiRuntime.span_length) ?? "" : "",
+        corsi_span_trial_index: corsiRuntime ? researchNumber(corsiRuntime.span_trial_index) ?? "" : "",
+        corsi_presented_sequence_json: corsiRuntime ? researchValueText(corsiRuntime.presented_sequence || []) : "",
+        corsi_expected_sequence_json: corsiRuntime ? researchValueText(corsiRuntime.expected_sequence || []) : "",
+        corsi_response_sequence_json: corsiRuntime ? researchValueText(corsiRuntime.response_sequence || []) : "",
+        corsi_error_positions_json: corsiRuntime ? researchValueText(corsiRuntime.error_positions || []) : "",
+        corsi_first_tap_latency_ms: corsiRuntime ? researchNumber(corsiRuntime.first_tap_latency_ms) ?? "" : "",
+        corsi_completion_latency_ms: corsiRuntime ? researchNumber(corsiRuntime.completion_latency_ms) ?? "" : "",
+        corsi_tap_latencies_json: corsiRuntime ? researchValueText(corsiRuntime.tap_latencies_ms || []) : "",
+        corsi_timed_out: corsiRuntime ? Boolean(corsiRuntime.timed_out) : "",
+        corsi_block_positions_json: corsiRuntime ? researchValueText(corsiRuntime.block_positions || []) : "",
+        card_sort_scoring_system: cardSortRuntime ? String(cardSortRuntime.scoring_system || "psylattice_transparent_v1") : "",
+        card_sort_trial_number: cardSortRuntime ? researchNumber(cardSortRuntime.trial_number) ?? "" : "",
+        card_sort_category_index: cardSortRuntime ? researchNumber(cardSortRuntime.category_index) ?? "" : "",
+        card_sort_active_rule: cardSortRuntime ? String(cardSortRuntime.active_rule || "") : "",
+        card_sort_previous_rule: cardSortRuntime ? String(cardSortRuntime.previous_rule || "") : "",
+        card_sort_target_card_json: cardSortRuntime ? researchValueText(cardSortRuntime.target_card || {}) : "",
+        card_sort_chosen_reference_id: cardSortRuntime ? researchNumber(cardSortRuntime.chosen_reference_id) ?? "" : "",
+        card_sort_correct_reference_id: cardSortRuntime ? researchNumber(cardSortRuntime.correct_reference_id) ?? "" : "",
+        card_sort_inferred_choice_rule: cardSortRuntime ? String(cardSortRuntime.inferred_choice_rule || "") : "",
+        card_sort_perseverative_error: cardSortRuntime ? Boolean(cardSortRuntime.perseverative_error) : "",
+        card_sort_nonperseverative_error: cardSortRuntime ? Boolean(cardSortRuntime.nonperseverative_error) : "",
+        card_sort_failure_to_maintain_set: cardSortRuntime ? Boolean(cardSortRuntime.failure_to_maintain_set) : "",
+        card_sort_correct_streak_before: cardSortRuntime ? researchNumber(cardSortRuntime.correct_streak_before) ?? "" : "",
+        card_sort_correct_streak_after: cardSortRuntime ? researchNumber(cardSortRuntime.correct_streak_after) ?? "" : "",
+        card_sort_category_completed_after_trial: cardSortRuntime ? Boolean(cardSortRuntime.category_completed_after_trial) : "",
+        card_sort_next_rule_after_trial: cardSortRuntime ? String(cardSortRuntime.next_rule_after_trial || "") : "",
+        card_sort_response_latency_ms: cardSortRuntime ? researchNumber(cardSortRuntime.response_latency_ms) ?? "" : "",
+        card_sort_timed_out: cardSortRuntime ? Boolean(cardSortRuntime.timed_out) : "",
+        card_sort_reference_cards_json: cardSortRuntime ? researchValueText(cardSortRuntime.reference_cards || []) : "",
         stimulus_variables_json: researchValueText(stimulus.variables || {}),
         stimulus_payload_json: researchValueText(stimulus),
         response_payload_json: researchValueText(response),
@@ -13136,7 +13323,13 @@ function researchBuildRows(
           mean_rt_ms: summary.meanRt ?? researchNumber(scores.mean_rt_ms) ?? "",
           median_rt_ms: summary.medianRt ?? researchNumber(scores.median_rt_ms) ?? "",
           omissions: summary.omissions,
-          paradigm: summary.stopSignal ? "stop_signal" : "",
+          paradigm: summary.stopSignal
+            ? "stop_signal"
+            : summary.corsi
+              ? "corsi"
+              : summary.cardSort
+                ? "card_sorting"
+                : "",
           ssrt_ms: summary.stopSignal ? researchNumber(summary.stopSignal.ssrt_integration_ms) ?? "" : "",
           mean_ssd_ms: summary.stopSignal ? researchNumber(summary.stopSignal.mean_ssd_ms) ?? "" : "",
           stop_success_rate: summary.stopSignal ? researchNumber(summary.stopSignal.stop_success_rate) ?? "" : "",
@@ -13148,6 +13341,39 @@ function researchBuildRows(
           go_choice_errors: summary.stopSignal ? researchNumber(summary.stopSignal.go_choice_errors) ?? "" : "",
           stop_trials: summary.stopSignal ? researchNumber(summary.stopSignal.stop_trials) ?? "" : "",
           stop_signal_quality_flags_json: summary.stopSignal ? researchValueText(summary.stopSignal.quality_flags || []) : "",
+          corsi_forward_span: summary.corsi ? researchNumber(researchCorsiModeSummary(summary.corsi, "forward")?.span) ?? "" : "",
+          corsi_backward_span: summary.corsi ? researchNumber(researchCorsiModeSummary(summary.corsi, "backward")?.span) ?? "" : "",
+          corsi_forward_product_score: summary.corsi ? researchNumber(researchCorsiModeSummary(summary.corsi, "forward")?.product_score) ?? "" : "",
+          corsi_backward_product_score: summary.corsi ? researchNumber(researchCorsiModeSummary(summary.corsi, "backward")?.product_score) ?? "" : "",
+          corsi_forward_sequence_accuracy: summary.corsi ? researchNumber(researchCorsiModeSummary(summary.corsi, "forward")?.sequence_accuracy) ?? "" : "",
+          corsi_backward_sequence_accuracy: summary.corsi ? researchNumber(researchCorsiModeSummary(summary.corsi, "backward")?.sequence_accuracy) ?? "" : "",
+          corsi_overall_sequence_accuracy: summary.corsi ? researchNumber(summary.corsi.overall_sequence_accuracy) ?? "" : "",
+          corsi_total_correct_sequences: summary.corsi ? researchNumber(summary.corsi.total_correct_sequences) ?? "" : "",
+          corsi_total_sequences_attempted: summary.corsi ? researchNumber(summary.corsi.total_sequences_attempted) ?? "" : "",
+          corsi_forward_mean_first_tap_latency_ms: summary.corsi ? researchNumber(researchCorsiModeSummary(summary.corsi, "forward")?.mean_first_tap_latency_ms) ?? "" : "",
+          corsi_backward_mean_first_tap_latency_ms: summary.corsi ? researchNumber(researchCorsiModeSummary(summary.corsi, "backward")?.mean_first_tap_latency_ms) ?? "" : "",
+          corsi_forward_mean_completion_latency_ms: summary.corsi ? researchNumber(researchCorsiModeSummary(summary.corsi, "forward")?.mean_completion_latency_ms) ?? "" : "",
+          corsi_backward_mean_completion_latency_ms: summary.corsi ? researchNumber(researchCorsiModeSummary(summary.corsi, "backward")?.mean_completion_latency_ms) ?? "" : "",
+          corsi_quality_flags_json: summary.corsi ? researchValueText(summary.corsi.quality_flags || []) : "",
+          card_sort_scoring_system: summary.cardSort ? String(summary.cardSort.scoring_system || "psylattice_transparent_v1") : "",
+          card_sort_categories_completed: summary.cardSort ? researchNumber(summary.cardSort.categories_completed) ?? "" : "",
+          card_sort_total_trials: summary.cardSort ? researchNumber(summary.cardSort.total_trials) ?? "" : "",
+          card_sort_total_correct: summary.cardSort ? researchNumber(summary.cardSort.total_correct) ?? "" : "",
+          card_sort_total_errors: summary.cardSort ? researchNumber(summary.cardSort.total_errors) ?? "" : "",
+          card_sort_accuracy: summary.cardSort ? researchNumber(summary.cardSort.accuracy) ?? "" : "",
+          card_sort_error_rate: summary.cardSort ? researchNumber(summary.cardSort.error_rate) ?? "" : "",
+          card_sort_perseverative_errors: summary.cardSort ? researchNumber(summary.cardSort.perseverative_errors) ?? "" : "",
+          card_sort_perseverative_error_rate: summary.cardSort ? researchNumber(summary.cardSort.perseverative_error_rate) ?? "" : "",
+          card_sort_perseverative_share_of_errors: summary.cardSort ? researchNumber(summary.cardSort.perseverative_share_of_errors) ?? "" : "",
+          card_sort_nonperseverative_errors: summary.cardSort ? researchNumber(summary.cardSort.nonperseverative_errors) ?? "" : "",
+          card_sort_failures_to_maintain_set: summary.cardSort ? researchNumber(summary.cardSort.failures_to_maintain_set) ?? "" : "",
+          card_sort_trials_to_first_category: summary.cardSort ? researchNumber(summary.cardSort.trials_to_first_category) ?? "" : "",
+          card_sort_mean_response_latency_ms: summary.cardSort ? researchNumber(summary.cardSort.mean_response_latency_ms) ?? "" : "",
+          card_sort_median_response_latency_ms: summary.cardSort ? researchNumber(summary.cardSort.median_response_latency_ms) ?? "" : "",
+          card_sort_timed_out_trials: summary.cardSort ? researchNumber(summary.cardSort.timed_out_trials) ?? "" : "",
+          card_sort_max_trials_reached: summary.cardSort ? Boolean(summary.cardSort.max_trials_reached) : "",
+          card_sort_category_summaries_json: summary.cardSort ? researchValueText(summary.cardSort.category_summaries || []) : "",
+          card_sort_quality_flags_json: summary.cardSort ? researchValueText(summary.cardSort.quality_flags || []) : "",
           refresh_hz: researchNumber(timing.refresh_hz) ?? "",
           refresh_stability: researchNumber(timing.refresh_stability) ?? "",
           visibility_interruptions: researchNumber(timing.visibility_interruptions) ?? "",
@@ -13176,6 +13402,46 @@ function researchBuildRows(
       includeTestData,
       includeDirectIdentifiers
     ).filter((row) => row.paradigm === "stop_signal");
+  }
+
+  if (datasetType === "corsi_summary") {
+    return researchBuildRows(
+      bundle,
+      "cognitive_participant_summary",
+      identityMode,
+      includeTestData,
+      includeDirectIdentifiers
+    ).filter((row) => row.paradigm === "corsi");
+  }
+
+  if (datasetType === "corsi_trials") {
+    return researchBuildRows(
+      bundle,
+      "cognitive_trials",
+      identityMode,
+      includeTestData,
+      includeDirectIdentifiers
+    ).filter((row) => row.paradigm === "corsi");
+  }
+
+  if (datasetType === "card_sorting_summary") {
+    return researchBuildRows(
+      bundle,
+      "cognitive_participant_summary",
+      identityMode,
+      includeTestData,
+      includeDirectIdentifiers
+    ).filter((row) => row.paradigm === "card_sorting");
+  }
+
+  if (datasetType === "card_sorting_trials") {
+    return researchBuildRows(
+      bundle,
+      "cognitive_trials",
+      identityMode,
+      includeTestData,
+      includeDirectIdentifiers
+    ).filter((row) => row.paradigm === "card_sorting");
   }
 
   if (datasetType === "consent") {
@@ -13324,6 +13590,41 @@ function researchBuildRows(
         row[variables.meanGoRt] = researchNumber(summary.stopSignal.mean_go_rt_ms) ?? "";
         row[variables.goOmissions] = researchNumber(summary.stopSignal.go_omissions) ?? "";
         row[variables.goChoiceErrors] = researchNumber(summary.stopSignal.go_choice_errors) ?? "";
+      }
+      if (summary.corsi) {
+        const forward = researchCorsiModeSummary(summary.corsi, "forward");
+        const backward = researchCorsiModeSummary(summary.corsi, "backward");
+        row[variables.corsiForwardSpan] = forward ? researchNumber(forward.span) ?? "" : "";
+        row[variables.corsiBackwardSpan] = backward ? researchNumber(backward.span) ?? "" : "";
+        row[variables.corsiForwardProduct] = forward ? researchNumber(forward.product_score) ?? "" : "";
+        row[variables.corsiBackwardProduct] = backward ? researchNumber(backward.product_score) ?? "" : "";
+        row[variables.corsiForwardAccuracy] = forward ? researchNumber(forward.sequence_accuracy) ?? "" : "";
+        row[variables.corsiBackwardAccuracy] = backward ? researchNumber(backward.sequence_accuracy) ?? "" : "";
+        row[variables.corsiOverallAccuracy] = researchNumber(summary.corsi.overall_sequence_accuracy) ?? "";
+        row[variables.corsiForwardFirstTap] = forward
+          ? researchNumber(forward.mean_first_tap_latency_ms) ?? ""
+          : "";
+        row[variables.corsiBackwardFirstTap] = backward
+          ? researchNumber(backward.mean_first_tap_latency_ms) ?? ""
+          : "";
+        row[variables.corsiForwardCompletion] = forward
+          ? researchNumber(forward.mean_completion_latency_ms) ?? ""
+          : "";
+        row[variables.corsiBackwardCompletion] = backward
+          ? researchNumber(backward.mean_completion_latency_ms) ?? ""
+          : "";
+      }
+      if (summary.cardSort) {
+        row[variables.cardSortCategories] = researchNumber(summary.cardSort.categories_completed) ?? "";
+        row[variables.cardSortTotalErrors] = researchNumber(summary.cardSort.total_errors) ?? "";
+        row[variables.cardSortPerseverativeErrors] = researchNumber(summary.cardSort.perseverative_errors) ?? "";
+        row[variables.cardSortPerseverativeRate] = researchNumber(summary.cardSort.perseverative_error_rate) ?? "";
+        row[variables.cardSortPerseverativeShare] = researchNumber(summary.cardSort.perseverative_share_of_errors) ?? "";
+        row[variables.cardSortNonperseverativeErrors] = researchNumber(summary.cardSort.nonperseverative_errors) ?? "";
+        row[variables.cardSortFailuresMaintain] = researchNumber(summary.cardSort.failures_to_maintain_set) ?? "";
+        row[variables.cardSortTrialsFirstCategory] = researchNumber(summary.cardSort.trials_to_first_category) ?? "";
+        row[variables.cardSortMeanLatency] = researchNumber(summary.cardSort.mean_response_latency_ms) ?? "";
+        row[variables.cardSortAccuracy] = researchNumber(summary.cardSort.accuracy) ?? "";
       }
     }
 
@@ -13684,7 +13985,7 @@ function researchBuildCodebook(
       ["accuracy", "Accuracy proportion", "numeric 0-1", "summary_scores", "Correct / scorable trials; blank when the task has no scorable trials."],
       ["mean_rt_ms", "Mean reaction time", "milliseconds", "summary_scores", "Mean of recorded reaction times."],
       ["median_rt_ms", "Median reaction time", "milliseconds", "summary_scores", "Median of recorded reaction times."],
-      ["paradigm", "Dedicated cognitive paradigm", "text", "summary_scores", "stop_signal when the administration used PsyLattice's dedicated Stop-Signal runtime."],
+      ["paradigm", "Dedicated cognitive paradigm", "text", "summary_scores", "stop_signal, corsi or card_sorting when the administration used a PsyLattice dedicated runtime."],
       ["ssrt_ms", "Stop-signal reaction time", "milliseconds", "summary_scores.stop_signal", "Deterministic integration-method SSRT with Go-omission replacement; blank when quality conditions prevent estimation."],
       ["mean_ssd_ms", "Mean stop-signal delay", "milliseconds", "summary_scores.stop_signal", "Mean observed SSD across experimental Stop trials."],
       ["stop_success_rate", "Stop success rate", "numeric 0-1", "summary_scores.stop_signal", "Successful inhibitions divided by experimental Stop trials."],
@@ -13693,6 +13994,36 @@ function researchBuildCodebook(
       ["go_omissions", "Go omissions", "integer", "summary_scores.stop_signal", "Experimental Go trials with no response."],
       ["go_choice_errors", "Go choice errors", "integer", "summary_scores.stop_signal", "Go responses that used the wrong mapped key."],
       ["stop_signal_quality_flags_json", "Stop-Signal quality flags", "JSON", "summary_scores.stop_signal", "Deterministic review prompts. Flags do not automatically exclude participant data."],
+      ["corsi_forward_span", "Corsi Forward span", "integer", "summary_scores.corsi.forward", "Longest correctly reproduced Forward sequence according to the configured progression rule."],
+      ["corsi_backward_span", "Corsi Backward span", "integer", "summary_scores.corsi.backward", "Longest correctly reproduced Backward sequence according to the configured progression rule."],
+      ["corsi_forward_product_score", "Corsi Forward product score", "numeric", "summary_scores.corsi.forward", "Forward span × total correct Forward sequences."],
+      ["corsi_backward_product_score", "Corsi Backward product score", "numeric", "summary_scores.corsi.backward", "Backward span × total correct Backward sequences."],
+      ["corsi_forward_sequence_accuracy", "Corsi Forward sequence accuracy", "numeric 0-1", "summary_scores.corsi.forward", "Correct Forward sequences divided by attempted Forward sequences."],
+      ["corsi_backward_sequence_accuracy", "Corsi Backward sequence accuracy", "numeric 0-1", "summary_scores.corsi.backward", "Correct Backward sequences divided by attempted Backward sequences."],
+      ["corsi_overall_sequence_accuracy", "Corsi overall sequence accuracy", "numeric 0-1", "summary_scores.corsi", "Correct sequences divided by attempted experimental sequences across enabled modes."],
+      ["corsi_total_correct_sequences", "Corsi total correct sequences", "integer", "summary_scores.corsi", "Total correctly reproduced experimental sequences across enabled modes."],
+      ["corsi_total_sequences_attempted", "Corsi total attempted sequences", "integer", "summary_scores.corsi", "Total attempted experimental sequences across enabled modes."],
+      ["corsi_forward_mean_first_tap_latency_ms", "Forward first-tap latency", "milliseconds", "summary_scores.corsi.forward", "Mean latency from recall-board onset to the first Forward response."],
+      ["corsi_backward_mean_first_tap_latency_ms", "Backward first-tap latency", "milliseconds", "summary_scores.corsi.backward", "Mean latency from recall-board onset to the first Backward response."],
+      ["corsi_forward_mean_completion_latency_ms", "Forward completion latency", "milliseconds", "summary_scores.corsi.forward", "Mean latency from recall-board onset to the final Forward tap."],
+      ["corsi_backward_mean_completion_latency_ms", "Backward completion latency", "milliseconds", "summary_scores.corsi.backward", "Mean latency from recall-board onset to the final Backward tap."],
+      ["corsi_quality_flags_json", "Corsi quality flags", "JSON", "summary_scores.corsi", "Deterministic Corsi review prompts such as response timeouts. Flags never automatically exclude data."],
+      ["card_sort_scoring_system", "Card Sorting scoring system", "text", "summary_scores.card_sorting", "psylattice_transparent_v1. This is not the official proprietary WCST scoring system."],
+      ["card_sort_categories_completed", "Card Sorting categories completed", "integer", "summary_scores.card_sorting", "Number of hidden-rule categories completed using the configured consecutive-correct criterion."],
+      ["card_sort_total_trials", "Card Sorting total trials", "integer", "summary_scores.card_sorting", "Experimental trials stored by the dedicated runtime."],
+      ["card_sort_total_errors", "Card Sorting total errors", "integer", "summary_scores.card_sorting", "Incorrect experimental sorting responses."],
+      ["card_sort_accuracy", "Card Sorting accuracy", "numeric 0-1", "summary_scores.card_sorting", "Correct experimental responses divided by total trials."],
+      ["card_sort_perseverative_errors", "PsyLattice perseverative errors", "integer", "summary_scores.card_sorting", "Incorrect responses matching the immediately previous hidden rule after a rule shift."],
+      ["card_sort_perseverative_error_rate", "Perseverative error rate", "numeric 0-1", "summary_scores.card_sorting", "PsyLattice perseverative errors divided by total trials."],
+      ["card_sort_perseverative_share_of_errors", "Perseverative share of errors", "numeric 0-1", "summary_scores.card_sorting", "PsyLattice perseverative errors divided by all errors."],
+      ["card_sort_nonperseverative_errors", "Nonperseverative errors", "integer", "summary_scores.card_sorting", "Incorrect responses not classified as previous-rule perseveration."],
+      ["card_sort_failures_to_maintain_set", "Failures to maintain set", "integer", "summary_scores.card_sorting", "Errors after the configured correct-streak threshold but before category completion."],
+      ["card_sort_trials_to_first_category", "Trials to first category", "integer", "summary_scores.card_sorting", "Trial number on which the first hidden-rule category was completed."],
+      ["card_sort_mean_response_latency_ms", "Mean sorting response latency", "milliseconds", "summary_scores.card_sorting", "Mean latency from card display to reference-card choice."],
+      ["card_sort_median_response_latency_ms", "Median sorting response latency", "milliseconds", "summary_scores.card_sorting", "Median latency from card display to reference-card choice."],
+      ["card_sort_timed_out_trials", "Card Sorting timeout trials", "integer", "summary_scores.card_sorting", "Trials that reached the configured response timeout."],
+      ["card_sort_category_summaries_json", "Card Sorting category summaries", "JSON", "summary_scores.card_sorting", "Per-category rule, trials, correct responses, errors, perseverative errors and completion state."],
+      ["card_sort_quality_flags_json", "Card Sorting quality flags", "JSON", "summary_scores.card_sorting", "Deterministic review prompts. They never automatically exclude data."],
       ["refresh_hz", "Effective refresh rate", "Hz", "timing_quality", "Display refresh rate used for frame-aware task timing."],
       ["refresh_stability", "Refresh stability", "proportion", "timing_quality", "Runner refresh-sampling stability diagnostic."],
       ["condition_summary_json", "Condition summaries", "JSON", "summary_scores", "Deterministic per-condition trial count, accuracy and mean RT summaries."],
@@ -13712,7 +14043,7 @@ function researchBuildCodebook(
       ["correct_response", "Correct response", "text/JSON", "response_payload", "Resolved correct answer for the executed trial."],
       ["correct", "Correctness", "boolean/null", "cognitive_trial_results", "NULL means the trial was not scorable."],
       ["reaction_time_ms", "Reaction time", "milliseconds", "cognitive_trial_results", "RT relative to the configured response anchor."],
-      ["paradigm", "Dedicated cognitive paradigm", "text", "stimulus_payload.runtime_data", "stop_signal for dedicated Stop-Signal trials."],
+      ["paradigm", "Dedicated cognitive paradigm", "text", "stimulus_payload.runtime_data", "stop_signal, corsi or card_sorting for dedicated runtime trials."],
       ["stop_signal_trial_type", "Stop-Signal trial type", "categorical", "stimulus_payload.runtime_data", "go or stop."],
       ["requested_ssd_ms", "Requested SSD", "milliseconds", "stimulus_payload.runtime_data", "Staircase SSD requested before presentation."],
       ["actual_ssd_ms", "Observed SSD", "milliseconds", "stimulus_payload.runtime_data", "Observed delay from Go onset to Stop-signal onset."],
@@ -13723,6 +14054,38 @@ function researchBuildCodebook(
       ["go_correct", "Go mapping correct", "boolean", "stimulus_payload.runtime_data", "Whether the participant response matched the Go mapping."],
       ["go_correct_response", "Mapped Go correct response", "text", "stimulus_payload.runtime_data", "Resolved response key for the Go stimulus."],
       ["go_stimulus", "Go stimulus", "text", "stimulus_payload.runtime_data", "Stimulus displayed at Go onset."],
+      ["corsi_mode", "Corsi response mode", "categorical", "stimulus_payload.runtime_data", "forward or backward."],
+      ["corsi_practice", "Corsi practice trial", "boolean", "stimulus_payload.runtime_data", "TRUE for practice; practice is excluded from span/product scoring."],
+      ["corsi_span_length", "Corsi span length", "integer", "stimulus_payload.runtime_data", "Number of blocks in the presented sequence."],
+      ["corsi_span_trial_index", "Trial within span", "integer", "stimulus_payload.runtime_data", "Sequence number at the current span."],
+      ["corsi_presented_sequence_json", "Presented Corsi sequence", "JSON", "stimulus_payload.runtime_data", "Exact block IDs illuminated in presentation order."],
+      ["corsi_expected_sequence_json", "Expected Corsi response", "JSON", "stimulus_payload.runtime_data", "Same order for Forward; reversed order for Backward."],
+      ["corsi_response_sequence_json", "Participant Corsi response", "JSON", "stimulus_payload.runtime_data", "Exact block IDs tapped/clicked by the participant."],
+      ["corsi_error_positions_json", "Corsi error positions", "JSON", "stimulus_payload.runtime_data", "One-based sequence positions that differed from the expected response."],
+      ["corsi_first_tap_latency_ms", "First-tap latency", "milliseconds", "stimulus_payload.runtime_data", "Latency from recall-board availability to first spatial response."],
+      ["corsi_completion_latency_ms", "Sequence completion latency", "milliseconds", "stimulus_payload.runtime_data", "Latency from recall-board availability to the participant's final tap."],
+      ["corsi_tap_latencies_json", "Per-tap latencies", "JSON", "stimulus_payload.runtime_data", "Latency of every spatial response from the recall-board anchor."],
+      ["corsi_timed_out", "Corsi response timeout", "boolean", "stimulus_payload.runtime_data", "TRUE when the configured response timeout ended the recall period."],
+      ["corsi_block_positions_json", "Corsi block coordinates", "JSON", "stimulus_payload.runtime_data", "Exact normalized digital-board coordinates used for this trial."],
+      ["card_sort_scoring_system", "Card Sorting scoring system", "text", "stimulus_payload.runtime_data", "psylattice_transparent_v1; not the official WCST scoring algorithm."],
+      ["card_sort_trial_number", "Card Sorting trial number", "integer", "stimulus_payload.runtime_data", "Sequential trial number in the stateful card-sorting run."],
+      ["card_sort_category_index", "Hidden category index", "integer", "stimulus_payload.runtime_data", "Research-only hidden rule-category index. Participants never see it."],
+      ["card_sort_active_rule", "Hidden active rule", "categorical", "stimulus_payload.runtime_data", "color, shape or number. Research-only."],
+      ["card_sort_previous_rule", "Previous hidden rule", "categorical", "stimulus_payload.runtime_data", "Immediately preceding rule after a shift; blank before the first shift."],
+      ["card_sort_target_card_json", "Target card", "JSON", "stimulus_payload.runtime_data", "Exact generated target-card dimensions and rule-to-reference mapping."],
+      ["card_sort_chosen_reference_id", "Chosen reference card", "integer", "stimulus_payload.runtime_data", "Reference card selected by the participant."],
+      ["card_sort_correct_reference_id", "Correct reference card", "integer", "stimulus_payload.runtime_data", "Reference card matching the active hidden rule."],
+      ["card_sort_inferred_choice_rule", "Inferred choice dimension", "categorical", "stimulus_payload.runtime_data", "Color, shape, number or none, inferred from the selected reference card."],
+      ["card_sort_perseverative_error", "PsyLattice perseverative error", "boolean", "stimulus_payload.runtime_data", "TRUE when an incorrect response matches the immediately previous hidden rule after a shift."],
+      ["card_sort_nonperseverative_error", "Nonperseverative error", "boolean", "stimulus_payload.runtime_data", "TRUE for other incorrect responses."],
+      ["card_sort_failure_to_maintain_set", "Failure to maintain set", "boolean", "stimulus_payload.runtime_data", "TRUE for an error after the configured correct-streak threshold but before category completion."],
+      ["card_sort_correct_streak_before", "Correct streak before response", "integer", "stimulus_payload.runtime_data", "Number of consecutive correct responses entering this trial."],
+      ["card_sort_correct_streak_after", "Correct streak after response", "integer", "stimulus_payload.runtime_data", "Consecutive-correct state carried forward after the trial."],
+      ["card_sort_category_completed_after_trial", "Category completed after trial", "boolean", "stimulus_payload.runtime_data", "TRUE when the rule-shift criterion was reached on this trial."],
+      ["card_sort_next_rule_after_trial", "Next hidden rule", "categorical", "stimulus_payload.runtime_data", "Research-only next rule when a nonfinal category was completed."],
+      ["card_sort_response_latency_ms", "Card Sorting response latency", "milliseconds", "stimulus_payload.runtime_data", "Latency from target/reference display to participant choice."],
+      ["card_sort_timed_out", "Card Sorting timeout", "boolean", "stimulus_payload.runtime_data", "TRUE when no selection was made before the configured response timeout."],
+      ["card_sort_reference_cards_json", "Reference card definitions", "JSON", "stimulus_payload.runtime_data", "Exact PsyLattice reference-card definitions used in the trial."],
       ["stimulus_variables_json", "Trial variables", "JSON", "stimulus_payload", "Lossless Trial Table variables for the executed trial."],
       ["timing_json", "Component timing", "JSON", "cognitive_trial_results", "Per-component requested/actual timing and frame diagnostics."],
     ].map(([variable, label, type, source, notes]) => ({ variable, label, type, source, notes }));
@@ -13741,7 +14104,7 @@ function researchBuildCodebook(
       ["mean_rt_ms", "Mean reaction time", "milliseconds", "derived", "Mean participant RT across recorded RT trials."],
       ["median_rt_ms", "Median reaction time", "milliseconds", "derived", "Median participant RT across recorded RT trials."],
       ["omissions", "Omitted responses", "integer", "derived", "Trials with no participant response value."],
-      ["paradigm", "Dedicated cognitive paradigm", "text", "summary_scores", "stop_signal when this administration used the dedicated Stop-Signal engine."],
+      ["paradigm", "Dedicated cognitive paradigm", "text", "summary_scores", "stop_signal, corsi or card_sorting when this administration used a dedicated PsyLattice engine."],
       ["ssrt_ms", "SSRT", "milliseconds", "summary_scores.stop_signal", "Integration-method Stop-Signal Reaction Time; blank when the deterministic quality rule suppresses estimation."],
       ["mean_ssd_ms", "Mean SSD", "milliseconds", "summary_scores.stop_signal", "Mean observed experimental stop-signal delay."],
       ["stop_success_rate", "Stop success rate", "numeric 0-1", "summary_scores.stop_signal", "Proportion of experimental Stop trials successfully inhibited."],
@@ -13753,6 +14116,39 @@ function researchBuildCodebook(
       ["go_choice_errors", "Go choice errors", "integer", "summary_scores.stop_signal", "Incorrect mapped Go responses."],
       ["stop_trials", "Experimental Stop trials", "integer", "summary_scores.stop_signal", "Stop trials included in the deterministic Stop-Signal summary."],
       ["stop_signal_quality_flags_json", "Stop-Signal quality flags", "JSON", "summary_scores.stop_signal", "Deterministic review prompts. A blank SSRT can be intentional when the stored quality rule prevents estimation."],
+      ["corsi_forward_span", "Forward Corsi span", "integer", "summary_scores.corsi.forward", "Longest correctly reproduced Forward sequence."],
+      ["corsi_backward_span", "Backward Corsi span", "integer", "summary_scores.corsi.backward", "Longest correctly reproduced Backward sequence."],
+      ["corsi_forward_product_score", "Forward Corsi product score", "numeric", "summary_scores.corsi.forward", "Forward span × total correct Forward sequences."],
+      ["corsi_backward_product_score", "Backward Corsi product score", "numeric", "summary_scores.corsi.backward", "Backward span × total correct Backward sequences."],
+      ["corsi_forward_sequence_accuracy", "Forward sequence accuracy", "numeric 0-1", "summary_scores.corsi.forward", "Correct Forward sequences / attempted Forward sequences."],
+      ["corsi_backward_sequence_accuracy", "Backward sequence accuracy", "numeric 0-1", "summary_scores.corsi.backward", "Correct Backward sequences / attempted Backward sequences."],
+      ["corsi_overall_sequence_accuracy", "Overall Corsi sequence accuracy", "numeric 0-1", "summary_scores.corsi", "Correct experimental sequences / attempted experimental sequences across enabled modes."],
+      ["corsi_total_correct_sequences", "Total correct Corsi sequences", "integer", "summary_scores.corsi", "Number of correctly reproduced experimental sequences."],
+      ["corsi_total_sequences_attempted", "Total attempted Corsi sequences", "integer", "summary_scores.corsi", "Number of attempted experimental sequences."],
+      ["corsi_forward_mean_first_tap_latency_ms", "Forward first-tap latency", "milliseconds", "summary_scores.corsi.forward", "Mean latency from recall-board availability to the first Forward tap."],
+      ["corsi_backward_mean_first_tap_latency_ms", "Backward first-tap latency", "milliseconds", "summary_scores.corsi.backward", "Mean latency from recall-board availability to the first Backward tap."],
+      ["corsi_forward_mean_completion_latency_ms", "Forward completion latency", "milliseconds", "summary_scores.corsi.forward", "Mean latency from recall-board availability to the final Forward tap."],
+      ["corsi_backward_mean_completion_latency_ms", "Backward completion latency", "milliseconds", "summary_scores.corsi.backward", "Mean latency from recall-board availability to the final Backward tap."],
+      ["corsi_quality_flags_json", "Corsi quality flags", "JSON", "summary_scores.corsi", "Deterministic review prompts; never an automatic exclusion."],
+      ["card_sort_scoring_system", "Card Sorting scoring system", "text", "summary_scores.card_sorting", "psylattice_transparent_v1; never label these as official WCST scores."],
+      ["card_sort_categories_completed", "Categories completed", "integer", "summary_scores.card_sorting", "Completed hidden-rule categories."],
+      ["card_sort_total_trials", "Total Card Sorting trials", "integer", "summary_scores.card_sorting", "Experimental sorting trials."],
+      ["card_sort_total_correct", "Correct sorting responses", "integer", "summary_scores.card_sorting", "Correct experimental responses."],
+      ["card_sort_total_errors", "Total sorting errors", "integer", "summary_scores.card_sorting", "Incorrect experimental responses."],
+      ["card_sort_accuracy", "Card Sorting accuracy", "numeric 0-1", "summary_scores.card_sorting", "Correct responses divided by total trials."],
+      ["card_sort_error_rate", "Card Sorting error rate", "numeric 0-1", "summary_scores.card_sorting", "Errors divided by total trials."],
+      ["card_sort_perseverative_errors", "PsyLattice perseverative errors", "integer", "summary_scores.card_sorting", "Incorrect responses matching the immediately previous hidden rule after a shift."],
+      ["card_sort_perseverative_error_rate", "Perseverative error rate", "numeric 0-1", "summary_scores.card_sorting", "PsyLattice perseverative errors divided by total trials."],
+      ["card_sort_perseverative_share_of_errors", "Perseverative share of errors", "numeric 0-1", "summary_scores.card_sorting", "PsyLattice perseverative errors divided by all errors."],
+      ["card_sort_nonperseverative_errors", "Nonperseverative errors", "integer", "summary_scores.card_sorting", "Other incorrect sorting responses."],
+      ["card_sort_failures_to_maintain_set", "Failures to maintain set", "integer", "summary_scores.card_sorting", "Errors after the configured correct-streak threshold but before category completion."],
+      ["card_sort_trials_to_first_category", "Trials to first category", "integer", "summary_scores.card_sorting", "Trial number on which the first category was completed."],
+      ["card_sort_mean_response_latency_ms", "Mean sorting response latency", "milliseconds", "summary_scores.card_sorting", "Mean choice latency."],
+      ["card_sort_median_response_latency_ms", "Median sorting response latency", "milliseconds", "summary_scores.card_sorting", "Median choice latency."],
+      ["card_sort_timed_out_trials", "Sorting timeouts", "integer", "summary_scores.card_sorting", "Trials that reached the response timeout."],
+      ["card_sort_max_trials_reached", "Maximum trial limit reached", "boolean", "summary_scores.card_sorting", "TRUE when the trial limit ended the run before all configured categories were completed."],
+      ["card_sort_category_summaries_json", "Category summaries", "JSON", "summary_scores.card_sorting", "Per-category rule, trials, correct responses, errors, perseverative errors and completion."],
+      ["card_sort_quality_flags_json", "Card Sorting quality flags", "JSON", "summary_scores.card_sorting", "Deterministic review prompts; never an automatic exclusion."],
       ["refresh_hz", "Effective refresh rate", "Hz", "timing_quality", "Display refresh rate used for the session."],
       ["refresh_stability", "Refresh stability", "proportion", "timing_quality", "Display refresh calibration stability."],
       ["visibility_interruptions", "Visibility interruptions", "integer", "timing_quality", "Number of tab/page visibility interruptions recorded during execution."],
@@ -13789,6 +14185,93 @@ function researchBuildCodebook(
         "ssd_after_trial_ms","stop_signal_presented","stop_success","response_before_stop_signal",
         "go_correct","go_correct_response","go_stimulus","stimulus_variables_json","stimulus_payload_json",
         "response_payload_json","timing_json","recorded_at"
+      ].includes(row.variable)
+    );
+  }
+
+  if (datasetType === "corsi_summary") {
+    return researchBuildCodebook(
+      bundle,
+      "cognitive_participant_summary",
+      includeDirectIdentifiers
+    ).filter((row) =>
+      [
+        "participant","is_test","administration_position","cognitive_task","version",
+        "completed","session_status","corsi_forward_span","corsi_backward_span",
+        "corsi_forward_product_score","corsi_backward_product_score",
+        "corsi_forward_sequence_accuracy","corsi_backward_sequence_accuracy",
+        "corsi_overall_sequence_accuracy","corsi_total_correct_sequences",
+        "corsi_total_sequences_attempted","corsi_forward_mean_first_tap_latency_ms",
+        "corsi_backward_mean_first_tap_latency_ms","corsi_forward_mean_completion_latency_ms",
+        "corsi_backward_mean_completion_latency_ms","corsi_quality_flags_json",
+        "refresh_hz","refresh_stability","visibility_interruptions","completed_at"
+      ].includes(row.variable)
+    );
+  }
+
+  if (datasetType === "corsi_trials") {
+    return researchBuildCodebook(
+      bundle,
+      "cognitive_trials",
+      includeDirectIdentifiers
+    ).filter((row) =>
+      [
+        "participant","is_test","administration_position","cognitive_task","version",
+        "cognitive_session_id","block_key","trial_index","condition","response",
+        "correct_response","correct","reaction_time_ms","corsi_mode","corsi_practice",
+        "corsi_span_length","corsi_span_trial_index","corsi_presented_sequence_json",
+        "corsi_expected_sequence_json","corsi_response_sequence_json",
+        "corsi_error_positions_json","corsi_first_tap_latency_ms",
+        "corsi_completion_latency_ms","corsi_tap_latencies_json","corsi_timed_out",
+        "corsi_block_positions_json","stimulus_variables_json","stimulus_payload_json",
+        "response_payload_json","timing_json","recorded_at"
+      ].includes(row.variable)
+    );
+  }
+
+  if (datasetType === "card_sorting_summary") {
+    return researchBuildCodebook(
+      bundle,
+      "cognitive_participant_summary",
+      includeDirectIdentifiers
+    ).filter((row) =>
+      [
+        "participant","is_test","administration_position","cognitive_task","version",
+        "completed","session_status","card_sort_scoring_system",
+        "card_sort_categories_completed","card_sort_total_trials",
+        "card_sort_total_correct","card_sort_total_errors","card_sort_accuracy",
+        "card_sort_error_rate","card_sort_perseverative_errors",
+        "card_sort_perseverative_error_rate","card_sort_perseverative_share_of_errors",
+        "card_sort_nonperseverative_errors","card_sort_failures_to_maintain_set",
+        "card_sort_trials_to_first_category","card_sort_mean_response_latency_ms",
+        "card_sort_median_response_latency_ms","card_sort_timed_out_trials",
+        "card_sort_max_trials_reached","card_sort_category_summaries_json",
+        "card_sort_quality_flags_json","refresh_hz","refresh_stability",
+        "visibility_interruptions","completed_at"
+      ].includes(row.variable)
+    );
+  }
+
+  if (datasetType === "card_sorting_trials") {
+    return researchBuildCodebook(
+      bundle,
+      "cognitive_trials",
+      includeDirectIdentifiers
+    ).filter((row) =>
+      [
+        "participant","is_test","administration_position","cognitive_task","version",
+        "cognitive_session_id","block_key","trial_index","condition","response",
+        "correct_response","correct","reaction_time_ms","card_sort_scoring_system",
+        "card_sort_trial_number","card_sort_category_index","card_sort_active_rule",
+        "card_sort_previous_rule","card_sort_target_card_json",
+        "card_sort_chosen_reference_id","card_sort_correct_reference_id",
+        "card_sort_inferred_choice_rule","card_sort_perseverative_error",
+        "card_sort_nonperseverative_error","card_sort_failure_to_maintain_set",
+        "card_sort_correct_streak_before","card_sort_correct_streak_after",
+        "card_sort_category_completed_after_trial","card_sort_next_rule_after_trial",
+        "card_sort_response_latency_ms","card_sort_timed_out",
+        "card_sort_reference_cards_json","stimulus_variables_json",
+        "stimulus_payload_json","response_payload_json","timing_json","recorded_at"
       ].includes(row.variable)
     );
   }
@@ -13922,6 +14405,35 @@ function researchBuildCodebook(
         { variable: variables.meanGoRt, label: `${attachment.title} — mean Go RT (ms)`, type: "Numeric milliseconds", source: "cognitive_task_sessions.summary_scores.stop_signal", notes: baseNotes },
         { variable: variables.goOmissions, label: `${attachment.title} — Go omissions`, type: "Integer", source: "cognitive_task_sessions.summary_scores.stop_signal", notes: baseNotes },
         { variable: variables.goChoiceErrors, label: `${attachment.title} — Go choice errors`, type: "Integer", source: "cognitive_task_sessions.summary_scores.stop_signal", notes: baseNotes }
+      );
+    }
+    if (researchAttachmentHasCorsi(bundle, attachment.id)) {
+      rows.push(
+        { variable: variables.corsiForwardSpan, label: `${attachment.title} — Forward Corsi span`, type: "Integer", source: "cognitive_task_sessions.summary_scores.corsi.forward", notes: `${baseNotes} · Longest correctly reproduced Forward sequence.` },
+        { variable: variables.corsiBackwardSpan, label: `${attachment.title} — Backward Corsi span`, type: "Integer", source: "cognitive_task_sessions.summary_scores.corsi.backward", notes: `${baseNotes} · Longest correctly reproduced Backward sequence.` },
+        { variable: variables.corsiForwardProduct, label: `${attachment.title} — Forward Corsi product score`, type: "Numeric", source: "cognitive_task_sessions.summary_scores.corsi.forward", notes: `${baseNotes} · Forward span × total correct Forward sequences.` },
+        { variable: variables.corsiBackwardProduct, label: `${attachment.title} — Backward Corsi product score`, type: "Numeric", source: "cognitive_task_sessions.summary_scores.corsi.backward", notes: `${baseNotes} · Backward span × total correct Backward sequences.` },
+        { variable: variables.corsiForwardAccuracy, label: `${attachment.title} — Forward sequence accuracy`, type: "Numeric proportion", source: "cognitive_task_sessions.summary_scores.corsi.forward", notes: baseNotes },
+        { variable: variables.corsiBackwardAccuracy, label: `${attachment.title} — Backward sequence accuracy`, type: "Numeric proportion", source: "cognitive_task_sessions.summary_scores.corsi.backward", notes: baseNotes },
+        { variable: variables.corsiOverallAccuracy, label: `${attachment.title} — overall Corsi sequence accuracy`, type: "Numeric proportion", source: "cognitive_task_sessions.summary_scores.corsi", notes: baseNotes },
+        { variable: variables.corsiForwardFirstTap, label: `${attachment.title} — Forward first-tap latency (ms)`, type: "Numeric milliseconds", source: "cognitive_task_sessions.summary_scores.corsi.forward", notes: baseNotes },
+        { variable: variables.corsiBackwardFirstTap, label: `${attachment.title} — Backward first-tap latency (ms)`, type: "Numeric milliseconds", source: "cognitive_task_sessions.summary_scores.corsi.backward", notes: baseNotes },
+        { variable: variables.corsiForwardCompletion, label: `${attachment.title} — Forward completion latency (ms)`, type: "Numeric milliseconds", source: "cognitive_task_sessions.summary_scores.corsi.forward", notes: baseNotes },
+        { variable: variables.corsiBackwardCompletion, label: `${attachment.title} — Backward completion latency (ms)`, type: "Numeric milliseconds", source: "cognitive_task_sessions.summary_scores.corsi.backward", notes: baseNotes }
+      );
+    }
+    if (researchAttachmentHasCardSort(bundle, attachment.id)) {
+      rows.push(
+        { variable: variables.cardSortCategories, label: `${attachment.title} — categories completed`, type: "Integer", source: "cognitive_task_sessions.summary_scores.card_sorting", notes: `${baseNotes} · PsyLattice transparent scoring; not an official WCST score.` },
+        { variable: variables.cardSortTotalErrors, label: `${attachment.title} — total sorting errors`, type: "Integer", source: "cognitive_task_sessions.summary_scores.card_sorting", notes: baseNotes },
+        { variable: variables.cardSortPerseverativeErrors, label: `${attachment.title} — PsyLattice perseverative errors`, type: "Integer", source: "cognitive_task_sessions.summary_scores.card_sorting", notes: `${baseNotes} · Incorrect responses matching the immediately previous hidden rule after a shift.` },
+        { variable: variables.cardSortPerseverativeRate, label: `${attachment.title} — perseverative error rate`, type: "Numeric proportion", source: "cognitive_task_sessions.summary_scores.card_sorting", notes: baseNotes },
+        { variable: variables.cardSortPerseverativeShare, label: `${attachment.title} — perseverative share of errors`, type: "Numeric proportion", source: "cognitive_task_sessions.summary_scores.card_sorting", notes: baseNotes },
+        { variable: variables.cardSortNonperseverativeErrors, label: `${attachment.title} — nonperseverative errors`, type: "Integer", source: "cognitive_task_sessions.summary_scores.card_sorting", notes: baseNotes },
+        { variable: variables.cardSortFailuresMaintain, label: `${attachment.title} — failures to maintain set`, type: "Integer", source: "cognitive_task_sessions.summary_scores.card_sorting", notes: baseNotes },
+        { variable: variables.cardSortTrialsFirstCategory, label: `${attachment.title} — trials to first category`, type: "Integer", source: "cognitive_task_sessions.summary_scores.card_sorting", notes: baseNotes },
+        { variable: variables.cardSortMeanLatency, label: `${attachment.title} — mean sorting latency (ms)`, type: "Numeric milliseconds", source: "cognitive_task_sessions.summary_scores.card_sorting", notes: baseNotes },
+        { variable: variables.cardSortAccuracy, label: `${attachment.title} — card sorting accuracy`, type: "Numeric proportion", source: "cognitive_task_sessions.summary_scores.card_sorting", notes: baseNotes }
       );
     }
   }
@@ -14355,6 +14867,91 @@ function researchBuildDataQualitySheets(
         });
       }
     }
+
+    for (const session of stopSessions) {
+      const corsi = researchCorsiSummary(session);
+      const participantId = session.participant_id;
+      if (!corsi || !participantId) continue;
+      const participant = bundle.participants.find(
+        (candidate) => candidate.id === participantId
+      );
+      if (!participant) continue;
+      const flags = Array.isArray(corsi.quality_flags)
+        ? (corsi.quality_flags as Array<Record<string, unknown>>)
+        : [];
+
+      for (const flag of flags) {
+        const code = String(flag.code || "corsi_review");
+        const detail = String(flag.message || "Review the Corsi session.");
+        const label = code.replaceAll("_", " ");
+        const entry = {
+          code,
+          label,
+          detail,
+          domain: `Corsi · ${attachment.title} · position ${attachment.position}`,
+          sessionId: session.id,
+        };
+        const current = flagsByParticipant.get(participantId) || [];
+        current.push(entry);
+        flagsByParticipant.set(participantId, current);
+        qualityFlagRows.push({
+          participant: identityMap.get(participantId) || "",
+          is_test: participant.is_test ? 1 : 0,
+          domain: entry.domain,
+          administration_position: attachment.position,
+          flag_code: code,
+          severity: String(flag.level || "review"),
+          flag_label: label,
+          detail,
+          source_session_id: session.id,
+          automatic_exclusion: 0,
+        });
+      }
+    }
+
+    for (const session of stopSessions) {
+      const cardSort = researchCardSortSummary(session);
+      const participantId = session.participant_id;
+      if (!cardSort || !participantId) continue;
+      const participant = bundle.participants.find(
+        (candidate) => candidate.id === participantId
+      );
+      if (!participant) continue;
+
+      const flags = Array.isArray(cardSort.quality_flags)
+        ? (cardSort.quality_flags as Array<Record<string, unknown>>)
+        : [];
+
+      for (const flag of flags) {
+        const code = String(flag.code || "card_sorting_review");
+        const detail = String(
+          flag.message || "Review the Card Sorting session."
+        );
+        const label = code.replaceAll("_", " ");
+        const entry = {
+          code,
+          label,
+          detail,
+          domain: `Card Sorting · ${attachment.title} · position ${attachment.position}`,
+          sessionId: session.id,
+        };
+        const current = flagsByParticipant.get(participantId) || [];
+        current.push(entry);
+        flagsByParticipant.set(participantId, current);
+        qualityFlagRows.push({
+          participant: identityMap.get(participantId) || "",
+          is_test: participant.is_test ? 1 : 0,
+          domain: entry.domain,
+          administration_position: attachment.position,
+          flag_code: code,
+          severity: String(flag.level || "review"),
+          flag_label: label,
+          detail,
+          source_session_id: session.id,
+          automatic_exclusion: 0,
+        });
+      }
+    }
   }
 
   const requiredDemographics = bundle.demographicQuestions.filter((question) => question.required);
@@ -14590,6 +15187,26 @@ function researchBuildUniversalWorkbook(
       includeTestData,
       includeDirectIdentifiers
     ),
+    researchWorkbookDatasetSheet(
+      bundle,
+      "corsi_summary",
+      "Corsi_Summary",
+      "clean",
+      "Clean participant-level Corsi outcomes including Forward/Backward span, product scores, sequence accuracy, latencies and quality flags.",
+      identityMode,
+      includeTestData,
+      includeDirectIdentifiers
+    ),
+    researchWorkbookDatasetSheet(
+      bundle,
+      "card_sorting_summary",
+      "CardSorting_Summary",
+      "clean",
+      "Clean participant-level PsyLattice Card Sorting outcomes including categories, transparent perseveration metrics, set-maintenance errors, response latency and quality flags.",
+      identityMode,
+      includeTestData,
+      includeDirectIdentifiers
+    ),
     {
       name: "Cognitive_Conditions",
       kind: "clean",
@@ -14703,6 +15320,26 @@ function researchBuildUniversalWorkbook(
       includeTestData,
       includeDirectIdentifiers
     ),
+    researchWorkbookDatasetSheet(
+      bundle,
+      "corsi_trials",
+      "Corsi_Trials_RAW",
+      "raw",
+      "Every dedicated Corsi sequence with Forward/Backward mode, span, presented/expected/response sequences, error positions, tap latencies, coordinates and timing data.",
+      identityMode,
+      includeTestData,
+      includeDirectIdentifiers
+    ),
+    researchWorkbookDatasetSheet(
+      bundle,
+      "card_sorting_trials",
+      "CardSorting_Trials_RAW",
+      "raw",
+      "Every PsyLattice Card Sorting trial with hidden rule, previous rule, target card, participant strategy, transparent error classification, streak state, category completion and timing data.",
+      identityMode,
+      includeTestData,
+      includeDirectIdentifiers
+    ),
     {
       name: "Ambulatory_Prompts_RAW",
       kind: "raw",
@@ -14761,6 +15398,8 @@ function researchBuildUniversalWorkbook(
           "questionnaire_scores",
           "cognitive_participant_summary",
           "stop_signal_summary",
+          "corsi_summary",
+          "card_sorting_summary",
           "ambulatory_wide",
           "ambulatory_participant_days",
         ]
@@ -14772,6 +15411,8 @@ function researchBuildUniversalWorkbook(
             "cognitive_sessions",
             "cognitive_trials",
             "stop_signal_trials",
+            "corsi_trials",
+            "card_sorting_trials",
             "ambulatory_checkins",
             "ambulatory_responses",
             "consent",
@@ -14788,6 +15429,10 @@ function researchBuildUniversalWorkbook(
             "cognitive_participant_summary",
             "stop_signal_summary",
             "stop_signal_trials",
+            "corsi_summary",
+            "corsi_trials",
+            "card_sorting_summary",
+            "card_sorting_trials",
             "consent",
             "ambulatory_checkins",
             "ambulatory_responses",
@@ -15394,6 +16039,650 @@ function ResearchStopSignalInsightPanel({
 }
 
 
+
+function ResearchCorsiInsightPanel({
+  sessions,
+  trials,
+  participants,
+  compact = false,
+}: {
+  sessions: ResearchDataCognitiveSession[];
+  trials: ResearchDataCognitiveTrial[];
+  participants: ResearchDataParticipant[];
+  compact?: boolean;
+}) {
+  const summaries = sessions
+    .map((session) => ({
+      session,
+      summary: researchCorsiSummary(session),
+    }))
+    .filter(
+      (item): item is {
+        session: ResearchDataCognitiveSession;
+        summary: Record<string, unknown>;
+      } => item.summary !== null
+    );
+
+  if (summaries.length === 0) return null;
+
+  const forwardSpans = summaries
+    .map((item) =>
+      researchNumber(researchCorsiModeSummary(item.summary, "forward")?.span)
+    )
+    .filter((value): value is number => value !== null);
+  const backwardSpans = summaries
+    .map((item) =>
+      researchNumber(researchCorsiModeSummary(item.summary, "backward")?.span)
+    )
+    .filter((value): value is number => value !== null);
+  const forwardProducts = summaries
+    .map((item) =>
+      researchNumber(
+        researchCorsiModeSummary(item.summary, "forward")?.product_score
+      )
+    )
+    .filter((value): value is number => value !== null);
+  const backwardProducts = summaries
+    .map((item) =>
+      researchNumber(
+        researchCorsiModeSummary(item.summary, "backward")?.product_score
+      )
+    )
+    .filter((value): value is number => value !== null);
+  const overallAccuracy = summaries
+    .map((item) => researchNumber(item.summary.overall_sequence_accuracy))
+    .filter((value): value is number => value !== null);
+
+  const qualityFlagCount = summaries.reduce((sum, item) => {
+    const flags = Array.isArray(item.summary.quality_flags)
+      ? item.summary.quality_flags
+      : [];
+    return sum + flags.length;
+  }, 0);
+
+  const relevantSessionIds = new Set(summaries.map((item) => item.session.id));
+  const experimentalTrials = trials
+    .filter((trial) => relevantSessionIds.has(trial.session_id))
+    .map((trial) => ({
+      trial,
+      runtime: researchCorsiRuntime(trial),
+    }))
+    .filter(
+      (item): item is {
+        trial: ResearchDataCognitiveTrial;
+        runtime: Record<string, unknown>;
+      } =>
+        item.runtime !== null &&
+        Boolean(item.runtime.practice) === false
+    );
+
+  const spanGroups = new Map<
+    string,
+    { mode: string; span: number; attempted: number; correct: number }
+  >();
+
+  for (const item of experimentalTrials) {
+    const mode = String(item.runtime.mode || "forward");
+    const span = researchNumber(item.runtime.span_length);
+    if (span === null) continue;
+    const key = `${mode}:${span}`;
+    const current = spanGroups.get(key) || {
+      mode,
+      span,
+      attempted: 0,
+      correct: 0,
+    };
+    current.attempted += 1;
+    if (item.runtime.correct === true) current.correct += 1;
+    spanGroups.set(key, current);
+  }
+
+  const spanRows = Array.from(spanGroups.values()).sort((a, b) => {
+    if (a.mode !== b.mode) return a.mode.localeCompare(b.mode);
+    return a.span - b.span;
+  });
+
+  const participantById = new Map(
+    participants.map((participant) => [participant.id, participant])
+  );
+  const sessionById = new Map(sessions.map((session) => [session.id, session]));
+  const incorrectRows = experimentalTrials
+    .filter((item) => item.runtime.correct !== true)
+    .slice(-10)
+    .reverse()
+    .map((item) => {
+      const session = sessionById.get(item.trial.session_id);
+      const participant = session?.participant_id
+        ? participantById.get(session.participant_id)
+        : null;
+      return {
+        trialId: item.trial.id,
+        participant: participant?.public_id || "Pseudonymous participant",
+        mode: String(item.runtime.mode || "forward"),
+        span: researchNumber(item.runtime.span_length),
+        presented: researchValueText(item.runtime.presented_sequence || []),
+        response: researchValueText(item.runtime.response_sequence || []),
+        errors: researchValueText(item.runtime.error_positions || []),
+        timedOut: Boolean(item.runtime.timed_out),
+      };
+    });
+
+  return (
+    <div
+      className={`${
+        compact ? "mt-4" : "mt-5"
+      } rounded-[24px] border border-cyan-200/80 bg-white p-5 shadow-[0_2px_5px_rgba(15,23,42,0.045),0_10px_28px_rgba(8,145,178,0.07)]`}
+    >
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <p className="text-[10px] font-semibold uppercase tracking-[0.15em] text-cyan-700">
+            Dedicated Corsi analysis
+          </p>
+          <h4 className="mt-1 text-base font-semibold text-slate-950">
+            Visuospatial span and sequence performance
+          </h4>
+          <p className="mt-1 text-[11px] leading-5 text-slate-500">
+            Span, product scores and sequence accuracy come directly from the
+            deterministic Corsi runtime. No normative cutoff is applied.
+          </p>
+        </div>
+        <Status type={qualityFlagCount > 0 ? "warning" : "success"}>
+          {qualityFlagCount} review flag{qualityFlagCount === 1 ? "" : "s"}
+        </Status>
+      </div>
+
+      <div className="mt-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
+        <StatCard
+          label="Mean Forward span"
+          value={
+            forwardSpans.length
+              ? researchFormatEstimate(researchMean(forwardSpans), 2)
+              : "—"
+          }
+          detail={`${forwardSpans.length}/${summaries.length} Forward scores`}
+        />
+        <StatCard
+          label="Mean Backward span"
+          value={
+            backwardSpans.length
+              ? researchFormatEstimate(researchMean(backwardSpans), 2)
+              : "—"
+          }
+          detail={`${backwardSpans.length}/${summaries.length} Backward scores`}
+        />
+        <StatCard
+          label="Forward product"
+          value={
+            forwardProducts.length
+              ? researchFormatEstimate(researchMean(forwardProducts), 2)
+              : "—"
+          }
+          detail="Mean participant product score"
+        />
+        <StatCard
+          label="Backward product"
+          value={
+            backwardProducts.length
+              ? researchFormatEstimate(researchMean(backwardProducts), 2)
+              : "—"
+          }
+          detail="Mean participant product score"
+        />
+        <StatCard
+          label="Sequence accuracy"
+          value={
+            overallAccuracy.length
+              ? `${researchFormatEstimate(
+                  (researchMean(overallAccuracy) || 0) * 100,
+                  1
+                )}%`
+              : "—"
+          }
+          detail={`${summaries.length} completed run${summaries.length === 1 ? "" : "s"}`}
+        />
+      </div>
+
+      {spanRows.length > 0 && (
+        <div className="mt-4 rounded-[22px] border border-slate-300/70 bg-slate-50/65 p-4 shadow-[0_5px_18px_rgba(15,23,42,0.04)]">
+          <div className="flex flex-wrap items-start justify-between gap-3">
+            <div>
+              <p className="text-xs font-semibold text-slate-900">
+                Sequence accuracy by span
+              </p>
+              <p className="mt-1 text-[10px] leading-4 text-slate-500">
+                Aggregated experimental sequences. Bar length shows accuracy;
+                the right side shows correct / attempted sequences.
+              </p>
+            </div>
+            <span className="rounded-full border border-slate-300/70 bg-white px-2.5 py-1 text-[9px] font-semibold text-slate-500 shadow-[0_3px_10px_rgba(15,23,42,0.05)]">
+              {experimentalTrials.length} sequences
+            </span>
+          </div>
+
+          <div className="mt-4 space-y-2">
+            {spanRows.map((row) => {
+              const accuracy =
+                row.attempted > 0 ? row.correct / row.attempted : 0;
+              return (
+                <div
+                  key={`${row.mode}-${row.span}`}
+                  className="grid grid-cols-[115px_1fr_72px] items-center gap-3"
+                >
+                  <div className="text-[10px] font-semibold text-slate-600">
+                    {row.mode === "backward" ? "Backward" : "Forward"} · span{" "}
+                    {row.span}
+                  </div>
+                  <div className="h-2.5 overflow-hidden rounded-full bg-slate-200/80">
+                    <div
+                      className="h-full rounded-full bg-cyan-600"
+                      style={{ width: `${Math.max(2, accuracy * 100)}%` }}
+                    />
+                  </div>
+                  <div className="text-right text-[10px] text-slate-500">
+                    {row.correct}/{row.attempted} ·{" "}
+                    {Math.round(accuracy * 100)}%
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
+      {incorrectRows.length > 0 && (
+        <div className="mt-4 overflow-hidden rounded-[22px] border border-slate-300/70 bg-white shadow-[0_5px_18px_rgba(15,23,42,0.04)]">
+          <div className="border-b border-slate-100 px-4 py-3">
+            <p className="text-xs font-semibold text-slate-900">Sequence-error review</p>
+            <p className="mt-1 text-[10px] leading-4 text-slate-500">
+              Recent incorrect experimental sequences. Raw exports retain every sequence and tap timestamp.
+            </p>
+          </div>
+          <div className="overflow-x-auto">
+            <table className="w-full min-w-[760px] text-left text-[10px]">
+              <thead className="bg-slate-50 text-slate-500">
+                <tr>
+                  <th className="px-3 py-2.5 font-semibold">Participant</th>
+                  <th className="px-3 py-2.5 font-semibold">Mode</th>
+                  <th className="px-3 py-2.5 font-semibold">Span</th>
+                  <th className="px-3 py-2.5 font-semibold">Presented</th>
+                  <th className="px-3 py-2.5 font-semibold">Response</th>
+                  <th className="px-3 py-2.5 font-semibold">Error positions</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-100">
+                {incorrectRows.map((row) => (
+                  <tr key={row.trialId}>
+                    <td className="px-3 py-2.5 font-medium text-slate-700">{row.participant}</td>
+                    <td className="px-3 py-2.5 text-slate-600">{row.mode}{row.timedOut ? " · timeout" : ""}</td>
+                    <td className="px-3 py-2.5 text-slate-600">{row.span ?? "—"}</td>
+                    <td className="px-3 py-2.5 font-mono text-slate-500">{row.presented}</td>
+                    <td className="px-3 py-2.5 font-mono text-slate-500">{row.response}</td>
+                    <td className="px-3 py-2.5 font-mono text-slate-500">{row.errors}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+
+
+function ResearchCardSortInsightPanel({
+  sessions,
+  trials,
+  participants,
+  compact = false,
+}: {
+  sessions: ResearchDataCognitiveSession[];
+  trials: ResearchDataCognitiveTrial[];
+  participants: ResearchDataParticipant[];
+  compact?: boolean;
+}) {
+  const summaries = sessions
+    .map((session) => ({
+      session,
+      summary: researchCardSortSummary(session),
+    }))
+    .filter(
+      (item): item is {
+        session: ResearchDataCognitiveSession;
+        summary: Record<string, unknown>;
+      } => item.summary !== null
+    );
+
+  if (summaries.length === 0) return null;
+
+  const categories = summaries
+    .map((item) => researchNumber(item.summary.categories_completed))
+    .filter((value): value is number => value !== null);
+  const perseverativeErrors = summaries
+    .map((item) => researchNumber(item.summary.perseverative_errors))
+    .filter((value): value is number => value !== null);
+  const perseverativeShares = summaries
+    .map((item) => researchNumber(item.summary.perseverative_share_of_errors))
+    .filter((value): value is number => value !== null);
+  const failuresMaintain = summaries
+    .map((item) => researchNumber(item.summary.failures_to_maintain_set))
+    .filter((value): value is number => value !== null);
+  const firstCategoryTrials = summaries
+    .map((item) => researchNumber(item.summary.trials_to_first_category))
+    .filter((value): value is number => value !== null);
+
+  const qualityFlagCount = summaries.reduce((sum, item) => {
+    const flags = Array.isArray(item.summary.quality_flags)
+      ? item.summary.quality_flags
+      : [];
+    return sum + flags.length;
+  }, 0);
+
+  const categoryGroups = new Map<
+    string,
+    {
+      category: number;
+      rule: string;
+      runs: number;
+      completed: number;
+      trials: number[];
+      errors: number[];
+      perseverative: number[];
+    }
+  >();
+
+  for (const item of summaries) {
+    const categoryRows = Array.isArray(item.summary.category_summaries)
+      ? (item.summary.category_summaries as Array<Record<string, unknown>>)
+      : [];
+
+    for (const row of categoryRows) {
+      const category = researchNumber(row.category_index);
+      if (category === null) continue;
+      const rule = String(row.rule || "unknown");
+      const key = `${category}:${rule}`;
+      const current = categoryGroups.get(key) || {
+        category,
+        rule,
+        runs: 0,
+        completed: 0,
+        trials: [],
+        errors: [],
+        perseverative: [],
+      };
+      current.runs += 1;
+      if (row.completed === true) current.completed += 1;
+      const trialCount = researchNumber(row.trials);
+      const errorCount = researchNumber(row.errors);
+      const perseverativeCount = researchNumber(row.perseverative_errors);
+      if (trialCount !== null) current.trials.push(trialCount);
+      if (errorCount !== null) current.errors.push(errorCount);
+      if (perseverativeCount !== null) current.perseverative.push(perseverativeCount);
+      categoryGroups.set(key, current);
+    }
+  }
+
+  const categoryRows = Array.from(categoryGroups.values()).sort(
+    (a, b) => a.category - b.category
+  );
+
+  const participantById = new Map(
+    participants.map((participant) => [participant.id, participant])
+  );
+  const sessionById = new Map(sessions.map((session) => [session.id, session]));
+
+  const strategyRows = trials
+    .map((trial) => ({
+      trial,
+      runtime: researchCardSortRuntime(trial),
+    }))
+    .filter(
+      (item): item is {
+        trial: ResearchDataCognitiveTrial;
+        runtime: Record<string, unknown>;
+      } =>
+        item.runtime !== null &&
+        (item.runtime.perseverative_error === true ||
+          item.runtime.failure_to_maintain_set === true ||
+          item.runtime.nonperseverative_error === true)
+    )
+    .slice(-12)
+    .reverse()
+    .map((item) => {
+      const session = sessionById.get(item.trial.session_id);
+      const participant = session?.participant_id
+        ? participantById.get(session.participant_id)
+        : null;
+
+      const errorType =
+        item.runtime.perseverative_error === true
+          ? "Perseverative"
+          : item.runtime.failure_to_maintain_set === true
+            ? "Failure to maintain"
+            : "Other error";
+
+      return {
+        id: item.trial.id,
+        participant: participant?.public_id || "Pseudonymous participant",
+        trial: researchNumber(item.runtime.trial_number),
+        category: researchNumber(item.runtime.category_index),
+        activeRule: String(item.runtime.active_rule || ""),
+        previousRule: String(item.runtime.previous_rule || ""),
+        inferredRule: String(item.runtime.inferred_choice_rule || ""),
+        errorType,
+        streak: researchNumber(item.runtime.correct_streak_before),
+      };
+    });
+
+  return (
+    <div
+      className={`${
+        compact ? "mt-4" : "mt-5"
+      } rounded-[24px] border border-cyan-200/80 bg-white p-5 shadow-[0_2px_5px_rgba(15,23,42,0.045),0_10px_28px_rgba(8,145,178,0.07)]`}
+    >
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <p className="text-[10px] font-semibold uppercase tracking-[0.15em] text-cyan-700">
+            Dedicated Card Sorting analysis
+          </p>
+          <h4 className="mt-1 text-base font-semibold text-slate-950">
+            Set shifting and response strategy
+          </h4>
+          <p className="mt-1 max-w-3xl text-[11px] leading-5 text-slate-500">
+            These are PsyLattice transparent Card Sorting scores, not official
+            standardized WCST scores. Perseveration means an incorrect response
+            matching the immediately previous hidden rule after a shift.
+          </p>
+        </div>
+
+        <Status type={qualityFlagCount > 0 ? "warning" : "success"}>
+          {qualityFlagCount} review flag{qualityFlagCount === 1 ? "" : "s"}
+        </Status>
+      </div>
+
+      <div className="mt-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
+        <StatCard
+          label="Mean categories"
+          value={
+            categories.length
+              ? researchFormatEstimate(researchMean(categories), 2)
+              : "—"
+          }
+          detail={`${summaries.length} completed run${summaries.length === 1 ? "" : "s"}`}
+        />
+        <StatCard
+          label="Perseverative errors"
+          value={
+            perseverativeErrors.length
+              ? researchFormatEstimate(researchMean(perseverativeErrors), 2)
+              : "—"
+          }
+          detail="Mean PsyLattice count"
+        />
+        <StatCard
+          label="Perseverative share"
+          value={
+            perseverativeShares.length
+              ? `${researchFormatEstimate(
+                  (researchMean(perseverativeShares) || 0) * 100,
+                  1
+                )}%`
+              : "—"
+          }
+          detail="Share of all errors"
+        />
+        <StatCard
+          label="Failure to maintain"
+          value={
+            failuresMaintain.length
+              ? researchFormatEstimate(researchMean(failuresMaintain), 2)
+              : "—"
+          }
+          detail="Mean participant count"
+        />
+        <StatCard
+          label="Trials to first category"
+          value={
+            firstCategoryTrials.length
+              ? researchFormatEstimate(researchMean(firstCategoryTrials), 1)
+              : "—"
+          }
+          detail={`${firstCategoryTrials.length} participants with a completed category`}
+        />
+      </div>
+
+      {categoryRows.length > 0 && (
+        <div className="mt-4 rounded-[22px] border border-slate-300/70 bg-slate-50/65 p-4 shadow-[0_5px_18px_rgba(15,23,42,0.04)]">
+          <div className="flex flex-wrap items-start justify-between gap-3">
+            <div>
+              <p className="text-xs font-semibold text-slate-900">
+                Category-by-category learning
+              </p>
+              <p className="mt-1 text-[10px] leading-4 text-slate-500">
+                Completion and error behavior aggregated across completed
+                participant runs. Hidden rules remain researcher-only.
+              </p>
+            </div>
+            <span className="rounded-full border border-slate-300/70 bg-white px-2.5 py-1 text-[9px] font-semibold text-slate-500 shadow-[0_3px_10px_rgba(15,23,42,0.05)]">
+              transparent scoring
+            </span>
+          </div>
+
+          <div className="mt-4 space-y-2">
+            {categoryRows.map((row) => {
+              const completionRate =
+                row.runs > 0 ? row.completed / row.runs : 0;
+              return (
+                <div
+                  key={`${row.category}-${row.rule}`}
+                  className="grid grid-cols-[118px_1fr_185px] items-center gap-3"
+                >
+                  <div>
+                    <p className="text-[10px] font-semibold text-slate-700">
+                      Category {row.category}
+                    </p>
+                    <p className="text-[9px] capitalize text-slate-400">
+                      hidden rule: {row.rule}
+                    </p>
+                  </div>
+                  <div className="h-2.5 overflow-hidden rounded-full bg-slate-200/80">
+                    <div
+                      className="h-full rounded-full bg-cyan-600"
+                      style={{
+                        width: `${Math.max(2, completionRate * 100)}%`,
+                      }}
+                    />
+                  </div>
+                  <div className="text-right text-[9px] leading-4 text-slate-500">
+                    {row.completed}/{row.runs} completed · mean{" "}
+                    {researchFormatEstimate(researchMean(row.trials), 1)} trials
+                    <br />
+                    {researchFormatEstimate(researchMean(row.errors), 1)} errors ·{" "}
+                    {researchFormatEstimate(
+                      researchMean(row.perseverative),
+                      1
+                    )} perseverative
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
+      {strategyRows.length > 0 && (
+        <div className="mt-4 overflow-hidden rounded-[22px] border border-slate-300/70 bg-white shadow-[0_5px_18px_rgba(15,23,42,0.04)]">
+          <div className="border-b border-slate-100 px-4 py-3">
+            <p className="text-xs font-semibold text-slate-900">
+              Response-strategy review
+            </p>
+            <p className="mt-1 text-[10px] leading-4 text-slate-500">
+              Recent error trials showing the hidden rule and the response
+              dimension implied by the participant's choice.
+            </p>
+          </div>
+          <div className="overflow-x-auto">
+            <table className="w-full min-w-[880px] text-left text-[10px]">
+              <thead className="bg-slate-50 text-slate-500">
+                <tr>
+                  <th className="px-3 py-2.5 font-semibold">Participant</th>
+                  <th className="px-3 py-2.5 font-semibold">Trial</th>
+                  <th className="px-3 py-2.5 font-semibold">Category</th>
+                  <th className="px-3 py-2.5 font-semibold">Active rule</th>
+                  <th className="px-3 py-2.5 font-semibold">Previous rule</th>
+                  <th className="px-3 py-2.5 font-semibold">Choice implied</th>
+                  <th className="px-3 py-2.5 font-semibold">Classification</th>
+                  <th className="px-3 py-2.5 font-semibold">Streak before</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-100">
+                {strategyRows.map((row) => (
+                  <tr key={row.id}>
+                    <td className="px-3 py-2.5 font-medium text-slate-700">
+                      {row.participant}
+                    </td>
+                    <td className="px-3 py-2.5 text-slate-600">
+                      {row.trial ?? "—"}
+                    </td>
+                    <td className="px-3 py-2.5 text-slate-600">
+                      {row.category ?? "—"}
+                    </td>
+                    <td className="px-3 py-2.5 capitalize text-slate-600">
+                      {row.activeRule || "—"}
+                    </td>
+                    <td className="px-3 py-2.5 capitalize text-slate-500">
+                      {row.previousRule || "—"}
+                    </td>
+                    <td className="px-3 py-2.5 capitalize text-slate-600">
+                      {row.inferredRule || "none"}
+                    </td>
+                    <td className="px-3 py-2.5">
+                      <span
+                        className={`rounded-full border px-2 py-1 font-semibold ${
+                          row.errorType === "Perseverative"
+                            ? "border-cyan-200 bg-cyan-50 text-cyan-900"
+                            : "border-slate-200 bg-slate-50 text-slate-600"
+                        }`}
+                      >
+                        {row.errorType}
+                      </span>
+                    </td>
+                    <td className="px-3 py-2.5 text-slate-600">
+                      {row.streak ?? "—"}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+
 function ResearchCognitiveDataPanel({
   bundle,
   includeTestData = false,
@@ -15432,6 +16721,12 @@ function ResearchCognitiveDataPanel({
           const stopSignalSessions = completedSessions.filter(
             (session) => researchStopSignalSummary(session) !== null
           );
+          const corsiSessions = completedSessions.filter(
+            (session) => researchCorsiSummary(session) !== null
+          );
+          const cardSortSessions = completedSessions.filter(
+            (session) => researchCardSortSummary(session) !== null
+          );
           const sessionIds = new Set(completedSessions.map((session) => session.id));
           const trials = bundle.cognitiveTrials.filter((trial) => sessionIds.has(trial.session_id));
           const scorable = trials.filter((trial) => trial.correct !== null);
@@ -15466,7 +16761,9 @@ function ResearchCognitiveDataPanel({
                 <StatCard label="Omissions" value={String(omissions)} detail={`${trials.length} recorded trials`} />
               </div>
 
-              {conditionLabels.length > 0 && (
+              {conditionLabels.length > 0 &&
+                corsiSessions.length === 0 &&
+                cardSortSessions.length === 0 && (
                 <div className="mt-4 overflow-x-auto rounded-xl border shadow-[0_5px_18px_rgba(15,23,42,0.06),0_1px_4px_rgba(15,23,42,0.035)] border-slate-200">
                   <table className="w-full min-w-[620px] text-left text-xs">
                     <thead className="bg-slate-50 text-slate-500">
@@ -15501,6 +16798,24 @@ function ResearchCognitiveDataPanel({
                 <ResearchStopSignalInsightPanel
                   sessions={stopSignalSessions}
                   trials={trials}
+                  compact
+                />
+              )}
+
+              {corsiSessions.length > 0 && (
+                <ResearchCorsiInsightPanel
+                  sessions={corsiSessions}
+                  trials={trials}
+                  participants={participants}
+                  compact
+                />
+              )}
+
+              {cardSortSessions.length > 0 && (
+                <ResearchCardSortInsightPanel
+                  sessions={cardSortSessions}
+                  trials={trials}
+                  participants={participants}
                   compact
                 />
               )}
@@ -15697,6 +17012,42 @@ function ResearchCognitiveAnalysisPanel({
     selectedStopSessionIds.has(trial.session_id)
   );
 
+  const selectedCorsiSessions = bundle.cognitiveSessions.filter(
+    (session) =>
+      session.study_cognitive_task_id === selectedAttachment.id &&
+      session.participant_id &&
+      analysisParticipantIds.has(session.participant_id) &&
+      session.session_mode === "study" &&
+      session.status === "completed" &&
+      researchCorsiSummary(session) !== null
+  );
+
+  const selectedCorsiSessionIds = new Set(
+    selectedCorsiSessions.map((session) => session.id)
+  );
+
+  const selectedCorsiTrials = bundle.cognitiveTrials.filter((trial) =>
+    selectedCorsiSessionIds.has(trial.session_id)
+  );
+
+  const selectedCardSortSessions = bundle.cognitiveSessions.filter(
+    (session) =>
+      session.study_cognitive_task_id === selectedAttachment.id &&
+      session.participant_id &&
+      analysisParticipantIds.has(session.participant_id) &&
+      session.session_mode === "study" &&
+      session.status === "completed" &&
+      researchCardSortSummary(session) !== null
+  );
+
+  const selectedCardSortSessionIds = new Set(
+    selectedCardSortSessions.map((session) => session.id)
+  );
+
+  const selectedCardSortTrials = bundle.cognitiveTrials.filter((trial) =>
+    selectedCardSortSessionIds.has(trial.session_id)
+  );
+
   const participantById = new Map(
     bundle.participants.map((participant) => [participant.id, participant])
   );
@@ -15717,6 +17068,36 @@ function ResearchCognitiveAnalysisPanel({
         code: String(flag.code || "stop_signal_review"),
         label: String(flag.code || "stop signal review").replaceAll("_", " "),
         detail: String(flag.message || "Review the Stop-Signal session."),
+        severity: String(flag.level || "review"),
+      })
+    );
+  });
+
+  const corsiQualityFlags = selectedCorsiSessions.flatMap((session) => {
+    const summary = researchCorsiSummary(session);
+    if (!summary || !Array.isArray(summary.quality_flags)) return [];
+    return (summary.quality_flags as Array<Record<string, unknown>>).map(
+      (flag) => ({
+        sessionId: session.id,
+        participantId: session.participant_id || "",
+        code: String(flag.code || "corsi_review"),
+        label: String(flag.code || "corsi review").replaceAll("_", " "),
+        detail: String(flag.message || "Review the Corsi session."),
+        severity: String(flag.level || "review"),
+      })
+    );
+  });
+
+  const cardSortQualityFlags = selectedCardSortSessions.flatMap((session) => {
+    const summary = researchCardSortSummary(session);
+    if (!summary || !Array.isArray(summary.quality_flags)) return [];
+    return (summary.quality_flags as Array<Record<string, unknown>>).map(
+      (flag) => ({
+        sessionId: session.id,
+        participantId: session.participant_id || "",
+        code: String(flag.code || "card_sorting_review"),
+        label: String(flag.code || "card sorting review").replaceAll("_", " "),
+        detail: String(flag.message || "Review the Card Sorting session."),
         severity: String(flag.level || "review"),
       })
     );
@@ -15774,6 +17155,24 @@ function ResearchCognitiveAnalysisPanel({
         />
       )}
 
+      {selectedCorsiSessions.length > 0 && (
+        <ResearchCorsiInsightPanel
+          sessions={selectedCorsiSessions}
+          trials={selectedCorsiTrials}
+          participants={bundle.participants}
+        />
+      )}
+
+      {selectedCardSortSessions.length > 0 && (
+        <ResearchCardSortInsightPanel
+          sessions={selectedCardSortSessions}
+          trials={selectedCardSortTrials}
+          participants={bundle.participants}
+        />
+      )}
+
+      {selectedCorsiSessions.length === 0 &&
+        selectedCardSortSessions.length === 0 && (
       <div className="mt-5 overflow-x-auto rounded-2xl border shadow-[0_8px_24px_rgba(15,23,42,0.065),0_2px_6px_rgba(15,23,42,0.035)] border-slate-200">
         <table className="w-full min-w-[820px] text-left text-xs">
           <thead className="bg-slate-50 text-slate-500">
@@ -15820,8 +17219,12 @@ function ResearchCognitiveAnalysisPanel({
           </tbody>
         </table>
       </div>
+      )}
 
-      {selectedStopSignalSessions.length === 0 && analysis.conditionLabels.length >= 2 && (
+      {selectedStopSignalSessions.length === 0 &&
+        selectedCorsiSessions.length === 0 &&
+        selectedCardSortSessions.length === 0 &&
+        analysis.conditionLabels.length >= 2 && (
         <div className="mt-5 space-y-4">
           <div className="rounded-2xl border shadow-[0_8px_24px_rgba(15,23,42,0.065),0_2px_6px_rgba(15,23,42,0.035)] border-cyan-100 bg-cyan-50/40 p-4">
             <p className="text-sm font-semibold text-cyan-950">Compare two conditions</p>
@@ -15903,20 +17306,31 @@ function ResearchCognitiveAnalysisPanel({
           </div>
           <Status
             type={
-              analysis.qualityFlags.length + stopSignalQualityFlags.length
+              analysis.qualityFlags.length +
+                stopSignalQualityFlags.length +
+                corsiQualityFlags.length +
+                cardSortQualityFlags.length
                 ? "warning"
                 : "success"
             }
           >
-            {analysis.qualityFlags.length + stopSignalQualityFlags.length} flag
-            {analysis.qualityFlags.length + stopSignalQualityFlags.length === 1
+            {analysis.qualityFlags.length +
+              stopSignalQualityFlags.length +
+              corsiQualityFlags.length +
+              cardSortQualityFlags.length} flag
+            {analysis.qualityFlags.length +
+              stopSignalQualityFlags.length +
+              corsiQualityFlags.length +
+              cardSortQualityFlags.length === 1
               ? ""
               : "s"}
           </Status>
         </div>
 
         {analysis.qualityFlags.length === 0 &&
-        stopSignalQualityFlags.length === 0 ? (
+        stopSignalQualityFlags.length === 0 &&
+        corsiQualityFlags.length === 0 &&
+        cardSortQualityFlags.length === 0 ? (
           <div className="mt-4 rounded-xl border shadow-[0_5px_18px_rgba(15,23,42,0.06),0_1px_4px_rgba(15,23,42,0.035)] border-cyan-200 bg-cyan-50 px-4 py-3 text-xs text-cyan-800">
             No built-in review flags were triggered for the current live participant sessions.
           </div>
@@ -15972,6 +17386,68 @@ function ResearchCognitiveAnalysisPanel({
               );
             })}
 
+            {corsiQualityFlags.slice(0, 24).map((flag, index) => {
+              const participant = participantById.get(flag.participantId);
+              return (
+                <div
+                  key={`corsi-${flag.sessionId}-${flag.code}-${index}`}
+                  className="flex flex-col gap-2 rounded-xl border shadow-[0_5px_18px_rgba(15,23,42,0.06),0_1px_4px_rgba(15,23,42,0.035)] border-slate-300/70 bg-white px-4 py-3 sm:flex-row sm:items-start sm:justify-between"
+                >
+                  <div>
+                    <p className="text-xs font-semibold text-slate-900">
+                      {participant?.public_id ||
+                        `Participant ${flag.participantId.slice(0, 8)}`}{" "}
+                      · {flag.label}
+                    </p>
+                    <p className="mt-1 text-[11px] leading-5 text-slate-500">
+                      {flag.detail}
+                    </p>
+                  </div>
+                  <Status
+                    type={
+                      flag.severity === "warning" ||
+                      flag.severity === "caution"
+                        ? "warning"
+                        : "neutral"
+                    }
+                  >
+                    {flag.severity}
+                  </Status>
+                </div>
+              );
+            })}
+
+            {cardSortQualityFlags.slice(0, 24).map((flag, index) => {
+              const participant = participantById.get(flag.participantId);
+              return (
+                <div
+                  key={`card-sort-${flag.sessionId}-${flag.code}-${index}`}
+                  className="flex flex-col gap-2 rounded-xl border shadow-[0_5px_18px_rgba(15,23,42,0.06),0_1px_4px_rgba(15,23,42,0.035)] border-slate-300/70 bg-white px-4 py-3 sm:flex-row sm:items-start sm:justify-between"
+                >
+                  <div>
+                    <p className="text-xs font-semibold text-slate-900">
+                      {participant?.public_id ||
+                        `Participant ${flag.participantId.slice(0, 8)}`}{" "}
+                      · {flag.label}
+                    </p>
+                    <p className="mt-1 text-[11px] leading-5 text-slate-500">
+                      {flag.detail}
+                    </p>
+                  </div>
+                  <Status
+                    type={
+                      flag.severity === "warning" ||
+                      flag.severity === "caution"
+                        ? "warning"
+                        : "neutral"
+                    }
+                  >
+                    {flag.severity}
+                  </Status>
+                </div>
+              );
+            })}
+
             {analysis.qualityFlags.length > 24 && (
               <p className="pt-2 text-xs text-slate-400">
                 Showing the first 24 flags. Participant-level cognitive exports retain the complete session/timing information for further review.
@@ -15982,7 +17458,7 @@ function ResearchCognitiveAnalysisPanel({
       </div>
 
       <div className="mt-5 rounded-xl border shadow-[0_5px_18px_rgba(15,23,42,0.06),0_1px_4px_rgba(15,23,42,0.035)] border-slate-300/70 bg-white px-4 py-3 text-[11px] leading-5 text-slate-500">
-        <span className="font-semibold text-slate-700">Analysis boundary:</span> the current engine provides participant-level descriptive summaries, 95% confidence intervals, paired t-tests for selected two-condition contrasts, Cohen’s dz, and transparent quality flags. It does not automatically choose a complex statistical model or claim that a hypothesis is supported. Dedicated Stop-Signal summaries use the stored deterministic SSRT/SSD engine. The Study Associations panel below can calculate researcher-selected Pearson/Spearman participant-level associations; trial-level mixed models, regression and preregistered analysis plans remain later modules.
+        <span className="font-semibold text-slate-700">Analysis boundary:</span> the current engine provides participant-level descriptive summaries, 95% confidence intervals, paired t-tests for selected two-condition contrasts, Cohen’s dz, and transparent quality flags. It does not automatically choose a complex statistical model or claim that a hypothesis is supported. Dedicated Stop-Signal summaries use the stored deterministic SSRT/SSD engine, dedicated Corsi summaries use the stored deterministic span/product-score engine, and Card Sorting uses the stored PsyLattice transparent set-shifting/perseveration engine rather than proprietary official WCST scoring. The Study Associations panel below can calculate researcher-selected Pearson/Spearman participant-level associations; trial-level mixed models, regression and preregistered analysis plans remain later modules.
       </div>
     </Panel>
   );
@@ -18269,6 +19745,8 @@ function ExportData() {
         "Questionnaire_Scores",
         "Cognitive_Summary",
         "StopSignal_Summary",
+        "Corsi_Summary",
+        "CardSorting_Summary",
         "Cognitive_Conditions",
         "Variable_Map",
         "Import_Guide",

@@ -36,6 +36,14 @@ import {
 } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import CognitiveRunner from "./CognitiveRunner";
+import {
+  CORSI_STANDARD_LAYOUT,
+  corsiSettingsFromTaskConfig,
+} from "@/lib/research/corsi";
+import {
+  CARD_SORT_REFERENCE_CARDS,
+  cardSortSettingsFromTaskConfig,
+} from "@/lib/research/cardSorting";
 
 type CognitiveTask = {
   id: string;
@@ -346,6 +354,760 @@ function isStopSignalTaskConfig(config: Record<string, unknown> | null | undefin
   );
 }
 
+
+
+function isCardSortTaskConfig(
+  config: Record<string, unknown> | null | undefined
+) {
+  if (!config) return false;
+  return (
+    String(config.runtime || "").toLowerCase() === "card_sorting" ||
+    String(config.template_key || "").toLowerCase() === "card_sorting"
+  );
+}
+
+function CardSortMiniCard({
+  card,
+  selected = false,
+}: {
+  card: { id: number; color: string; shape: string; count: number };
+  selected?: boolean;
+}) {
+  const glyph =
+    card.shape === "triangle"
+      ? "▲"
+      : card.shape === "square"
+        ? "■"
+        : card.shape === "diamond"
+          ? "◆"
+          : "●";
+
+  return (
+    <div
+      className={`flex aspect-[4/3] min-h-[76px] items-center justify-center rounded-[18px] border bg-white p-2 shadow-[0_8px_18px_rgba(15,23,42,0.08)] ${
+        selected
+          ? "border-cyan-300 ring-4 ring-cyan-100"
+          : "border-slate-200"
+      }`}
+    >
+      <div className="flex max-w-[92%] flex-wrap items-center justify-center gap-1.5">
+        {Array.from({ length: card.count }).map((_, index) => (
+          <span
+            key={index}
+            className="text-[22px] leading-none sm:text-[26px]"
+            style={{ color: card.color }}
+          >
+            {glyph}
+          </span>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function CardSortSettingsPanel({
+  taskConfig,
+  onChange,
+}: {
+  taskConfig: Record<string, unknown>;
+  onChange: (key: string, value: unknown) => void;
+}) {
+  const settings = cardSortSettingsFromTaskConfig(taskConfig);
+  const categoryRules = Array.from(
+    { length: settings.categories_to_complete },
+    (_, index) => {
+      const rules = ["color", "shape", "number"] as const;
+      const start = rules.indexOf(settings.starting_rule);
+      return rules[(start + index) % rules.length];
+    }
+  );
+
+  const sampleTarget = {
+    id: 99,
+    color: CARD_SORT_REFERENCE_CARDS[0].color,
+    shape: CARD_SORT_REFERENCE_CARDS[2].shape,
+    count: CARD_SORT_REFERENCE_CARDS[1].count,
+  };
+
+  return (
+    <div className="mt-5 max-w-5xl space-y-5">
+      <div className="grid gap-5 xl:grid-cols-[1fr_.92fr]">
+        <section className="rounded-[24px] border border-cyan-200/80 bg-white p-5 shadow-[0_7px_24px_rgba(8,145,178,0.08)]">
+          <div className="flex flex-wrap items-start justify-between gap-4">
+            <div className="max-w-2xl">
+              <p className="text-[10px] font-semibold uppercase tracking-[0.15em] text-cyan-700">
+                Dedicated stateful paradigm
+              </p>
+              <h3 className="mt-1 text-xl font-semibold text-slate-950">
+                Adaptive Card Sorting
+              </h3>
+              <p className="mt-2 text-xs leading-5 text-slate-500">
+                Participants infer a hidden sorting rule from Correct / Incorrect
+                feedback. After enough consecutive correct responses, PsyLattice
+                changes the rule without announcing it and tracks flexible versus
+                perseverative responding.
+              </p>
+            </div>
+            <span className="rounded-full border border-cyan-200 bg-cyan-50 px-3 py-1.5 text-[10px] font-semibold text-cyan-900">
+              WCST-style research task
+            </span>
+          </div>
+
+          <div className="mt-5 grid gap-3 sm:grid-cols-4">
+            <div className="rounded-2xl border border-slate-200 bg-slate-50 p-3">
+              <p className="text-[9px] font-semibold uppercase tracking-[0.12em] text-slate-400">
+                Categories
+              </p>
+              <p className="mt-1 text-lg font-semibold text-slate-950">
+                {settings.categories_to_complete}
+              </p>
+            </div>
+            <div className="rounded-2xl border border-slate-200 bg-slate-50 p-3">
+              <p className="text-[9px] font-semibold uppercase tracking-[0.12em] text-slate-400">
+                Shift criterion
+              </p>
+              <p className="mt-1 text-lg font-semibold text-slate-950">
+                {settings.correct_to_shift} correct
+              </p>
+            </div>
+            <div className="rounded-2xl border border-slate-200 bg-slate-50 p-3">
+              <p className="text-[9px] font-semibold uppercase tracking-[0.12em] text-slate-400">
+                Max trials
+              </p>
+              <p className="mt-1 text-lg font-semibold text-slate-950">
+                {settings.max_trials}
+              </p>
+            </div>
+            <div className="rounded-2xl border border-slate-200 bg-slate-50 p-3">
+              <p className="text-[9px] font-semibold uppercase tracking-[0.12em] text-slate-400">
+                Starting rule
+              </p>
+              <p className="mt-1 text-lg font-semibold capitalize text-slate-950">
+                {settings.starting_rule}
+              </p>
+            </div>
+          </div>
+
+          <div className="mt-5 rounded-[22px] border border-slate-200 bg-[#fbfdfd] p-4">
+            <p className="text-[10px] font-semibold uppercase tracking-[0.12em] text-slate-400">
+              Hidden rule sequence
+            </p>
+            <div className="mt-3 flex flex-wrap items-center gap-2">
+              {categoryRules.map((rule, index) => (
+                <div key={`${rule}-${index}`} className="flex items-center gap-2">
+                  <span className="rounded-full border border-slate-200 bg-white px-3 py-1.5 text-[10px] font-semibold capitalize text-slate-700 shadow-[0_3px_10px_rgba(15,23,42,0.04)]">
+                    {index + 1}. {rule}
+                  </span>
+                  {index < categoryRules.length - 1 && (
+                    <span className="text-slate-300">→</span>
+                  )}
+                </div>
+              ))}
+            </div>
+            <p className="mt-3 text-[10px] leading-4 text-slate-400">
+              Participants never see this sequence. Rules cycle through Color →
+              Shape → Number from the configured starting rule.
+            </p>
+          </div>
+        </section>
+
+        <section className="rounded-[24px] border border-slate-200 bg-[#f8fbfc] p-5 shadow-[0_6px_20px_rgba(15,23,42,0.05)]">
+          <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-400">
+            Stimulus preview
+          </p>
+          <h4 className="mt-1 text-base font-semibold text-slate-950">
+            Original PsyLattice card set
+          </h4>
+          <p className="mt-1 text-[10px] leading-4 text-slate-500">
+            The target card is sorted onto one of four reference cards. Color,
+            shape and number each point to a different reference card, removing
+            proprietary ambiguity-scoring rules.
+          </p>
+
+          <div className="mt-4">
+            <p className="mb-2 text-center text-[9px] font-semibold uppercase tracking-[0.12em] text-slate-400">
+              Example target
+            </p>
+            <div className="mx-auto max-w-[150px]">
+              <CardSortMiniCard card={sampleTarget} selected />
+            </div>
+          </div>
+
+          <div className="mt-5 grid grid-cols-4 gap-2">
+            {CARD_SORT_REFERENCE_CARDS.map((card) => (
+              <CardSortMiniCard key={card.id} card={card} />
+            ))}
+          </div>
+          <p className="mt-3 text-center text-[9px] text-slate-400">
+            Reference cards remain visible across trials.
+          </p>
+        </section>
+      </div>
+
+      <section className="rounded-[24px] border border-slate-200 bg-white p-5 shadow-[0_6px_20px_rgba(15,23,42,0.05)]">
+        <div>
+          <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-400">
+            Rule discovery
+          </p>
+          <h4 className="mt-1 text-base font-semibold text-slate-950">
+            Category shifts and stopping rules
+          </h4>
+        </div>
+
+        <div className="mt-4 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+          <label>
+            <FieldLabel>Starting rule</FieldLabel>
+            <select
+              value={settings.starting_rule}
+              onChange={(event) => onChange("starting_rule", event.target.value)}
+              className="mt-1.5 w-full rounded-[18px] border border-slate-300/80 bg-white px-3 py-2.5 text-sm shadow-[0_4px_14px_rgba(15,23,42,0.05)] outline-none focus:border-cyan-300"
+            >
+              <option value="color">Color</option>
+              <option value="shape">Shape</option>
+              <option value="number">Number</option>
+            </select>
+          </label>
+
+          <label>
+            <FieldLabel>Categories to complete</FieldLabel>
+            <TextField
+              type="number"
+              min="1"
+              max="12"
+              value={settings.categories_to_complete}
+              onChange={(event) =>
+                onChange(
+                  "categories_to_complete",
+                  Math.max(
+                    1,
+                    Math.min(12, Math.round(safeNumber(event.target.value, 6)))
+                  )
+                )
+              }
+            />
+          </label>
+
+          <label>
+            <FieldLabel>Correct responses to shift rule</FieldLabel>
+            <TextField
+              type="number"
+              min="3"
+              max="20"
+              value={settings.correct_to_shift}
+              onChange={(event) =>
+                onChange(
+                  "correct_to_shift",
+                  Math.max(
+                    3,
+                    Math.min(20, Math.round(safeNumber(event.target.value, 10)))
+                  )
+                )
+              }
+            />
+          </label>
+
+          <label>
+            <FieldLabel>Maximum trials</FieldLabel>
+            <TextField
+              type="number"
+              min="20"
+              max="300"
+              value={settings.max_trials}
+              onChange={(event) =>
+                onChange(
+                  "max_trials",
+                  Math.max(
+                    20,
+                    Math.min(300, Math.round(safeNumber(event.target.value, 128)))
+                  )
+                )
+              }
+            />
+          </label>
+
+          <label>
+            <FieldLabel>Failure-to-maintain streak</FieldLabel>
+            <TextField
+              type="number"
+              min="2"
+              max={Math.max(2, settings.correct_to_shift - 1)}
+              value={settings.failure_to_maintain_streak}
+              onChange={(event) =>
+                onChange(
+                  "failure_to_maintain_streak",
+                  Math.max(
+                    2,
+                    Math.min(
+                      Math.max(2, settings.correct_to_shift - 1),
+                      Math.round(safeNumber(event.target.value, 5))
+                    )
+                  )
+                )
+              }
+            />
+          </label>
+        </div>
+
+        <div className="mt-4 rounded-2xl border border-slate-200 bg-slate-50 p-4 text-[11px] leading-5 text-slate-600">
+          <strong className="text-slate-900">Transparent scoring:</strong>{" "}
+          after a rule shift, an incorrect choice that matches the immediately
+          previous rule is counted as a PsyLattice perseverative error. Other
+          errors are nonperseverative. This intentionally does not reproduce the
+          proprietary official WCST ambiguity/perseveration algorithm.
+        </div>
+      </section>
+
+      <section className="rounded-[24px] border border-slate-200 bg-white p-5 shadow-[0_6px_20px_rgba(15,23,42,0.05)]">
+        <div>
+          <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-400">
+            Feedback & timing
+          </p>
+          <h4 className="mt-1 text-base font-semibold text-slate-950">
+            Participant interaction
+          </h4>
+        </div>
+
+        <div className="mt-4 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+          <label>
+            <FieldLabel>Feedback duration</FieldLabel>
+            <div className="mt-1.5 flex items-center gap-2">
+              <input
+                type="number"
+                min="100"
+                step="50"
+                value={settings.feedback_ms}
+                onChange={(event) =>
+                  onChange(
+                    "feedback_ms",
+                    Math.max(100, safeNumber(event.target.value, 500))
+                  )
+                }
+                className="w-full rounded-[18px] border border-slate-300/80 bg-white px-3 py-2.5 text-sm shadow-[0_4px_14px_rgba(15,23,42,0.05)] outline-none focus:border-cyan-300"
+              />
+              <span className="text-xs text-slate-400">ms</span>
+            </div>
+          </label>
+
+          <label>
+            <FieldLabel>Inter-trial interval</FieldLabel>
+            <div className="mt-1.5 flex items-center gap-2">
+              <input
+                type="number"
+                min="0"
+                step="50"
+                value={settings.iti_ms}
+                onChange={(event) =>
+                  onChange("iti_ms", Math.max(0, safeNumber(event.target.value, 250)))
+                }
+                className="w-full rounded-[18px] border border-slate-300/80 bg-white px-3 py-2.5 text-sm shadow-[0_4px_14px_rgba(15,23,42,0.05)] outline-none focus:border-cyan-300"
+              />
+              <span className="text-xs text-slate-400">ms</span>
+            </div>
+          </label>
+
+          <label>
+            <FieldLabel>Response timeout</FieldLabel>
+            <div className="mt-1.5 flex items-center gap-2">
+              <input
+                type="number"
+                min="2000"
+                step="500"
+                value={settings.response_timeout_ms}
+                onChange={(event) =>
+                  onChange(
+                    "response_timeout_ms",
+                    Math.max(2000, safeNumber(event.target.value, 15000))
+                  )
+                }
+                className="w-full rounded-[18px] border border-slate-300/80 bg-white px-3 py-2.5 text-sm shadow-[0_4px_14px_rgba(15,23,42,0.05)] outline-none focus:border-cyan-300"
+              />
+              <span className="text-xs text-slate-400">ms</span>
+            </div>
+          </label>
+        </div>
+      </section>
+
+      <section className="rounded-[24px] border border-slate-200 bg-[#fbfdfd] p-5">
+        <p className="text-xs font-semibold text-slate-900">
+          Research / licensing boundary
+        </p>
+        <p className="mt-2 text-xs leading-5 text-slate-500">
+          This template is an original PsyLattice card-sorting paradigm inspired
+          by WCST-style rule discovery and set shifting. It does not reproduce
+          the official WCST card deck, standardized administration, normative
+          scores or proprietary Heaton scoring rules. Do not describe PsyLattice
+          output as an official WCST score.
+        </p>
+      </section>
+    </div>
+  );
+}
+
+function isCorsiTaskConfig(config: Record<string, unknown> | null | undefined) {
+  if (!config) return false;
+  return (
+    String(config.runtime || "").toLowerCase() === "corsi" ||
+    String(config.template_key || "").toLowerCase() === "corsi"
+  );
+}
+
+function CorsiSettingsPanel({
+  taskConfig,
+  onChange,
+}: {
+  taskConfig: Record<string, unknown>;
+  onChange: (key: string, value: unknown) => void;
+}) {
+  const settings = corsiSettingsFromTaskConfig(taskConfig);
+  const modes =
+    settings.mode === "both"
+      ? ["Forward", "Backward"]
+      : [settings.mode === "backward" ? "Backward" : "Forward"];
+  const maxExperimental =
+    (settings.max_span - settings.start_span + 1) *
+    settings.trials_per_span *
+    modes.length;
+
+  return (
+    <div className="mt-5 max-w-5xl space-y-5">
+      <div className="grid gap-5 xl:grid-cols-[1fr_.9fr]">
+        <section className="rounded-[24px] border border-cyan-200/80 bg-white p-5 shadow-[0_7px_24px_rgba(8,145,178,0.08)]">
+          <div className="flex flex-wrap items-start justify-between gap-4">
+            <div className="max-w-2xl">
+              <p className="text-[10px] font-semibold uppercase tracking-[0.15em] text-cyan-700">
+                Dedicated spatial paradigm
+              </p>
+              <h3 className="mt-1 text-xl font-semibold text-slate-950">
+                Corsi Block-Tapping
+              </h3>
+              <p className="mt-2 text-xs leading-5 text-slate-500">
+                Blocks illuminate one at a time. After the sequence ends, the
+                participant reproduces it by clicking or tapping the same blocks.
+                PsyLattice adapts the sequence length and scores the exact spatial
+                order automatically.
+              </p>
+            </div>
+            <span className="rounded-full border border-cyan-200 bg-cyan-50 px-3 py-1.5 text-[10px] font-semibold text-cyan-900">
+              Spatial runtime
+            </span>
+          </div>
+
+          <div className="mt-5 grid gap-3 sm:grid-cols-4">
+            <div className="rounded-2xl border border-slate-200 bg-slate-50 p-3">
+              <p className="text-[9px] font-semibold uppercase tracking-[0.12em] text-slate-400">Mode</p>
+              <p className="mt-1 text-lg font-semibold text-slate-950">{modes.join(" + ")}</p>
+            </div>
+            <div className="rounded-2xl border border-slate-200 bg-slate-50 p-3">
+              <p className="text-[9px] font-semibold uppercase tracking-[0.12em] text-slate-400">Start span</p>
+              <p className="mt-1 text-lg font-semibold text-slate-950">{settings.start_span}</p>
+            </div>
+            <div className="rounded-2xl border border-slate-200 bg-slate-50 p-3">
+              <p className="text-[9px] font-semibold uppercase tracking-[0.12em] text-slate-400">Max span</p>
+              <p className="mt-1 text-lg font-semibold text-slate-950">{settings.max_span}</p>
+            </div>
+            <div className="rounded-2xl border border-slate-200 bg-slate-50 p-3">
+              <p className="text-[9px] font-semibold uppercase tracking-[0.12em] text-slate-400">Max experimental trials</p>
+              <p className="mt-1 text-lg font-semibold text-slate-950">≤ {maxExperimental}</p>
+            </div>
+          </div>
+        </section>
+
+        <section className="rounded-[24px] border border-slate-200 bg-[#f8fbfc] p-5 shadow-[0_6px_20px_rgba(15,23,42,0.05)]">
+          <div className="flex items-start justify-between gap-3">
+            <div>
+              <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-400">
+                Board preview
+              </p>
+              <h4 className="mt-1 text-base font-semibold text-slate-950">9-block digital layout</h4>
+            </div>
+            <span className="rounded-full border border-slate-200 bg-white px-2.5 py-1 text-[9px] font-semibold text-slate-500">
+              Touch + mouse
+            </span>
+          </div>
+
+          <div className="relative mt-4 aspect-[4/3] overflow-hidden rounded-[22px] border border-slate-200 bg-white shadow-inner">
+            {CORSI_STANDARD_LAYOUT.map((block, index) => (
+              <div
+                key={block.id}
+                className={`absolute flex h-[14%] w-[14%] -translate-x-1/2 -translate-y-1/2 items-center justify-center rounded-[18%] border text-[10px] font-semibold shadow-[0_7px_15px_rgba(15,23,42,0.10)] ${
+                  index === 4
+                    ? "border-cyan-300 bg-cyan-50 text-cyan-800"
+                    : "border-slate-300 bg-white text-slate-400"
+                }`}
+                style={{ left: `${block.x}%`, top: `${block.y}%` }}
+              >
+                {block.id}
+              </div>
+            ))}
+          </div>
+          <p className="mt-3 text-[10px] leading-4 text-slate-400">
+            Block numbers are shown only in this researcher preview. Participants
+            see unnumbered blocks. A draggable custom-layout editor can be added
+            later without changing the Corsi runtime or stored sequence format.
+          </p>
+        </section>
+      </div>
+
+      <section className="rounded-[24px] border border-slate-200 bg-white p-5 shadow-[0_6px_20px_rgba(15,23,42,0.05)]">
+        <div>
+          <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-400">
+            Span progression
+          </p>
+          <h4 className="mt-1 text-base font-semibold text-slate-950">
+            Adaptive sequence length
+          </h4>
+          <p className="mt-1 text-[11px] leading-5 text-slate-500">
+            The default advances after at least one correct sequence out of two
+            at a span, and stops that mode when the criterion is missed.
+          </p>
+        </div>
+
+        <div className="mt-4 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+          <label>
+            <FieldLabel>Response mode</FieldLabel>
+            <select
+              value={settings.mode}
+              onChange={(event) => onChange("mode", event.target.value)}
+              className="mt-1.5 w-full rounded-[18px] border border-slate-300/80 bg-white px-3 py-2.5 text-sm shadow-[0_4px_14px_rgba(15,23,42,0.05)] outline-none focus:border-cyan-300"
+            >
+              <option value="forward">Forward only</option>
+              <option value="backward">Backward only</option>
+              <option value="both">Forward + backward</option>
+            </select>
+          </label>
+
+          <label>
+            <FieldLabel>Starting span</FieldLabel>
+            <TextField
+              type="number"
+              min="2"
+              max="9"
+              value={settings.start_span}
+              onChange={(event) =>
+                onChange(
+                  "start_span",
+                  Math.max(2, Math.min(9, Math.round(safeNumber(event.target.value, 2))))
+                )
+              }
+            />
+          </label>
+
+          <label>
+            <FieldLabel>Maximum span</FieldLabel>
+            <TextField
+              type="number"
+              min={settings.start_span}
+              max="9"
+              value={settings.max_span}
+              onChange={(event) =>
+                onChange(
+                  "max_span",
+                  Math.max(
+                    settings.start_span,
+                    Math.min(9, Math.round(safeNumber(event.target.value, 9)))
+                  )
+                )
+              }
+            />
+          </label>
+
+          <label>
+            <FieldLabel>Trials per span</FieldLabel>
+            <TextField
+              type="number"
+              min="1"
+              max="6"
+              value={settings.trials_per_span}
+              onChange={(event) =>
+                onChange(
+                  "trials_per_span",
+                  Math.max(1, Math.min(6, Math.round(safeNumber(event.target.value, 2))))
+                )
+              }
+            />
+          </label>
+
+          <label>
+            <FieldLabel>Correct trials required to advance</FieldLabel>
+            <TextField
+              type="number"
+              min="1"
+              max={settings.trials_per_span}
+              value={settings.pass_required}
+              onChange={(event) =>
+                onChange(
+                  "pass_required",
+                  Math.max(
+                    1,
+                    Math.min(
+                      settings.trials_per_span,
+                      Math.round(safeNumber(event.target.value, 1))
+                    )
+                  )
+                )
+              }
+            />
+          </label>
+
+          <label>
+            <FieldLabel>Practice trials per mode</FieldLabel>
+            <TextField
+              type="number"
+              min="0"
+              max="10"
+              value={settings.practice_trials}
+              onChange={(event) =>
+                onChange(
+                  "practice_trials",
+                  Math.max(0, Math.min(10, Math.round(safeNumber(event.target.value, 3))))
+                )
+              }
+            />
+          </label>
+
+          <label>
+            <FieldLabel>Practice span</FieldLabel>
+            <TextField
+              type="number"
+              min="2"
+              max={settings.max_span}
+              value={settings.practice_span}
+              onChange={(event) =>
+                onChange(
+                  "practice_span",
+                  Math.max(
+                    2,
+                    Math.min(
+                      settings.max_span,
+                      Math.round(safeNumber(event.target.value, 3))
+                    )
+                  )
+                )
+              }
+            />
+          </label>
+        </div>
+      </section>
+
+      <section className="rounded-[24px] border border-slate-200 bg-white p-5 shadow-[0_6px_20px_rgba(15,23,42,0.05)]">
+        <div>
+          <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-400">
+            Presentation & response timing
+          </p>
+          <h4 className="mt-1 text-base font-semibold text-slate-950">
+            Sequence timing
+          </h4>
+        </div>
+
+        <div className="mt-4 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+          <label>
+            <FieldLabel>Block highlight</FieldLabel>
+            <div className="mt-1.5 flex items-center gap-2">
+              <input
+                type="number"
+                min="100"
+                step="50"
+                value={settings.highlight_ms}
+                onChange={(event) =>
+                  onChange("highlight_ms", Math.max(100, safeNumber(event.target.value, 500)))
+                }
+                className="w-full rounded-[18px] border border-slate-300/80 bg-white px-3 py-2.5 text-sm shadow-[0_4px_14px_rgba(15,23,42,0.05)] outline-none focus:border-cyan-300"
+              />
+              <span className="text-xs text-slate-400">ms</span>
+            </div>
+          </label>
+
+          <label>
+            <FieldLabel>Inter-onset interval</FieldLabel>
+            <div className="mt-1.5 flex items-center gap-2">
+              <input
+                type="number"
+                min="150"
+                step="50"
+                value={settings.inter_onset_ms}
+                onChange={(event) =>
+                  onChange("inter_onset_ms", Math.max(150, safeNumber(event.target.value, 1000)))
+                }
+                className="w-full rounded-[18px] border border-slate-300/80 bg-white px-3 py-2.5 text-sm shadow-[0_4px_14px_rgba(15,23,42,0.05)] outline-none focus:border-cyan-300"
+              />
+              <span className="text-xs text-slate-400">ms</span>
+            </div>
+          </label>
+
+          <label>
+            <FieldLabel>Board settling time</FieldLabel>
+            <div className="mt-1.5 flex items-center gap-2">
+              <input
+                type="number"
+                min="0"
+                step="50"
+                value={settings.pre_sequence_ms}
+                onChange={(event) =>
+                  onChange("pre_sequence_ms", Math.max(0, safeNumber(event.target.value, 650)))
+                }
+                className="w-full rounded-[18px] border border-slate-300/80 bg-white px-3 py-2.5 text-sm shadow-[0_4px_14px_rgba(15,23,42,0.05)] outline-none focus:border-cyan-300"
+              />
+              <span className="text-xs text-slate-400">ms</span>
+            </div>
+          </label>
+
+          <label>
+            <FieldLabel>Response timeout</FieldLabel>
+            <div className="mt-1.5 flex items-center gap-2">
+              <input
+                type="number"
+                min="2000"
+                step="500"
+                value={settings.response_timeout_ms}
+                onChange={(event) =>
+                  onChange(
+                    "response_timeout_ms",
+                    Math.max(2000, safeNumber(event.target.value, 12000))
+                  )
+                }
+                className="w-full rounded-[18px] border border-slate-300/80 bg-white px-3 py-2.5 text-sm shadow-[0_4px_14px_rgba(15,23,42,0.05)] outline-none focus:border-cyan-300"
+              />
+              <span className="text-xs text-slate-400">ms</span>
+            </div>
+          </label>
+        </div>
+
+        <div className="mt-4 flex flex-wrap gap-3">
+          <button
+            type="button"
+            onClick={() => onChange("practice_feedback", !settings.practice_feedback)}
+            className={`rounded-full border px-3.5 py-2 text-xs font-semibold transition ${
+              settings.practice_feedback
+                ? "border-cyan-200 bg-cyan-50 text-cyan-900"
+                : "border-slate-200 bg-white text-slate-500"
+            }`}
+          >
+            {settings.practice_feedback ? "✓" : "○"} Practice feedback
+          </button>
+          <span className="rounded-full border border-slate-200 bg-white px-3.5 py-2 text-[10px] font-medium text-slate-500">
+            Experimental trials: no correctness feedback
+          </span>
+        </div>
+      </section>
+
+      <section className="rounded-[24px] border border-slate-200 bg-[#fbfdfd] p-5">
+        <p className="text-xs font-semibold text-slate-900">Deterministic scoring</p>
+        <p className="mt-2 text-xs leading-5 text-slate-500">
+          PsyLattice stores the presented and recalled block sequences exactly.
+          Span is the longest sequence length reproduced correctly. Product score
+          is calculated as span × total correct sequences for that mode. Forward
+          and backward modes remain separate when both are enabled.
+        </p>
+        <p className="mt-2 text-[10px] leading-4 text-slate-400">
+          No normative or diagnostic cutoffs are attached to this template.
+          Researchers should report the exact digital layout and configured
+          administration parameters.
+        </p>
+      </section>
+    </div>
+  );
+}
+
 function StopSignalSettingsPanel({
   taskConfig,
   onChange,
@@ -647,7 +1409,13 @@ export default function CognitiveTaskBuilder({
     setBlocks(nextBlocks);
     setSelectedBlockId((current) => current && nextBlocks.some((block) => block.local_id === current) ? current : nextBlocks[0]?.local_id || "");
     setSelectedComponentId("");
-    setEditorTab(isStopSignalTaskConfig(versionData.task_config) ? "paradigm" : "timeline");
+    setEditorTab(
+      isStopSignalTaskConfig(versionData.task_config) ||
+        isCorsiTaskConfig(versionData.task_config) ||
+        isCardSortTaskConfig(versionData.task_config)
+        ? "paradigm"
+        : "timeline"
+    );
     setDirty(false);
     setLoading(false);
   }, [taskId]);
@@ -659,6 +1427,48 @@ export default function CognitiveTaskBuilder({
   const selectedBlock = blocks.find((block) => block.local_id === selectedBlockId) || null;
   const selectedComponent = selectedBlock?.components.find((component) => component.local_id === selectedComponentId) || null;
   const stopSignalTask = !!version && isStopSignalTaskConfig(version.task_config);
+  const corsiTask = !!version && isCorsiTaskConfig(version.task_config);
+  const cardSortTask = !!version && isCardSortTaskConfig(version.task_config);
+  const dedicatedLockedTask = corsiTask || cardSortTask;
+
+  function updateCardSortSetting(key: string, value: unknown) {
+    if (!version) return;
+    const current =
+      typeof version.task_config.card_sorting === "object" &&
+      version.task_config.card_sorting !== null
+        ? (version.task_config.card_sorting as Record<string, unknown>)
+        : {};
+    const defaults = cardSortSettingsFromTaskConfig(version.task_config);
+    updateVersion("task_config", {
+      ...version.task_config,
+      template_key: "card_sorting",
+      runtime: "card_sorting",
+      card_sorting: {
+        ...defaults,
+        ...current,
+        [key]: value,
+      },
+    });
+  }
+
+  function updateCorsiSetting(key: string, value: unknown) {
+    if (!version) return;
+    const current =
+      typeof version.task_config.corsi === "object" && version.task_config.corsi !== null
+        ? (version.task_config.corsi as Record<string, unknown>)
+        : {};
+    const defaults = corsiSettingsFromTaskConfig(version.task_config);
+    updateVersion("task_config", {
+      ...version.task_config,
+      template_key: "corsi",
+      runtime: "corsi",
+      corsi: {
+        ...defaults,
+        ...current,
+        [key]: value,
+      },
+    });
+  }
 
   function updateStopSignalSetting(key: string, value: unknown) {
     if (!version) return;
@@ -1050,9 +1860,9 @@ export default function CognitiveTaskBuilder({
             <div className="flex items-center justify-between gap-3">
               <div>
                 <p className="text-[10px] font-semibold uppercase tracking-[0.15em] text-slate-400">Structure</p>
-                <p className="mt-1 text-sm font-semibold text-slate-900">Blocks</p>
+                <p className="mt-1 text-sm font-semibold text-slate-900">{cardSortTask ? "Card sorting flow" : corsiTask ? "Corsi flow" : "Blocks"}</p>
               </div>
-              <div className="relative">
+              {!dedicatedLockedTask && <div className="relative">
                 <button
                   type="button"
                   onClick={() => setBlockMenuOpen((open) => !open)}
@@ -1074,8 +1884,20 @@ export default function CognitiveTaskBuilder({
                     ))}
                   </div>
                 )}
-              </div>
+              </div>}
             </div>
+
+            {cardSortTask && (
+              <div className="mt-3 rounded-2xl border border-cyan-100 bg-white p-3 text-[10px] leading-4 text-slate-500 shadow-[0_3px_10px_rgba(15,23,42,0.035)]">
+                Hidden-rule card sorting → complete. The stateful structure is fixed so rule shifts and scoring remain reproducible; customise the protocol in <strong className="text-slate-700">Card sorting setup</strong>.
+              </div>
+            )}
+
+            {corsiTask && (
+              <div className="mt-3 rounded-2xl border border-cyan-100 bg-white p-3 text-[10px] leading-4 text-slate-500 shadow-[0_3px_10px_rgba(15,23,42,0.035)]">
+                Practice → adaptive span → complete. This sequence is fixed so the dedicated spatial runtime stays reproducible; customise the protocol in <strong className="text-slate-700">Corsi setup</strong>.
+              </div>
+            )}
 
             <div className="mt-4 space-y-2">
               {blocks.map((block, index) => {
@@ -1086,7 +1908,17 @@ export default function CognitiveTaskBuilder({
                       <span className={`mt-0.5 flex h-6 w-6 shrink-0 items-center justify-center rounded-lg text-[10px] font-semibold ${active ? "bg-cyan-700 text-white" : "bg-slate-100 text-slate-500"}`}>{String(index + 1).padStart(2, "0")}</span>
                       <div className="min-w-0 flex-1">
                         <p className="truncate text-xs font-semibold text-slate-900">{block.name}</p>
-                        <p className="mt-1 text-[10px] capitalize text-slate-400">{block.block_type.replace("_", " ")} · {block.components.length} steps · {block.trials.length} rows</p>
+                        <p className="mt-1 text-[10px] capitalize text-slate-400">{cardSortTask
+                          ? block.block_type === "experimental"
+                            ? "Stateful hidden-rule sorting"
+                            : "Completion screen"
+                          : corsiTask
+                            ? block.block_type === "practice"
+                              ? "Dedicated spatial practice"
+                              : block.block_type === "experimental"
+                                ? "Adaptive spatial span"
+                                : "Completion screen"
+                            : `${block.block_type.replace("_", " ")} · ${block.components.length} steps · ${block.trials.length} rows`}</p>
                       </div>
                     </div>
                   </button>
@@ -1102,7 +1934,7 @@ export default function CognitiveTaskBuilder({
               </div>
             )}
 
-            {selectedBlock && (
+            {selectedBlock && !dedicatedLockedTask && (
               <div className="mt-4 grid grid-cols-4 gap-1.5">
                 <button type="button" onClick={() => moveBlock(selectedBlock.local_id, -1)} className="flex h-8 items-center justify-center rounded-lg border border-slate-200 bg-white text-slate-500" title="Move up"><ArrowUp className="h-3.5 w-3.5" /></button>
                 <button type="button" onClick={() => moveBlock(selectedBlock.local_id, 1)} className="flex h-8 items-center justify-center rounded-lg border border-slate-200 bg-white text-slate-500" title="Move down"><ArrowDown className="h-3.5 w-3.5" /></button>
@@ -1115,13 +1947,26 @@ export default function CognitiveTaskBuilder({
           {/* Main editor */}
           <section className="min-w-0 bg-white p-4 sm:p-5">
             <div className="flex flex-wrap gap-2 rounded-[22px] border border-slate-200 bg-white p-2 shadow-[0_5px_16px_rgba(15,23,42,0.05)]">
-              {[
-                ...(stopSignalTask ? [["paradigm", "Stop-Signal setup", CircleDot] as const] : []),
-                ["timeline", "Trial timeline", Layers3] as const,
-                ["trials", "Trial table", ListChecks] as const,
-                ["randomization", "Randomisation", Shuffle] as const,
-                ["scoring", "Scoring & devices", BarChart3] as const,
-              ].map(([id, label, Icon]) => (
+              {(cardSortTask
+                ? [
+                    ["paradigm", "Card sorting setup", Shuffle] as const,
+                    ["scoring", "Scoring & devices", BarChart3] as const,
+                  ]
+                : corsiTask
+                  ? [
+                      ["paradigm", "Corsi setup", Square] as const,
+                      ["scoring", "Scoring & devices", BarChart3] as const,
+                    ]
+                  : [
+                      ...(stopSignalTask
+                        ? [["paradigm", "Stop-Signal setup", CircleDot] as const]
+                        : []),
+                      ["timeline", "Trial timeline", Layers3] as const,
+                      ["trials", "Trial table", ListChecks] as const,
+                      ["randomization", "Randomisation", Shuffle] as const,
+                      ["scoring", "Scoring & devices", BarChart3] as const,
+                    ]
+              ).map(([id, label, Icon]) => (
                 <button key={id as string} type="button" onClick={() => setEditorTab(id as EditorTab)} className={`inline-flex items-center gap-2 rounded-full px-3 py-2 text-xs font-semibold transition ${editorTab === id ? "border border-cyan-200 bg-white text-cyan-950 shadow-[0_5px_16px_rgba(8,145,178,0.12)]" : "border border-transparent text-slate-500 hover:border-slate-200 hover:bg-white hover:text-slate-900 hover:shadow-[0_4px_12px_rgba(15,23,42,0.045)]"}`}>
                   <Icon className="h-3.5 w-3.5" /> {label as string}
                 </button>
@@ -1132,6 +1977,13 @@ export default function CognitiveTaskBuilder({
               <div className="mt-5 flex min-h-[480px] items-center justify-center rounded-[24px] border border-dashed border-slate-300 bg-slate-50/50 text-center">
                 <div className="max-w-sm px-6"><Layers3 className="mx-auto h-7 w-7 text-slate-300" /><p className="mt-3 text-sm font-semibold text-slate-800">Add or select a block</p><p className="mt-1 text-xs leading-5 text-slate-500">Blocks define the participant journey. Trial-level stimuli and responses live inside Practice and Experimental blocks.</p></div>
               </div>
+            ) : editorTab === "paradigm" && cardSortTask ? (
+              <CardSortSettingsPanel
+                taskConfig={version.task_config}
+                onChange={updateCardSortSetting}
+              />
+            ) : editorTab === "paradigm" && corsiTask ? (
+              <CorsiSettingsPanel taskConfig={version.task_config} onChange={updateCorsiSetting} />
             ) : editorTab === "paradigm" && stopSignalTask ? (
               <StopSignalSettingsPanel taskConfig={version.task_config} onChange={updateStopSignalSetting} />
             ) : editorTab === "timeline" ? (

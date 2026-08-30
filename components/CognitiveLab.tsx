@@ -135,6 +135,21 @@ const templateProfiles: Record<string, TemplateProfile> = {
     kicker: "Action cancellation",
     fallbackOutputs: ["SSRT", "Mean SSD", "Stop success", "Go RT"],
   },
+  corsi: {
+    icon: Layers3,
+    kicker: "Visuospatial span",
+    fallbackOutputs: ["Forward span", "Backward span", "Product score", "Sequence accuracy"],
+  },
+  card_sorting: {
+    icon: BrainCircuit,
+    kicker: "Set shifting",
+    fallbackOutputs: [
+      "Categories completed",
+      "Perseverative errors",
+      "Nonperseverative errors",
+      "Failure to maintain set",
+    ],
+  },
   sart: {
     icon: Activity,
     kicker: "Sustained attention",
@@ -1022,11 +1037,11 @@ export default function CognitiveLab() {
                 <p className="text-[10px] font-semibold uppercase tracking-[0.15em] text-slate-400">Dedicated runner tasks</p>
                 <h4 className="mt-1 text-base font-semibold text-slate-950">Some paradigms need more than another template card.</h4>
                 <p className="mt-2 text-xs leading-5 text-slate-500">
-                  Corsi Block Tapping, Wisconsin Card Sorting, BART and true image-based Mental Rotation still need dedicated spatial or stateful runner logic. Stop-Signal is now implemented with an adaptive SSD engine and deterministic SSRT outputs.
+                  BART and true image-based Mental Rotation still need dedicated stateful or spatial runner logic. Stop-Signal, Corsi and PsyLattice Card Sorting are now implemented with dedicated runtimes and deterministic scoring.
                 </p>
               </div>
               <div className="flex flex-wrap gap-1.5 lg:max-w-sm lg:justify-end">
-                {["Corsi", "WCST", "BART", "Mental Rotation"].map((name) => (
+                {["BART", "Mental Rotation"].map((name) => (
                   <span key={name} className="rounded-full border border-slate-200 bg-slate-50 px-2.5 py-1.5 text-[9px] font-semibold text-slate-500">
                     {name} · dedicated engine
                   </span>

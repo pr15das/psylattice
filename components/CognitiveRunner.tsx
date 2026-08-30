@@ -24,6 +24,32 @@ import {
   stopSignalSettingsFromTaskConfig,
   type StopSignalSettings,
 } from "@/lib/research/stopSignal";
+import {
+  CORSI_STANDARD_LAYOUT,
+  buildCorsiSummary,
+  corsiErrorPositions,
+  corsiModes,
+  corsiSettingsFromTaskConfig,
+  expectedCorsiSequence,
+  generateCorsiSequence,
+  isCorsiRuntime,
+  type CorsiSettings,
+} from "@/lib/research/corsi";
+import {
+  CARD_SORT_REFERENCE_CARDS,
+  buildCardSortSummary,
+  cardSortRuleSequence,
+  cardSortSettingsFromTaskConfig,
+  correctReferenceForRule,
+  generateCardSortTarget,
+  inferredRuleFromChoice,
+  isCardSortRuntime,
+  nextCardSortRule,
+  type CardSortCard,
+  type CardSortRule,
+  type CardSortSettings,
+  type CardSortTarget,
+} from "@/lib/research/cardSorting";
 
 type TaskRow = {
   id: string;
@@ -147,7 +173,28 @@ type DisplayState =
   | { kind: "audio"; url: string }
   | { kind: "video"; url: string }
   | { kind: "shape"; shape: string; color: string; size: number }
-  | { kind: "html"; html: string };
+  | { kind: "html"; html: string }
+  | {
+      kind: "corsi";
+      blocks: Array<{ id: number; x: number; y: number }>;
+      activeBlockId: number | null;
+      interactive: boolean;
+      prompt: string;
+      responseCount: number;
+      responseTarget: number;
+      mode: "forward" | "backward";
+    }
+  | {
+      kind: "card_sort";
+      target: CardSortTarget;
+      references: CardSortCard[];
+      interactive: boolean;
+      selectedReferenceId: number | null;
+      feedback: "correct" | "incorrect" | null;
+      trialNumber: number;
+      maxTrials: number;
+      categoriesCompleted: number;
+    };
 
 function numeric(value: unknown, fallback: number) {
   const parsed = Number(value);
@@ -550,6 +597,10 @@ export default function CognitiveRunner_PHASE_1C_BROWSER_PREVIEW({
   const cancelledRef = useRef(false);
   const responseHandlerRef = useRef<((value: string, eventTime: number) => void) | null>(null);
   const continueRef = useRef<(() => void) | null>(null);
+  const corsiTapHandlerRef = useRef<((blockId: number, eventTime: number) => void) | null>(null);
+  const corsiResponseResolveRef = useRef<(() => void) | null>(null);
+  const cardSortChoiceHandlerRef = useRef<((referenceId: number, eventTime: number) => void) | null>(null);
+  const cardSortResponseResolveRef = useRef<(() => void) | null>(null);
 
   const loadDefinition = useCallback(async () => {
     setLoading(true);
@@ -719,6 +770,17 @@ export default function CognitiveRunner_PHASE_1C_BROWSER_PREVIEW({
   const stopSignalRuntime = !!version && isStopSignalRuntime(version.runtime_engine, version.task_config);
   const stopSignalSettings = useMemo(
     () => stopSignalSettingsFromTaskConfig(version?.task_config),
+    [version?.task_config]
+  );
+  const corsiRuntime = !!version && isCorsiRuntime(version.runtime_engine, version.task_config);
+  const corsiSettings = useMemo(
+    () => corsiSettingsFromTaskConfig(version?.task_config),
+    [version?.task_config]
+  );
+  const cardSortRuntime =
+    !!version && isCardSortRuntime(version.runtime_engine, version.task_config);
+  const cardSortSettings = useMemo(
+    () => cardSortSettingsFromTaskConfig(version?.task_config),
     [version?.task_config]
   );
 
@@ -1289,6 +1351,622 @@ export default function CognitiveRunner_PHASE_1C_BROWSER_PREVIEW({
     } satisfies PreviewTrialResult;
   }
 
+
+  async function runCorsiTrial(
+    block: RunnerBlock,
+    mode: "forward" | "backward",
+    span: number,
+    spanTrialIndex: number,
+    globalIndex: number,
+    blockRepeat: number,
+    settings: CorsiSettings,
+    seed: string,
+    practice: boolean
+  ): Promise<PreviewTrialResult> {
+    setResponseOptions([]);
+
+    const sequence = generateCorsiSequence(span, seed);
+    const expected = expectedCorsiSequence(sequence, mode);
+    const timings: ComponentTiming[] = [];
+    const board = CORSI_STANDARD_LAYOUT;
+
+    const boardState = (
+      activeBlockId: number | null,
+      interactive: boolean,
+      prompt: string,
+      responseCount = 0
+    ): DisplayState => ({
+      kind: "corsi",
+      blocks: board,
+      activeBlockId,
+      interactive,
+      prompt,
+      responseCount,
+      responseTarget: span,
+      mode,
+    });
+
+    if (settings.pre_sequence_ms > 0) {
+      timings.push(
+        await runTimedDisplay(
+          boardState(null, false, "Watch the sequence"),
+          settings.pre_sequence_ms,
+          "corsi_board_ready",
+          "corsi_board"
+        )
+      );
+    } else {
+      setDisplay(boardState(null, false, "Watch the sequence"));
+      await nextAnimationFrame();
+    }
+
+    const gapMs = Math.max(0, settings.inter_onset_ms - settings.highlight_ms);
+
+    for (let sequenceIndex = 0; sequenceIndex < sequence.length; sequenceIndex += 1) {
+      if (cancelledRef.current) throw new Error("Preview cancelled");
+      const blockId = sequence[sequenceIndex];
+
+      timings.push(
+        await runTimedDisplay(
+          boardState(blockId, false, "Watch the sequence"),
+          settings.highlight_ms,
+          `corsi_highlight_${sequenceIndex + 1}`,
+          "corsi_highlight"
+        )
+      );
+
+      if (gapMs > 0 && sequenceIndex < sequence.length - 1) {
+        timings.push(
+          await runTimedDisplay(
+            boardState(null, false, "Watch the sequence"),
+            gapMs,
+            `corsi_gap_${sequenceIndex + 1}`,
+            "corsi_gap"
+          )
+        );
+      }
+    }
+
+    setDisplay(
+      boardState(
+        null,
+        true,
+        mode === "backward"
+          ? "Tap the blocks in reverse order"
+          : "Tap the blocks in the same order"
+      )
+    );
+    await nextAnimationFrame();
+
+    const responseStartedAt = performance.now();
+    const responseSequence: number[] = [];
+    const tapLatencies: number[] = [];
+    let timedOut = false;
+    let resolved = false;
+    let timeoutId: number | null = null;
+
+    await new Promise<void>((resolve) => {
+      const finish = (timeout = false) => {
+        if (resolved) return;
+        resolved = true;
+        timedOut = timeout;
+        corsiTapHandlerRef.current = null;
+        corsiResponseResolveRef.current = null;
+        if (timeoutId !== null) window.clearTimeout(timeoutId);
+        resolve();
+      };
+
+      corsiResponseResolveRef.current = () => finish(false);
+
+      corsiTapHandlerRef.current = (blockId, eventTime) => {
+        if (resolved || cancelledRef.current) return;
+        responseSequence.push(blockId);
+        tapLatencies.push(Math.max(0, eventTime - responseStartedAt));
+
+        setDisplay(
+          boardState(
+            blockId,
+            true,
+            mode === "backward"
+              ? "Tap the blocks in reverse order"
+              : "Tap the blocks in the same order",
+            responseSequence.length
+          )
+        );
+
+        if (settings.tap_feedback_ms > 0) {
+          window.setTimeout(() => {
+            setDisplay((current) =>
+              current.kind === "corsi" && current.interactive
+                ? { ...current, activeBlockId: null }
+                : current
+            );
+          }, settings.tap_feedback_ms);
+        }
+
+        if (responseSequence.length >= span) finish(false);
+      };
+
+      timeoutId = window.setTimeout(
+        () => finish(true),
+        settings.response_timeout_ms
+      );
+    });
+
+    if (cancelledRef.current) throw new Error("Preview cancelled");
+
+    const responseEndedAt = performance.now();
+    timings.push({
+      key: "corsi_response",
+      type: "corsi_spatial_response",
+      requested_ms: settings.response_timeout_ms,
+      requested_frames: null,
+      target_frame_ms: null,
+      timing_mode: "timer",
+      frame_interval_ms: null,
+      actual_frames: null,
+      actual_ms: responseEndedAt - responseStartedAt,
+      started_at_ms: responseStartedAt,
+      ended_at_ms: responseEndedAt,
+    });
+
+    const errorPositions = corsiErrorPositions(expected, responseSequence);
+    const correct =
+      responseSequence.length === expected.length &&
+      errorPositions.length === 0;
+
+    if (practice && settings.practice_feedback) {
+      timings.push(
+        await runTimedDisplay(
+          {
+            kind: "text",
+            text: correct ? "Correct" : "Try the next sequence",
+            color: correct ? "#0e7490" : "#64748b",
+            fontSize: 30,
+            fontWeight: 700,
+            fontFamily: "inherit",
+          },
+          650,
+          "corsi_practice_feedback",
+          "feedback"
+        )
+      );
+    } else {
+      setDisplay({ kind: "blank" });
+    }
+
+    const firstTapLatency = tapLatencies[0] ?? null;
+    const completionLatency =
+      responseSequence.length > 0
+        ? tapLatencies[tapLatencies.length - 1] ?? null
+        : null;
+
+    return {
+      block_key: block.block_key,
+      block_type: block.block_type,
+      block_attempt: 1,
+      block_repeat: blockRepeat,
+      trial_index: globalIndex,
+      source_trial_id: `corsi:${mode}:${practice ? "practice" : "experimental"}:${span}:${spanTrialIndex}`,
+      source_trial_position: spanTrialIndex,
+      condition_label: `${mode}_span_${span}`,
+      variables: {
+        corsi_mode: mode,
+        span_length: String(span),
+        span_trial_index: String(spanTrialIndex),
+        practice: practice ? "true" : "false",
+        presented_sequence: JSON.stringify(sequence),
+      },
+      response: responseSequence.join("-"),
+      correct_response: expected.join("-"),
+      correct,
+      reaction_time_ms: firstTapLatency,
+      response_timestamp_ms:
+        completionLatency === null ? null : responseStartedAt + completionLatency,
+      anchor_timestamp_ms: responseStartedAt,
+      component_timings: timings,
+      runtime_data: {
+        paradigm: "corsi",
+        mode,
+        practice,
+        span_length: span,
+        span_trial_index: spanTrialIndex,
+        presented_sequence: sequence,
+        expected_sequence: expected,
+        response_sequence: responseSequence,
+        correct,
+        error_positions: errorPositions,
+        first_tap_latency_ms: firstTapLatency,
+        completion_latency_ms: completionLatency,
+        tap_latencies_ms: tapLatencies,
+        timed_out: timedOut,
+        block_positions: board,
+      },
+    };
+  }
+
+  async function runCorsiBlock(
+    block: RunnerBlock,
+    runSeed: string,
+    startingGlobalIndex: number,
+    blockRepeat: number,
+    settings: CorsiSettings
+  ) {
+    const blockResults: PreviewTrialResult[] = [];
+    let localIndex = 0;
+    const modes = corsiModes(settings);
+
+    if (block.block_type === "practice") {
+      for (const mode of modes) {
+        if (modes.length > 1) {
+          await showMessage(
+            `${mode === "forward" ? "Forward" : "Backward"} Corsi practice`,
+            mode === "forward"
+              ? "Watch the blocks, then tap them in the same order."
+              : "Watch the blocks, then tap them in reverse order.",
+            "Begin practice"
+          );
+        }
+
+        for (let trialIndex = 1; trialIndex <= settings.practice_trials; trialIndex += 1) {
+          localIndex += 1;
+          setProgress((current) => ({
+            current: startingGlobalIndex + localIndex,
+            total: Math.max(current.total, startingGlobalIndex + localIndex),
+            block: `${block.name} · ${mode}`,
+          }));
+
+          const result = await runCorsiTrial(
+            block,
+            mode,
+            settings.practice_span,
+            trialIndex,
+            startingGlobalIndex + localIndex,
+            blockRepeat,
+            settings,
+            `${runSeed}:${block.block_key}:${blockRepeat}:${mode}:practice:${trialIndex}`,
+            true
+          );
+          blockResults.push(result);
+        }
+      }
+
+      return blockResults;
+    }
+
+    if (block.block_type === "experimental") {
+      for (const mode of modes) {
+        await showMessage(
+          mode === "forward" ? "Forward Corsi" : "Backward Corsi",
+          mode === "forward"
+            ? "The scored task begins now. Reproduce each sequence in the same order."
+            : "The scored backward task begins now. Reproduce each sequence in reverse order.",
+          "Begin"
+        );
+
+        let span = settings.start_span;
+        while (span <= settings.max_span) {
+          let correctAtSpan = 0;
+
+          for (
+            let trialIndex = 1;
+            trialIndex <= settings.trials_per_span;
+            trialIndex += 1
+          ) {
+            localIndex += 1;
+            setProgress((current) => ({
+              current: startingGlobalIndex + localIndex,
+              total: Math.max(current.total, startingGlobalIndex + localIndex),
+              block: `${mode === "forward" ? "Forward" : "Backward"} Corsi · span ${span}`,
+            }));
+
+            const result = await runCorsiTrial(
+              block,
+              mode,
+              span,
+              trialIndex,
+              startingGlobalIndex + localIndex,
+              blockRepeat,
+              settings,
+              `${runSeed}:${block.block_key}:${blockRepeat}:${mode}:${span}:${trialIndex}`,
+              false
+            );
+            blockResults.push(result);
+            if (result.correct === true) correctAtSpan += 1;
+          }
+
+          if (correctAtSpan >= settings.pass_required) {
+            span += 1;
+          } else {
+            break;
+          }
+        }
+      }
+    }
+
+    return blockResults;
+  }
+
+
+  async function runCardSortTrial(
+    block: RunnerBlock,
+    trialNumber: number,
+    categoryIndex: number,
+    activeRule: CardSortRule,
+    previousRule: CardSortRule | null,
+    correctStreakBefore: number,
+    categoriesCompleted: number,
+    settings: CardSortSettings,
+    seed: string
+  ): Promise<PreviewTrialResult> {
+    setResponseOptions([]);
+
+    const target = generateCardSortTarget(seed);
+    const correctReferenceId = correctReferenceForRule(target, activeRule);
+    let chosenReferenceId: number | null = null;
+    let responseTime: number | null = null;
+    let timedOut = false;
+    let resolved = false;
+    let timeoutId: number | null = null;
+
+    const responseStartedAt = performance.now();
+
+    setDisplay({
+      kind: "card_sort",
+      target,
+      references: CARD_SORT_REFERENCE_CARDS,
+      interactive: true,
+      selectedReferenceId: null,
+      feedback: null,
+      trialNumber,
+      maxTrials: settings.max_trials,
+      categoriesCompleted,
+    });
+    await nextAnimationFrame();
+
+    await new Promise<void>((resolve) => {
+      const finish = (timeout = false) => {
+        if (resolved) return;
+        resolved = true;
+        timedOut = timeout;
+        cardSortChoiceHandlerRef.current = null;
+        cardSortResponseResolveRef.current = null;
+        if (timeoutId !== null) window.clearTimeout(timeoutId);
+        resolve();
+      };
+
+      cardSortResponseResolveRef.current = () => finish(false);
+
+      cardSortChoiceHandlerRef.current = (referenceId, eventTime) => {
+        if (resolved || cancelledRef.current) return;
+        chosenReferenceId = referenceId;
+        responseTime = eventTime;
+        finish(false);
+      };
+
+      timeoutId = window.setTimeout(
+        () => finish(true),
+        settings.response_timeout_ms
+      );
+    });
+
+    if (cancelledRef.current) throw new Error("Preview cancelled");
+
+    const responseEndedAt = performance.now();
+    const inferredChoiceRule = inferredRuleFromChoice(
+      target,
+      chosenReferenceId
+    );
+    const correct = chosenReferenceId === correctReferenceId;
+    const perseverativeError =
+      !correct &&
+      previousRule !== null &&
+      inferredChoiceRule === previousRule;
+    const nonperseverativeError = !correct && !perseverativeError;
+    const failureToMaintainSet =
+      !correct &&
+      correctStreakBefore >= settings.failure_to_maintain_streak &&
+      correctStreakBefore < settings.correct_to_shift;
+
+    const correctStreakAfter = correct ? correctStreakBefore + 1 : 0;
+    const categoryCompleted =
+      correct && correctStreakAfter >= settings.correct_to_shift;
+    const nextRuleAfterTrial =
+      categoryCompleted &&
+      categoriesCompleted + 1 < settings.categories_to_complete
+        ? nextCardSortRule(activeRule)
+        : null;
+    const responseLatency =
+      responseTime === null ? null : Math.max(0, responseTime - responseStartedAt);
+
+    setDisplay({
+      kind: "card_sort",
+      target,
+      references: CARD_SORT_REFERENCE_CARDS,
+      interactive: false,
+      selectedReferenceId: chosenReferenceId,
+      feedback: correct ? "correct" : "incorrect",
+      trialNumber,
+      maxTrials: settings.max_trials,
+      categoriesCompleted: categoriesCompleted + (categoryCompleted ? 1 : 0),
+    });
+
+    const timings: ComponentTiming[] = [
+      {
+        key: "card_sort_response",
+        type: "card_sort_choice",
+        requested_ms: settings.response_timeout_ms,
+        requested_frames: null,
+        target_frame_ms: null,
+        timing_mode: "timer",
+        frame_interval_ms: null,
+        actual_frames: null,
+        actual_ms: responseEndedAt - responseStartedAt,
+        started_at_ms: responseStartedAt,
+        ended_at_ms: responseEndedAt,
+      },
+    ];
+
+    if (settings.feedback_ms > 0) {
+      const feedbackStart = performance.now();
+      await sleep(settings.feedback_ms);
+      const feedbackEnd = performance.now();
+      timings.push({
+        key: "card_sort_feedback",
+        type: "feedback",
+        requested_ms: settings.feedback_ms,
+        requested_frames: null,
+        target_frame_ms: null,
+        timing_mode: "timer",
+        frame_interval_ms: null,
+        actual_frames: null,
+        actual_ms: feedbackEnd - feedbackStart,
+        started_at_ms: feedbackStart,
+        ended_at_ms: feedbackEnd,
+      });
+    }
+
+    if (settings.iti_ms > 0) {
+      timings.push(
+        await runTimedDisplay(
+          { kind: "blank" },
+          settings.iti_ms,
+          "card_sort_iti",
+          "iti"
+        )
+      );
+    } else {
+      setDisplay({ kind: "blank" });
+    }
+
+    return {
+      block_key: block.block_key,
+      block_type: block.block_type,
+      block_attempt: 1,
+      block_repeat: 1,
+      trial_index: trialNumber,
+      source_trial_id: `card-sort:${trialNumber}`,
+      source_trial_position: trialNumber,
+      condition_label: `category_${categoryIndex}_${activeRule}`,
+      variables: {
+        card_sort_rule: activeRule,
+        category_index: String(categoryIndex),
+        target_color: target.color_name,
+        target_shape: target.shape,
+        target_count: String(target.count),
+        correct_reference_id: String(correctReferenceId),
+      },
+      response:
+        chosenReferenceId === null ? null : String(chosenReferenceId),
+      correct_response: String(correctReferenceId),
+      correct,
+      reaction_time_ms: responseLatency,
+      response_timestamp_ms: responseTime,
+      anchor_timestamp_ms: responseStartedAt,
+      component_timings: timings,
+      runtime_data: {
+        paradigm: "card_sorting",
+        scoring_system: "psylattice_transparent_v1",
+        trial_number: trialNumber,
+        category_index: categoryIndex,
+        active_rule: activeRule,
+        previous_rule: previousRule,
+        target_card: target,
+        chosen_reference_id: chosenReferenceId,
+        correct_reference_id: correctReferenceId,
+        inferred_choice_rule: inferredChoiceRule,
+        correct,
+        perseverative_error: perseverativeError,
+        nonperseverative_error: nonperseverativeError,
+        failure_to_maintain_set: failureToMaintainSet,
+        correct_streak_before: correctStreakBefore,
+        correct_streak_after: categoryCompleted ? 0 : correctStreakAfter,
+        category_completed_after_trial: categoryCompleted,
+        next_rule_after_trial: categoryCompleted ? nextRuleAfterTrial : null,
+        response_latency_ms: responseLatency,
+        timed_out: timedOut,
+        reference_cards: CARD_SORT_REFERENCE_CARDS,
+      },
+    };
+  }
+
+  async function runCardSortBlock(
+    block: RunnerBlock,
+    runSeed: string,
+    startingGlobalIndex: number,
+    settings: CardSortSettings
+  ) {
+    const blockResults: PreviewTrialResult[] = [];
+    const rules = cardSortRuleSequence(
+      settings.starting_rule,
+      settings.categories_to_complete
+    );
+
+    let categoryIndex = 1;
+    let activeRule = rules[0];
+    let previousRule: CardSortRule | null = null;
+    let correctStreak = 0;
+    let categoriesCompleted = 0;
+    let localIndex = 0;
+
+    await showMessage(
+      "Card sorting",
+      "Match each target card to one of the four reference cards. The correct way to match may change during the task. Use Correct / Incorrect feedback to work out the current rule.",
+      "Begin"
+    );
+
+    while (
+      localIndex < settings.max_trials &&
+      categoriesCompleted < settings.categories_to_complete
+    ) {
+      localIndex += 1;
+      const globalIndex = startingGlobalIndex + localIndex;
+
+      setProgress({
+        current: globalIndex,
+        total: Math.max(
+          settings.max_trials,
+          startingGlobalIndex + settings.max_trials
+        ),
+        block: `Card sorting · category ${categoryIndex}`,
+      });
+
+      const result = await runCardSortTrial(
+        block,
+        globalIndex,
+        categoryIndex,
+        activeRule,
+        previousRule,
+        correctStreak,
+        categoriesCompleted,
+        settings,
+        `${runSeed}:${block.block_key}:${globalIndex}:${categoryIndex}:${activeRule}`
+      );
+      blockResults.push(result);
+
+      const runtime = result.runtime_data as Record<string, unknown>;
+      const categoryCompleted =
+        runtime.category_completed_after_trial === true;
+
+      if (categoryCompleted) {
+        categoriesCompleted += 1;
+        previousRule = activeRule;
+        correctStreak = 0;
+
+        if (categoriesCompleted < settings.categories_to_complete) {
+          categoryIndex += 1;
+          activeRule =
+            rules[categoryIndex - 1] ||
+            nextCardSortRule(activeRule);
+        }
+      } else {
+        correctStreak = Number(runtime.correct_streak_after || 0);
+      }
+    }
+
+    return blockResults;
+  }
+
   async function createSession() {
     const supabase = createClient();
     const device = {
@@ -1326,7 +2004,7 @@ export default function CognitiveRunner_PHASE_1C_BROWSER_PREVIEW({
       .filter((timing) => timing.requested_ms !== null)
       .map((timing) => timing.actual_ms - (timing.requested_ms || 0));
     const timingQuality = {
-      engine: stopSignalRuntime ? "psylattice_stop_signal_preview_v1" : "psylattice_browser_preview_v2_frame_calibrated",
+      engine: cardSortRuntime ? "psylattice_card_sorting_preview_v1" : corsiRuntime ? "psylattice_corsi_preview_v1" : stopSignalRuntime ? "psylattice_stop_signal_preview_v1" : "psylattice_browser_preview_v2_frame_calibrated",
       clock: "performance.now",
       detected_refresh_hz: preflight.refresh_hz,
       detected_frame_interval_ms: preflight.frame_interval_ms,
@@ -1402,6 +2080,26 @@ export default function CognitiveRunner_PHASE_1C_BROWSER_PREVIEW({
       const runSeed = `${id}:${Date.now()}`;
       const totalPlanned = blocks.reduce((sum, block) => {
         if (!["practice", "experimental", "custom"].includes(block.block_type)) return sum;
+        if (cardSortRuntime && block.block_type === "experimental") {
+          return sum + cardSortSettings.max_trials * Math.max(1, block.repeat_count);
+        }
+        if (corsiRuntime && block.block_type === "practice") {
+          return (
+            sum +
+            corsiSettings.practice_trials *
+              corsiModes(corsiSettings).length *
+              Math.max(1, block.repeat_count)
+          );
+        }
+        if (corsiRuntime && block.block_type === "experimental") {
+          return (
+            sum +
+            (corsiSettings.max_span - corsiSettings.start_span + 1) *
+              corsiSettings.trials_per_span *
+              corsiModes(corsiSettings).length *
+              Math.max(1, block.repeat_count)
+          );
+        }
         if (stopSignalRuntime && block.block_type === "practice") {
           return sum + stopSignalSettings.practice_trials * Math.max(1, block.repeat_count);
         }
@@ -1426,6 +2124,34 @@ export default function CognitiveRunner_PHASE_1C_BROWSER_PREVIEW({
         }
 
         for (let repeat = 1; repeat <= Math.max(1, block.repeat_count); repeat += 1) {
+          if (cardSortRuntime && block.block_type === "experimental") {
+            const cardSortResults = await runCardSortBlock(
+              block,
+              `${runSeed}:${repeat}`,
+              globalIndex,
+              cardSortSettings
+            );
+            collected.push(...cardSortResults);
+            globalIndex += cardSortResults.length;
+            continue;
+          }
+
+          if (
+            corsiRuntime &&
+            (block.block_type === "practice" || block.block_type === "experimental")
+          ) {
+            const corsiBlockResults = await runCorsiBlock(
+              block,
+              runSeed,
+              globalIndex,
+              repeat,
+              corsiSettings
+            );
+            collected.push(...corsiBlockResults);
+            globalIndex += corsiBlockResults.length;
+            continue;
+          }
+
           let attempt = 1;
           const maxAttempts = block.block_type === "practice" ? Math.max(1, numeric(block.continue_rule.max_attempts, 3)) : 1;
           let practiceDone = false;
@@ -1512,14 +2238,34 @@ export default function CognitiveRunner_PHASE_1C_BROWSER_PREVIEW({
       const stopSummary = stopSignalRuntime
         ? buildStopSignalSummary(collected, stopSignalSettings)
         : null;
-      const finalSummary = stopSummary
+      const corsiSummary = corsiRuntime
+        ? buildCorsiSummary(collected, corsiSettings)
+        : null;
+      const cardSortSummary = cardSortRuntime
+        ? buildCardSortSummary(collected, cardSortSettings)
+        : null;
+      const finalSummary = cardSortSummary
         ? {
             ...genericSummary,
-            paradigm: "stop_signal",
-            ssrt_ms: stopSummary.ssrt_integration_ms,
-            stop_signal: stopSummary,
+            paradigm: "card_sorting",
+            categories_completed: cardSortSummary.categories_completed,
+            card_sorting: cardSortSummary,
           }
-        : genericSummary;
+        : corsiSummary
+          ? {
+              ...genericSummary,
+              paradigm: "corsi",
+              corsi_span: corsiSummary.maximum_span,
+              corsi: corsiSummary,
+            }
+          : stopSummary
+          ? {
+              ...genericSummary,
+              paradigm: "stop_signal",
+              ssrt_ms: stopSummary.ssrt_integration_ms,
+              stop_signal: stopSummary,
+            }
+          : genericSummary;
       setSummary(finalSummary);
       await completeSession(id, collected, finalSummary, device);
       setPhase("complete");
@@ -1532,6 +2278,10 @@ export default function CognitiveRunner_PHASE_1C_BROWSER_PREVIEW({
     } finally {
       responseHandlerRef.current = null;
       continueRef.current = null;
+      corsiTapHandlerRef.current = null;
+      corsiResponseResolveRef.current = null;
+      cardSortChoiceHandlerRef.current = null;
+      cardSortResponseResolveRef.current = null;
       setResponseOptions([]);
     }
   }
@@ -1539,6 +2289,12 @@ export default function CognitiveRunner_PHASE_1C_BROWSER_PREVIEW({
   async function exitPreview() {
     cancelledRef.current = true;
     responseHandlerRef.current = null;
+    corsiTapHandlerRef.current = null;
+    corsiResponseResolveRef.current?.();
+    corsiResponseResolveRef.current = null;
+    cardSortChoiceHandlerRef.current = null;
+    cardSortResponseResolveRef.current?.();
+    cardSortResponseResolveRef.current = null;
     continueRef.current?.();
     continueRef.current = null;
     if (sessionId && phase === "running") {
@@ -1669,7 +2425,167 @@ export default function CognitiveRunner_PHASE_1C_BROWSER_PREVIEW({
               {display.kind === "video" && display.url && <video src={display.url} autoPlay muted={false} className="mx-auto max-h-[60vh] max-w-[80vw]" />}
               {display.kind === "html" && <div className="mx-auto max-w-3xl text-left text-slate-900" dangerouslySetInnerHTML={{ __html: display.html }} />}
 
-              {responseOptions.length > 0 && display.kind !== "message" && (
+              {display.kind === "corsi" && (
+                <div className="mx-auto w-full max-w-3xl">
+                  <div className="mb-4 flex flex-wrap items-center justify-center gap-2">
+                    <span className="rounded-full border border-slate-200 bg-white px-3 py-1.5 text-[10px] font-semibold text-slate-600 shadow-sm">
+                      {display.mode === "forward" ? "Forward Corsi" : "Backward Corsi"}
+                    </span>
+                    {display.interactive && (
+                      <span className="rounded-full border border-cyan-200 bg-cyan-50 px-3 py-1.5 text-[10px] font-semibold text-cyan-800">
+                        {display.responseCount}/{display.responseTarget} taps
+                      </span>
+                    )}
+                  </div>
+                  <p className="mb-5 text-sm font-semibold text-slate-600">{display.prompt}</p>
+                  <div className="relative mx-auto aspect-[4/3] w-full max-w-[680px] overflow-hidden rounded-[28px] border border-slate-200 bg-white shadow-[inset_0_1px_0_rgba(255,255,255,0.8),0_18px_42px_rgba(15,23,42,0.08)]">
+                    {display.blocks.map((block) => {
+                      const active = display.activeBlockId === block.id;
+                      return (
+                        <button
+                          key={block.id}
+                          type="button"
+                          aria-label={display.interactive ? `Corsi block ${block.id}` : "Corsi sequence block"}
+                          disabled={!display.interactive}
+                          onPointerDown={(event) => {
+                            if (!display.interactive) return;
+                            event.preventDefault();
+                            corsiTapHandlerRef.current?.(block.id, performance.now());
+                          }}
+                          className={`absolute h-[15%] w-[15%] -translate-x-1/2 -translate-y-1/2 select-none rounded-[20%] border transition-[background-color,border-color,box-shadow,transform] duration-100 ${
+                            active
+                              ? "scale-[1.04] border-cyan-400 bg-cyan-500 shadow-[0_0_0_6px_rgba(6,182,212,0.12),0_12px_26px_rgba(8,145,178,0.25)]"
+                              : display.interactive
+                                ? "border-slate-300 bg-white shadow-[0_9px_22px_rgba(15,23,42,0.12)] hover:border-cyan-300 hover:shadow-[0_11px_26px_rgba(8,145,178,0.14)]"
+                                : "border-slate-300 bg-slate-50 shadow-[0_8px_18px_rgba(15,23,42,0.09)]"
+                          }`}
+                          style={{ left: `${block.x}%`, top: `${block.y}%` }}
+                        >
+                          <span className="sr-only">{block.id}</span>
+                        </button>
+                      );
+                    })}
+                  </div>
+                  <p className="mt-4 text-[10px] text-slate-400">
+                    {display.interactive ? "Tap or click the blocks to reproduce the sequence." : "Keep your eyes on the board."}
+                  </p>
+                </div>
+              )}
+
+
+              {display.kind === "card_sort" && (
+                <div className="mx-auto w-full max-w-5xl">
+                  <div className="mb-4 flex flex-wrap items-center justify-center gap-2">
+                    <span className="rounded-full border border-slate-200 bg-white px-3 py-1.5 text-[10px] font-semibold text-slate-600 shadow-sm">
+                      Trial {display.trialNumber}
+                    </span>
+                  </div>
+
+                  <p className="text-sm font-semibold text-slate-700">
+                    Choose the reference card that matches the target.
+                  </p>
+                  <p className="mt-1 text-[10px] text-slate-400">
+                    The matching rule is hidden and may change. Use the feedback.
+                  </p>
+
+                  <div className="mx-auto mt-5 max-w-[190px]">
+                    <div className="flex aspect-[4/3] items-center justify-center rounded-[24px] border border-cyan-300 bg-white p-4 shadow-[0_0_0_6px_rgba(6,182,212,0.08),0_14px_34px_rgba(15,23,42,0.11)]">
+                      <div className="flex max-w-full flex-wrap items-center justify-center gap-2">
+                        {Array.from({ length: display.target.count }).map((_, index) => {
+                          const glyph =
+                            display.target.shape === "triangle"
+                              ? "▲"
+                              : display.target.shape === "square"
+                                ? "■"
+                                : display.target.shape === "diamond"
+                                  ? "◆"
+                                  : "●";
+                          return (
+                            <span
+                              key={index}
+                              className="text-[34px] leading-none"
+                              style={{ color: display.target.color }}
+                            >
+                              {glyph}
+                            </span>
+                          );
+                        })}
+                      </div>
+                    </div>
+                    <p className="mt-2 text-center text-[9px] font-semibold uppercase tracking-[0.13em] text-slate-400">
+                      Target
+                    </p>
+                  </div>
+
+                  <div className="mt-7 grid grid-cols-2 gap-3 sm:grid-cols-4">
+                    {display.references.map((card) => {
+                      const selected = display.selectedReferenceId === card.id;
+                      const glyph =
+                        card.shape === "triangle"
+                          ? "▲"
+                          : card.shape === "square"
+                            ? "■"
+                            : card.shape === "diamond"
+                              ? "◆"
+                              : "●";
+
+                      return (
+                        <button
+                          key={card.id}
+                          type="button"
+                          disabled={!display.interactive}
+                          onPointerDown={(event) => {
+                            if (!display.interactive) return;
+                            event.preventDefault();
+                            cardSortChoiceHandlerRef.current?.(
+                              card.id,
+                              performance.now()
+                            );
+                          }}
+                          className={`relative flex aspect-[4/3] items-center justify-center rounded-[24px] border bg-white p-3 transition ${
+                            selected
+                              ? display.feedback === "correct"
+                                ? "border-cyan-400 shadow-[0_0_0_6px_rgba(6,182,212,0.10),0_14px_30px_rgba(8,145,178,0.18)]"
+                                : "border-slate-500 shadow-[0_0_0_6px_rgba(100,116,139,0.10),0_14px_30px_rgba(15,23,42,0.14)]"
+                              : display.interactive
+                                ? "border-slate-300 shadow-[0_9px_22px_rgba(15,23,42,0.10)] hover:-translate-y-0.5 hover:border-cyan-300"
+                                : "border-slate-200 shadow-[0_7px_18px_rgba(15,23,42,0.07)]"
+                          }`}
+                        >
+                          <div className="flex max-w-full flex-wrap items-center justify-center gap-1.5">
+                            {Array.from({ length: card.count }).map((_, index) => (
+                              <span
+                                key={index}
+                                className="text-[28px] leading-none sm:text-[32px]"
+                                style={{ color: card.color }}
+                              >
+                                {glyph}
+                              </span>
+                            ))}
+                          </div>
+                          <span className="sr-only">Reference card {card.id}</span>
+                        </button>
+                      );
+                    })}
+                  </div>
+
+                  {display.feedback && (
+                    <div className="mt-6 text-center">
+                      <span
+                        className={`inline-flex rounded-full border px-4 py-2 text-xs font-semibold shadow-sm ${
+                          display.feedback === "correct"
+                            ? "border-cyan-200 bg-cyan-50 text-cyan-900"
+                            : "border-slate-300 bg-white text-slate-700"
+                        }`}
+                      >
+                        {display.feedback === "correct" ? "Correct" : "Incorrect"}
+                      </span>
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {responseOptions.length > 0 && display.kind !== "message" && display.kind !== "corsi" && display.kind !== "card_sort" && (
                 <div className="mt-10 flex flex-wrap justify-center gap-3">
                   {responseOptions.map((option) => (
                     <button key={option} type="button" onPointerDown={() => responseHandlerRef.current?.(option, performance.now())} className="min-w-20 rounded-xl border border-slate-300 bg-white px-5 py-3 text-sm font-semibold text-slate-800 shadow-[0_9px_22px_rgba(15,23,42,0.10)] transition hover:-translate-y-0.5">{option === "space" ? "Space" : option}</button>
@@ -1677,7 +2593,7 @@ export default function CognitiveRunner_PHASE_1C_BROWSER_PREVIEW({
                 </div>
               )}
 
-              {responseOptions.length === 0 && display.kind !== "message" && (
+              {responseOptions.length === 0 && display.kind !== "message" && display.kind !== "corsi" && display.kind !== "card_sort" && (
                 <div className="fixed bottom-7 left-1/2 -translate-x-1/2 rounded-full border border-slate-200 bg-white/90 px-3 py-1.5 text-[10px] font-medium text-slate-400 shadow-sm backdrop-blur"><Keyboard className="mr-1.5 inline h-3 w-3" /> Use the configured response keys</div>
               )}
             </div>
@@ -1712,6 +2628,147 @@ export default function CognitiveRunner_PHASE_1C_BROWSER_PREVIEW({
               </div>
               <p className="mt-3 text-xs leading-5 text-slate-500">Trials are scored only when PsyLattice can resolve a correct response. Trial Table columns named correct, correct_response, correct_key, response_key or answer_key are recognized automatically.</p>
             </div>
+
+            {summary.card_sorting && (
+              <div className="mt-3 rounded-[24px] border border-cyan-200/80 bg-white p-5 shadow-[0_10px_28px_rgba(8,145,178,0.08)]">
+                <div className="flex flex-wrap items-start justify-between gap-4">
+                  <div>
+                    <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-cyan-700">
+                      Card sorting analysis
+                    </p>
+                    <h3 className="mt-1 text-base font-semibold text-slate-950">
+                      Set shifting and perseveration
+                    </h3>
+                    <p className="mt-1 text-[11px] leading-5 text-slate-500">
+                      PsyLattice transparent scoring — not the proprietary official WCST scoring system.
+                    </p>
+                  </div>
+                  <span className="rounded-full border border-cyan-200 bg-cyan-50 px-3 py-1.5 text-[10px] font-semibold text-cyan-900">
+                    Deterministic
+                  </span>
+                </div>
+
+                <div className="mt-4 grid gap-2 sm:grid-cols-2 lg:grid-cols-5">
+                  {[
+                    [summary.card_sorting.categories_completed, "Categories"],
+                    [summary.card_sorting.perseverative_errors, "Perseverative errors"],
+                    [summary.card_sorting.nonperseverative_errors, "Other errors"],
+                    [summary.card_sorting.failures_to_maintain_set, "Failure to maintain set"],
+                    [
+                      summary.card_sorting.trials_to_first_category ?? "—",
+                      "Trials to first category",
+                    ],
+                  ].map(([value, label]) => (
+                    <div
+                      key={String(label)}
+                      className="rounded-2xl border border-slate-200 bg-slate-50 p-3"
+                    >
+                      <p className="text-lg font-semibold text-slate-950">
+                        {String(value)}
+                      </p>
+                      <p className="mt-1 text-[9px] text-slate-400">
+                        {String(label)}
+                      </p>
+                    </div>
+                  ))}
+                </div>
+
+                <div className="mt-4 overflow-x-auto rounded-2xl border border-slate-200">
+                  <table className="min-w-full text-left text-[10px]">
+                    <thead className="bg-slate-50 text-slate-500">
+                      <tr>
+                        <th className="px-3 py-2 font-semibold">Category</th>
+                        <th className="px-3 py-2 font-semibold">Rule</th>
+                        <th className="px-3 py-2 font-semibold">Trials</th>
+                        <th className="px-3 py-2 font-semibold">Errors</th>
+                        <th className="px-3 py-2 font-semibold">Perseverative</th>
+                        <th className="px-3 py-2 font-semibold">Completed</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {summary.card_sorting.category_summaries.map((category: any) => (
+                        <tr
+                          key={category.category_index}
+                          className="border-t border-slate-100 text-slate-700"
+                        >
+                          <td className="px-3 py-2">{category.category_index}</td>
+                          <td className="px-3 py-2 capitalize">{category.rule}</td>
+                          <td className="px-3 py-2">{category.trials}</td>
+                          <td className="px-3 py-2">{category.errors}</td>
+                          <td className="px-3 py-2">{category.perseverative_errors}</td>
+                          <td className="px-3 py-2">{category.completed ? "Yes" : "No"}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+
+                {Array.isArray(summary.card_sorting.quality_flags) &&
+                  summary.card_sorting.quality_flags.length > 0 && (
+                    <div className="mt-4 space-y-2">
+                      {summary.card_sorting.quality_flags.map((flag: any) => (
+                        <div
+                          key={flag.code}
+                          className="pl-inline-warning text-[11px] leading-5"
+                        >
+                          {flag.message}
+                        </div>
+                      ))}
+                    </div>
+                  )}
+              </div>
+            )}
+
+            {summary.corsi && (
+              <div className="mt-3 rounded-[24px] border border-cyan-200/80 bg-white p-5 shadow-[0_10px_28px_rgba(8,145,178,0.08)]">
+                <div className="flex flex-wrap items-start justify-between gap-4">
+                  <div>
+                    <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-cyan-700">
+                      Corsi analysis
+                    </p>
+                    <h3 className="mt-1 text-base font-semibold text-slate-950">
+                      Visuospatial span summary
+                    </h3>
+                    <p className="mt-1 text-[11px] leading-5 text-slate-500">
+                      Span is the longest correctly reproduced sequence. Product score = span × total correct sequences for that mode.
+                    </p>
+                  </div>
+                  <span className="rounded-full border border-cyan-200 bg-cyan-50 px-3 py-1.5 text-[10px] font-semibold text-cyan-900">
+                    Deterministic
+                  </span>
+                </div>
+
+                <div className="mt-4 grid gap-2 sm:grid-cols-2 lg:grid-cols-5">
+                  {[
+                    [summary.corsi.forward?.span ?? "—", "Forward span"],
+                    [summary.corsi.backward?.span ?? "—", "Backward span"],
+                    [summary.corsi.forward?.product_score ?? "—", "Forward product"],
+                    [summary.corsi.backward?.product_score ?? "—", "Backward product"],
+                    [
+                      summary.corsi.overall_sequence_accuracy === null
+                        ? "—"
+                        : `${Math.round(summary.corsi.overall_sequence_accuracy * 100)}%`,
+                      "Sequence accuracy",
+                    ],
+                  ].map(([value, label]) => (
+                    <div key={String(label)} className="rounded-2xl border border-slate-200 bg-slate-50 p-3">
+                      <p className="text-lg font-semibold text-slate-950">{String(value)}</p>
+                      <p className="mt-1 text-[9px] text-slate-400">{String(label)}</p>
+                    </div>
+                  ))}
+                </div>
+
+                {Array.isArray(summary.corsi.quality_flags) && summary.corsi.quality_flags.length > 0 && (
+                  <div className="mt-4 space-y-2">
+                    {summary.corsi.quality_flags.map((flag: any) => (
+                      <div key={flag.code} className="pl-inline-warning text-[11px] leading-5">
+                        {flag.message}
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
 
             {summary.stop_signal && (
               <div className="mt-3 rounded-[24px] border border-cyan-200/80 bg-white p-5 shadow-[0_10px_28px_rgba(8,145,178,0.08)]">

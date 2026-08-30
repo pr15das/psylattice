@@ -135,6 +135,33 @@ function storedStopSignalSummary(session: CognitiveSession) {
   return String(value.paradigm || "stop_signal") === "stop_signal" ? value : null;
 }
 
+
+function storedCorsiSummary(session: CognitiveSession) {
+  const raw = session.summary_scores?.corsi;
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) return null;
+  const value = raw as Record<string, unknown>;
+  return String(value.paradigm || "corsi") === "corsi" ? value : null;
+}
+
+function storedCorsiMode(
+  summary: Record<string, unknown>,
+  mode: "forward" | "backward"
+) {
+  const raw = summary[mode];
+  return raw && typeof raw === "object" && !Array.isArray(raw)
+    ? (raw as Record<string, unknown>)
+    : null;
+}
+
+function storedCardSortSummary(session: CognitiveSession) {
+  const raw = session.summary_scores?.card_sorting;
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) return null;
+  const value = raw as Record<string, unknown>;
+  return String(value.paradigm || "card_sorting") === "card_sorting"
+    ? value
+    : null;
+}
+
 function compactComparison(comparison: ReturnType<typeof compareConditions>) {
   if (!comparison) return null;
   const shape = (value: typeof comparison.rt) => ({
@@ -310,6 +337,127 @@ function buildCognitiveContext(args: {
       0
     );
 
+    const corsiSessions = args.sessions
+      .filter(
+        (session) =>
+          session.study_cognitive_task_id === attachment.id &&
+          session.participant_id &&
+          participantById.has(session.participant_id) &&
+          session.session_mode === "study" &&
+          session.status === "completed"
+      )
+      .map((session) => ({
+        session,
+        summary: storedCorsiSummary(session),
+      }))
+      .filter(
+        (item): item is {
+          session: CognitiveSession;
+          summary: Record<string, unknown>;
+        } => item.summary !== null
+      );
+
+    const corsiForwardSpans = corsiSessions
+      .map((item) => numeric(storedCorsiMode(item.summary, "forward")?.span))
+      .filter((value): value is number => value !== null);
+    const corsiBackwardSpans = corsiSessions
+      .map((item) => numeric(storedCorsiMode(item.summary, "backward")?.span))
+      .filter((value): value is number => value !== null);
+    const corsiForwardProducts = corsiSessions
+      .map((item) =>
+        numeric(storedCorsiMode(item.summary, "forward")?.product_score)
+      )
+      .filter((value): value is number => value !== null);
+    const corsiBackwardProducts = corsiSessions
+      .map((item) =>
+        numeric(storedCorsiMode(item.summary, "backward")?.product_score)
+      )
+      .filter((value): value is number => value !== null);
+    const corsiOverallAccuracy = corsiSessions
+      .map((item) => numeric(item.summary.overall_sequence_accuracy))
+      .filter((value): value is number => value !== null);
+    const corsiForwardFirstTap = corsiSessions
+      .map((item) =>
+        numeric(
+          storedCorsiMode(item.summary, "forward")?.mean_first_tap_latency_ms
+        )
+      )
+      .filter((value): value is number => value !== null);
+    const corsiBackwardFirstTap = corsiSessions
+      .map((item) =>
+        numeric(
+          storedCorsiMode(item.summary, "backward")?.mean_first_tap_latency_ms
+        )
+      )
+      .filter((value): value is number => value !== null);
+    const corsiQualityFlagCount = corsiSessions.reduce(
+      (sum, item) =>
+        sum +
+        (Array.isArray(item.summary.quality_flags)
+          ? item.summary.quality_flags.length
+          : 0),
+      0
+    );
+
+    const cardSortSessions = args.sessions
+      .filter(
+        (session) =>
+          session.study_cognitive_task_id === attachment.id &&
+          session.participant_id &&
+          participantById.has(session.participant_id) &&
+          session.session_mode === "study" &&
+          session.status === "completed"
+      )
+      .map((session) => ({
+        session,
+        summary: storedCardSortSummary(session),
+      }))
+      .filter(
+        (item): item is {
+          session: CognitiveSession;
+          summary: Record<string, unknown>;
+        } => item.summary !== null
+      );
+
+    const cardSortCategories = cardSortSessions
+      .map((item) => numeric(item.summary.categories_completed))
+      .filter((value): value is number => value !== null);
+    const cardSortTotalErrors = cardSortSessions
+      .map((item) => numeric(item.summary.total_errors))
+      .filter((value): value is number => value !== null);
+    const cardSortPerseverativeErrors = cardSortSessions
+      .map((item) => numeric(item.summary.perseverative_errors))
+      .filter((value): value is number => value !== null);
+    const cardSortPerseverativeRates = cardSortSessions
+      .map((item) => numeric(item.summary.perseverative_error_rate))
+      .filter((value): value is number => value !== null);
+    const cardSortPerseverativeShares = cardSortSessions
+      .map((item) => numeric(item.summary.perseverative_share_of_errors))
+      .filter((value): value is number => value !== null);
+    const cardSortNonperseverativeErrors = cardSortSessions
+      .map((item) => numeric(item.summary.nonperseverative_errors))
+      .filter((value): value is number => value !== null);
+    const cardSortFailuresMaintain = cardSortSessions
+      .map((item) => numeric(item.summary.failures_to_maintain_set))
+      .filter((value): value is number => value !== null);
+    const cardSortTrialsFirstCategory = cardSortSessions
+      .map((item) => numeric(item.summary.trials_to_first_category))
+      .filter((value): value is number => value !== null);
+    const cardSortLatencies = cardSortSessions
+      .map((item) => numeric(item.summary.mean_response_latency_ms))
+      .filter((value): value is number => value !== null);
+    const cardSortAccuracies = cardSortSessions
+      .map((item) => numeric(item.summary.accuracy))
+      .filter((value): value is number => value !== null);
+    const cardSortQualityFlagCount = cardSortSessions.reduce(
+      (sum, item) =>
+        sum +
+        (Array.isArray(item.summary.quality_flags)
+          ? item.summary.quality_flags.length
+          : 0),
+      0
+    );
+
     taskSummaries.push({
       administration_position: attachment.position,
       task: attachment.title,
@@ -347,7 +495,78 @@ function buildCognitiveContext(args: {
                 "These values were computed and stored by the deterministic PsyLattice Stop-Signal runtime. The AI must not recalculate SSRT from participant rows.",
             }
           : null,
-      quality_flag_count: analysis.qualityFlags.length + stopQualityFlagCount,
+      dedicated_corsi:
+        corsiSessions.length > 0
+          ? {
+              numerical_source:
+                "stored cognitive_task_sessions.summary_scores.corsi",
+              scoring:
+                "Span = longest correctly reproduced sequence according to the configured progression rule. Product score = span × total correct sequences for that mode.",
+              completed_runs: corsiSessions.length,
+              participants_with_forward_span: corsiForwardSpans.length,
+              participants_with_backward_span: corsiBackwardSpans.length,
+              mean_forward_span: rounded(average(corsiForwardSpans)),
+              median_forward_span: rounded(median(corsiForwardSpans)),
+              mean_backward_span: rounded(average(corsiBackwardSpans)),
+              median_backward_span: rounded(median(corsiBackwardSpans)),
+              mean_forward_product_score: rounded(average(corsiForwardProducts)),
+              mean_backward_product_score: rounded(average(corsiBackwardProducts)),
+              mean_overall_sequence_accuracy: rounded(average(corsiOverallAccuracy)),
+              mean_forward_first_tap_latency_ms: rounded(
+                average(corsiForwardFirstTap)
+              ),
+              mean_backward_first_tap_latency_ms: rounded(
+                average(corsiBackwardFirstTap)
+              ),
+              stored_quality_flag_count: corsiQualityFlagCount,
+              normative_cutoff_applied: false,
+              note:
+                "These values were computed and stored by the deterministic PsyLattice Corsi runtime. The AI may interpret them but must not recalculate span or product scores from raw sequences.",
+            }
+          : null,
+      dedicated_card_sorting:
+        cardSortSessions.length > 0
+          ? {
+              numerical_source:
+                "stored cognitive_task_sessions.summary_scores.card_sorting",
+              scoring_system: "psylattice_transparent_v1",
+              official_wcst_equivalence: false,
+              completed_runs: cardSortSessions.length,
+              mean_categories_completed: rounded(average(cardSortCategories)),
+              median_categories_completed: rounded(median(cardSortCategories)),
+              mean_total_errors: rounded(average(cardSortTotalErrors)),
+              mean_perseverative_errors: rounded(
+                average(cardSortPerseverativeErrors)
+              ),
+              mean_perseverative_error_rate: rounded(
+                average(cardSortPerseverativeRates)
+              ),
+              mean_perseverative_share_of_errors: rounded(
+                average(cardSortPerseverativeShares)
+              ),
+              mean_nonperseverative_errors: rounded(
+                average(cardSortNonperseverativeErrors)
+              ),
+              mean_failures_to_maintain_set: rounded(
+                average(cardSortFailuresMaintain)
+              ),
+              mean_trials_to_first_category: rounded(
+                average(cardSortTrialsFirstCategory)
+              ),
+              mean_response_latency_ms: rounded(average(cardSortLatencies)),
+              mean_accuracy: rounded(average(cardSortAccuracies)),
+              stored_quality_flag_count: cardSortQualityFlagCount,
+              scoring_definition:
+                "PsyLattice perseverative error = an incorrect response matching the immediately previous hidden sorting rule after a rule shift. Other incorrect responses are nonperseverative. Failure to maintain set = an error after the configured correct-streak threshold but before category completion.",
+              note:
+                "This is an original PsyLattice WCST-style research paradigm. These are not official standardized WCST scores, and the AI must not map them onto proprietary WCST norms, standard scores or Heaton scoring categories.",
+            }
+          : null,
+      quality_flag_count:
+        analysis.qualityFlags.length +
+        stopQualityFlagCount +
+        corsiQualityFlagCount +
+        cardSortQualityFlagCount,
     });
 
     stopSignalSessions.forEach(({ session, summary }) => {
@@ -387,6 +606,118 @@ function buildCognitiveContext(args: {
             "Review only; PsyLattice has not excluded this participant.",
           numerical_source:
             "cognitive_task_sessions.summary_scores.stop_signal",
+        });
+      });
+    });
+
+    corsiSessions.forEach(({ session, summary }) => {
+      if (!session.participant_id) return;
+      const forward = storedCorsiMode(summary, "forward");
+      const backward = storedCorsiMode(summary, "backward");
+
+      participantRows.push({
+        participant:
+          participantById.get(session.participant_id)?.public_id ||
+          "pseudonymous participant",
+        administration_position: attachment.position,
+        task: attachment.title,
+        paradigm: "corsi",
+        forward_span: rounded(numeric(forward?.span)),
+        backward_span: rounded(numeric(backward?.span)),
+        forward_product_score: rounded(numeric(forward?.product_score)),
+        backward_product_score: rounded(numeric(backward?.product_score)),
+        forward_sequence_accuracy: rounded(numeric(forward?.sequence_accuracy)),
+        backward_sequence_accuracy: rounded(numeric(backward?.sequence_accuracy)),
+        overall_sequence_accuracy: rounded(
+          numeric(summary.overall_sequence_accuracy)
+        ),
+        forward_mean_first_tap_latency_ms: rounded(
+          numeric(forward?.mean_first_tap_latency_ms)
+        ),
+        backward_mean_first_tap_latency_ms: rounded(
+          numeric(backward?.mean_first_tap_latency_ms)
+        ),
+        stored_summary_only: true,
+      });
+
+      const flags = Array.isArray(summary.quality_flags)
+        ? (summary.quality_flags as Array<Record<string, unknown>>)
+        : [];
+
+      flags.forEach((flag) => {
+        qualityFlags.push({
+          participant:
+            participantById.get(session.participant_id as string)?.public_id ||
+            "pseudonymous participant",
+          administration_position: attachment.position,
+          task: attachment.title,
+          severity: String(flag.level || "review"),
+          code: String(flag.code || "corsi_review"),
+          label: String(flag.code || "corsi review").replaceAll("_", " "),
+          detail: String(flag.message || "Review the Corsi session."),
+          researcher_action:
+            "Review only; PsyLattice has not excluded this participant.",
+          numerical_source:
+            "cognitive_task_sessions.summary_scores.corsi",
+        });
+      });
+    });
+
+    cardSortSessions.forEach(({ session, summary }) => {
+      if (!session.participant_id) return;
+
+      participantRows.push({
+        participant:
+          participantById.get(session.participant_id)?.public_id ||
+          "pseudonymous participant",
+        administration_position: attachment.position,
+        task: attachment.title,
+        paradigm: "card_sorting",
+        scoring_system: String(
+          summary.scoring_system || "psylattice_transparent_v1"
+        ),
+        categories_completed: numeric(summary.categories_completed),
+        total_trials: numeric(summary.total_trials),
+        total_errors: numeric(summary.total_errors),
+        accuracy: rounded(numeric(summary.accuracy)),
+        perseverative_errors: numeric(summary.perseverative_errors),
+        perseverative_error_rate: rounded(
+          numeric(summary.perseverative_error_rate)
+        ),
+        perseverative_share_of_errors: rounded(
+          numeric(summary.perseverative_share_of_errors)
+        ),
+        nonperseverative_errors: numeric(summary.nonperseverative_errors),
+        failures_to_maintain_set: numeric(summary.failures_to_maintain_set),
+        trials_to_first_category: numeric(summary.trials_to_first_category),
+        mean_response_latency_ms: rounded(
+          numeric(summary.mean_response_latency_ms)
+        ),
+        stored_summary_only: true,
+        official_wcst_score: false,
+      });
+
+      const flags = Array.isArray(summary.quality_flags)
+        ? (summary.quality_flags as Array<Record<string, unknown>>)
+        : [];
+
+      flags.forEach((flag) => {
+        qualityFlags.push({
+          participant:
+            participantById.get(session.participant_id as string)?.public_id ||
+            "pseudonymous participant",
+          administration_position: attachment.position,
+          task: attachment.title,
+          severity: String(flag.level || "review"),
+          code: String(flag.code || "card_sorting_review"),
+          label: String(flag.code || "card sorting review").replaceAll("_", " "),
+          detail: String(flag.message || "Review the Card Sorting session."),
+          researcher_action:
+            "Review only; PsyLattice has not excluded this participant.",
+          numerical_source:
+            "cognitive_task_sessions.summary_scores.card_sorting",
+          scoring_system: "psylattice_transparent_v1",
+          official_wcst_score: false,
         });
       });
     });
@@ -619,7 +950,7 @@ async function loadStudyAiContext(
   ).length;
 
   const summary: ResearchAiContext = {
-    context_version: "psylattice_research_ai_phase_2c_stop_signal",
+    context_version: "psylattice_research_ai_phase_2g_card_sorting",
     generated_at: new Date().toISOString(),
     source_policy: {
       numerical_source: "PsyLattice deterministic study data and analysis engine",
@@ -677,7 +1008,7 @@ async function loadStudyAiContext(
       quality_policy:
         "Flags are review prompts only. PsyLattice has not automatically excluded participants or trials.",
       dedicated_paradigm_policy:
-        "When dedicated_stop_signal is present, SSRT/SSD/Stop-success values come from stored deterministic session summaries. The assistant may explain those values but must not recompute them.",
+        "When dedicated_stop_signal is present, SSRT/SSD/Stop-success values come from stored deterministic session summaries. When dedicated_corsi is present, Forward/Backward span, product scores, sequence accuracy and latency summaries come from stored deterministic Corsi summaries. When dedicated_card_sorting is present, categories completed, transparent PsyLattice perseveration metrics, set-maintenance errors and latency summaries come from stored deterministic Card Sorting summaries. The assistant may explain these values but must not recompute them from raw trials or describe them as official standardized WCST scores.",
     },
     ambulatory: {
       prompt_instances: countForIncluded(ambulatoryPromptResult.data as any[]),
@@ -688,6 +1019,8 @@ async function loadStudyAiContext(
     analysis_boundaries: [
       "Cognitive condition summaries, 95% confidence intervals, paired t-tests and Cohen's dz are authoritative only when explicitly present in cognitive_tasks.verified_analyses.",
       "Stop-Signal SSRT, SSD, inhibition rate and associated quality flags are authoritative only when explicitly present in a stored dedicated_stop_signal summary. Do not derive SSRT from participant-level rows.",
+      "Corsi Forward/Backward span, product scores, sequence accuracy and associated quality flags are authoritative only when explicitly present in a stored dedicated_corsi summary. Do not recalculate span or product scores from raw sequence rows, and do not invent normative cutoffs.",
+      "Card Sorting categories completed, perseverative/nonperseverative errors, failure-to-maintain-set and latency summaries are authoritative only when explicitly present in a stored dedicated_card_sorting summary. They use PsyLattice transparent scoring, not proprietary official WCST scoring. Do not invent official WCST norms, standard scores, percentiles, T scores or diagnostic interpretations.",
       "Questionnaire score summaries are descriptive only in this phase unless a separate inferential result is explicitly present.",
       "Questionnaire–cognitive associations, regression, mixed models and trial-level generalized models have not been run by Phase 1I.",
       "The AI must not calculate or invent missing p-values, confidence intervals, correlations, effect sizes or exclusions.",

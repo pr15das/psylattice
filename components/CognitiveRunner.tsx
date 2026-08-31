@@ -50,11 +50,30 @@ import {
   type CardSortSettings,
   type CardSortTarget,
 } from "@/lib/research/cardSorting";
+import {
+  bartExplosionPoint,
+  bartSettingsFromTaskConfig,
+  bartTemporaryReward,
+  buildBartSummary,
+  isBartRuntime,
+  type BartSettings,
+} from "@/lib/research/bart";
+import {
+  buildMentalRotationSummary,
+  isMentalRotationRuntime,
+  mentalRotationSettingsFromTaskConfig,
+  mentalRotationShape,
+  mentalRotationSvgDataUrl,
+  planMentalRotationTrials,
+  type MentalRotationSettings,
+} from "@/lib/research/mentalRotation";
 
 type TaskRow = {
   id: string;
   title: string;
   description: string;
+  source_template_id?: string | null;
+  template_key?: string | null;
 };
 
 type VersionRow = {
@@ -194,6 +213,25 @@ type DisplayState =
       trialNumber: number;
       maxTrials: number;
       categoriesCompleted: number;
+    }
+  | {
+      kind: "bart";
+      balloonIndex: number;
+      totalBalloons: number;
+      pumps: number;
+      temporaryReward: number;
+      bank: number;
+      interactive: boolean;
+      outcome: "safe" | "exploded" | "collected" | "timeout" | null;
+    }
+  | {
+      kind: "mental_rotation";
+      leftUrl: string;
+      rightUrl: string;
+      trialNumber: number;
+      totalTrials: number;
+      interactive: boolean;
+      feedback: "correct" | "incorrect" | "timeout" | null;
     };
 
 function numeric(value: unknown, fallback: number) {
@@ -601,13 +639,15 @@ export default function CognitiveRunner_PHASE_1C_BROWSER_PREVIEW({
   const corsiResponseResolveRef = useRef<(() => void) | null>(null);
   const cardSortChoiceHandlerRef = useRef<((referenceId: number, eventTime: number) => void) | null>(null);
   const cardSortResponseResolveRef = useRef<(() => void) | null>(null);
+  const bartDecisionHandlerRef = useRef<((decision: "pump" | "cash_out", eventTime: number) => void) | null>(null);
+  const bartDecisionResolveRef = useRef<(() => void) | null>(null);
 
   const loadDefinition = useCallback(async () => {
     setLoading(true);
     setError("");
     const supabase = createClient();
     const [taskResult, versionResult, blockResult] = await Promise.all([
-      supabase.from("cognitive_tasks").select("id,title,description").eq("id", taskId).single(),
+      supabase.from("cognitive_tasks").select("id,title,description,source_template_id,template_key").eq("id", taskId).single(),
       supabase
         .from("cognitive_task_versions")
         .select("id,task_id,version_label,status,runtime_engine,participant_instructions,task_config,randomization_config,scoring_config,timing_config,output_config,device_config")
@@ -781,6 +821,50 @@ export default function CognitiveRunner_PHASE_1C_BROWSER_PREVIEW({
     !!version && isCardSortRuntime(version.runtime_engine, version.task_config);
   const cardSortSettings = useMemo(
     () => cardSortSettingsFromTaskConfig(version?.task_config),
+    [version?.task_config]
+  );
+  const bartRuntime = !!version && isBartRuntime(version.runtime_engine, version.task_config);
+  const bartSettings = useMemo(
+    () => bartSettingsFromTaskConfig(version?.task_config),
+    [version?.task_config]
+  );
+  const mentalRotationTemplateId = "10000000-0000-4000-8000-000000000019";
+  const mentalRotationBlockRuntime = blocks.some((block) => {
+    const dedicated = String(block.config?.dedicated_runtime || "").trim().toLowerCase();
+    const key = String(block.block_key || "").trim().toLowerCase();
+    const name = String(block.name || "").trim().toLowerCase();
+    return (
+      dedicated === "mental_rotation" ||
+      key.includes("mental_rotation") ||
+      name.includes("mental rotation")
+    );
+  });
+  const mentalRotationTaskRuntime = Boolean(
+    task &&
+      (String(task.template_key || "").trim().toLowerCase() === "mental_rotation" ||
+        String(task.source_template_id || "").trim().toLowerCase() === mentalRotationTemplateId ||
+        String(task.title || "").trim().toLowerCase().includes("mental rotation"))
+  );
+  const mentalRotationRuntime =
+    !!version &&
+    (isMentalRotationRuntime(version.runtime_engine, version.task_config) ||
+      mentalRotationBlockRuntime ||
+      mentalRotationTaskRuntime);
+
+  const isMentalRotationBlock = (block: RunnerBlock) => {
+    if (!(block.block_type === "practice" || block.block_type === "experimental")) return false;
+    const dedicated = String(block.config?.dedicated_runtime || "").trim().toLowerCase();
+    const key = String(block.block_key || "").trim().toLowerCase();
+    const name = String(block.name || "").trim().toLowerCase();
+    return (
+      mentalRotationRuntime ||
+      dedicated === "mental_rotation" ||
+      key.includes("mental_rotation") ||
+      name.includes("mental rotation")
+    );
+  };
+  const mentalRotationSettings = useMemo(
+    () => mentalRotationSettingsFromTaskConfig(version?.task_config),
     [version?.task_config]
   );
 
@@ -1688,6 +1772,326 @@ export default function CognitiveRunner_PHASE_1C_BROWSER_PREVIEW({
   }
 
 
+  async function runMentalRotationBlock(
+    block: RunnerBlock,
+    runSeed: string,
+    startingGlobalIndex: number,
+    blockRepeat: number,
+    settings: MentalRotationSettings
+  ) {
+    const trialCount = block.block_type === "practice" ? settings.practice_trials : settings.experimental_trials;
+    if (trialCount <= 0) return [] as PreviewTrialResult[];
+    const plans = planMentalRotationTrials(
+      trialCount,
+      settings,
+      `${runSeed}:${block.block_key}:${blockRepeat}`
+    );
+    const blockResults: PreviewTrialResult[] = [];
+
+    for (let localIndex = 0; localIndex < plans.length; localIndex += 1) {
+      if (cancelledRef.current) throw new Error("Preview cancelled");
+      const plan = plans[localIndex];
+      const globalIndex = startingGlobalIndex + localIndex + 1;
+      const shape = mentalRotationShape(plan.shape_id);
+      const leftUrl = mentalRotationSvgDataUrl(plan.shape_id, 0, false);
+      const rightUrl = mentalRotationSvgDataUrl(
+        plan.shape_id,
+        plan.rotation_angle_deg,
+        plan.mirrored
+      );
+
+      setProgress((current) => ({
+        current: globalIndex,
+        total: Math.max(current.total, globalIndex),
+        block: `Mental Rotation · ${block.block_type === "practice" ? "practice" : "trial"} ${localIndex + 1}/${plans.length}`,
+      }));
+
+      const timings: ComponentTiming[] = [];
+      if (settings.fixation_ms > 0) {
+        timings.push(
+          await runTimedDisplay(
+            { kind: "fixation", symbol: "+" },
+            settings.fixation_ms,
+            "mental_rotation_fixation",
+            "fixation"
+          )
+        );
+      }
+
+      type MentalRotationObserved = { choice: "same" | "mirrored"; responseTime: number };
+      let settleChoice!: (value: MentalRotationObserved | null) => void;
+      let choiceSettled = false;
+      const choicePromise = new Promise<MentalRotationObserved | null>((resolve) => {
+        settleChoice = (value) => {
+          if (choiceSettled) return;
+          choiceSettled = true;
+          resolve(value);
+        };
+      });
+      const responseArrived = choicePromise.then(() => undefined);
+      let anchorTimestamp = 0;
+
+      const receiveMentalRotationResponse = (value: string, eventTime: number) => {
+        if (choiceSettled || cancelledRef.current) return;
+        const normalized = normalizeKey(value);
+        if (normalized === settings.same_key || normalized === "same") {
+          settleChoice({ choice: "same", responseTime: eventTime });
+        } else if (normalized === settings.mirrored_key || normalized === "mirrored" || normalized === "mirror") {
+          settleChoice({ choice: "mirrored", responseTime: eventTime });
+        }
+      };
+      setResponseOptions(["same", "mirrored"]);
+
+      const responseTiming = await runTimedDisplay(
+        {
+          kind: "mental_rotation",
+          leftUrl,
+          rightUrl,
+          trialNumber: localIndex + 1,
+          totalTrials: plans.length,
+          interactive: true,
+          feedback: null,
+        },
+        settings.response_timeout_ms,
+        "mental_rotation_response",
+        "response",
+        responseArrived,
+        (timestamp) => {
+          anchorTimestamp = timestamp;
+          responseHandlerRef.current = receiveMentalRotationResponse;
+        }
+      );
+      timings.push(responseTiming);
+      responseHandlerRef.current = null;
+      setResponseOptions([]);
+      if (!choiceSettled) settleChoice(null);
+      const observed = await choicePromise;
+      const response = observed?.choice ?? "timeout";
+      const responseTime = observed?.responseTime ?? null;
+      const reactionTime = responseTime === null ? null : Math.max(0, responseTime - anchorTimestamp);
+      const correct = response !== "timeout" && response === plan.correct_response;
+
+      if (block.block_type === "practice" && settings.practice_feedback_ms > 0) {
+        setDisplay({
+          kind: "mental_rotation",
+          leftUrl,
+          rightUrl,
+          trialNumber: localIndex + 1,
+          totalTrials: plans.length,
+          interactive: false,
+          feedback: response === "timeout" ? "timeout" : correct ? "correct" : "incorrect",
+        });
+        await sleep(settings.practice_feedback_ms);
+      }
+
+      const result: PreviewTrialResult = {
+        block_key: block.block_key,
+        block_type: block.block_type,
+        block_attempt: 1,
+        block_repeat: blockRepeat,
+        trial_index: globalIndex,
+        source_trial_id: `mental_rotation:${block.block_type}:${localIndex + 1}`,
+        source_trial_position: localIndex + 1,
+        condition_label: `${plan.mirrored ? "mirrored" : "same"}_${plan.rotation_angle_deg}deg`,
+        variables: {
+          paradigm: "mental_rotation",
+          shape_id: plan.shape_id,
+          rotation_angle_deg: String(plan.rotation_angle_deg),
+          mirrored: String(plan.mirrored),
+        },
+        response,
+        correct_response: plan.correct_response,
+        correct,
+        reaction_time_ms: reactionTime,
+        response_timestamp_ms: responseTime,
+        anchor_timestamp_ms: anchorTimestamp || null,
+        component_timings: timings,
+        runtime_data: {
+          paradigm: "mental_rotation",
+          scoring_system: "psylattice_mental_rotation_v1",
+          shape_id: plan.shape_id,
+          shape_cells: shape.cells,
+          rotation_angle_deg: plan.rotation_angle_deg,
+          angular_disparity_deg: plan.rotation_angle_deg,
+          mirrored: plan.mirrored,
+          correct_response: plan.correct_response,
+          response,
+          correct,
+          response_latency_ms: reactionTime,
+          timed_out: response === "timeout",
+        },
+      };
+      blockResults.push(result);
+
+      if (settings.iti_ms > 0 && localIndex < plans.length - 1) {
+        timings.push(
+          await runTimedDisplay({ kind: "blank" }, settings.iti_ms, "mental_rotation_iti", "iti")
+        );
+      }
+    }
+
+    return blockResults;
+  }
+
+  async function runBartBlock(
+    block: RunnerBlock,
+    runSeed: string,
+    startingGlobalIndex: number,
+    settings: BartSettings
+  ) {
+    const blockResults: PreviewTrialResult[] = [];
+    let globalDecisionIndex = startingGlobalIndex;
+    let bank = settings.start_bank;
+
+    await showMessage(
+      "Balloon task",
+      "Pump the balloon to increase its temporary reward, or Collect to move that reward into your bank. A balloon can burst on any pump; if it bursts, the temporary reward for that balloon is lost. The burst point is hidden.",
+      "Begin"
+    );
+
+    for (let balloonIndex = 1; balloonIndex <= settings.balloons; balloonIndex += 1) {
+      if (cancelledRef.current) throw new Error("Preview cancelled");
+      const explosionPoint = bartExplosionPoint(`${runSeed}:balloon:${balloonIndex}`, settings);
+      let pumps = 0;
+      let temporaryReward = 0;
+      let finished = false;
+      let decisionIndex = 0;
+
+      while (!finished) {
+        decisionIndex += 1;
+        globalDecisionIndex += 1;
+        setProgress({ current: balloonIndex, total: settings.balloons, block: `BART · balloon ${balloonIndex}` });
+
+        type BartObservedResponse = { decision: "pump" | "cash_out"; responseTime: number };
+        let resolved = false;
+        let timeoutId: number | null = null;
+        const responseStartedAt = performance.now();
+
+        setResponseOptions([]);
+        setDisplay({ kind: "bart", balloonIndex, totalBalloons: settings.balloons, pumps, temporaryReward, bank, interactive: true, outcome: null });
+        await nextAnimationFrame();
+
+        const observedResponse = await new Promise<BartObservedResponse | null>((resolve) => {
+          const finish = (value: BartObservedResponse | null) => {
+            if (resolved) return;
+            resolved = true;
+            bartDecisionHandlerRef.current = null;
+            bartDecisionResolveRef.current = null;
+            if (timeoutId !== null) window.clearTimeout(timeoutId);
+            resolve(value);
+          };
+          bartDecisionResolveRef.current = () => finish(null);
+          bartDecisionHandlerRef.current = (nextDecision, eventTime) => {
+            if (resolved || cancelledRef.current) return;
+            finish({ decision: nextDecision, responseTime: eventTime });
+          };
+          timeoutId = window.setTimeout(() => finish(null), settings.response_timeout_ms);
+        });
+
+        if (cancelledRef.current) throw new Error("Preview cancelled");
+        const decision: "pump" | "cash_out" | "timeout" = observedResponse?.decision ?? "timeout";
+        const responseTime: number | null = observedResponse?.responseTime ?? null;
+        const responseEndedAt = performance.now();
+        const bankBefore = bank;
+        const temporaryBefore = temporaryReward;
+        const pumpsBefore = pumps;
+        let exploded = false;
+        let cashedOut = false;
+        let outcome: "safe" | "exploded" | "collected" | "timeout" = "timeout";
+
+        if (decision === "pump") {
+          pumps += 1;
+          exploded = pumps >= explosionPoint;
+          if (exploded) {
+            temporaryReward = 0;
+            finished = true;
+            outcome = "exploded";
+          } else {
+            temporaryReward = bartTemporaryReward(pumps, settings.reward_per_pump);
+            outcome = "safe";
+          }
+        } else if (decision === "cash_out") {
+          bank = Math.round((bank + temporaryReward + Number.EPSILON) * 100) / 100;
+          cashedOut = true;
+          finished = true;
+          outcome = "collected";
+        } else {
+          temporaryReward = 0;
+          finished = true;
+          outcome = "timeout";
+        }
+
+        setDisplay({ kind: "bart", balloonIndex, totalBalloons: settings.balloons, pumps, temporaryReward, bank, interactive: false, outcome });
+        const decisionLatency = responseTime === null ? null : Math.max(0, responseTime - responseStartedAt);
+        const timings: ComponentTiming[] = [{
+          key: "bart_decision",
+          type: "bart_decision",
+          requested_ms: settings.response_timeout_ms,
+          requested_frames: null,
+          target_frame_ms: null,
+          timing_mode: "timer",
+          frame_interval_ms: null,
+          actual_frames: null,
+          actual_ms: responseEndedAt - responseStartedAt,
+          started_at_ms: responseStartedAt,
+          ended_at_ms: responseEndedAt,
+        }];
+
+        const result: PreviewTrialResult = {
+          block_key: block.block_key,
+          block_type: block.block_type,
+          block_attempt: 1,
+          block_repeat: 1,
+          trial_index: globalDecisionIndex,
+          source_trial_id: `bart:${balloonIndex}:${decisionIndex}`,
+          source_trial_position: decisionIndex,
+          condition_label: `balloon_${balloonIndex}`,
+          variables: {
+            paradigm: "bart",
+            balloon_index: String(balloonIndex),
+            decision_index: String(decisionIndex),
+            explosion_schedule: "seeded_uniform_hidden_threshold",
+          },
+          response: decision,
+          correct_response: null,
+          correct: null,
+          reaction_time_ms: decisionLatency,
+          response_timestamp_ms: responseTime,
+          anchor_timestamp_ms: responseStartedAt,
+          component_timings: timings,
+          runtime_data: {
+            paradigm: "bart",
+            scoring_system: "psylattice_bart_v1",
+            balloon_index: balloonIndex,
+            decision_index: decisionIndex,
+            decision,
+            pumps_before_decision: pumpsBefore,
+            pumps_after_decision: pumps,
+            explosion_point: explosionPoint,
+            exploded_after_decision: exploded,
+            cashed_out_after_decision: cashedOut,
+            temporary_reward_before: temporaryBefore,
+            temporary_reward_after: temporaryReward,
+            bank_before: bankBefore,
+            bank_after: bank,
+            decision_latency_ms: decisionLatency,
+            timed_out: decision === "timeout",
+          },
+        };
+        blockResults.push(result);
+
+        const hold = outcome === "safe" ? settings.pump_animation_ms : settings.outcome_ms;
+        if (hold > 0) await sleep(hold);
+      }
+
+      if (settings.iti_ms > 0 && balloonIndex < settings.balloons) {
+        await runTimedDisplay({ kind: "blank" }, settings.iti_ms, "bart_iti", "iti");
+      }
+    }
+
+    return blockResults;
+  }
+
   async function runCardSortTrial(
     block: RunnerBlock,
     trialNumber: number,
@@ -2004,7 +2408,7 @@ export default function CognitiveRunner_PHASE_1C_BROWSER_PREVIEW({
       .filter((timing) => timing.requested_ms !== null)
       .map((timing) => timing.actual_ms - (timing.requested_ms || 0));
     const timingQuality = {
-      engine: cardSortRuntime ? "psylattice_card_sorting_preview_v1" : corsiRuntime ? "psylattice_corsi_preview_v1" : stopSignalRuntime ? "psylattice_stop_signal_preview_v1" : "psylattice_browser_preview_v2_frame_calibrated",
+      engine: mentalRotationRuntime ? "psylattice_mental_rotation_preview_v1" : bartRuntime ? "psylattice_bart_preview_v1" : cardSortRuntime ? "psylattice_card_sorting_preview_v1" : corsiRuntime ? "psylattice_corsi_preview_v1" : stopSignalRuntime ? "psylattice_stop_signal_preview_v1" : "psylattice_browser_preview_v2_frame_calibrated",
       clock: "performance.now",
       detected_refresh_hz: preflight.refresh_hz,
       detected_frame_interval_ms: preflight.frame_interval_ms,
@@ -2080,6 +2484,18 @@ export default function CognitiveRunner_PHASE_1C_BROWSER_PREVIEW({
       const runSeed = `${id}:${Date.now()}`;
       const totalPlanned = blocks.reduce((sum, block) => {
         if (!["practice", "experimental", "custom"].includes(block.block_type)) return sum;
+        if (
+          isMentalRotationBlock(block)
+        ) {
+          const trials =
+            block.block_type === "practice"
+              ? mentalRotationSettings.practice_trials
+              : mentalRotationSettings.experimental_trials;
+          return sum + trials * Math.max(1, block.repeat_count);
+        }
+        if (bartRuntime && block.block_type === "experimental") {
+          return sum + bartSettings.balloons * Math.max(1, block.repeat_count);
+        }
         if (cardSortRuntime && block.block_type === "experimental") {
           return sum + cardSortSettings.max_trials * Math.max(1, block.repeat_count);
         }
@@ -2124,6 +2540,28 @@ export default function CognitiveRunner_PHASE_1C_BROWSER_PREVIEW({
         }
 
         for (let repeat = 1; repeat <= Math.max(1, block.repeat_count); repeat += 1) {
+          if (
+            isMentalRotationBlock(block)
+          ) {
+            const mentalRotationResults = await runMentalRotationBlock(
+              block,
+              runSeed,
+              globalIndex,
+              repeat,
+              mentalRotationSettings
+            );
+            collected.push(...mentalRotationResults);
+            globalIndex += mentalRotationResults.length;
+            continue;
+          }
+
+          if (bartRuntime && block.block_type === "experimental") {
+            const bartResults = await runBartBlock(block, `${runSeed}:${repeat}`, globalIndex, bartSettings);
+            collected.push(...bartResults);
+            globalIndex += bartResults.length;
+            continue;
+          }
+
           if (cardSortRuntime && block.block_type === "experimental") {
             const cardSortResults = await runCardSortBlock(
               block,
@@ -2211,8 +2649,13 @@ export default function CognitiveRunner_PHASE_1C_BROWSER_PREVIEW({
               break;
             }
 
+            if (attemptResults.length === 0) {
+              throw new Error(
+                `${block.name} contains no runnable trials. A dedicated task should never fall through to the generic practice runner.`
+              );
+            }
             const scored = attemptResults.filter((result) => result.correct !== null);
-            const accuracy = scored.length ? scored.filter((result) => result.correct).length / scored.length : 1;
+            const accuracy = scored.length ? scored.filter((result) => result.correct).length / scored.length : 0;
             const minimum = Math.min(1, Math.max(0, numeric(block.continue_rule.min_accuracy, 0.8)));
             if (accuracy >= minimum) {
               await showMessage("Practice complete", `Accuracy: ${Math.round(accuracy * 100)}%.`, "Continue");
@@ -2244,7 +2687,29 @@ export default function CognitiveRunner_PHASE_1C_BROWSER_PREVIEW({
       const cardSortSummary = cardSortRuntime
         ? buildCardSortSummary(collected, cardSortSettings)
         : null;
-      const finalSummary = cardSortSummary
+      const hasMentalRotationResults = collected.some(
+        (result) => String(result.runtime_data?.paradigm || "").toLowerCase() === "mental_rotation"
+      );
+      const mentalRotationSummary = mentalRotationRuntime || hasMentalRotationResults
+        ? buildMentalRotationSummary(collected, mentalRotationSettings)
+        : null;
+      const bartSummary = bartRuntime ? buildBartSummary(collected, bartSettings) : null;
+      const finalSummary = mentalRotationSummary
+        ? {
+            ...genericSummary,
+            paradigm: "mental_rotation",
+            accuracy: mentalRotationSummary.accuracy,
+            mean_rt_ms: mentalRotationSummary.mean_correct_rt_ms,
+            mental_rotation: mentalRotationSummary,
+          }
+        : bartSummary
+        ? {
+            ...genericSummary,
+            paradigm: "bart",
+            adjusted_mean_pumps: bartSummary.adjusted_mean_pumps,
+            bart: bartSummary,
+          }
+        : cardSortSummary
         ? {
             ...genericSummary,
             paradigm: "card_sorting",
@@ -2282,6 +2747,8 @@ export default function CognitiveRunner_PHASE_1C_BROWSER_PREVIEW({
       corsiResponseResolveRef.current = null;
       cardSortChoiceHandlerRef.current = null;
       cardSortResponseResolveRef.current = null;
+      bartDecisionHandlerRef.current = null;
+      bartDecisionResolveRef.current = null;
       setResponseOptions([]);
     }
   }
@@ -2295,6 +2762,9 @@ export default function CognitiveRunner_PHASE_1C_BROWSER_PREVIEW({
     cardSortChoiceHandlerRef.current = null;
     cardSortResponseResolveRef.current?.();
     cardSortResponseResolveRef.current = null;
+    bartDecisionHandlerRef.current = null;
+    bartDecisionResolveRef.current?.();
+    bartDecisionResolveRef.current = null;
     continueRef.current?.();
     continueRef.current = null;
     if (sessionId && phase === "running") {
@@ -2319,7 +2789,7 @@ export default function CognitiveRunner_PHASE_1C_BROWSER_PREVIEW({
             </button>
             <div className="min-w-0">
               <div className="flex flex-wrap items-center gap-2">
-                <span className="rounded-full border border-cyan-200 bg-cyan-50 px-2.5 py-1 text-[9px] font-semibold uppercase tracking-[0.14em] text-cyan-800">Browser Preview · Phase 1C</span>
+                <span className="rounded-full border border-cyan-200 bg-cyan-50 px-2.5 py-1 text-[9px] font-semibold uppercase tracking-[0.14em] text-cyan-800">Browser Preview · Cognitive 2J FIX2</span>
                 {version && <span className="text-[10px] font-semibold text-slate-400">{version.version_label}</span>}
               </div>
               <p className="mt-1 truncate text-sm font-semibold text-slate-900">{task?.title || "Cognitive task"}</p>
@@ -2473,6 +2943,34 @@ export default function CognitiveRunner_PHASE_1C_BROWSER_PREVIEW({
               )}
 
 
+              {display.kind === "bart" && (
+                <div className="mx-auto w-full max-w-3xl text-center">
+                  <div className="mb-4 flex flex-wrap items-center justify-center gap-2">
+                    <span className="rounded-full border border-slate-200 bg-white px-3 py-1.5 text-[10px] font-semibold text-slate-600 shadow-sm">Balloon {display.balloonIndex} / {display.totalBalloons}</span>
+                    <span className="rounded-full border border-cyan-200 bg-cyan-50 px-3 py-1.5 text-[10px] font-semibold text-cyan-900">Bank {display.bank.toFixed(2)}</span>
+                  </div>
+                  <p className="text-sm font-semibold text-slate-700">Pump for more reward, or collect what you have.</p>
+                  <p className="mt-1 text-[10px] text-slate-400">The explosion point is hidden.</p>
+                  <div className="mt-6 flex justify-center">
+                    <div className={`relative flex items-center justify-center rounded-[48%_48%_45%_45%] border transition-all ${display.outcome === "exploded" ? "h-32 w-40 border-slate-300 bg-slate-100" : "border-rose-200 bg-rose-100 shadow-[inset_0_-18px_30px_rgba(244,63,94,0.10),0_16px_28px_rgba(15,23,42,0.08)]"}`} style={display.outcome === "exploded" ? undefined : { width: `${Math.min(230, 128 + display.pumps * 2.2)}px`, height: `${Math.min(270, 154 + display.pumps * 2.6)}px` }}>
+                      <span className="select-none text-5xl">{display.outcome === "exploded" ? "💥" : "🎈"}</span>
+                    </div>
+                  </div>
+                  <div className="mt-5 grid grid-cols-2 gap-3 sm:mx-auto sm:max-w-md">
+                    <div className="rounded-2xl border border-slate-200 bg-white p-3"><p className="text-[9px] font-semibold uppercase tracking-[0.12em] text-slate-400">Pumps</p><p className="mt-1 text-xl font-semibold text-slate-950">{display.pumps}</p></div>
+                    <div className="rounded-2xl border border-slate-200 bg-white p-3"><p className="text-[9px] font-semibold uppercase tracking-[0.12em] text-slate-400">This balloon</p><p className="mt-1 text-xl font-semibold text-slate-950">{display.temporaryReward.toFixed(2)}</p></div>
+                  </div>
+                  {display.interactive ? (
+                    <div className="mt-6 grid grid-cols-2 gap-3 sm:mx-auto sm:max-w-md">
+                      <button type="button" onPointerDown={(event) => { event.preventDefault(); bartDecisionHandlerRef.current?.("pump", performance.now()); }} className="rounded-2xl bg-slate-950 px-5 py-3.5 text-sm font-semibold text-white shadow-[0_10px_24px_rgba(15,23,42,0.18)] transition hover:-translate-y-0.5">Pump</button>
+                      <button type="button" onPointerDown={(event) => { event.preventDefault(); bartDecisionHandlerRef.current?.("cash_out", performance.now()); }} className="rounded-2xl border border-cyan-200 bg-white px-5 py-3.5 text-sm font-semibold text-cyan-900 shadow-[0_9px_22px_rgba(8,145,178,0.10)] transition hover:-translate-y-0.5">Collect</button>
+                    </div>
+                  ) : (
+                    <div className="mt-6"><span className="inline-flex rounded-full border border-slate-200 bg-white px-4 py-2 text-xs font-semibold text-slate-700 shadow-sm">{display.outcome === "exploded" ? "Balloon exploded — temporary reward lost" : display.outcome === "collected" ? "Reward collected" : display.outcome === "timeout" ? "Time expired" : "Safe pump"}</span></div>
+                  )}
+                </div>
+              )}
+
               {display.kind === "card_sort" && (
                 <div className="mx-auto w-full max-w-5xl">
                   <div className="mb-4 flex flex-wrap items-center justify-center gap-2">
@@ -2585,15 +3083,46 @@ export default function CognitiveRunner_PHASE_1C_BROWSER_PREVIEW({
                 </div>
               )}
 
-              {responseOptions.length > 0 && display.kind !== "message" && display.kind !== "corsi" && display.kind !== "card_sort" && (
+              {display.kind === "mental_rotation" && (
+                <div className="mx-auto w-full max-w-4xl">
+                  <div className="mb-5 text-center">
+                    <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-400">Mental Rotation · {display.trialNumber}/{display.totalTrials}</p>
+                    <p className="mt-2 text-sm font-semibold text-slate-800">Are these the same shape rotated, or mirror images?</p>
+                  </div>
+                  <div className="grid grid-cols-2 gap-5 sm:gap-10">
+                    {[display.leftUrl, display.rightUrl].map((url, index) => (
+                      <div key={index} className="flex aspect-square items-center justify-center rounded-[28px] border border-slate-200 bg-white p-4 shadow-[0_12px_30px_rgba(15,23,42,0.08)]">
+                        <img src={url} alt={index === 0 ? "Reference shape" : "Comparison shape"} className="h-full w-full object-contain" style={{ maxWidth: mentalRotationSettings.stimulus_size_px, maxHeight: mentalRotationSettings.stimulus_size_px }} draggable={false} />
+                      </div>
+                    ))}
+                  </div>
+                  <div className="mt-5 flex items-center justify-center gap-6 text-[10px] font-medium text-slate-400">
+                    <span><strong className="text-slate-600">{mentalRotationSettings.same_key.toUpperCase()}</strong> · Same</span>
+                    <span><strong className="text-slate-600">{mentalRotationSettings.mirrored_key.toUpperCase()}</strong> · Mirrored</span>
+                  </div>
+                  {display.feedback && (
+                    <div className="mt-4 text-center">
+                      <span className={`inline-flex rounded-full border px-4 py-2 text-xs font-semibold ${
+                        display.feedback === "correct"
+                          ? "border-cyan-200 bg-cyan-50 text-cyan-900"
+                          : "border-slate-300 bg-white text-slate-700"
+                      }`}>
+                        {display.feedback === "correct" ? "Correct" : display.feedback === "timeout" ? "No response" : "Incorrect"}
+                      </span>
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {responseOptions.length > 0 && display.kind !== "message" && display.kind !== "corsi" && display.kind !== "card_sort" && display.kind !== "bart" && (
                 <div className="mt-10 flex flex-wrap justify-center gap-3">
                   {responseOptions.map((option) => (
-                    <button key={option} type="button" onPointerDown={() => responseHandlerRef.current?.(option, performance.now())} className="min-w-20 rounded-xl border border-slate-300 bg-white px-5 py-3 text-sm font-semibold text-slate-800 shadow-[0_9px_22px_rgba(15,23,42,0.10)] transition hover:-translate-y-0.5">{option === "space" ? "Space" : option}</button>
+                    <button key={option} type="button" onPointerDown={() => responseHandlerRef.current?.(option, performance.now())} className="min-w-20 rounded-xl border border-slate-300 bg-white px-5 py-3 text-sm font-semibold text-slate-800 shadow-[0_9px_22px_rgba(15,23,42,0.10)] transition hover:-translate-y-0.5">{option === "space" ? "Space" : option === "same" ? "Same" : option === "mirrored" ? "Mirrored" : option}</button>
                   ))}
                 </div>
               )}
 
-              {responseOptions.length === 0 && display.kind !== "message" && display.kind !== "corsi" && display.kind !== "card_sort" && (
+              {responseOptions.length === 0 && display.kind !== "message" && display.kind !== "corsi" && display.kind !== "card_sort" && display.kind !== "bart" && (
                 <div className="fixed bottom-7 left-1/2 -translate-x-1/2 rounded-full border border-slate-200 bg-white/90 px-3 py-1.5 text-[10px] font-medium text-slate-400 shadow-sm backdrop-blur"><Keyboard className="mr-1.5 inline h-3 w-3" /> Use the configured response keys</div>
               )}
             </div>
@@ -2628,6 +3157,44 @@ export default function CognitiveRunner_PHASE_1C_BROWSER_PREVIEW({
               </div>
               <p className="mt-3 text-xs leading-5 text-slate-500">Trials are scored only when PsyLattice can resolve a correct response. Trial Table columns named correct, correct_response, correct_key, response_key or answer_key are recognized automatically.</p>
             </div>
+
+            {summary.mental_rotation && (
+              <div className="mt-6 rounded-[24px] border border-cyan-200 bg-white p-5 shadow-[0_8px_24px_rgba(8,145,178,0.08)]">
+                <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-cyan-700">Mental Rotation · deterministic preview summary</p>
+                <div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
+                  {[
+                    [summary.mental_rotation.accuracy === null ? "—" : `${Math.round(summary.mental_rotation.accuracy * 100)}%`, "Accuracy"],
+                    [summary.mental_rotation.mean_correct_rt_ms === null ? "—" : `${Math.round(summary.mental_rotation.mean_correct_rt_ms)} ms`, "Mean correct RT"],
+                    [summary.mental_rotation.same_accuracy === null ? "—" : `${Math.round(summary.mental_rotation.same_accuracy * 100)}%`, "Same accuracy"],
+                    [summary.mental_rotation.mirrored_accuracy === null ? "—" : `${Math.round(summary.mental_rotation.mirrored_accuracy * 100)}%`, "Mirrored accuracy"],
+                    [summary.mental_rotation.rotation_slope_ms_per_degree === null ? "—" : `${Number(summary.mental_rotation.rotation_slope_ms_per_degree).toFixed(2)} ms/°`, "RT rotation slope"],
+                  ].map(([value, label]) => (
+                    <div key={String(label)} className="rounded-2xl border border-slate-200 bg-slate-50 p-3">
+                      <p className="text-lg font-semibold text-slate-950">{String(value)}</p>
+                      <p className="mt-1 text-[9px] text-slate-400">{String(label)}</p>
+                    </div>
+                  ))}
+                </div>
+                <p className="mt-4 text-[10px] leading-5 text-slate-500">RT slope is an ordinary least-squares descriptive slope across configured angular-disparity bins using correct-response mean RTs. PsyLattice stores the exact shape, mirror status, angle and raw response for every trial.</p>
+                {Array.isArray(summary.mental_rotation.quality_flags) && summary.mental_rotation.quality_flags.length > 0 && (
+                  <div className="mt-4 space-y-2">
+                    {summary.mental_rotation.quality_flags.map((flag: any) => (
+                      <div key={flag.code} className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-[10px] text-slate-600">{flag.message}</div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
+
+            {summary.bart && (
+              <div className="mt-3 rounded-[24px] border border-cyan-200/80 bg-white p-5 shadow-[0_10px_28px_rgba(8,145,178,0.08)]">
+                <div className="flex flex-wrap items-start justify-between gap-4"><div><p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-cyan-700">BART preview scoring</p><h3 className="mt-1 text-base font-semibold text-slate-950">Risk / reward decisions</h3><p className="mt-1 text-[11px] leading-5 text-slate-500">Adjusted mean pumps uses successfully collected, non-exploded balloons.</p></div><span className="rounded-full border border-cyan-200 bg-cyan-50 px-3 py-1.5 text-[10px] font-semibold text-cyan-900">Deterministic</span></div>
+                <div className="mt-4 grid gap-2 sm:grid-cols-2 lg:grid-cols-5">
+                  {[[summary.bart.adjusted_mean_pumps ?? "—", "Adjusted mean pumps"],[summary.bart.exploded_balloons, "Exploded"],[summary.bart.cashed_out_balloons, "Collected"],[summary.bart.explosion_rate === null ? "—" : `${Math.round(summary.bart.explosion_rate * 100)}%`, "Explosion rate"],[Number(summary.bart.final_bank ?? 0).toFixed(2), "Final bank"]].map(([value,label]) => <div key={String(label)} className="rounded-2xl border border-slate-200 bg-slate-50 p-3"><p className="text-lg font-semibold text-slate-950">{String(value)}</p><p className="mt-1 text-[9px] text-slate-400">{String(label)}</p></div>)}
+                </div>
+                {Array.isArray(summary.bart.quality_flags) && summary.bart.quality_flags.length > 0 && <div className="mt-4 space-y-2">{summary.bart.quality_flags.map((flag: any) => <div key={flag.code} className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-[10px] text-slate-600">{flag.message}</div>)}</div>}
+              </div>
+            )}
 
             {summary.card_sorting && (
               <div className="mt-3 rounded-[24px] border border-cyan-200/80 bg-white p-5 shadow-[0_10px_28px_rgba(8,145,178,0.08)]">

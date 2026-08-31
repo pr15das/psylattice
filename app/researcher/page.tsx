@@ -10184,6 +10184,10 @@ type ResearchDatasetType =
   | "corsi_trials"
   | "card_sorting_summary"
   | "card_sorting_trials"
+  | "bart_summary"
+  | "bart_decisions"
+  | "mental_rotation_summary"
+  | "mental_rotation_trials"
   | "consent"
   | "ambulatory_checkins"
   | "ambulatory_responses"
@@ -10667,6 +10671,10 @@ const researchDatasetLabels: Record<ResearchDatasetType, string> = {
   corsi_trials: "Corsi trials — raw spatial sequences",
   card_sorting_summary: "Card Sorting summaries — participant level",
   card_sorting_trials: "Card Sorting trials — raw rule-shift data",
+  bart_summary: "BART summaries — participant level",
+  bart_decisions: "BART decisions — raw pump / collect data",
+  mental_rotation_summary: "Mental Rotation summaries — participant level",
+  mental_rotation_trials: "Mental Rotation trials — raw image comparisons",
   consent: "Consent records",
   ambulatory_checkins: "Ambulatory check-ins — one row per check-in",
   ambulatory_responses: "Ambulatory responses — one row per item response",
@@ -11453,6 +11461,66 @@ function researchAttachmentHasCardSort(
   );
 }
 
+function researchBartSummary(
+  session: ResearchDataCognitiveSession | null | undefined
+): Record<string, unknown> | null {
+  const raw = session?.summary_scores?.bart;
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) return null;
+  const value = raw as Record<string, unknown>;
+  if (String(value.paradigm || "bart") !== "bart") return null;
+  return value;
+}
+
+function researchBartRuntime(
+  trial: ResearchDataCognitiveTrial
+): Record<string, unknown> | null {
+  const raw = trial.stimulus_payload?.runtime_data;
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) return null;
+  const value = raw as Record<string, unknown>;
+  return String(value.paradigm || "") === "bart" ? value : null;
+}
+
+function researchAttachmentHasBart(
+  bundle: ResearchDataBundle,
+  attachmentId: string
+) {
+  return bundle.cognitiveSessions.some(
+    (session) =>
+      session.study_cognitive_task_id === attachmentId &&
+      researchBartSummary(session) !== null
+  );
+}
+
+function researchMentalRotationSummary(
+  session: ResearchDataCognitiveSession | null | undefined
+): Record<string, unknown> | null {
+  const raw = session?.summary_scores?.mental_rotation;
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) return null;
+  const value = raw as Record<string, unknown>;
+  if (String(value.paradigm || "mental_rotation") !== "mental_rotation") return null;
+  return value;
+}
+
+function researchMentalRotationRuntime(
+  trial: ResearchDataCognitiveTrial
+): Record<string, unknown> | null {
+  const raw = trial.stimulus_payload?.runtime_data;
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) return null;
+  const value = raw as Record<string, unknown>;
+  return String(value.paradigm || "") === "mental_rotation" ? value : null;
+}
+
+function researchAttachmentHasMentalRotation(
+  bundle: ResearchDataBundle,
+  attachmentId: string
+) {
+  return bundle.cognitiveSessions.some(
+    (session) =>
+      session.study_cognitive_task_id === attachmentId &&
+      researchMentalRotationSummary(session) !== null
+  );
+}
+
 function researchCognitiveParticipantSummary(
   bundle: ResearchDataBundle,
   participantId: string,
@@ -11478,6 +11546,8 @@ function researchCognitiveParticipantSummary(
       stopSignal: null as Record<string, unknown> | null,
       corsi: null as Record<string, unknown> | null,
       cardSort: null as Record<string, unknown> | null,
+      bart: null as Record<string, unknown> | null,
+      mentalRotation: null as Record<string, unknown> | null,
     };
   }
 
@@ -11502,6 +11572,8 @@ function researchCognitiveParticipantSummary(
     stopSignal: researchStopSignalSummary(session),
     corsi: researchCorsiSummary(session),
     cardSort: researchCardSortSummary(session),
+    bart: researchBartSummary(session),
+    mentalRotation: researchMentalRotationSummary(session),
   };
 }
 
@@ -11541,6 +11613,22 @@ function researchCognitiveAnalysisVariables(attachment: ResearchDataCognitiveAtt
     cardSortTrialsFirstCategory: `${base}_card_sort_trials_to_first_category`,
     cardSortMeanLatency: `${base}_card_sort_mean_response_latency_ms`,
     cardSortAccuracy: `${base}_card_sort_accuracy`,
+    bartAdjustedMeanPumps: `${base}_bart_adjusted_mean_pumps`,
+    bartMeanPumpsAll: `${base}_bart_mean_pumps_all_balloons`,
+    bartExplosionRate: `${base}_bart_explosion_rate`,
+    bartExploded: `${base}_bart_exploded_balloons`,
+    bartCashedOut: `${base}_bart_cashed_out_balloons`,
+    bartTotalPumps: `${base}_bart_total_pumps`,
+    bartFinalBank: `${base}_bart_final_bank`,
+    bartMeanDecisionLatency: `${base}_bart_mean_decision_latency_ms`,
+    bartTimedOutDecisions: `${base}_bart_timed_out_decisions`,
+    mentalRotationAccuracy: `${base}_mental_rotation_accuracy`,
+    mentalRotationSameAccuracy: `${base}_mental_rotation_same_accuracy`,
+    mentalRotationMirroredAccuracy: `${base}_mental_rotation_mirrored_accuracy`,
+    mentalRotationMeanCorrectRt: `${base}_mental_rotation_mean_correct_rt_ms`,
+    mentalRotationMedianCorrectRt: `${base}_mental_rotation_median_correct_rt_ms`,
+    mentalRotationSlope: `${base}_mental_rotation_slope_ms_per_degree`,
+    mentalRotationTimeouts: `${base}_mental_rotation_timeout_trials`,
   };
 }
 
@@ -13133,6 +13221,8 @@ function researchBuildRows(
         const stopSignal = researchStopSignalSummary(session);
         const corsi = researchCorsiSummary(session);
         const cardSort = researchCardSortSummary(session);
+        const bart = researchBartSummary(session);
+        const mentalRotation = researchMentalRotationSummary(session);
         const corsiForward = corsi ? researchCorsiModeSummary(corsi, "forward") : null;
         const corsiBackward = corsi ? researchCorsiModeSummary(corsi, "backward") : null;
         const timing = session.timing_quality || {};
@@ -13158,7 +13248,11 @@ function researchBuildRows(
               ? "corsi"
               : cardSort
                 ? "card_sorting"
-                : "",
+                : bart
+                  ? "bart"
+                  : mentalRotation
+                    ? "mental_rotation"
+                    : "",
           ssrt_ms: stopSignal ? researchNumber(stopSignal.ssrt_integration_ms) ?? "" : "",
           mean_ssd_ms: stopSignal ? researchNumber(stopSignal.mean_ssd_ms) ?? "" : "",
           stop_success_rate: stopSignal ? researchNumber(stopSignal.stop_success_rate) ?? "" : "",
@@ -13203,6 +13297,33 @@ function researchBuildRows(
           card_sort_max_trials_reached: cardSort ? Boolean(cardSort.max_trials_reached) : "",
           card_sort_category_summaries_json: cardSort ? researchValueText(cardSort.category_summaries || []) : "",
           card_sort_quality_flags_json: cardSort ? researchValueText(cardSort.quality_flags || []) : "",
+          bart_scoring_system: bart ? String(bart.scoring_system || "psylattice_bart_v1") : "",
+          bart_total_balloons: bart ? researchNumber(bart.total_balloons) ?? "" : "",
+          bart_completed_balloons: bart ? researchNumber(bart.completed_balloons) ?? "" : "",
+          bart_exploded_balloons: bart ? researchNumber(bart.exploded_balloons) ?? "" : "",
+          bart_cashed_out_balloons: bart ? researchNumber(bart.cashed_out_balloons) ?? "" : "",
+          bart_explosion_rate: bart ? researchNumber(bart.explosion_rate) ?? "" : "",
+          bart_mean_pumps_all_balloons: bart ? researchNumber(bart.mean_pumps_all_balloons) ?? "" : "",
+          bart_adjusted_mean_pumps: bart ? researchNumber(bart.adjusted_mean_pumps) ?? "" : "",
+          bart_median_pumps_nonexploded: bart ? researchNumber(bart.median_pumps_nonexploded) ?? "" : "",
+          bart_total_pumps: bart ? researchNumber(bart.total_pumps) ?? "" : "",
+          bart_final_bank: bart ? researchNumber(bart.final_bank) ?? "" : "",
+          bart_mean_decision_latency_ms: bart ? researchNumber(bart.mean_decision_latency_ms) ?? "" : "",
+          bart_timed_out_decisions: bart ? researchNumber(bart.timed_out_decisions) ?? "" : "",
+          bart_balloon_summaries_json: bart ? researchValueText(bart.balloon_summaries || []) : "",
+          bart_quality_flags_json: bart ? researchValueText(bart.quality_flags || []) : "",
+          mental_rotation_scoring_system: mentalRotation ? String(mentalRotation.scoring_system || "psylattice_mental_rotation_v1") : "",
+          mental_rotation_completed_trials: mentalRotation ? researchNumber(mentalRotation.completed_trials) ?? "" : "",
+          mental_rotation_correct_trials: mentalRotation ? researchNumber(mentalRotation.correct_trials) ?? "" : "",
+          mental_rotation_accuracy: mentalRotation ? researchNumber(mentalRotation.accuracy) ?? "" : "",
+          mental_rotation_same_accuracy: mentalRotation ? researchNumber(mentalRotation.same_accuracy) ?? "" : "",
+          mental_rotation_mirrored_accuracy: mentalRotation ? researchNumber(mentalRotation.mirrored_accuracy) ?? "" : "",
+          mental_rotation_mean_correct_rt_ms: mentalRotation ? researchNumber(mentalRotation.mean_correct_rt_ms) ?? "" : "",
+          mental_rotation_median_correct_rt_ms: mentalRotation ? researchNumber(mentalRotation.median_correct_rt_ms) ?? "" : "",
+          mental_rotation_slope_ms_per_degree: mentalRotation ? researchNumber(mentalRotation.rotation_slope_ms_per_degree) ?? "" : "",
+          mental_rotation_timeout_trials: mentalRotation ? researchNumber(mentalRotation.timeout_trials) ?? "" : "",
+          mental_rotation_angle_summaries_json: mentalRotation ? researchValueText(mentalRotation.angle_summaries || []) : "",
+          mental_rotation_quality_flags_json: mentalRotation ? researchValueText(mentalRotation.quality_flags || []) : "",
           refresh_hz: researchNumber(timing.refresh_hz) ?? researchNumber(device.refresh_hz) ?? "",
           refresh_stability: researchNumber(timing.refresh_stability) ?? "",
           visibility_interruptions: researchNumber(timing.visibility_interruptions) ?? "",
@@ -13229,6 +13350,8 @@ function researchBuildRows(
       const stopRuntime = researchStopSignalRuntime(trial);
       const corsiRuntime = researchCorsiRuntime(trial);
       const cardSortRuntime = researchCardSortRuntime(trial);
+      const bartRuntime = researchBartRuntime(trial);
+      const mentalRotationRuntime = researchMentalRotationRuntime(trial);
       return [{
         participant: identityMap.get(participant.id) || "",
         is_test: participant.is_test,
@@ -13249,7 +13372,11 @@ function researchBuildRows(
             ? "corsi"
             : cardSortRuntime
               ? "card_sorting"
-              : "",
+              : bartRuntime
+                ? "bart"
+                : mentalRotationRuntime
+                  ? "mental_rotation"
+                  : "",
         stop_signal_trial_type: stopRuntime ? String(stopRuntime.trial_type || "") : "",
         requested_ssd_ms: stopRuntime ? researchNumber(stopRuntime.requested_ssd_ms) ?? "" : "",
         actual_ssd_ms: stopRuntime ? researchNumber(stopRuntime.actual_ssd_ms) ?? "" : "",
@@ -13292,6 +13419,31 @@ function researchBuildRows(
         card_sort_response_latency_ms: cardSortRuntime ? researchNumber(cardSortRuntime.response_latency_ms) ?? "" : "",
         card_sort_timed_out: cardSortRuntime ? Boolean(cardSortRuntime.timed_out) : "",
         card_sort_reference_cards_json: cardSortRuntime ? researchValueText(cardSortRuntime.reference_cards || []) : "",
+        bart_scoring_system: bartRuntime ? String(bartRuntime.scoring_system || "psylattice_bart_v1") : "",
+        bart_balloon_index: bartRuntime ? researchNumber(bartRuntime.balloon_index) ?? "" : "",
+        bart_decision_index: bartRuntime ? researchNumber(bartRuntime.decision_index) ?? "" : "",
+        bart_decision: bartRuntime ? String(bartRuntime.decision || "") : "",
+        bart_pumps_before_decision: bartRuntime ? researchNumber(bartRuntime.pumps_before_decision) ?? "" : "",
+        bart_pumps_after_decision: bartRuntime ? researchNumber(bartRuntime.pumps_after_decision) ?? "" : "",
+        bart_explosion_point: bartRuntime ? researchNumber(bartRuntime.explosion_point) ?? "" : "",
+        bart_exploded_after_decision: bartRuntime ? Boolean(bartRuntime.exploded_after_decision) : "",
+        bart_cashed_out_after_decision: bartRuntime ? Boolean(bartRuntime.cashed_out_after_decision) : "",
+        bart_temporary_reward_before: bartRuntime ? researchNumber(bartRuntime.temporary_reward_before) ?? "" : "",
+        bart_temporary_reward_after: bartRuntime ? researchNumber(bartRuntime.temporary_reward_after) ?? "" : "",
+        bart_bank_before: bartRuntime ? researchNumber(bartRuntime.bank_before) ?? "" : "",
+        bart_bank_after: bartRuntime ? researchNumber(bartRuntime.bank_after) ?? "" : "",
+        bart_decision_latency_ms: bartRuntime ? researchNumber(bartRuntime.decision_latency_ms) ?? "" : "",
+        bart_timed_out: bartRuntime ? Boolean(bartRuntime.timed_out) : "",
+        mental_rotation_scoring_system: mentalRotationRuntime ? String(mentalRotationRuntime.scoring_system || "psylattice_mental_rotation_v1") : "",
+        mental_rotation_shape_id: mentalRotationRuntime ? String(mentalRotationRuntime.shape_id || "") : "",
+        mental_rotation_shape_cells_json: mentalRotationRuntime ? researchValueText(mentalRotationRuntime.shape_cells || []) : "",
+        mental_rotation_angle_deg: mentalRotationRuntime ? researchNumber(mentalRotationRuntime.rotation_angle_deg) ?? "" : "",
+        mental_rotation_angular_disparity_deg: mentalRotationRuntime ? researchNumber(mentalRotationRuntime.angular_disparity_deg) ?? "" : "",
+        mental_rotation_mirrored: mentalRotationRuntime ? Boolean(mentalRotationRuntime.mirrored) : "",
+        mental_rotation_correct_response: mentalRotationRuntime ? String(mentalRotationRuntime.correct_response || "") : "",
+        mental_rotation_response: mentalRotationRuntime ? String(mentalRotationRuntime.response || "") : "",
+        mental_rotation_response_latency_ms: mentalRotationRuntime ? researchNumber(mentalRotationRuntime.response_latency_ms) ?? "" : "",
+        mental_rotation_timed_out: mentalRotationRuntime ? Boolean(mentalRotationRuntime.timed_out) : "",
         stimulus_variables_json: researchValueText(stimulus.variables || {}),
         stimulus_payload_json: researchValueText(stimulus),
         response_payload_json: researchValueText(response),
@@ -13329,7 +13481,11 @@ function researchBuildRows(
               ? "corsi"
               : summary.cardSort
                 ? "card_sorting"
-                : "",
+                : summary.bart
+                  ? "bart"
+                  : summary.mentalRotation
+                    ? "mental_rotation"
+                    : "",
           ssrt_ms: summary.stopSignal ? researchNumber(summary.stopSignal.ssrt_integration_ms) ?? "" : "",
           mean_ssd_ms: summary.stopSignal ? researchNumber(summary.stopSignal.mean_ssd_ms) ?? "" : "",
           stop_success_rate: summary.stopSignal ? researchNumber(summary.stopSignal.stop_success_rate) ?? "" : "",
@@ -13374,6 +13530,33 @@ function researchBuildRows(
           card_sort_max_trials_reached: summary.cardSort ? Boolean(summary.cardSort.max_trials_reached) : "",
           card_sort_category_summaries_json: summary.cardSort ? researchValueText(summary.cardSort.category_summaries || []) : "",
           card_sort_quality_flags_json: summary.cardSort ? researchValueText(summary.cardSort.quality_flags || []) : "",
+          bart_scoring_system: summary.bart ? String(summary.bart.scoring_system || "psylattice_bart_v1") : "",
+          bart_total_balloons: summary.bart ? researchNumber(summary.bart.total_balloons) ?? "" : "",
+          bart_completed_balloons: summary.bart ? researchNumber(summary.bart.completed_balloons) ?? "" : "",
+          bart_exploded_balloons: summary.bart ? researchNumber(summary.bart.exploded_balloons) ?? "" : "",
+          bart_cashed_out_balloons: summary.bart ? researchNumber(summary.bart.cashed_out_balloons) ?? "" : "",
+          bart_explosion_rate: summary.bart ? researchNumber(summary.bart.explosion_rate) ?? "" : "",
+          bart_mean_pumps_all_balloons: summary.bart ? researchNumber(summary.bart.mean_pumps_all_balloons) ?? "" : "",
+          bart_adjusted_mean_pumps: summary.bart ? researchNumber(summary.bart.adjusted_mean_pumps) ?? "" : "",
+          bart_median_pumps_nonexploded: summary.bart ? researchNumber(summary.bart.median_pumps_nonexploded) ?? "" : "",
+          bart_total_pumps: summary.bart ? researchNumber(summary.bart.total_pumps) ?? "" : "",
+          bart_final_bank: summary.bart ? researchNumber(summary.bart.final_bank) ?? "" : "",
+          bart_mean_decision_latency_ms: summary.bart ? researchNumber(summary.bart.mean_decision_latency_ms) ?? "" : "",
+          bart_timed_out_decisions: summary.bart ? researchNumber(summary.bart.timed_out_decisions) ?? "" : "",
+          bart_balloon_summaries_json: summary.bart ? researchValueText(summary.bart.balloon_summaries || []) : "",
+          bart_quality_flags_json: summary.bart ? researchValueText(summary.bart.quality_flags || []) : "",
+          mental_rotation_scoring_system: summary.mentalRotation ? String(summary.mentalRotation.scoring_system || "psylattice_mental_rotation_v1") : "",
+          mental_rotation_completed_trials: summary.mentalRotation ? researchNumber(summary.mentalRotation.completed_trials) ?? "" : "",
+          mental_rotation_correct_trials: summary.mentalRotation ? researchNumber(summary.mentalRotation.correct_trials) ?? "" : "",
+          mental_rotation_accuracy: summary.mentalRotation ? researchNumber(summary.mentalRotation.accuracy) ?? "" : "",
+          mental_rotation_same_accuracy: summary.mentalRotation ? researchNumber(summary.mentalRotation.same_accuracy) ?? "" : "",
+          mental_rotation_mirrored_accuracy: summary.mentalRotation ? researchNumber(summary.mentalRotation.mirrored_accuracy) ?? "" : "",
+          mental_rotation_mean_correct_rt_ms: summary.mentalRotation ? researchNumber(summary.mentalRotation.mean_correct_rt_ms) ?? "" : "",
+          mental_rotation_median_correct_rt_ms: summary.mentalRotation ? researchNumber(summary.mentalRotation.median_correct_rt_ms) ?? "" : "",
+          mental_rotation_slope_ms_per_degree: summary.mentalRotation ? researchNumber(summary.mentalRotation.rotation_slope_ms_per_degree) ?? "" : "",
+          mental_rotation_timeout_trials: summary.mentalRotation ? researchNumber(summary.mentalRotation.timeout_trials) ?? "" : "",
+          mental_rotation_angle_summaries_json: summary.mentalRotation ? researchValueText(summary.mentalRotation.angle_summaries || []) : "",
+          mental_rotation_quality_flags_json: summary.mentalRotation ? researchValueText(summary.mentalRotation.quality_flags || []) : "",
           refresh_hz: researchNumber(timing.refresh_hz) ?? "",
           refresh_stability: researchNumber(timing.refresh_stability) ?? "",
           visibility_interruptions: researchNumber(timing.visibility_interruptions) ?? "",
@@ -13442,6 +13625,46 @@ function researchBuildRows(
       includeTestData,
       includeDirectIdentifiers
     ).filter((row) => row.paradigm === "card_sorting");
+  }
+
+  if (datasetType === "bart_summary") {
+    return researchBuildRows(
+      bundle,
+      "cognitive_participant_summary",
+      identityMode,
+      includeTestData,
+      includeDirectIdentifiers
+    ).filter((row) => row.paradigm === "bart");
+  }
+
+  if (datasetType === "bart_decisions") {
+    return researchBuildRows(
+      bundle,
+      "cognitive_trials",
+      identityMode,
+      includeTestData,
+      includeDirectIdentifiers
+    ).filter((row) => row.paradigm === "bart");
+  }
+
+  if (datasetType === "mental_rotation_summary") {
+    return researchBuildRows(
+      bundle,
+      "cognitive_participant_summary",
+      identityMode,
+      includeTestData,
+      includeDirectIdentifiers
+    ).filter((row) => row.paradigm === "mental_rotation");
+  }
+
+  if (datasetType === "mental_rotation_trials") {
+    return researchBuildRows(
+      bundle,
+      "cognitive_trials",
+      identityMode,
+      includeTestData,
+      includeDirectIdentifiers
+    ).filter((row) => row.paradigm === "mental_rotation");
   }
 
   if (datasetType === "consent") {
@@ -13625,6 +13848,26 @@ function researchBuildRows(
         row[variables.cardSortTrialsFirstCategory] = researchNumber(summary.cardSort.trials_to_first_category) ?? "";
         row[variables.cardSortMeanLatency] = researchNumber(summary.cardSort.mean_response_latency_ms) ?? "";
         row[variables.cardSortAccuracy] = researchNumber(summary.cardSort.accuracy) ?? "";
+      }
+      if (summary.bart) {
+        row[variables.bartAdjustedMeanPumps] = researchNumber(summary.bart.adjusted_mean_pumps) ?? "";
+        row[variables.bartMeanPumpsAll] = researchNumber(summary.bart.mean_pumps_all_balloons) ?? "";
+        row[variables.bartExplosionRate] = researchNumber(summary.bart.explosion_rate) ?? "";
+        row[variables.bartExploded] = researchNumber(summary.bart.exploded_balloons) ?? "";
+        row[variables.bartCashedOut] = researchNumber(summary.bart.cashed_out_balloons) ?? "";
+        row[variables.bartTotalPumps] = researchNumber(summary.bart.total_pumps) ?? "";
+        row[variables.bartFinalBank] = researchNumber(summary.bart.final_bank) ?? "";
+        row[variables.bartMeanDecisionLatency] = researchNumber(summary.bart.mean_decision_latency_ms) ?? "";
+        row[variables.bartTimedOutDecisions] = researchNumber(summary.bart.timed_out_decisions) ?? "";
+      }
+      if (summary.mentalRotation) {
+        row[variables.mentalRotationAccuracy] = researchNumber(summary.mentalRotation.accuracy) ?? "";
+        row[variables.mentalRotationSameAccuracy] = researchNumber(summary.mentalRotation.same_accuracy) ?? "";
+        row[variables.mentalRotationMirroredAccuracy] = researchNumber(summary.mentalRotation.mirrored_accuracy) ?? "";
+        row[variables.mentalRotationMeanCorrectRt] = researchNumber(summary.mentalRotation.mean_correct_rt_ms) ?? "";
+        row[variables.mentalRotationMedianCorrectRt] = researchNumber(summary.mentalRotation.median_correct_rt_ms) ?? "";
+        row[variables.mentalRotationSlope] = researchNumber(summary.mentalRotation.rotation_slope_ms_per_degree) ?? "";
+        row[variables.mentalRotationTimeouts] = researchNumber(summary.mentalRotation.timeout_trials) ?? "";
       }
     }
 
@@ -14024,6 +14267,33 @@ function researchBuildCodebook(
       ["card_sort_timed_out_trials", "Card Sorting timeout trials", "integer", "summary_scores.card_sorting", "Trials that reached the configured response timeout."],
       ["card_sort_category_summaries_json", "Card Sorting category summaries", "JSON", "summary_scores.card_sorting", "Per-category rule, trials, correct responses, errors, perseverative errors and completion state."],
       ["card_sort_quality_flags_json", "Card Sorting quality flags", "JSON", "summary_scores.card_sorting", "Deterministic review prompts. They never automatically exclude data."],
+      ["bart_scoring_system", "BART scoring system", "text", "summary_scores.bart", "psylattice_bart_v1."],
+      ["bart_total_balloons", "BART configured balloons", "integer", "summary_scores.bart", "Total balloons configured for this BART administration."],
+      ["bart_completed_balloons", "BART completed balloons", "integer", "summary_scores.bart", "Balloons ending in explosion or successful cash-out."],
+      ["bart_exploded_balloons", "BART exploded balloons", "integer", "summary_scores.bart", "Completed balloons that exploded."],
+      ["bart_cashed_out_balloons", "BART collected balloons", "integer", "summary_scores.bart", "Successfully cashed-out non-exploded balloons."],
+      ["bart_explosion_rate", "BART explosion rate", "numeric 0-1", "summary_scores.bart", "Exploded balloons divided by completed balloons."],
+      ["bart_mean_pumps_all_balloons", "BART mean pumps", "numeric", "summary_scores.bart", "Mean pumps across all completed balloons."],
+      ["bart_adjusted_mean_pumps", "BART adjusted mean pumps", "numeric", "summary_scores.bart", "Mean pumps on successfully cashed-out non-exploded balloons."],
+      ["bart_median_pumps_nonexploded", "BART median pumps, non-exploded", "numeric", "summary_scores.bart", "Median pumps on successfully cashed-out non-exploded balloons."],
+      ["bart_total_pumps", "BART total pumps", "integer", "summary_scores.bart", "Total pump count across completed balloons."],
+      ["bart_final_bank", "BART final bank", "numeric", "summary_scores.bart", "Final banked reward in the task's configured reward units."],
+      ["bart_mean_decision_latency_ms", "BART mean decision latency", "milliseconds", "summary_scores.bart", "Mean latency for stored Pump / Collect decisions."],
+      ["bart_timed_out_decisions", "BART timed-out decisions", "integer", "summary_scores.bart", "Count of response timeouts."],
+      ["bart_balloon_summaries_json", "BART balloon summaries", "JSON", "summary_scores.bart", "Per-balloon hidden threshold, pumps, outcome, reward delta and decision count."],
+      ["bart_quality_flags_json", "BART quality flags", "JSON", "summary_scores.bart", "Deterministic BART review prompts. Flags never automatically exclude data."],
+      ["mental_rotation_scoring_system", "Mental Rotation scoring system", "text", "summary_scores.mental_rotation", "psylattice_mental_rotation_v1."],
+      ["mental_rotation_completed_trials", "Mental Rotation completed trials", "integer", "summary_scores.mental_rotation", "Recorded experimental Mental Rotation trials."],
+      ["mental_rotation_correct_trials", "Mental Rotation correct trials", "integer", "summary_scores.mental_rotation", "Correct experimental trials."],
+      ["mental_rotation_accuracy", "Mental Rotation accuracy", "numeric 0-1", "summary_scores.mental_rotation", "Overall experimental accuracy."],
+      ["mental_rotation_same_accuracy", "Mental Rotation Same accuracy", "numeric 0-1", "summary_scores.mental_rotation", "Accuracy for non-mirrored Same trials."],
+      ["mental_rotation_mirrored_accuracy", "Mental Rotation Mirrored accuracy", "numeric 0-1", "summary_scores.mental_rotation", "Accuracy for mirrored trials."],
+      ["mental_rotation_mean_correct_rt_ms", "Mental Rotation mean correct RT", "milliseconds", "summary_scores.mental_rotation", "Mean response latency among correct experimental trials."],
+      ["mental_rotation_median_correct_rt_ms", "Mental Rotation median correct RT", "milliseconds", "summary_scores.mental_rotation", "Median response latency among correct experimental trials."],
+      ["mental_rotation_slope_ms_per_degree", "Mental Rotation RT slope", "milliseconds per degree", "summary_scores.mental_rotation", "Stored deterministic OLS slope of mean correct RT across configured angular-disparity bins."],
+      ["mental_rotation_timeout_trials", "Mental Rotation timeouts", "integer", "summary_scores.mental_rotation", "Experimental trials reaching the response timeout."],
+      ["mental_rotation_angle_summaries_json", "Mental Rotation angle summaries", "JSON", "summary_scores.mental_rotation", "Stored accuracy and mean correct RT by angular disparity."],
+      ["mental_rotation_quality_flags_json", "Mental Rotation quality flags", "JSON", "summary_scores.mental_rotation", "Deterministic review prompts; never an automatic exclusion."],
       ["refresh_hz", "Effective refresh rate", "Hz", "timing_quality", "Display refresh rate used for frame-aware task timing."],
       ["refresh_stability", "Refresh stability", "proportion", "timing_quality", "Runner refresh-sampling stability diagnostic."],
       ["condition_summary_json", "Condition summaries", "JSON", "summary_scores", "Deterministic per-condition trial count, accuracy and mean RT summaries."],
@@ -14086,6 +14356,31 @@ function researchBuildCodebook(
       ["card_sort_response_latency_ms", "Card Sorting response latency", "milliseconds", "stimulus_payload.runtime_data", "Latency from target/reference display to participant choice."],
       ["card_sort_timed_out", "Card Sorting timeout", "boolean", "stimulus_payload.runtime_data", "TRUE when no selection was made before the configured response timeout."],
       ["card_sort_reference_cards_json", "Reference card definitions", "JSON", "stimulus_payload.runtime_data", "Exact PsyLattice reference-card definitions used in the trial."],
+      ["bart_scoring_system", "BART scoring system", "text", "runtime_data", "psylattice_bart_v1."],
+      ["bart_balloon_index", "BART balloon index", "integer", "runtime_data", "1-based balloon number."],
+      ["bart_decision_index", "BART decision index", "integer", "runtime_data", "Decision sequence number within the balloon."],
+      ["bart_decision", "BART decision", "text", "runtime_data", "pump, cash_out, or timeout."],
+      ["bart_pumps_before_decision", "Pumps before decision", "integer", "runtime_data", "Pump count before this decision."],
+      ["bart_pumps_after_decision", "Pumps after decision", "integer", "runtime_data", "Pump count after this decision."],
+      ["bart_explosion_point", "Hidden explosion point", "integer", "runtime_data", "Seeded researcher-only explosion threshold used for exact reconstruction."],
+      ["bart_exploded_after_decision", "Exploded after decision", "boolean", "runtime_data", "TRUE when this pump caused the balloon to explode."],
+      ["bart_cashed_out_after_decision", "Cashed out after decision", "boolean", "runtime_data", "TRUE when the participant collected the temporary reward."],
+      ["bart_temporary_reward_before", "Temporary reward before", "numeric", "runtime_data", "Unbanked reward immediately before the decision."],
+      ["bart_temporary_reward_after", "Temporary reward after", "numeric", "runtime_data", "Unbanked reward immediately after the decision."],
+      ["bart_bank_before", "Bank before", "numeric", "runtime_data", "Banked reward immediately before the decision."],
+      ["bart_bank_after", "Bank after", "numeric", "runtime_data", "Banked reward immediately after the decision."],
+      ["bart_decision_latency_ms", "BART decision latency", "milliseconds", "runtime_data", "Latency from decision display to Pump / Collect response."],
+      ["bart_timed_out", "BART timeout", "boolean", "runtime_data", "TRUE when the decision reached the configured timeout."],
+      ["mental_rotation_scoring_system", "Mental Rotation scoring system", "text", "runtime_data", "psylattice_mental_rotation_v1."],
+      ["mental_rotation_shape_id", "Mental Rotation shape ID", "text", "runtime_data", "Stable PsyLattice-generated shape identifier."],
+      ["mental_rotation_shape_cells_json", "Mental Rotation shape coordinates", "JSON", "runtime_data", "Exact original PsyLattice shape cell coordinates used to reconstruct the stimulus."],
+      ["mental_rotation_angle_deg", "Mental Rotation angle", "degrees", "runtime_data", "Configured comparison rotation angle."],
+      ["mental_rotation_angular_disparity_deg", "Angular disparity", "degrees", "runtime_data", "Absolute angular disparity used for the trial."],
+      ["mental_rotation_mirrored", "Mirrored comparison", "boolean", "runtime_data", "TRUE when the comparison object is the mirrored relation."],
+      ["mental_rotation_correct_response", "Mental Rotation correct response", "categorical", "runtime_data", "same or mirrored."],
+      ["mental_rotation_response", "Mental Rotation participant response", "categorical", "runtime_data", "same, mirrored or timeout."],
+      ["mental_rotation_response_latency_ms", "Mental Rotation response latency", "milliseconds", "runtime_data", "Latency from comparison display to response."],
+      ["mental_rotation_timed_out", "Mental Rotation timeout", "boolean", "runtime_data", "TRUE when the response deadline elapsed."],
       ["stimulus_variables_json", "Trial variables", "JSON", "stimulus_payload", "Lossless Trial Table variables for the executed trial."],
       ["timing_json", "Component timing", "JSON", "cognitive_trial_results", "Per-component requested/actual timing and frame diagnostics."],
     ].map(([variable, label, type, source, notes]) => ({ variable, label, type, source, notes }));
@@ -14276,6 +14571,52 @@ function researchBuildCodebook(
     );
   }
 
+  if (datasetType === "bart_summary") {
+    return researchBuildCodebook(bundle, "cognitive_participant_summary", includeDirectIdentifiers).filter((row) =>
+      ["participant","is_test","administration_position","cognitive_task","version","completed","session_status",
+       "bart_scoring_system","bart_total_balloons","bart_completed_balloons","bart_exploded_balloons",
+       "bart_cashed_out_balloons","bart_explosion_rate","bart_mean_pumps_all_balloons","bart_adjusted_mean_pumps",
+       "bart_median_pumps_nonexploded","bart_total_pumps","bart_final_bank","bart_mean_decision_latency_ms",
+       "bart_timed_out_decisions","bart_balloon_summaries_json","bart_quality_flags_json","refresh_hz",
+       "refresh_stability","visibility_interruptions","completed_at"].includes(row.variable)
+    );
+  }
+
+  if (datasetType === "bart_decisions") {
+    return researchBuildCodebook(bundle, "cognitive_trials", includeDirectIdentifiers).filter((row) =>
+      ["participant","is_test","administration_position","cognitive_task","version","cognitive_session_id",
+       "block_key","trial_index","condition","response","correct_response","correct","reaction_time_ms",
+       "bart_scoring_system","bart_balloon_index","bart_decision_index","bart_decision","bart_pumps_before_decision",
+       "bart_pumps_after_decision","bart_explosion_point","bart_exploded_after_decision","bart_cashed_out_after_decision",
+       "bart_temporary_reward_before","bart_temporary_reward_after","bart_bank_before","bart_bank_after",
+       "bart_decision_latency_ms","bart_timed_out","stimulus_variables_json","stimulus_payload_json",
+       "response_payload_json","timing_json","recorded_at"].includes(row.variable)
+    );
+  }
+
+  if (datasetType === "mental_rotation_summary") {
+    return researchBuildCodebook(bundle, "cognitive_participant_summary", includeDirectIdentifiers).filter((row) =>
+      ["participant","is_test","administration_position","cognitive_task","version","completed","session_status",
+       "mental_rotation_scoring_system","mental_rotation_completed_trials","mental_rotation_correct_trials",
+       "mental_rotation_accuracy","mental_rotation_same_accuracy","mental_rotation_mirrored_accuracy",
+       "mental_rotation_mean_correct_rt_ms","mental_rotation_median_correct_rt_ms","mental_rotation_slope_ms_per_degree",
+       "mental_rotation_timeout_trials","mental_rotation_angle_summaries_json","mental_rotation_quality_flags_json",
+       "refresh_hz","refresh_stability","visibility_interruptions","completed_at"].includes(row.variable)
+    );
+  }
+
+  if (datasetType === "mental_rotation_trials") {
+    return researchBuildCodebook(bundle, "cognitive_trials", includeDirectIdentifiers).filter((row) =>
+      ["participant","is_test","administration_position","cognitive_task","version","cognitive_session_id",
+       "block_key","trial_index","condition","response","correct_response","correct","reaction_time_ms",
+       "mental_rotation_scoring_system","mental_rotation_shape_id","mental_rotation_shape_cells_json",
+       "mental_rotation_angle_deg","mental_rotation_angular_disparity_deg","mental_rotation_mirrored",
+       "mental_rotation_correct_response","mental_rotation_response","mental_rotation_response_latency_ms",
+       "mental_rotation_timed_out","stimulus_variables_json","stimulus_payload_json","response_payload_json",
+       "timing_json","recorded_at"].includes(row.variable)
+    );
+  }
+
   if (datasetType === "consent") {
     return [
       ...common,
@@ -14434,6 +14775,30 @@ function researchBuildCodebook(
         { variable: variables.cardSortTrialsFirstCategory, label: `${attachment.title} — trials to first category`, type: "Integer", source: "cognitive_task_sessions.summary_scores.card_sorting", notes: baseNotes },
         { variable: variables.cardSortMeanLatency, label: `${attachment.title} — mean sorting latency (ms)`, type: "Numeric milliseconds", source: "cognitive_task_sessions.summary_scores.card_sorting", notes: baseNotes },
         { variable: variables.cardSortAccuracy, label: `${attachment.title} — card sorting accuracy`, type: "Numeric proportion", source: "cognitive_task_sessions.summary_scores.card_sorting", notes: baseNotes }
+      );
+    }
+    if (researchAttachmentHasBart(bundle, attachment.id)) {
+      rows.push(
+        { variable: variables.bartAdjustedMeanPumps, label: `${attachment.title} — BART adjusted mean pumps`, type: "Numeric", source: "cognitive_task_sessions.summary_scores.bart", notes: `${baseNotes} · Mean pumps on successfully cashed-out non-exploded balloons.` },
+        { variable: variables.bartMeanPumpsAll, label: `${attachment.title} — BART mean pumps`, type: "Numeric", source: "cognitive_task_sessions.summary_scores.bart", notes: baseNotes },
+        { variable: variables.bartExplosionRate, label: `${attachment.title} — BART explosion rate`, type: "Numeric proportion", source: "cognitive_task_sessions.summary_scores.bart", notes: baseNotes },
+        { variable: variables.bartExploded, label: `${attachment.title} — BART exploded balloons`, type: "Integer", source: "cognitive_task_sessions.summary_scores.bart", notes: baseNotes },
+        { variable: variables.bartCashedOut, label: `${attachment.title} — BART collected balloons`, type: "Integer", source: "cognitive_task_sessions.summary_scores.bart", notes: baseNotes },
+        { variable: variables.bartTotalPumps, label: `${attachment.title} — BART total pumps`, type: "Integer", source: "cognitive_task_sessions.summary_scores.bart", notes: baseNotes },
+        { variable: variables.bartFinalBank, label: `${attachment.title} — BART final bank`, type: "Numeric", source: "cognitive_task_sessions.summary_scores.bart", notes: baseNotes },
+        { variable: variables.bartMeanDecisionLatency, label: `${attachment.title} — BART mean decision latency (ms)`, type: "Numeric milliseconds", source: "cognitive_task_sessions.summary_scores.bart", notes: baseNotes },
+        { variable: variables.bartTimedOutDecisions, label: `${attachment.title} — BART timed-out decisions`, type: "Integer", source: "cognitive_task_sessions.summary_scores.bart", notes: baseNotes }
+      );
+    }
+    if (researchAttachmentHasMentalRotation(bundle, attachment.id)) {
+      rows.push(
+        { variable: variables.mentalRotationAccuracy, label: `${attachment.title} — Mental Rotation accuracy`, type: "Numeric proportion", source: "cognitive_task_sessions.summary_scores.mental_rotation", notes: baseNotes },
+        { variable: variables.mentalRotationSameAccuracy, label: `${attachment.title} — Mental Rotation Same accuracy`, type: "Numeric proportion", source: "cognitive_task_sessions.summary_scores.mental_rotation", notes: baseNotes },
+        { variable: variables.mentalRotationMirroredAccuracy, label: `${attachment.title} — Mental Rotation Mirrored accuracy`, type: "Numeric proportion", source: "cognitive_task_sessions.summary_scores.mental_rotation", notes: baseNotes },
+        { variable: variables.mentalRotationMeanCorrectRt, label: `${attachment.title} — Mental Rotation mean correct RT (ms)`, type: "Numeric milliseconds", source: "cognitive_task_sessions.summary_scores.mental_rotation", notes: baseNotes },
+        { variable: variables.mentalRotationMedianCorrectRt, label: `${attachment.title} — Mental Rotation median correct RT (ms)`, type: "Numeric milliseconds", source: "cognitive_task_sessions.summary_scores.mental_rotation", notes: baseNotes },
+        { variable: variables.mentalRotationSlope, label: `${attachment.title} — Mental Rotation slope (ms/degree)`, type: "Numeric milliseconds per degree", source: "cognitive_task_sessions.summary_scores.mental_rotation", notes: `${baseNotes} · Stored deterministic descriptive OLS slope; do not recompute from raw trials.` },
+        { variable: variables.mentalRotationTimeouts, label: `${attachment.title} — Mental Rotation timeout trials`, type: "Integer", source: "cognitive_task_sessions.summary_scores.mental_rotation", notes: baseNotes }
       );
     }
   }
@@ -14952,6 +15317,42 @@ function researchBuildDataQualitySheets(
         });
       }
     }
+
+    for (const session of stopSessions) {
+      const bart = researchBartSummary(session);
+      const participantId = session.participant_id;
+      if (!bart || !participantId) continue;
+      const participant = bundle.participants.find((candidate) => candidate.id === participantId);
+      if (!participant) continue;
+      const flags = Array.isArray(bart.quality_flags) ? bart.quality_flags as Array<Record<string, unknown>> : [];
+      for (const flag of flags) {
+        const code = String(flag.code || "bart_review");
+        const detail = String(flag.message || "Review the BART session.");
+        const label = code.replaceAll("_", " ");
+        const entry = { code, label, detail, domain: `BART · ${attachment.title} · position ${attachment.position}`, sessionId: session.id };
+        const current = flagsByParticipant.get(participantId) || [];
+        current.push(entry); flagsByParticipant.set(participantId, current);
+        qualityFlagRows.push({ participant: identityMap.get(participantId) || "", is_test: participant.is_test ? 1 : 0, domain: entry.domain, administration_position: attachment.position, flag_code: code, severity: String(flag.level || "review"), flag_label: label, detail, source_session_id: session.id, automatic_exclusion: 0 });
+      }
+    }
+
+    for (const session of stopSessions) {
+      const mentalRotation = researchMentalRotationSummary(session);
+      const participantId = session.participant_id;
+      if (!mentalRotation || !participantId) continue;
+      const participant = bundle.participants.find((candidate) => candidate.id === participantId);
+      if (!participant) continue;
+      const flags = Array.isArray(mentalRotation.quality_flags) ? mentalRotation.quality_flags as Array<Record<string, unknown>> : [];
+      for (const flag of flags) {
+        const code = String(flag.code || "mental_rotation_review");
+        const detail = String(flag.message || "Review the Mental Rotation session.");
+        const label = code.replaceAll("_", " ");
+        const entry = { code, label, detail, domain: `Mental Rotation · ${attachment.title} · position ${attachment.position}`, sessionId: session.id };
+        const current = flagsByParticipant.get(participantId) || [];
+        current.push(entry); flagsByParticipant.set(participantId, current);
+        qualityFlagRows.push({ participant: identityMap.get(participantId) || "", is_test: participant.is_test ? 1 : 0, domain: entry.domain, administration_position: attachment.position, flag_code: code, severity: String(flag.level || "review"), flag_label: label, detail, source_session_id: session.id, automatic_exclusion: 0 });
+      }
+    }
   }
 
   const requiredDemographics = bundle.demographicQuestions.filter((question) => question.required);
@@ -15207,6 +15608,26 @@ function researchBuildUniversalWorkbook(
       includeTestData,
       includeDirectIdentifiers
     ),
+    researchWorkbookDatasetSheet(
+      bundle,
+      "bart_summary",
+      "BART_Summary",
+      "clean",
+      "Clean participant-level BART outcomes including adjusted pumps, explosion behavior, banked reward, decision latency and deterministic quality flags.",
+      identityMode,
+      includeTestData,
+      includeDirectIdentifiers
+    ),
+    researchWorkbookDatasetSheet(
+      bundle,
+      "mental_rotation_summary",
+      "MentalRotation_Summary",
+      "clean",
+      "Clean participant-level Mental Rotation outcomes including accuracy, correct-response RT, Same/Mirrored performance, RT slope and deterministic quality flags.",
+      identityMode,
+      includeTestData,
+      includeDirectIdentifiers
+    ),
     {
       name: "Cognitive_Conditions",
       kind: "clean",
@@ -15362,6 +15783,26 @@ function researchBuildUniversalWorkbook(
     ),
     researchWorkbookDatasetSheet(
       bundle,
+      "bart_decisions",
+      "BART_Decisions_RAW",
+      "raw",
+      "Lossless Pump / Collect decision stream including hidden seeded explosion thresholds, reward state, bank state, latency and timing diagnostics.",
+      identityMode,
+      includeTestData,
+      includeDirectIdentifiers
+    ),
+    researchWorkbookDatasetSheet(
+      bundle,
+      "mental_rotation_trials",
+      "MentalRotation_Trials_RAW",
+      "raw",
+      "Every Mental Rotation image comparison with original shape coordinates, angular disparity, Same/Mirrored relation, response, correctness, latency and timing diagnostics.",
+      identityMode,
+      includeTestData,
+      includeDirectIdentifiers
+    ),
+    researchWorkbookDatasetSheet(
+      bundle,
       "ambulatory_responses",
       "Ambulatory_Responses_RAW",
       "raw",
@@ -15400,6 +15841,8 @@ function researchBuildUniversalWorkbook(
           "stop_signal_summary",
           "corsi_summary",
           "card_sorting_summary",
+          "bart_summary",
+          "mental_rotation_summary",
           "ambulatory_wide",
           "ambulatory_participant_days",
         ]
@@ -15413,6 +15856,8 @@ function researchBuildUniversalWorkbook(
             "stop_signal_trials",
             "corsi_trials",
             "card_sorting_trials",
+            "bart_decisions",
+            "mental_rotation_trials",
             "ambulatory_checkins",
             "ambulatory_responses",
             "consent",
@@ -15433,6 +15878,10 @@ function researchBuildUniversalWorkbook(
             "corsi_trials",
             "card_sorting_summary",
             "card_sorting_trials",
+            "bart_summary",
+            "bart_decisions",
+            "mental_rotation_summary",
+            "mental_rotation_trials",
             "consent",
             "ambulatory_checkins",
             "ambulatory_responses",
@@ -16683,6 +17132,146 @@ function ResearchCardSortInsightPanel({
 }
 
 
+function ResearchBartInsightPanel({
+  sessions,
+  trials,
+  participants,
+  compact = false,
+}: {
+  sessions: ResearchDataCognitiveSession[];
+  trials: ResearchDataCognitiveTrial[];
+  participants: ResearchDataParticipant[];
+  compact?: boolean;
+}) {
+  const summaries = sessions
+    .map((session) => ({ session, summary: researchBartSummary(session) }))
+    .filter((item): item is { session: ResearchDataCognitiveSession; summary: Record<string, unknown> } => item.summary !== null);
+  if (summaries.length === 0) return null;
+
+  const adjusted = summaries.map((item) => researchNumber(item.summary.adjusted_mean_pumps)).filter((v): v is number => v !== null);
+  const explosions = summaries.map((item) => researchNumber(item.summary.explosion_rate)).filter((v): v is number => v !== null);
+  const banks = summaries.map((item) => researchNumber(item.summary.final_bank)).filter((v): v is number => v !== null);
+  const latencies = summaries.map((item) => researchNumber(item.summary.mean_decision_latency_ms)).filter((v): v is number => v !== null);
+  const qualityFlagCount = summaries.reduce((sum, item) => sum + (Array.isArray(item.summary.quality_flags) ? item.summary.quality_flags.length : 0), 0);
+
+  const balloonGroups = new Map<number, { pumps:number[]; exploded:number; cashedOut:number; runs:number }>();
+  for (const item of summaries) {
+    const rows = Array.isArray(item.summary.balloon_summaries) ? item.summary.balloon_summaries as Array<Record<string, unknown>> : [];
+    for (const row of rows) {
+      const index = researchNumber(row.balloon_index); if (index === null) continue;
+      const current = balloonGroups.get(index) || { pumps:[], exploded:0, cashedOut:0, runs:0 };
+      current.runs += 1;
+      const pumps = researchNumber(row.pumps); if (pumps !== null) current.pumps.push(pumps);
+      if (row.exploded === true) current.exploded += 1;
+      if (row.cashed_out === true) current.cashedOut += 1;
+      balloonGroups.set(index,current);
+    }
+  }
+  const balloonRows = Array.from(balloonGroups.entries()).sort(([a],[b])=>a-b).slice(0,30);
+  const participantById = new Map(participants.map((participant)=>[participant.id,participant]));
+  const sessionById = new Map(sessions.map((session)=>[session.id,session]));
+  const decisionRows = trials.map((trial)=>({trial,runtime:researchBartRuntime(trial)}))
+    .filter((item): item is {trial:ResearchDataCognitiveTrial; runtime:Record<string,unknown>}=>item.runtime!==null)
+    .slice(-16).reverse().map((item)=>{
+      const session=sessionById.get(item.trial.session_id);
+      const participant=session?.participant_id?participantById.get(session.participant_id):null;
+      return {id:item.trial.id,participant:participant?.public_id||"Pseudonymous participant",balloon:researchNumber(item.runtime.balloon_index),decisionIndex:researchNumber(item.runtime.decision_index),decision:String(item.runtime.decision||""),pumps:researchNumber(item.runtime.pumps_after_decision),bank:researchNumber(item.runtime.bank_after),latency:researchNumber(item.runtime.decision_latency_ms),exploded:item.runtime.exploded_after_decision===true};
+    });
+
+  return <div className={`${compact?"mt-4":"mt-5"} rounded-[24px] border border-cyan-200/80 bg-white p-5 shadow-[0_2px_5px_rgba(15,23,42,0.045),0_10px_28px_rgba(8,145,178,0.07)]`}>
+    <div className="flex flex-wrap items-start justify-between gap-3"><div><p className="text-[10px] font-semibold uppercase tracking-[0.15em] text-cyan-700">Dedicated BART analysis</p><h4 className="mt-1 text-base font-semibold text-slate-950">Risk taking and reward collection</h4><p className="mt-1 max-w-3xl text-[11px] leading-5 text-slate-500">Adjusted mean pumps uses successfully cashed-out non-exploded balloons. Interpret alongside the exact explosion schedule, reward value and number of balloons configured for this administration.</p></div><Status type={qualityFlagCount>0?"warning":"success"}>{qualityFlagCount} review flag{qualityFlagCount===1?"":"s"}</Status></div>
+    <div className="mt-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
+      <StatCard label="Adjusted mean pumps" value={adjusted.length?researchFormatEstimate(researchMean(adjusted),2):"—"} detail={`${adjusted.length} scorable run${adjusted.length===1?"":"s"}`} />
+      <StatCard label="Explosion rate" value={explosions.length?`${researchFormatEstimate((researchMean(explosions)||0)*100,1)}%`:"—"} detail="Mean participant rate" />
+      <StatCard label="Final bank" value={banks.length?researchFormatEstimate(researchMean(banks),2):"—"} detail="Mean banked reward" />
+      <StatCard label="Decision latency" value={latencies.length?`${researchFormatEstimate(researchMean(latencies),1)} ms`:"—"} detail="Mean participant latency" />
+      <StatCard label="Completed runs" value={String(summaries.length)} detail="Stored BART summaries" />
+    </div>
+    {balloonRows.length>0&&<div className="mt-4 rounded-[22px] border border-slate-300/70 bg-slate-50/65 p-4"><p className="text-xs font-semibold text-slate-900">Balloon-level risk profile</p><p className="mt-1 text-[10px] text-slate-500">Mean pumps and explosion frequency by balloon position. Hidden explosion points remain researcher-only raw data.</p><div className="mt-4 space-y-2">{balloonRows.map(([index,row])=>{const rate=row.runs?row.exploded/row.runs:0;return <div key={index} className="grid grid-cols-[90px_1fr_180px] items-center gap-3"><span className="text-[10px] font-semibold text-slate-700">Balloon {index}</span><div className="h-2.5 overflow-hidden rounded-full bg-slate-200/80"><div className="h-full rounded-full bg-cyan-600" style={{width:`${Math.max(2,rate*100)}%`}} /></div><span className="text-right text-[9px] text-slate-500">{researchFormatEstimate(researchMean(row.pumps),1)} mean pumps · {Math.round(rate*1000)/10}% exploded</span></div>})}</div></div>}
+    {decisionRows.length>0&&<div className="mt-4 overflow-hidden rounded-[22px] border border-slate-300/70 bg-white"><div className="border-b border-slate-100 px-4 py-3"><p className="text-xs font-semibold text-slate-900">Recent decision stream</p><p className="mt-1 text-[10px] text-slate-500">Pump / Collect decisions retained losslessly for review.</p></div><div className="overflow-x-auto"><table className="w-full min-w-[760px] text-left text-[10px]"><thead className="bg-slate-50 text-slate-500"><tr><th className="px-3 py-2.5">Participant</th><th className="px-3 py-2.5">Balloon</th><th className="px-3 py-2.5">Decision</th><th className="px-3 py-2.5">Pumps</th><th className="px-3 py-2.5">Bank</th><th className="px-3 py-2.5">Latency</th><th className="px-3 py-2.5">Outcome</th></tr></thead><tbody className="divide-y divide-slate-100">{decisionRows.map((row)=><tr key={row.id}><td className="px-3 py-2.5 font-medium text-slate-700">{row.participant}</td><td className="px-3 py-2.5">{row.balloon??"—"}</td><td className="px-3 py-2.5 capitalize">{row.decision.replaceAll("_"," ")}</td><td className="px-3 py-2.5">{row.pumps??"—"}</td><td className="px-3 py-2.5">{row.bank??"—"}</td><td className="px-3 py-2.5">{row.latency===null?"—":`${Math.round(row.latency)} ms`}</td><td className="px-3 py-2.5">{row.exploded?"Exploded":row.decision==="cash_out"?"Collected":"Continued"}</td></tr>)}</tbody></table></div></div>}
+  </div>;
+}
+
+
+function ResearchMentalRotationInsightPanel({
+  sessions,
+  trials,
+  participants,
+  compact = false,
+}: {
+  sessions: ResearchDataCognitiveSession[];
+  trials: ResearchDataCognitiveTrial[];
+  participants: ResearchDataParticipant[];
+  compact?: boolean;
+}) {
+  const summaries = sessions
+    .map((session) => ({ session, summary: researchMentalRotationSummary(session) }))
+    .filter((item): item is { session: ResearchDataCognitiveSession; summary: Record<string, unknown> } => item.summary !== null);
+  if (summaries.length === 0) return null;
+
+  const accuracies = summaries.map((item) => researchNumber(item.summary.accuracy)).filter((v): v is number => v !== null);
+  const sameAccuracies = summaries.map((item) => researchNumber(item.summary.same_accuracy)).filter((v): v is number => v !== null);
+  const mirroredAccuracies = summaries.map((item) => researchNumber(item.summary.mirrored_accuracy)).filter((v): v is number => v !== null);
+  const meanRts = summaries.map((item) => researchNumber(item.summary.mean_correct_rt_ms)).filter((v): v is number => v !== null);
+  const slopes = summaries.map((item) => researchNumber(item.summary.rotation_slope_ms_per_degree)).filter((v): v is number => v !== null);
+  const qualityFlagCount = summaries.reduce((sum, item) => sum + (Array.isArray(item.summary.quality_flags) ? item.summary.quality_flags.length : 0), 0);
+
+  const angleGroups = new Map<number, { accuracy:number[]; rt:number[]; participants:number }>();
+  for (const item of summaries) {
+    const rows = Array.isArray(item.summary.angle_summaries) ? item.summary.angle_summaries as Array<Record<string, unknown>> : [];
+    for (const row of rows) {
+      const angle = researchNumber(row.angle_deg);
+      if (angle === null) continue;
+      const current = angleGroups.get(angle) || { accuracy:[], rt:[], participants:0 };
+      const accuracy = researchNumber(row.accuracy);
+      const rt = researchNumber(row.mean_correct_rt_ms);
+      if (accuracy !== null) current.accuracy.push(accuracy);
+      if (rt !== null) current.rt.push(rt);
+      current.participants += 1;
+      angleGroups.set(angle, current);
+    }
+  }
+  const angleRows = Array.from(angleGroups.entries()).sort(([a],[b]) => a-b);
+  const maxRt = Math.max(1, ...angleRows.map(([,row]) => researchMean(row.rt) || 0));
+  const participantById = new Map(participants.map((participant) => [participant.id, participant]));
+  const sessionById = new Map(sessions.map((session) => [session.id, session]));
+  const trialRows = trials
+    .map((trial) => ({ trial, runtime: researchMentalRotationRuntime(trial) }))
+    .filter((item): item is { trial: ResearchDataCognitiveTrial; runtime: Record<string, unknown> } => item.runtime !== null)
+    .slice(-14).reverse().map((item) => {
+      const session = sessionById.get(item.trial.session_id);
+      const participant = session?.participant_id ? participantById.get(session.participant_id) : null;
+      return {
+        id: item.trial.id,
+        participant: participant?.public_id || "Pseudonymous participant",
+        shape: String(item.runtime.shape_id || ""),
+        angle: researchNumber(item.runtime.angular_disparity_deg ?? item.runtime.rotation_angle_deg),
+        relation: item.runtime.mirrored === true ? "Mirrored" : "Same",
+        response: String(item.runtime.response || ""),
+        correct: item.runtime.correct === true,
+        latency: researchNumber(item.runtime.response_latency_ms),
+        timedOut: item.runtime.timed_out === true,
+      };
+    });
+
+  return <div className={`${compact ? "mt-4" : "mt-5"} rounded-[24px] border border-violet-200/80 bg-white p-5 shadow-[0_2px_5px_rgba(15,23,42,0.045),0_10px_28px_rgba(124,58,237,0.07)]`}>
+    <div className="flex flex-wrap items-start justify-between gap-3">
+      <div><p className="text-[10px] font-semibold uppercase tracking-[0.15em] text-violet-700">Dedicated Mental Rotation analysis</p><h4 className="mt-1 text-base font-semibold text-slate-950">Spatial transformation by angular disparity</h4><p className="mt-1 max-w-3xl text-[11px] leading-5 text-slate-500">The rotation slope is the stored deterministic descriptive slope of mean correct RT across angular-disparity bins. Interpret it alongside accuracy and the exact configured angles.</p></div>
+      <Status type={qualityFlagCount > 0 ? "warning" : "success"}>{qualityFlagCount} review flag{qualityFlagCount === 1 ? "" : "s"}</Status>
+    </div>
+    <div className="mt-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
+      <StatCard label="Accuracy" value={accuracies.length ? `${researchFormatEstimate((researchMean(accuracies)||0)*100,1)}%` : "—"} detail={`${accuracies.length} completed run${accuracies.length===1?"":"s"}`} />
+      <StatCard label="Same accuracy" value={sameAccuracies.length ? `${researchFormatEstimate((researchMean(sameAccuracies)||0)*100,1)}%` : "—"} detail="Mean participant accuracy" />
+      <StatCard label="Mirrored accuracy" value={mirroredAccuracies.length ? `${researchFormatEstimate((researchMean(mirroredAccuracies)||0)*100,1)}%` : "—"} detail="Mean participant accuracy" />
+      <StatCard label="Mean correct RT" value={meanRts.length ? `${researchFormatEstimate(researchMean(meanRts),1)} ms` : "—"} detail="Correct experimental trials" />
+      <StatCard label="Rotation slope" value={slopes.length ? `${researchFormatEstimate(researchMean(slopes),2)} ms/°` : "—"} detail="Stored participant slopes" />
+    </div>
+    {angleRows.length > 0 && <div className="mt-4 rounded-[22px] border border-slate-300/70 bg-slate-50/65 p-4"><p className="text-xs font-semibold text-slate-900">Accuracy and RT by angular disparity</p><p className="mt-1 text-[10px] text-slate-500">Aggregate of stored participant angle summaries. Longer bars indicate slower correct responses.</p><div className="mt-4 space-y-2">{angleRows.map(([angle,row]) => { const rt=researchMean(row.rt); const acc=researchMean(row.accuracy); return <div key={angle} className="grid grid-cols-[54px_1fr_190px] items-center gap-3"><span className="text-[10px] font-semibold text-slate-700">{angle}°</span><div className="h-2.5 overflow-hidden rounded-full bg-slate-200/80"><div className="h-full rounded-full bg-violet-600" style={{width:`${rt===null?2:Math.max(2,(rt/maxRt)*100)}%`}} /></div><span className="text-right text-[9px] text-slate-500">{acc===null?"—":`${researchFormatEstimate(acc*100,1)}%`} · {rt===null?"—":`${researchFormatEstimate(rt,1)} ms`}</span></div>})}</div></div>}
+    {trialRows.length > 0 && <div className="mt-4 overflow-hidden rounded-[22px] border border-slate-300/70 bg-white"><div className="border-b border-slate-100 px-4 py-3"><p className="text-xs font-semibold text-slate-900">Recent image-comparison trials</p><p className="mt-1 text-[10px] text-slate-500">Research review only; exact shape coordinates remain in the raw dataset.</p></div><div className="overflow-x-auto"><table className="w-full min-w-[780px] text-left text-[10px]"><thead className="bg-slate-50 text-slate-500"><tr><th className="px-3 py-2.5">Participant</th><th className="px-3 py-2.5">Shape</th><th className="px-3 py-2.5">Angle</th><th className="px-3 py-2.5">Relation</th><th className="px-3 py-2.5">Response</th><th className="px-3 py-2.5">RT</th><th className="px-3 py-2.5">Outcome</th></tr></thead><tbody className="divide-y divide-slate-100">{trialRows.map((row)=><tr key={row.id}><td className="px-3 py-2.5 font-medium text-slate-700">{row.participant}</td><td className="px-3 py-2.5">{row.shape || "—"}</td><td className="px-3 py-2.5">{row.angle===null?"—":`${row.angle}°`}</td><td className="px-3 py-2.5">{row.relation}</td><td className="px-3 py-2.5 capitalize">{row.response.replaceAll("_"," ") || "—"}</td><td className="px-3 py-2.5">{row.latency===null?"—":`${Math.round(row.latency)} ms`}</td><td className="px-3 py-2.5">{row.timedOut?"Timeout":row.correct?"Correct":"Incorrect"}</td></tr>)}</tbody></table></div></div>}
+  </div>;
+}
+
+
 function ResearchCognitiveDataPanel({
   bundle,
   includeTestData = false,
@@ -16727,6 +17316,12 @@ function ResearchCognitiveDataPanel({
           const cardSortSessions = completedSessions.filter(
             (session) => researchCardSortSummary(session) !== null
           );
+          const bartSessions = completedSessions.filter(
+            (session) => researchBartSummary(session) !== null
+          );
+          const mentalRotationSessions = completedSessions.filter(
+            (session) => researchMentalRotationSummary(session) !== null
+          );
           const sessionIds = new Set(completedSessions.map((session) => session.id));
           const trials = bundle.cognitiveTrials.filter((trial) => sessionIds.has(trial.session_id));
           const scorable = trials.filter((trial) => trial.correct !== null);
@@ -16763,7 +17358,9 @@ function ResearchCognitiveDataPanel({
 
               {conditionLabels.length > 0 &&
                 corsiSessions.length === 0 &&
-                cardSortSessions.length === 0 && (
+                cardSortSessions.length === 0 &&
+                bartSessions.length === 0 &&
+                mentalRotationSessions.length === 0 && (
                 <div className="mt-4 overflow-x-auto rounded-xl border shadow-[0_5px_18px_rgba(15,23,42,0.06),0_1px_4px_rgba(15,23,42,0.035)] border-slate-200">
                   <table className="w-full min-w-[620px] text-left text-xs">
                     <thead className="bg-slate-50 text-slate-500">
@@ -16814,6 +17411,24 @@ function ResearchCognitiveDataPanel({
               {cardSortSessions.length > 0 && (
                 <ResearchCardSortInsightPanel
                   sessions={cardSortSessions}
+                  trials={trials}
+                  participants={participants}
+                  compact
+                />
+              )}
+
+              {bartSessions.length > 0 && (
+                <ResearchBartInsightPanel
+                  sessions={bartSessions}
+                  trials={trials}
+                  participants={participants}
+                  compact
+                />
+              )}
+
+              {mentalRotationSessions.length > 0 && (
+                <ResearchMentalRotationInsightPanel
+                  sessions={mentalRotationSessions}
                   trials={trials}
                   participants={participants}
                   compact
@@ -17048,6 +17663,30 @@ function ResearchCognitiveAnalysisPanel({
     selectedCardSortSessionIds.has(trial.session_id)
   );
 
+  const selectedBartSessions = bundle.cognitiveSessions.filter(
+    (session) =>
+      session.study_cognitive_task_id === selectedAttachment.id &&
+      session.participant_id &&
+      analysisParticipantIds.has(session.participant_id) &&
+      session.session_mode === "study" &&
+      session.status === "completed" &&
+      researchBartSummary(session) !== null
+  );
+  const selectedBartSessionIds = new Set(selectedBartSessions.map((session) => session.id));
+  const selectedBartTrials = bundle.cognitiveTrials.filter((trial) => selectedBartSessionIds.has(trial.session_id));
+
+  const selectedMentalRotationSessions = bundle.cognitiveSessions.filter(
+    (session) =>
+      session.study_cognitive_task_id === selectedAttachment.id &&
+      session.participant_id &&
+      analysisParticipantIds.has(session.participant_id) &&
+      session.session_mode === "study" &&
+      session.status === "completed" &&
+      researchMentalRotationSummary(session) !== null
+  );
+  const selectedMentalRotationSessionIds = new Set(selectedMentalRotationSessions.map((session) => session.id));
+  const selectedMentalRotationTrials = bundle.cognitiveTrials.filter((trial) => selectedMentalRotationSessionIds.has(trial.session_id));
+
   const participantById = new Map(
     bundle.participants.map((participant) => [participant.id, participant])
   );
@@ -17101,6 +17740,29 @@ function ResearchCognitiveAnalysisPanel({
         severity: String(flag.level || "review"),
       })
     );
+  });
+
+  const bartQualityFlags = selectedBartSessions.flatMap((session) => {
+    const summary = researchBartSummary(session);
+    if (!summary || !Array.isArray(summary.quality_flags)) return [];
+    return (summary.quality_flags as Array<Record<string, unknown>>).map((flag) => ({
+      sessionId: session.id, participantId: session.participant_id || "",
+      code: String(flag.code || "bart_review"),
+      label: String(flag.code || "BART review").replaceAll("_", " "),
+      detail: String(flag.message || "Review the BART session."), severity: String(flag.level || "review"),
+    }));
+  });
+
+  const mentalRotationQualityFlags = selectedMentalRotationSessions.flatMap((session) => {
+    const summary = researchMentalRotationSummary(session);
+    if (!summary || !session.participant_id) return [];
+    const flags = Array.isArray(summary.quality_flags) ? summary.quality_flags as Array<Record<string, unknown>> : [];
+    return flags.map((flag) => ({
+      participantId: session.participant_id as string, sessionId: session.id,
+      code: String(flag.code || "mental_rotation_review"),
+      label: String(flag.code || "Mental Rotation review").replaceAll("_", " "),
+      detail: String(flag.message || "Review the Mental Rotation session."), severity: String(flag.level || "review"),
+    }));
   });
 
   return (
@@ -17171,8 +17833,26 @@ function ResearchCognitiveAnalysisPanel({
         />
       )}
 
+      {selectedBartSessions.length > 0 && (
+        <ResearchBartInsightPanel
+          sessions={selectedBartSessions}
+          trials={selectedBartTrials}
+          participants={bundle.participants}
+        />
+      )}
+
+      {selectedMentalRotationSessions.length > 0 && (
+        <ResearchMentalRotationInsightPanel
+          sessions={selectedMentalRotationSessions}
+          trials={selectedMentalRotationTrials}
+          participants={bundle.participants}
+        />
+      )}
+
       {selectedCorsiSessions.length === 0 &&
-        selectedCardSortSessions.length === 0 && (
+        selectedCardSortSessions.length === 0 &&
+        selectedBartSessions.length === 0 &&
+        selectedMentalRotationSessions.length === 0 && (
       <div className="mt-5 overflow-x-auto rounded-2xl border shadow-[0_8px_24px_rgba(15,23,42,0.065),0_2px_6px_rgba(15,23,42,0.035)] border-slate-200">
         <table className="w-full min-w-[820px] text-left text-xs">
           <thead className="bg-slate-50 text-slate-500">
@@ -17224,6 +17904,8 @@ function ResearchCognitiveAnalysisPanel({
       {selectedStopSignalSessions.length === 0 &&
         selectedCorsiSessions.length === 0 &&
         selectedCardSortSessions.length === 0 &&
+        selectedBartSessions.length === 0 &&
+        selectedMentalRotationSessions.length === 0 &&
         analysis.conditionLabels.length >= 2 && (
         <div className="mt-5 space-y-4">
           <div className="rounded-2xl border shadow-[0_8px_24px_rgba(15,23,42,0.065),0_2px_6px_rgba(15,23,42,0.035)] border-cyan-100 bg-cyan-50/40 p-4">
@@ -17309,7 +17991,9 @@ function ResearchCognitiveAnalysisPanel({
               analysis.qualityFlags.length +
                 stopSignalQualityFlags.length +
                 corsiQualityFlags.length +
-                cardSortQualityFlags.length
+                cardSortQualityFlags.length +
+                bartQualityFlags.length +
+                mentalRotationQualityFlags.length
                 ? "warning"
                 : "success"
             }
@@ -17317,11 +18001,15 @@ function ResearchCognitiveAnalysisPanel({
             {analysis.qualityFlags.length +
               stopSignalQualityFlags.length +
               corsiQualityFlags.length +
-              cardSortQualityFlags.length} flag
+              cardSortQualityFlags.length +
+              bartQualityFlags.length +
+              mentalRotationQualityFlags.length} flag
             {analysis.qualityFlags.length +
               stopSignalQualityFlags.length +
               corsiQualityFlags.length +
-              cardSortQualityFlags.length === 1
+              cardSortQualityFlags.length +
+              bartQualityFlags.length +
+              mentalRotationQualityFlags.length === 1
               ? ""
               : "s"}
           </Status>
@@ -17330,7 +18018,9 @@ function ResearchCognitiveAnalysisPanel({
         {analysis.qualityFlags.length === 0 &&
         stopSignalQualityFlags.length === 0 &&
         corsiQualityFlags.length === 0 &&
-        cardSortQualityFlags.length === 0 ? (
+        cardSortQualityFlags.length === 0 &&
+        bartQualityFlags.length === 0 &&
+        mentalRotationQualityFlags.length === 0 ? (
           <div className="mt-4 rounded-xl border shadow-[0_5px_18px_rgba(15,23,42,0.06),0_1px_4px_rgba(15,23,42,0.035)] border-cyan-200 bg-cyan-50 px-4 py-3 text-xs text-cyan-800">
             No built-in review flags were triggered for the current live participant sessions.
           </div>
@@ -17448,6 +18138,25 @@ function ResearchCognitiveAnalysisPanel({
               );
             })}
 
+            {bartQualityFlags.slice(0, 24).map((flag, index) => {
+              const participant = participantById.get(flag.participantId);
+              return (
+                <div key={`bart-${flag.sessionId}-${flag.code}-${index}`} className="flex flex-col gap-2 rounded-xl border shadow-[0_5px_18px_rgba(15,23,42,0.06),0_1px_4px_rgba(15,23,42,0.035)] border-slate-300/70 bg-white px-4 py-3 sm:flex-row sm:items-start sm:justify-between">
+                  <div><p className="text-xs font-semibold text-slate-900">{participant?.public_id || `Participant ${flag.participantId.slice(0, 8)}`} · {flag.label}</p><p className="mt-1 text-[11px] leading-5 text-slate-500">{flag.detail}</p></div>
+                  <Status type={flag.severity === "warning" || flag.severity === "caution" ? "warning" : "neutral"}>{flag.severity}</Status>
+                </div>
+              );
+            })}
+            {mentalRotationQualityFlags.slice(0, 24).map((flag, index) => {
+              const participant = participantById.get(flag.participantId);
+              return (
+                <div key={`mental-rotation-${flag.sessionId}-${flag.code}-${index}`} className="flex flex-col gap-2 rounded-xl border shadow-[0_5px_18px_rgba(15,23,42,0.06),0_1px_4px_rgba(15,23,42,0.035)] border-slate-300/70 bg-white px-4 py-3 sm:flex-row sm:items-start sm:justify-between">
+                  <div><p className="text-xs font-semibold text-slate-900">{participant?.public_id || `Participant ${flag.participantId.slice(0, 8)}`} · {flag.label}</p><p className="mt-1 text-[11px] leading-5 text-slate-500">{flag.detail}</p></div>
+                  <Status type={flag.severity === "warning" || flag.severity === "caution" ? "warning" : "neutral"}>{flag.severity}</Status>
+                </div>
+              );
+            })}
+
             {analysis.qualityFlags.length > 24 && (
               <p className="pt-2 text-xs text-slate-400">
                 Showing the first 24 flags. Participant-level cognitive exports retain the complete session/timing information for further review.
@@ -17458,7 +18167,7 @@ function ResearchCognitiveAnalysisPanel({
       </div>
 
       <div className="mt-5 rounded-xl border shadow-[0_5px_18px_rgba(15,23,42,0.06),0_1px_4px_rgba(15,23,42,0.035)] border-slate-300/70 bg-white px-4 py-3 text-[11px] leading-5 text-slate-500">
-        <span className="font-semibold text-slate-700">Analysis boundary:</span> the current engine provides participant-level descriptive summaries, 95% confidence intervals, paired t-tests for selected two-condition contrasts, Cohen’s dz, and transparent quality flags. It does not automatically choose a complex statistical model or claim that a hypothesis is supported. Dedicated Stop-Signal summaries use the stored deterministic SSRT/SSD engine, dedicated Corsi summaries use the stored deterministic span/product-score engine, and Card Sorting uses the stored PsyLattice transparent set-shifting/perseveration engine rather than proprietary official WCST scoring. The Study Associations panel below can calculate researcher-selected Pearson/Spearman participant-level associations; trial-level mixed models, regression and preregistered analysis plans remain later modules.
+        <span className="font-semibold text-slate-700">Analysis boundary:</span> the current engine provides participant-level descriptive summaries, 95% confidence intervals, paired t-tests for selected two-condition contrasts, Cohen’s dz, and transparent quality flags. It does not automatically choose a complex statistical model or claim that a hypothesis is supported. Dedicated Stop-Signal summaries use the stored deterministic SSRT/SSD engine, dedicated Corsi summaries use the stored deterministic span/product-score engine, Card Sorting uses the stored PsyLattice transparent set-shifting/perseveration engine rather than proprietary official WCST scoring, BART uses stored deterministic adjusted-pump/risk-reward summaries, and Mental Rotation uses stored accuracy/RT/angular-slope summaries. The Study Associations panel below can calculate researcher-selected Pearson/Spearman participant-level associations; trial-level mixed models, regression and preregistered analysis plans remain later modules.
       </div>
     </Panel>
   );
@@ -19747,6 +20456,8 @@ function ExportData() {
         "StopSignal_Summary",
         "Corsi_Summary",
         "CardSorting_Summary",
+        "BART_Summary",
+        "MentalRotation_Summary",
         "Cognitive_Conditions",
         "Variable_Map",
         "Import_Guide",

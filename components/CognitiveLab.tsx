@@ -1037,11 +1037,11 @@ export default function CognitiveLab() {
                 <p className="text-[10px] font-semibold uppercase tracking-[0.15em] text-slate-400">Dedicated runner tasks</p>
                 <h4 className="mt-1 text-base font-semibold text-slate-950">Some paradigms need more than another template card.</h4>
                 <p className="mt-2 text-xs leading-5 text-slate-500">
-                  BART and true image-based Mental Rotation still need dedicated stateful or spatial runner logic. Stop-Signal, Corsi and PsyLattice Card Sorting are now implemented with dedicated runtimes and deterministic scoring.
+                  Stop-Signal, Corsi, PsyLattice Card Sorting, BART and image-based Mental Rotation now use dedicated paradigm-specific runtimes with deterministic scoring and lossless raw trial data.
                 </p>
               </div>
               <div className="flex flex-wrap gap-1.5 lg:max-w-sm lg:justify-end">
-                {["BART", "Mental Rotation"].map((name) => (
+                {["Stop-Signal", "Corsi", "Card Sorting", "BART", "Mental Rotation"].map((name) => (
                   <span key={name} className="rounded-full border border-slate-200 bg-slate-50 px-2.5 py-1.5 text-[9px] font-semibold text-slate-500">
                     {name} · dedicated engine
                   </span>

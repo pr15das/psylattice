@@ -44,6 +44,8 @@ import {
   CARD_SORT_REFERENCE_CARDS,
   cardSortSettingsFromTaskConfig,
 } from "@/lib/research/cardSorting";
+import { bartSettingsFromTaskConfig } from "@/lib/research/bart";
+import { mentalRotationSettingsFromTaskConfig, mentalRotationSvgDataUrl } from "@/lib/research/mentalRotation";
 
 type CognitiveTask = {
   id: string;
@@ -363,6 +365,212 @@ function isCardSortTaskConfig(
   return (
     String(config.runtime || "").toLowerCase() === "card_sorting" ||
     String(config.template_key || "").toLowerCase() === "card_sorting"
+  );
+}
+
+function isMentalRotationTaskConfig(config: Record<string, unknown> | null | undefined) {
+  if (!config) return false;
+  return (
+    String(config.runtime || "").toLowerCase() === "mental_rotation" ||
+    String(config.template_key || "").toLowerCase() === "mental_rotation"
+  );
+}
+
+function MentalRotationSettingsPanel({
+  taskConfig,
+  onChange,
+}: {
+  taskConfig: Record<string, unknown>;
+  onChange: (key: string, value: unknown) => void;
+}) {
+  const settings = mentalRotationSettingsFromTaskConfig(taskConfig);
+  const sampleShape = "mr_shape_e";
+  const sampleAngle = settings.rotation_angles_deg.includes(135)
+    ? 135
+    : settings.rotation_angles_deg[settings.rotation_angles_deg.length - 1] || 90;
+  const angleOptions = [0, 45, 90, 135, 180];
+
+  function toggleAngle(angle: number) {
+    const next = settings.rotation_angles_deg.includes(angle)
+      ? settings.rotation_angles_deg.filter((value) => value !== angle)
+      : [...settings.rotation_angles_deg, angle].sort((a, b) => a - b);
+    if (next.length >= 2) onChange("rotation_angles_deg", next);
+  }
+
+  return (
+    <div className="mt-5 max-w-5xl space-y-5">
+      <div className="grid gap-5 xl:grid-cols-[1fr_.92fr]">
+        <section className="rounded-[24px] border border-cyan-200/80 bg-white p-5 shadow-[0_7px_24px_rgba(8,145,178,0.08)]">
+          <p className="text-[10px] font-semibold uppercase tracking-[0.15em] text-cyan-700">Dedicated spatial transformation paradigm</p>
+          <h3 className="mt-1 text-xl font-semibold text-slate-950">Mental Rotation</h3>
+          <p className="mt-2 max-w-2xl text-xs leading-5 text-slate-500">
+            Participants compare two rendered asymmetric shapes and decide whether the comparison is the same object rotated in the picture plane or a mirrored version. PsyLattice uses original chiral block silhouettes rather than reproducing a proprietary stimulus set.
+          </p>
+          <div className="mt-5 grid gap-3 sm:grid-cols-4">
+            {[
+              [settings.practice_trials, "Practice"],
+              [settings.experimental_trials, "Experimental"],
+              [settings.rotation_angles_deg.join("° · ") + "°", "Angles"],
+              [`${Math.round(settings.mirrored_probability * 100)}%`, "Mirrored trials"],
+            ].map(([value, label]) => (
+              <div key={label as string} className="rounded-2xl border border-slate-200 bg-slate-50 p-3">
+                <p className="text-[9px] font-semibold uppercase tracking-[0.12em] text-slate-400">{label}</p>
+                <p className="mt-1 text-sm font-semibold text-slate-950">{value}</p>
+              </div>
+            ))}
+          </div>
+          <div className="mt-5 rounded-2xl border border-slate-200 bg-slate-50 p-4 text-[11px] leading-5 text-slate-600">
+            <strong className="text-slate-900">Stored outputs:</strong> accuracy, Same/Mirrored accuracy, correct-response RT, angle-by-angle accuracy/RT, and a transparent descriptive RT slope in milliseconds per degree. Every raw trial keeps the exact shape definition, angle, mirror state, answer and timing diagnostics.
+          </div>
+        </section>
+
+        <section className="rounded-[24px] border border-slate-200 bg-[#f8fbfc] p-5 shadow-[0_6px_20px_rgba(15,23,42,0.05)]">
+          <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-400">Participant preview</p>
+          <p className="mt-1 text-xs text-slate-500">Example mirrored comparison at {sampleAngle}°.</p>
+          <div className="mt-5 grid grid-cols-2 gap-3">
+            {[
+              mentalRotationSvgDataUrl(sampleShape, 0, false),
+              mentalRotationSvgDataUrl(sampleShape, sampleAngle, true),
+            ].map((url, index) => (
+              <div key={index} className="flex aspect-square items-center justify-center rounded-[22px] border border-slate-200 bg-white p-3 shadow-[0_8px_20px_rgba(15,23,42,0.07)]">
+                <img src={url} alt={index === 0 ? "Reference mental rotation shape" : "Rotated mirrored comparison shape"} className="h-full w-full object-contain" draggable={false} />
+              </div>
+            ))}
+          </div>
+          <div className="mt-4 grid grid-cols-2 gap-2">
+            <div className="rounded-xl bg-slate-950 px-3 py-2.5 text-center text-xs font-semibold text-white">{settings.same_key.toUpperCase()} · Same</div>
+            <div className="rounded-xl border border-cyan-200 bg-white px-3 py-2.5 text-center text-xs font-semibold text-cyan-900">{settings.mirrored_key.toUpperCase()} · Mirrored</div>
+          </div>
+        </section>
+      </div>
+
+      <section className="rounded-[24px] border border-slate-200 bg-white p-5 shadow-[0_6px_20px_rgba(15,23,42,0.05)]">
+        <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-400">Protocol</p>
+        <h4 className="mt-1 text-base font-semibold text-slate-950">Trials and spatial transformation</h4>
+        <div className="mt-4 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+          <label><FieldLabel>Practice trials</FieldLabel><TextField type="number" min="0" max="30" value={settings.practice_trials} onChange={(e) => onChange("practice_trials", Math.max(0, Math.min(30, Math.round(safeNumber(e.target.value, 6)))))} /></label>
+          <label><FieldLabel>Experimental trials</FieldLabel><TextField type="number" min="10" max="300" value={settings.experimental_trials} onChange={(e) => onChange("experimental_trials", Math.max(10, Math.min(300, Math.round(safeNumber(e.target.value, 40)))))} /></label>
+          <label><FieldLabel>Mirrored trials (%)</FieldLabel><TextField type="number" min="10" max="90" step="5" value={Math.round(settings.mirrored_probability * 100)} onChange={(e) => onChange("mirrored_probability", Math.max(0.1, Math.min(0.9, safeNumber(e.target.value, 50) / 100)))} /></label>
+          <label><FieldLabel>Stimulus size (px)</FieldLabel><TextField type="number" min="120" max="420" step="10" value={settings.stimulus_size_px} onChange={(e) => onChange("stimulus_size_px", Math.max(120, Math.min(420, Math.round(safeNumber(e.target.value, 230)))))} /></label>
+        </div>
+
+        <div className="mt-5">
+          <FieldLabel>Angular disparities</FieldLabel>
+          <div className="mt-2 flex flex-wrap gap-2">
+            {angleOptions.map((angle) => {
+              const active = settings.rotation_angles_deg.includes(angle);
+              return (
+                <button key={angle} type="button" onClick={() => toggleAngle(angle)} className={`rounded-full border px-3 py-2 text-xs font-semibold transition ${active ? "border-cyan-300 bg-cyan-50 text-cyan-900" : "border-slate-200 bg-white text-slate-400"}`}>
+                  {angle}°
+                </button>
+              );
+            })}
+          </div>
+          <p className="mt-2 text-[10px] leading-4 text-slate-400">Keep at least two angles. More angular levels make the descriptive RT-by-angle profile more informative.</p>
+        </div>
+      </section>
+
+      <section className="rounded-[24px] border border-slate-200 bg-white p-5 shadow-[0_6px_20px_rgba(15,23,42,0.05)]">
+        <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-400">Timing & responses</p>
+        <div className="mt-4 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+          <label><FieldLabel>Fixation (ms)</FieldLabel><TextField type="number" min="0" step="50" value={settings.fixation_ms} onChange={(e) => onChange("fixation_ms", Math.max(0, safeNumber(e.target.value, 500)))} /></label>
+          <label><FieldLabel>Response timeout (ms)</FieldLabel><TextField type="number" min="1500" step="500" value={settings.response_timeout_ms} onChange={(e) => onChange("response_timeout_ms", Math.max(1500, safeNumber(e.target.value, 10000)))} /></label>
+          <label><FieldLabel>Practice feedback (ms)</FieldLabel><TextField type="number" min="0" step="50" value={settings.practice_feedback_ms} onChange={(e) => onChange("practice_feedback_ms", Math.max(0, safeNumber(e.target.value, 550)))} /></label>
+          <label><FieldLabel>ITI (ms)</FieldLabel><TextField type="number" min="0" step="50" value={settings.iti_ms} onChange={(e) => onChange("iti_ms", Math.max(0, safeNumber(e.target.value, 500)))} /></label>
+          <label><FieldLabel>Same key</FieldLabel><TextField value={settings.same_key} onChange={(e) => onChange("same_key", e.target.value.slice(0, 16).toLowerCase())} /></label>
+          <label><FieldLabel>Mirrored key</FieldLabel><TextField value={settings.mirrored_key} onChange={(e) => onChange("mirrored_key", e.target.value.slice(0, 16).toLowerCase())} /></label>
+        </div>
+      </section>
+
+      <section className="rounded-[24px] border border-slate-200 bg-[#fbfdfd] p-5">
+        <p className="text-xs font-semibold text-slate-900">Interpretation boundary</p>
+        <p className="mt-2 text-xs leading-5 text-slate-500">
+          This is an original PsyLattice image-based 2D mental-rotation paradigm using asymmetric block silhouettes. It is suitable for experimental spatial-transformation research, but it is not the proprietary Vandenberg & Kuse Mental Rotations Test and does not include normative cutoffs. The RT slope is descriptive and should only be interpreted when accuracy and data quality are adequate.
+        </p>
+      </section>
+    </div>
+  );
+}
+
+function isBartTaskConfig(config: Record<string, unknown> | null | undefined) {
+  if (!config) return false;
+  return (
+    String(config.runtime || "").toLowerCase() === "bart" ||
+    String(config.template_key || "").toLowerCase() === "bart"
+  );
+}
+
+function BartSettingsPanel({
+  taskConfig,
+  onChange,
+}: {
+  taskConfig: Record<string, unknown>;
+  onChange: (key: string, value: unknown) => void;
+}) {
+  const settings = bartSettingsFromTaskConfig(taskConfig);
+  const expectedMidpoint = (settings.explosion_min_pump + settings.explosion_max_pump) / 2;
+
+  return (
+    <div className="mt-5 max-w-5xl space-y-5">
+      <div className="grid gap-5 xl:grid-cols-[1fr_.92fr]">
+        <section className="rounded-[24px] border border-cyan-200/80 bg-white p-5 shadow-[0_7px_24px_rgba(8,145,178,0.08)]">
+          <p className="text-[10px] font-semibold uppercase tracking-[0.15em] text-cyan-700">Dedicated risk / reward paradigm</p>
+          <h3 className="mt-1 text-xl font-semibold text-slate-950">Balloon Analogue Risk Task</h3>
+          <p className="mt-2 max-w-2xl text-xs leading-5 text-slate-500">
+            Participants repeatedly choose whether to pump a balloon for temporary reward or collect it into their bank. Every pump increases reward and risk. If the hidden explosion point is reached, the balloon bursts and its temporary reward is lost.
+          </p>
+          <div className="mt-5 grid gap-3 sm:grid-cols-4">
+            {[
+              [settings.balloons, "Balloons"],
+              [settings.max_pumps, "Max pumps"],
+              [`${settings.reward_per_pump.toFixed(2)}`, "Reward / pump"],
+              [`${settings.explosion_min_pump}–${settings.explosion_max_pump}`, "Hidden range"],
+            ].map(([value, label]) => (
+              <div key={label as string} className="rounded-2xl border border-slate-200 bg-slate-50 p-3">
+                <p className="text-[9px] font-semibold uppercase tracking-[0.12em] text-slate-400">{label}</p>
+                <p className="mt-1 text-lg font-semibold text-slate-950">{value}</p>
+              </div>
+            ))}
+          </div>
+          <div className="mt-5 rounded-2xl border border-slate-200 bg-slate-50 p-4 text-[11px] leading-5 text-slate-600">
+            <strong className="text-slate-900">Deterministic scoring:</strong> PsyLattice stores the hidden explosion point, every Pump / Collect decision, temporary reward, bank value, latency and outcome. The primary adjusted-pump metric is the mean pump count on balloons that were successfully collected and did not explode.
+          </div>
+        </section>
+
+        <section className="rounded-[24px] border border-slate-200 bg-[#f8fbfc] p-5 shadow-[0_6px_20px_rgba(15,23,42,0.05)]">
+          <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-400">Participant preview</p>
+          <div className="mt-6 flex flex-col items-center">
+            <div className="relative flex h-44 w-36 items-center justify-center rounded-[48%_48%_45%_45%] border border-rose-200 bg-rose-100 shadow-[inset_0_-18px_30px_rgba(244,63,94,0.10),0_16px_28px_rgba(15,23,42,0.08)]">
+              <span className="text-4xl">🎈</span>
+            </div>
+            <div className="mt-4 grid w-full grid-cols-2 gap-2">
+              <button type="button" disabled className="rounded-xl bg-slate-950 px-3 py-2.5 text-xs font-semibold text-white">Pump</button>
+              <button type="button" disabled className="rounded-xl border border-cyan-200 bg-white px-3 py-2.5 text-xs font-semibold text-cyan-900">Collect</button>
+            </div>
+            <p className="mt-3 text-center text-[10px] leading-4 text-slate-400">The explosion threshold is never shown to participants. For the configured uniform schedule its midpoint is {expectedMidpoint.toFixed(1)} pumps, but each balloon receives a seeded hidden threshold.</p>
+          </div>
+        </section>
+      </div>
+
+      <section className="rounded-[24px] border border-slate-200 bg-white p-5 shadow-[0_6px_20px_rgba(15,23,42,0.05)]">
+        <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-400">Protocol</p>
+        <h4 className="mt-1 text-base font-semibold text-slate-950">Risk schedule and reward</h4>
+        <div className="mt-4 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+          <label><FieldLabel>Number of balloons</FieldLabel><TextField type="number" min="5" max="100" value={settings.balloons} onChange={(e) => onChange("balloons", Math.max(5, Math.min(100, Math.round(safeNumber(e.target.value, 30)))))} /></label>
+          <label><FieldLabel>Maximum pumps</FieldLabel><TextField type="number" min="8" max="128" value={settings.max_pumps} onChange={(e) => onChange("max_pumps", Math.max(8, Math.min(128, Math.round(safeNumber(e.target.value, 64)))))} /></label>
+          <label><FieldLabel>Explosion minimum pump</FieldLabel><TextField type="number" min="1" max={Math.max(1, settings.max_pumps - 1)} value={settings.explosion_min_pump} onChange={(e) => onChange("explosion_min_pump", Math.max(1, Math.min(settings.max_pumps - 1, Math.round(safeNumber(e.target.value, 1)))))} /></label>
+          <label><FieldLabel>Explosion maximum pump</FieldLabel><TextField type="number" min={settings.explosion_min_pump + 1} max={settings.max_pumps} value={settings.explosion_max_pump} onChange={(e) => onChange("explosion_max_pump", Math.max(settings.explosion_min_pump + 1, Math.min(settings.max_pumps, Math.round(safeNumber(e.target.value, 64)))))} /></label>
+          <label><FieldLabel>Reward per pump</FieldLabel><TextField type="number" min="0.01" step="0.01" value={settings.reward_per_pump} onChange={(e) => onChange("reward_per_pump", Math.max(0.01, safeNumber(e.target.value, 0.05)))} /></label>
+          <label><FieldLabel>Starting bank</FieldLabel><TextField type="number" min="0" step="0.01" value={settings.start_bank} onChange={(e) => onChange("start_bank", Math.max(0, safeNumber(e.target.value, 0)))} /></label>
+          <label><FieldLabel>Decision timeout (ms)</FieldLabel><TextField type="number" min="2000" step="1000" value={settings.response_timeout_ms} onChange={(e) => onChange("response_timeout_ms", Math.max(2000, safeNumber(e.target.value, 20000)))} /></label>
+          <label><FieldLabel>Outcome duration (ms)</FieldLabel><TextField type="number" min="100" step="50" value={settings.outcome_ms} onChange={(e) => onChange("outcome_ms", Math.max(100, safeNumber(e.target.value, 700)))} /></label>
+        </div>
+        <div className="mt-4 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+          <label><FieldLabel>Pump animation (ms)</FieldLabel><TextField type="number" min="0" step="20" value={settings.pump_animation_ms} onChange={(e) => onChange("pump_animation_ms", Math.max(0, safeNumber(e.target.value, 120)))} /></label>
+          <label><FieldLabel>Inter-balloon interval (ms)</FieldLabel><TextField type="number" min="0" step="50" value={settings.iti_ms} onChange={(e) => onChange("iti_ms", Math.max(0, safeNumber(e.target.value, 450)))} /></label>
+        </div>
+      </section>
+    </div>
   );
 }
 
@@ -1412,7 +1620,9 @@ export default function CognitiveTaskBuilder({
     setEditorTab(
       isStopSignalTaskConfig(versionData.task_config) ||
         isCorsiTaskConfig(versionData.task_config) ||
-        isCardSortTaskConfig(versionData.task_config)
+        isCardSortTaskConfig(versionData.task_config) ||
+        isBartTaskConfig(versionData.task_config) ||
+        isMentalRotationTaskConfig(versionData.task_config)
         ? "paradigm"
         : "timeline"
     );
@@ -1429,7 +1639,40 @@ export default function CognitiveTaskBuilder({
   const stopSignalTask = !!version && isStopSignalTaskConfig(version.task_config);
   const corsiTask = !!version && isCorsiTaskConfig(version.task_config);
   const cardSortTask = !!version && isCardSortTaskConfig(version.task_config);
-  const dedicatedLockedTask = corsiTask || cardSortTask;
+  const bartTask = !!version && isBartTaskConfig(version.task_config);
+  const mentalRotationTask = !!version && isMentalRotationTaskConfig(version.task_config);
+  const dedicatedLockedTask = corsiTask || cardSortTask || bartTask || mentalRotationTask;
+
+  function updateMentalRotationSetting(key: string, value: unknown) {
+    if (!version) return;
+    const current =
+      typeof version.task_config.mental_rotation === "object" &&
+      version.task_config.mental_rotation !== null
+        ? (version.task_config.mental_rotation as Record<string, unknown>)
+        : {};
+    const defaults = mentalRotationSettingsFromTaskConfig(version.task_config);
+    updateVersion("task_config", {
+      ...version.task_config,
+      template_key: "mental_rotation",
+      runtime: "mental_rotation",
+      mental_rotation: { ...defaults, ...current, [key]: value },
+    });
+  }
+
+  function updateBartSetting(key: string, value: unknown) {
+    if (!version) return;
+    const current =
+      typeof version.task_config.bart === "object" && version.task_config.bart !== null
+        ? (version.task_config.bart as Record<string, unknown>)
+        : {};
+    const defaults = bartSettingsFromTaskConfig(version.task_config);
+    updateVersion("task_config", {
+      ...version.task_config,
+      template_key: "bart",
+      runtime: "bart",
+      bart: { ...defaults, ...current, [key]: value },
+    });
+  }
 
   function updateCardSortSetting(key: string, value: unknown) {
     if (!version) return;
@@ -1860,7 +2103,7 @@ export default function CognitiveTaskBuilder({
             <div className="flex items-center justify-between gap-3">
               <div>
                 <p className="text-[10px] font-semibold uppercase tracking-[0.15em] text-slate-400">Structure</p>
-                <p className="mt-1 text-sm font-semibold text-slate-900">{cardSortTask ? "Card sorting flow" : corsiTask ? "Corsi flow" : "Blocks"}</p>
+                <p className="mt-1 text-sm font-semibold text-slate-900">{mentalRotationTask ? "Mental Rotation flow" : bartTask ? "BART flow" : cardSortTask ? "Card sorting flow" : corsiTask ? "Corsi flow" : "Blocks"}</p>
               </div>
               {!dedicatedLockedTask && <div className="relative">
                 <button
@@ -1887,6 +2130,18 @@ export default function CognitiveTaskBuilder({
               </div>}
             </div>
 
+            {mentalRotationTask && (
+              <div className="mt-3 rounded-2xl border border-cyan-100 bg-white p-3 text-[10px] leading-4 text-slate-500 shadow-[0_3px_10px_rgba(15,23,42,0.035)]">
+                Practice → image-based rotation trials → complete. The dedicated structure is fixed so shape generation, mirror status, angular disparity and scoring remain reproducible; customise the protocol in <strong className="text-slate-700">Mental Rotation setup</strong>.
+              </div>
+            )}
+
+            {bartTask && (
+              <div className="mt-3 rounded-2xl border border-cyan-100 bg-white p-3 text-[10px] leading-4 text-slate-500 shadow-[0_3px_10px_rgba(15,23,42,0.035)]">
+                Balloons → complete. The stateful BART structure is fixed so hidden explosion thresholds, repeated Pump / Collect decisions and scoring remain reproducible; customise the protocol in <strong className="text-slate-700">BART setup</strong>.
+              </div>
+            )}
+
             {cardSortTask && (
               <div className="mt-3 rounded-2xl border border-cyan-100 bg-white p-3 text-[10px] leading-4 text-slate-500 shadow-[0_3px_10px_rgba(15,23,42,0.035)]">
                 Hidden-rule card sorting → complete. The stateful structure is fixed so rule shifts and scoring remain reproducible; customise the protocol in <strong className="text-slate-700">Card sorting setup</strong>.
@@ -1908,11 +2163,21 @@ export default function CognitiveTaskBuilder({
                       <span className={`mt-0.5 flex h-6 w-6 shrink-0 items-center justify-center rounded-lg text-[10px] font-semibold ${active ? "bg-cyan-700 text-white" : "bg-slate-100 text-slate-500"}`}>{String(index + 1).padStart(2, "0")}</span>
                       <div className="min-w-0 flex-1">
                         <p className="truncate text-xs font-semibold text-slate-900">{block.name}</p>
-                        <p className="mt-1 text-[10px] capitalize text-slate-400">{cardSortTask
+                        <p className="mt-1 text-[10px] capitalize text-slate-400">{mentalRotationTask
+                          ? block.block_type === "practice"
+                            ? "Image-based spatial practice"
+                            : block.block_type === "experimental"
+                              ? "Same / mirrored rotation trials"
+                              : "Completion screen"
+                          : bartTask
                           ? block.block_type === "experimental"
-                            ? "Stateful hidden-rule sorting"
+                            ? "Repeated risk / reward balloons"
                             : "Completion screen"
-                          : corsiTask
+                          : cardSortTask
+                            ? block.block_type === "experimental"
+                              ? "Stateful hidden-rule sorting"
+                              : "Completion screen"
+                            : corsiTask
                             ? block.block_type === "practice"
                               ? "Dedicated spatial practice"
                               : block.block_type === "experimental"
@@ -1947,12 +2212,22 @@ export default function CognitiveTaskBuilder({
           {/* Main editor */}
           <section className="min-w-0 bg-white p-4 sm:p-5">
             <div className="flex flex-wrap gap-2 rounded-[22px] border border-slate-200 bg-white p-2 shadow-[0_5px_16px_rgba(15,23,42,0.05)]">
-              {(cardSortTask
+              {(mentalRotationTask
                 ? [
-                    ["paradigm", "Card sorting setup", Shuffle] as const,
+                    ["paradigm", "Mental Rotation setup", ImageIcon] as const,
                     ["scoring", "Scoring & devices", BarChart3] as const,
                   ]
-                : corsiTask
+                : bartTask
+                ? [
+                    ["paradigm", "BART setup", CircleDot] as const,
+                    ["scoring", "Scoring & devices", BarChart3] as const,
+                  ]
+                : cardSortTask
+                  ? [
+                      ["paradigm", "Card sorting setup", Shuffle] as const,
+                      ["scoring", "Scoring & devices", BarChart3] as const,
+                    ]
+                  : corsiTask
                   ? [
                       ["paradigm", "Corsi setup", Square] as const,
                       ["scoring", "Scoring & devices", BarChart3] as const,
@@ -1977,6 +2252,10 @@ export default function CognitiveTaskBuilder({
               <div className="mt-5 flex min-h-[480px] items-center justify-center rounded-[24px] border border-dashed border-slate-300 bg-slate-50/50 text-center">
                 <div className="max-w-sm px-6"><Layers3 className="mx-auto h-7 w-7 text-slate-300" /><p className="mt-3 text-sm font-semibold text-slate-800">Add or select a block</p><p className="mt-1 text-xs leading-5 text-slate-500">Blocks define the participant journey. Trial-level stimuli and responses live inside Practice and Experimental blocks.</p></div>
               </div>
+            ) : editorTab === "paradigm" && mentalRotationTask ? (
+              <MentalRotationSettingsPanel taskConfig={version.task_config} onChange={updateMentalRotationSetting} />
+            ) : editorTab === "paradigm" && bartTask ? (
+              <BartSettingsPanel taskConfig={version.task_config} onChange={updateBartSetting} />
             ) : editorTab === "paradigm" && cardSortTask ? (
               <CardSortSettingsPanel
                 taskConfig={version.task_config}

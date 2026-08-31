@@ -162,6 +162,20 @@ function storedCardSortSummary(session: CognitiveSession) {
     : null;
 }
 
+function storedBartSummary(session: CognitiveSession) {
+  const raw = session.summary_scores?.bart;
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) return null;
+  const value = raw as Record<string, unknown>;
+  return String(value.paradigm || "bart") === "bart" ? value : null;
+}
+
+function storedMentalRotationSummary(session: CognitiveSession) {
+  const raw = session.summary_scores?.mental_rotation;
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) return null;
+  const value = raw as Record<string, unknown>;
+  return String(value.paradigm || "mental_rotation") === "mental_rotation" ? value : null;
+}
+
 function compactComparison(comparison: ReturnType<typeof compareConditions>) {
   if (!comparison) return null;
   const shape = (value: typeof comparison.rt) => ({
@@ -458,6 +472,42 @@ function buildCognitiveContext(args: {
       0
     );
 
+    const bartSessions = args.sessions
+      .filter((session) =>
+        session.study_cognitive_task_id === attachment.id &&
+        session.participant_id &&
+        participantById.has(session.participant_id) &&
+        session.session_mode === "study" &&
+        session.status === "completed"
+      )
+      .map((session) => ({ session, summary: storedBartSummary(session) }))
+      .filter((item): item is { session: CognitiveSession; summary: Record<string, unknown> } => item.summary !== null);
+
+    const bartAdjustedPumps = bartSessions.map((item) => numeric(item.summary.adjusted_mean_pumps)).filter((v): v is number => v !== null);
+    const bartMeanPumps = bartSessions.map((item) => numeric(item.summary.mean_pumps_all_balloons)).filter((v): v is number => v !== null);
+    const bartExplosionRates = bartSessions.map((item) => numeric(item.summary.explosion_rate)).filter((v): v is number => v !== null);
+    const bartFinalBanks = bartSessions.map((item) => numeric(item.summary.final_bank)).filter((v): v is number => v !== null);
+    const bartLatencies = bartSessions.map((item) => numeric(item.summary.mean_decision_latency_ms)).filter((v): v is number => v !== null);
+    const bartQualityFlagCount = bartSessions.reduce((sum,item)=>sum+(Array.isArray(item.summary.quality_flags)?item.summary.quality_flags.length:0),0);
+
+    const mentalRotationSessions = args.sessions
+      .filter((session) =>
+        session.study_cognitive_task_id === attachment.id &&
+        session.participant_id &&
+        participantById.has(session.participant_id) &&
+        session.session_mode === "study" &&
+        session.status === "completed"
+      )
+      .map((session) => ({ session, summary: storedMentalRotationSummary(session) }))
+      .filter((item): item is { session: CognitiveSession; summary: Record<string, unknown> } => item.summary !== null);
+    const mentalAccuracies = mentalRotationSessions.map((item) => numeric(item.summary.accuracy)).filter((v): v is number => v !== null);
+    const mentalSameAccuracies = mentalRotationSessions.map((item) => numeric(item.summary.same_accuracy)).filter((v): v is number => v !== null);
+    const mentalMirroredAccuracies = mentalRotationSessions.map((item) => numeric(item.summary.mirrored_accuracy)).filter((v): v is number => v !== null);
+    const mentalMeanCorrectRts = mentalRotationSessions.map((item) => numeric(item.summary.mean_correct_rt_ms)).filter((v): v is number => v !== null);
+    const mentalSlopes = mentalRotationSessions.map((item) => numeric(item.summary.rotation_slope_ms_per_degree)).filter((v): v is number => v !== null);
+    const mentalTimeouts = mentalRotationSessions.map((item) => numeric(item.summary.timeout_trials)).filter((v): v is number => v !== null);
+    const mentalQualityFlagCount = mentalRotationSessions.reduce((sum,item)=>sum+(Array.isArray(item.summary.quality_flags)?item.summary.quality_flags.length:0),0);
+
     taskSummaries.push({
       administration_position: attachment.position,
       task: attachment.title,
@@ -562,11 +612,49 @@ function buildCognitiveContext(args: {
                 "This is an original PsyLattice WCST-style research paradigm. These are not official standardized WCST scores, and the AI must not map them onto proprietary WCST norms, standard scores or Heaton scoring categories.",
             }
           : null,
+      dedicated_bart:
+        bartSessions.length > 0
+          ? {
+              numerical_source: "stored cognitive_task_sessions.summary_scores.bart",
+              scoring_system: "psylattice_bart_v1",
+              completed_runs: bartSessions.length,
+              mean_adjusted_mean_pumps: rounded(average(bartAdjustedPumps)),
+              median_adjusted_mean_pumps: rounded(median(bartAdjustedPumps)),
+              mean_pumps_all_balloons: rounded(average(bartMeanPumps)),
+              mean_explosion_rate: rounded(average(bartExplosionRates)),
+              mean_final_bank: rounded(average(bartFinalBanks)),
+              mean_decision_latency_ms: rounded(average(bartLatencies)),
+              stored_quality_flag_count: bartQualityFlagCount,
+              adjusted_mean_definition: "mean pumps on successfully cashed-out non-exploded balloons",
+              note: "These values were computed and stored by the deterministic PsyLattice BART runtime. Interpret them relative to the configured explosion schedule, number of balloons and reward value; do not recompute them from raw decisions."
+            }
+          : null,
+      dedicated_mental_rotation:
+        mentalRotationSessions.length > 0
+          ? {
+              numerical_source: "stored cognitive_task_sessions.summary_scores.mental_rotation",
+              scoring_system: "psylattice_mental_rotation_v1",
+              completed_runs: mentalRotationSessions.length,
+              mean_accuracy: rounded(average(mentalAccuracies)),
+              mean_same_accuracy: rounded(average(mentalSameAccuracies)),
+              mean_mirrored_accuracy: rounded(average(mentalMirroredAccuracies)),
+              mean_correct_rt_ms: rounded(average(mentalMeanCorrectRts)),
+              mean_rotation_slope_ms_per_degree: rounded(average(mentalSlopes)),
+              median_rotation_slope_ms_per_degree: rounded(median(mentalSlopes)),
+              mean_timeout_trials: rounded(average(mentalTimeouts)),
+              stored_quality_flag_count: mentalQualityFlagCount,
+              slope_definition: "stored deterministic OLS slope of mean correct RT across configured angular-disparity bins, expressed in milliseconds per degree",
+              normative_cutoffs_attached: false,
+              note: "These values were computed and stored by the deterministic PsyLattice Mental Rotation runtime. Interpret slope alongside accuracy and the exact configured angle set; do not recompute it from raw image-comparison trials."
+            }
+          : null,
       quality_flag_count:
         analysis.qualityFlags.length +
         stopQualityFlagCount +
         corsiQualityFlagCount +
-        cardSortQualityFlagCount,
+        cardSortQualityFlagCount +
+        bartQualityFlagCount +
+        mentalQualityFlagCount,
     });
 
     stopSignalSessions.forEach(({ session, summary }) => {
@@ -720,6 +808,74 @@ function buildCognitiveContext(args: {
           official_wcst_score: false,
         });
       });
+    });
+
+    bartSessions.forEach(({ session, summary }) => {
+      if (!session.participant_id) return;
+      participantRows.push({
+        participant: participantById.get(session.participant_id)?.public_id || "pseudonymous participant",
+        administration_position: attachment.position,
+        task: attachment.title,
+        paradigm: "bart",
+        scoring_system: String(summary.scoring_system || "psylattice_bart_v1"),
+        adjusted_mean_pumps: rounded(numeric(summary.adjusted_mean_pumps)),
+        mean_pumps_all_balloons: rounded(numeric(summary.mean_pumps_all_balloons)),
+        explosion_rate: rounded(numeric(summary.explosion_rate)),
+        exploded_balloons: numeric(summary.exploded_balloons),
+        cashed_out_balloons: numeric(summary.cashed_out_balloons),
+        total_pumps: numeric(summary.total_pumps),
+        final_bank: rounded(numeric(summary.final_bank)),
+        mean_decision_latency_ms: rounded(numeric(summary.mean_decision_latency_ms)),
+        timed_out_decisions: numeric(summary.timed_out_decisions),
+        stored_summary_only: true,
+      });
+      const flags = Array.isArray(summary.quality_flags) ? summary.quality_flags as Array<Record<string, unknown>> : [];
+      flags.forEach((flag) => qualityFlags.push({
+        participant: participantById.get(session.participant_id as string)?.public_id || "pseudonymous participant",
+        administration_position: attachment.position,
+        task: attachment.title,
+        severity: String(flag.level || "review"),
+        code: String(flag.code || "bart_review"),
+        label: String(flag.code || "BART review").replaceAll("_", " "),
+        detail: String(flag.message || "Review the BART session."),
+        researcher_action: "Review only; PsyLattice has not excluded this participant.",
+        numerical_source: "cognitive_task_sessions.summary_scores.bart",
+        scoring_system: "psylattice_bart_v1",
+      }));
+    });
+
+    mentalRotationSessions.forEach(({ session, summary }) => {
+      if (!session.participant_id) return;
+      participantRows.push({
+        participant: participantById.get(session.participant_id)?.public_id || "pseudonymous participant",
+        administration_position: attachment.position,
+        task: attachment.title,
+        paradigm: "mental_rotation",
+        scoring_system: String(summary.scoring_system || "psylattice_mental_rotation_v1"),
+        accuracy: rounded(numeric(summary.accuracy)),
+        same_accuracy: rounded(numeric(summary.same_accuracy)),
+        mirrored_accuracy: rounded(numeric(summary.mirrored_accuracy)),
+        mean_correct_rt_ms: rounded(numeric(summary.mean_correct_rt_ms)),
+        median_correct_rt_ms: rounded(numeric(summary.median_correct_rt_ms)),
+        rotation_slope_ms_per_degree: rounded(numeric(summary.rotation_slope_ms_per_degree)),
+        timeout_trials: numeric(summary.timeout_trials),
+        stored_summary_only: true,
+        normative_cutoffs_attached: false,
+      });
+      const flags = Array.isArray(summary.quality_flags) ? summary.quality_flags as Array<Record<string, unknown>> : [];
+      flags.forEach((flag) => qualityFlags.push({
+        participant: participantById.get(session.participant_id as string)?.public_id || "pseudonymous participant",
+        administration_position: attachment.position,
+        task: attachment.title,
+        severity: String(flag.level || "review"),
+        code: String(flag.code || "mental_rotation_review"),
+        label: String(flag.code || "Mental Rotation review").replaceAll("_", " "),
+        detail: String(flag.message || "Review the Mental Rotation session."),
+        researcher_action: "Review only; PsyLattice has not excluded this participant.",
+        numerical_source: "cognitive_task_sessions.summary_scores.mental_rotation",
+        scoring_system: "psylattice_mental_rotation_v1",
+        normative_cutoffs_attached: false,
+      }));
     });
 
     analysis.participantMetrics.forEach((metric) => {
@@ -950,7 +1106,7 @@ async function loadStudyAiContext(
   ).length;
 
   const summary: ResearchAiContext = {
-    context_version: "psylattice_research_ai_phase_2g_card_sorting",
+    context_version: "psylattice_research_ai_phase_2k_mental_rotation",
     generated_at: new Date().toISOString(),
     source_policy: {
       numerical_source: "PsyLattice deterministic study data and analysis engine",
@@ -1008,7 +1164,7 @@ async function loadStudyAiContext(
       quality_policy:
         "Flags are review prompts only. PsyLattice has not automatically excluded participants or trials.",
       dedicated_paradigm_policy:
-        "When dedicated_stop_signal is present, SSRT/SSD/Stop-success values come from stored deterministic session summaries. When dedicated_corsi is present, Forward/Backward span, product scores, sequence accuracy and latency summaries come from stored deterministic Corsi summaries. When dedicated_card_sorting is present, categories completed, transparent PsyLattice perseveration metrics, set-maintenance errors and latency summaries come from stored deterministic Card Sorting summaries. The assistant may explain these values but must not recompute them from raw trials or describe them as official standardized WCST scores.",
+        "When dedicated_stop_signal is present, SSRT/SSD/Stop-success values come from stored deterministic session summaries. When dedicated_corsi is present, Forward/Backward span, product scores, sequence accuracy and latency summaries come from stored deterministic Corsi summaries. When dedicated_card_sorting is present, categories completed, transparent PsyLattice perseveration metrics, set-maintenance errors and latency summaries come from stored deterministic Card Sorting summaries. When dedicated_bart is present, adjusted pumps, explosion behavior, banked reward and decision latency come from stored deterministic BART summaries. When dedicated_mental_rotation is present, accuracy, Same/Mirrored accuracy, correct RT and the ms/degree rotation slope come from stored deterministic Mental Rotation summaries. The assistant may explain these values but must not recompute dedicated metrics from raw trials/decisions, must not recompute the Mental Rotation slope from raw trials, and must not describe Card Sorting values as official standardized WCST scores.",
     },
     ambulatory: {
       prompt_instances: countForIncluded(ambulatoryPromptResult.data as any[]),
@@ -1021,8 +1177,10 @@ async function loadStudyAiContext(
       "Stop-Signal SSRT, SSD, inhibition rate and associated quality flags are authoritative only when explicitly present in a stored dedicated_stop_signal summary. Do not derive SSRT from participant-level rows.",
       "Corsi Forward/Backward span, product scores, sequence accuracy and associated quality flags are authoritative only when explicitly present in a stored dedicated_corsi summary. Do not recalculate span or product scores from raw sequence rows, and do not invent normative cutoffs.",
       "Card Sorting categories completed, perseverative/nonperseverative errors, failure-to-maintain-set and latency summaries are authoritative only when explicitly present in a stored dedicated_card_sorting summary. They use PsyLattice transparent scoring, not proprietary official WCST scoring. Do not invent official WCST norms, standard scores, percentiles, T scores or diagnostic interpretations.",
+      "BART adjusted mean pumps, explosion rate, banked reward and decision latency are authoritative only when explicitly present in a stored dedicated_bart summary. Adjusted mean pumps means pumps on successfully cashed-out non-exploded balloons. Interpret values relative to the configured explosion schedule, reward and balloon count; do not recompute from raw decisions.",
+      "Mental Rotation accuracy, Same/Mirrored accuracy, correct-response RT and rotation slope are authoritative only when explicitly present in a stored dedicated_mental_rotation summary. The slope is expressed in milliseconds per degree and was already computed by the deterministic runtime from configured angular-disparity bins. Interpret it alongside accuracy and task configuration; do not recompute from raw image trials or invent normative cutoffs.",
       "Questionnaire score summaries are descriptive only in this phase unless a separate inferential result is explicitly present.",
-      "Questionnaire–cognitive associations, regression, mixed models and trial-level generalized models have not been run by Phase 1I.",
+      "Questionnaire–cognitive associations, regression, mixed models and trial-level generalized models have not been run by the current deterministic analysis phase.",
       "The AI must not calculate or invent missing p-values, confidence intervals, correlations, effect sizes or exclusions.",
       "Raw study exports remain available independently of the AI.",
     ],

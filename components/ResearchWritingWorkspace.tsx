@@ -17,6 +17,10 @@ import {
   ChevronRight,
   FilePlus2,
   FileText,
+  FileUp,
+  Download,
+  ImagePlus,
+  Settings2,
   Folder,
   FolderOpen,
   FolderPlus,
@@ -29,6 +33,7 @@ import {
   List as ListIcon,
   ListOrdered,
   MessageSquareText,
+  Maximize2,
   Minimize2,
   PanelRightOpen,
   Pilcrow,
@@ -59,6 +64,7 @@ type FolderRow = {
 
 type DocumentType = "paper" | "outline" | "notes" | "review" | "proposal" | "general";
 type FormatStyle =
+  | "freeform"
   | "apa7_student"
   | "apa7_professional"
   | "mla9"
@@ -111,6 +117,18 @@ type ChatMessage = {
   content: string;
 };
 
+type ExportFormat = "pdf" | "docx";
+type ImageWrapMode =
+  | "inline"
+  | "square"
+  | "tight"
+  | "through"
+  | "top_bottom"
+  | "behind"
+  | "front";
+type ImageAlignment = "left" | "center" | "right";
+type SelectedTableCell = { tableId: string; row: number; column: number } | null;
+
 type FormatPreset = {
   id: FormatStyle;
   label: string;
@@ -136,6 +154,20 @@ const DEFAULT_SETTINGS: EditorSettings = {
 };
 
 const FORMAT_PRESETS: Record<FormatStyle, FormatPreset> = {
+  freeform: {
+    id: "freeform",
+    label: "Free form · Design it yourself",
+    shortLabel: "Free form",
+    settings: { ...DEFAULT_SETTINGS },
+    guidelines: [
+      "No academic style preset is enforced in Free form.",
+      "Choose your own font, size, spacing, margins, page size, alignment, columns, tables, figures and visual layout.",
+      "Use an APA, MLA, Chicago/Turabian, IEEE or institution-specific preset later if you want PsyLattice to apply a formal manuscript setup.",
+    ],
+    structure: ["No required section order. Build the document structure you want."],
+    sourceLabel: "Free-form document",
+    sourceUrl: "",
+  },
   apa7_student: {
     id: "apa7_student",
     label: "APA 7 · Student paper",
@@ -287,6 +319,31 @@ function relativeDate(value: string) {
   return date.toLocaleString([], { dateStyle: "medium", timeStyle: "short" });
 }
 
+function escapeHtml(value: string) {
+  return value
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;")
+    .replaceAll('"', "&quot;")
+    .replaceAll("'", "&#039;");
+}
+
+function safeFilename(value: string) {
+  const cleaned = value.trim().replace(/[\/:*?"<>|]+/g, "-").replace(/\s+/g, " ");
+  return cleaned || "PsyLattice thesis";
+}
+
+function downloadBlob(blob: Blob, filename: string) {
+  const url = URL.createObjectURL(blob);
+  const anchor = document.createElement("a");
+  anchor.href = url;
+  anchor.download = filename;
+  document.body.appendChild(anchor);
+  anchor.click();
+  anchor.remove();
+  window.setTimeout(() => URL.revokeObjectURL(url), 1500);
+}
+
 function ToolbarButton({ title, children, onClick, active = false }: { title: string; children: React.ReactNode; onClick: () => void; active?: boolean }) {
   return (
     <button
@@ -399,6 +456,7 @@ export default function ResearchWritingWorkspace({
   const [paginationRevision, setPaginationRevision] = useState(0);
   const [pageHtml, setPageHtml] = useState<string[]>([""]);
   const [navigatorCollapsed, setNavigatorCollapsed] = useState(false);
+  const [fullScreenMode, setFullScreenMode] = useState(false);
   const [paperZoom, setPaperZoom] = useState(100);
   const [userId, setUserId] = useState("");
   const [folders, setFolders] = useState<FolderRow[]>([]);
@@ -416,7 +474,7 @@ export default function ResearchWritingWorkspace({
   const [title, setTitle] = useState("");
   const [contentHtml, setContentHtml] = useState("");
   const [contentText, setContentText] = useState("");
-  const [formatStyle, setFormatStyle] = useState<FormatStyle>("apa7_student");
+  const [formatStyle, setFormatStyle] = useState<FormatStyle>("freeform");
   const [settings, setSettings] = useState<EditorSettings>(DEFAULT_SETTINGS);
 
   const [guidelinesOpen, setGuidelinesOpen] = useState(false);
@@ -434,15 +492,71 @@ export default function ResearchWritingWorkspace({
   const [consentPrompt, setConsentPrompt] = useState<null | { kind: "enable_chat_access" | "restructure"; format?: FormatStyle }>(null);
   const [aiToast, setAiToast] = useState("");
 
+  const importInputRef = useRef<HTMLInputElement | null>(null);
+  const imageInputRef = useRef<HTMLInputElement | null>(null);
+  const [importOpen, setImportOpen] = useState(false);
+  const [importFile, setImportFile] = useState<File | null>(null);
+  const [importTitle, setImportTitle] = useState("");
+  const [importFolderId, setImportFolderId] = useState("root");
+  const [importing, setImporting] = useState(false);
+
+  const [exportOpen, setExportOpen] = useState(false);
+  const [exportFormat, setExportFormat] = useState<ExportFormat>("pdf");
+  const [exportPageSize, setExportPageSize] = useState<"letter" | "a4">("letter");
+  const [applyExportSizeToCanvas, setApplyExportSizeToCanvas] = useState(false);
+  const [exporting, setExporting] = useState(false);
+
+  const [tableMenuOpen, setTableMenuOpen] = useState(false);
+  const [tableRows, setTableRows] = useState(3);
+  const [tableColumns, setTableColumns] = useState(3);
+  const [selectedTableCell, setSelectedTableCell] = useState<SelectedTableCell>(null);
+  const [selectedTableWidth, setSelectedTableWidth] = useState(100);
+
+  const [imageMenuOpen, setImageMenuOpen] = useState(false);
+  const [selectedImageId, setSelectedImageId] = useState("");
+  const [selectedImageWidth, setSelectedImageWidth] = useState(60);
+  const [selectedImageWrap, setSelectedImageWrap] = useState<ImageWrapMode>("inline");
+  const [selectedImageAlign, setSelectedImageAlign] = useState<ImageAlignment>("center");
+  const [imageUploading, setImageUploading] = useState(false);
+
   // Collapsing the file navigator is the dedicated paper-focus mode.
   // The parent Researcher page uses this signal to remove its large page header.
   useEffect(() => {
-    onFocusModeChange?.(navigatorCollapsed);
-  }, [navigatorCollapsed, onFocusModeChange]);
+    onFocusModeChange?.(navigatorCollapsed || fullScreenMode);
+  }, [navigatorCollapsed, fullScreenMode, onFocusModeChange]);
 
   useEffect(() => {
     return () => onFocusModeChange?.(false);
   }, [onFocusModeChange]);
+
+  useEffect(() => {
+    if (!fullScreenMode) return;
+
+    const previousBodyOverflow = document.body.style.overflow;
+    const previousHtmlOverflow = document.documentElement.style.overflow;
+    document.body.style.overflow = "hidden";
+    document.documentElement.style.overflow = "hidden";
+
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") setFullScreenMode(false);
+    };
+
+    window.addEventListener("keydown", handleKeyDown);
+    return () => {
+      window.removeEventListener("keydown", handleKeyDown);
+      document.body.style.overflow = previousBodyOverflow;
+      document.documentElement.style.overflow = previousHtmlOverflow;
+    };
+  }, [fullScreenMode]);
+
+  const enterFullScreenMode = useCallback(() => {
+    setFullScreenMode(true);
+    setPaperZoom((current) => Math.max(current, 100));
+  }, []);
+
+  const exitFullScreenMode = useCallback(() => {
+    setFullScreenMode(false);
+  }, []);
 
   const enterFocusMode = useCallback(() => {
     setNavigatorCollapsed(true);
@@ -463,6 +577,21 @@ export default function ResearchWritingWorkspace({
   );
 
   const currentPreset = FORMAT_PRESETS[formatStyle];
+
+  function folderPathLabel(folderId: string | null) {
+    if (!folderId || folderId === "root") return "Unfiled";
+    const names: string[] = [];
+    const seen = new Set<string>();
+    let current = folders.find((folder) => folder.id === folderId) || null;
+    while (current && !seen.has(current.id)) {
+      seen.add(current.id);
+      names.unshift(current.name);
+      current = current.parent_folder_id
+        ? folders.find((folder) => folder.id === current?.parent_folder_id) || null
+        : null;
+    }
+    return names.join(" / ") || "Unfiled";
+  }
 
   function pageGeometry(targetSettings: EditorSettings = settings) {
     const width = targetSettings.page_size === "a4" ? 794 : 816;
@@ -688,12 +817,14 @@ export default function ResearchWritingWorkspace({
       setTitle("");
       setContentHtml("");
       setContentText("");
+      setSelectedImageId("");
+      setSelectedTableCell(null);
       pageRefs.current = {};
       setPageHtml([""]);
       setPaginationRevision((current) => current + 1);
       return;
     }
-    const nextFormat = selectedDocument.format_style || "apa7_student";
+    const nextFormat = selectedDocument.format_style || "freeform";
     const nextSettings = normalizeSettings(selectedDocument.editor_settings, nextFormat);
     const nextHtml = selectedDocument.content_html || "";
     setTitle(selectedDocument.title);
@@ -701,6 +832,9 @@ export default function ResearchWritingWorkspace({
     setContentText(selectedDocument.content_text || "");
     setFormatStyle(nextFormat);
     setSettings(nextSettings);
+    setExportPageSize(nextSettings.page_size);
+    setSelectedImageId("");
+    setSelectedTableCell(null);
     setDirty(false);
     window.localStorage.setItem("psylattice-writing-document-id", selectedDocument.id);
     window.requestAnimationFrame(() => replaceVisiblePages(nextHtml, nextSettings, false));
@@ -775,14 +909,588 @@ export default function ResearchWritingWorkspace({
     if (url?.trim()) execCommand("createLink", url.trim());
   }
 
-  function insertTable() {
-    const rows = Math.max(1, Math.min(20, Number(window.prompt("Rows", "3") || 0)));
-    const columns = Math.max(1, Math.min(12, Number(window.prompt("Columns", "3") || 0)));
-    if (!Number.isFinite(rows) || !Number.isFinite(columns)) return;
-    const cells = Array.from({ length: rows }, (_, row) =>
-      `<tr>${Array.from({ length: columns }, (_, column) => `<${row === 0 ? "th" : "td"}>${row === 0 ? `Heading ${column + 1}` : "Cell"}</${row === 0 ? "th" : "td"}>`).join("")}</tr>`
+  function elementInPages<T extends Element>(selector: string): T | null {
+    for (const page of orderedPageElements()) {
+      const match = page.querySelector<T>(selector);
+      if (match) return match;
+    }
+    return null;
+  }
+
+  function currentTableFrame() {
+    if (!selectedTableCell) return null;
+    return elementInPages<HTMLElement>(`[data-psylattice-table-id="${selectedTableCell.tableId}"]`);
+  }
+
+  function currentImageFrame() {
+    if (!selectedImageId) return null;
+    return elementInPages<HTMLElement>(`[data-psylattice-image-id="${selectedImageId}"]`);
+  }
+
+  function insertTable(rows = tableRows, columns = tableColumns) {
+    const safeRows = Math.max(1, Math.min(30, Number(rows) || 1));
+    const safeColumns = Math.max(1, Math.min(12, Number(columns) || 1));
+    const tableId = crypto.randomUUID();
+    const cells = Array.from({ length: safeRows }, (_, row) =>
+      `<tr>${Array.from({ length: safeColumns }, (_, column) =>
+        `<${row === 0 ? "th" : "td"}>${row === 0 ? `Heading ${column + 1}` : "Cell"}</${row === 0 ? "th" : "td"}>`
+      ).join("")}</tr>`
     ).join("");
-    execCommand("insertHTML", `<table><tbody>${cells}</tbody></table><p><br></p>`);
+    execCommand(
+      "insertHTML",
+      `<div class="research-table-frame" data-psylattice-table-id="${tableId}" style="width:100%;max-width:100%;position:relative;margin:1em 0;clear:both;" contenteditable="false"><table contenteditable="true"><tbody>${cells}</tbody></table><span class="research-table-resize-handle" contenteditable="false" title="Drag to resize table">↘</span></div><p><br></p>`
+    );
+    setSelectedTableCell({ tableId, row: 0, column: 0 });
+    setSelectedTableWidth(100);
+    setTableMenuOpen(true);
+    window.setTimeout(schedulePagination, 0);
+  }
+
+  function ensureTableFrame(table: HTMLTableElement) {
+    const existing = table.closest<HTMLElement>(".research-table-frame");
+    if (existing?.dataset.psylatticeTableId) return existing;
+    const frame = document.createElement("div");
+    frame.className = "research-table-frame";
+    frame.dataset.psylatticeTableId = crypto.randomUUID();
+    frame.setAttribute("contenteditable", "false");
+    Object.assign(frame.style, {
+      width: "100%",
+      maxWidth: "100%",
+      position: "relative",
+      margin: "1em 0",
+      clear: "both",
+    });
+    const parent = table.parentNode;
+    if (!parent) return null;
+    parent.insertBefore(frame, table);
+    frame.appendChild(table);
+    table.setAttribute("contenteditable", "true");
+    const handle = document.createElement("span");
+    handle.className = "research-table-resize-handle";
+    handle.setAttribute("contenteditable", "false");
+    handle.title = "Drag to resize table";
+    handle.textContent = "↘";
+    frame.appendChild(handle);
+    return frame;
+  }
+
+  function mutateSelectedTable(mutator: (table: HTMLTableElement, frame: HTMLElement) => void) {
+    const frame = currentTableFrame();
+    const table = frame?.querySelector<HTMLTableElement>("table") || null;
+    if (!frame || !table) return;
+    mutator(table, frame);
+    captureEditor();
+    window.setTimeout(schedulePagination, 0);
+  }
+
+  function addTableRow() {
+    mutateSelectedTable((table) => {
+      const columnCount = Math.max(1, table.rows[0]?.cells.length || table.rows[table.rows.length - 1]?.cells.length || 1);
+      const row = table.insertRow(-1);
+      for (let index = 0; index < columnCount; index += 1) {
+        const cell = row.insertCell(-1);
+        cell.textContent = "Cell";
+      }
+    });
+  }
+
+  function addTableColumn() {
+    mutateSelectedTable((table) => {
+      Array.from(table.rows).forEach((row, rowIndex) => {
+        const tag = rowIndex === 0 && row.cells[0]?.tagName === "TH" ? "th" : "td";
+        const cell = document.createElement(tag);
+        cell.textContent = rowIndex === 0 ? `Heading ${row.cells.length + 1}` : "Cell";
+        row.appendChild(cell);
+      });
+    });
+  }
+
+  function deleteTableRow() {
+    const selection = selectedTableCell;
+    if (!selection) return;
+    mutateSelectedTable((table) => {
+      if (table.rows.length <= 1) return;
+      table.deleteRow(Math.min(selection.row, table.rows.length - 1));
+      setSelectedTableCell((current) => current ? { ...current, row: Math.max(0, Math.min(current.row, table.rows.length - 1)) } : current);
+    });
+  }
+
+  function deleteTableColumn() {
+    const selection = selectedTableCell;
+    if (!selection) return;
+    mutateSelectedTable((table) => {
+      const maxColumns = Math.max(0, ...Array.from(table.rows).map((row) => row.cells.length));
+      if (maxColumns <= 1) return;
+      Array.from(table.rows).forEach((row) => {
+        if (row.cells.length > selection.column) row.deleteCell(selection.column);
+      });
+      setSelectedTableCell((current) => current ? { ...current, column: Math.max(0, current.column - (current.column >= maxColumns - 1 ? 1 : 0)) } : current);
+    });
+  }
+
+  function toggleTableHeaderRow() {
+    mutateSelectedTable((table) => {
+      const row = table.rows[0];
+      if (!row) return;
+      const shouldBecomeHeader = Array.from(row.cells).some((cell) => cell.tagName !== "TH");
+      Array.from(row.cells).forEach((cell) => {
+        const replacement = document.createElement(shouldBecomeHeader ? "th" : "td");
+        replacement.innerHTML = cell.innerHTML;
+        Array.from(cell.attributes).forEach((attribute) => replacement.setAttribute(attribute.name, attribute.value));
+        cell.replaceWith(replacement);
+      });
+    });
+  }
+
+  function setTableWidthPercent(value: number) {
+    const width = Math.max(25, Math.min(100, Math.round(value)));
+    setSelectedTableWidth(width);
+    mutateSelectedTable((_table, frame) => {
+      frame.style.width = `${width}%`;
+    });
+  }
+
+  function deleteSelectedTable() {
+    const frame = currentTableFrame();
+    if (!frame) return;
+    if (!window.confirm("Delete this table?")) return;
+    frame.remove();
+    setSelectedTableCell(null);
+    setTableMenuOpen(false);
+    captureEditor();
+    schedulePagination();
+  }
+
+  function applyImageLayout(
+    wrap: ImageWrapMode = selectedImageWrap,
+    align: ImageAlignment = selectedImageAlign,
+    width: number = selectedImageWidth
+  ) {
+    const frame = currentImageFrame();
+    if (!frame) return;
+    const safeWidth = Math.max(10, Math.min(100, Math.round(width)));
+    const image = frame.querySelector<HTMLImageElement>("img");
+    frame.dataset.wrap = wrap;
+    frame.dataset.align = align;
+    frame.dataset.width = String(safeWidth);
+    frame.style.width = `${safeWidth}%`;
+    frame.style.maxWidth = "100%";
+    frame.style.float = "none";
+    frame.style.clear = "none";
+    frame.style.position = "relative";
+    frame.style.zIndex = "auto";
+    frame.style.left = "auto";
+    frame.style.right = "auto";
+    frame.style.transform = "none";
+    frame.style.margin = "12px auto";
+    frame.style.display = "block";
+    frame.style.shapeOutside = "none";
+    frame.style.shapeMargin = "0";
+
+    if (wrap === "inline") {
+      frame.style.display = "inline-block";
+      frame.style.verticalAlign = "middle";
+      frame.style.margin = "0 6px";
+    } else if (wrap === "square" || wrap === "tight" || wrap === "through") {
+      frame.style.float = align === "right" ? "right" : "left";
+      frame.style.margin = align === "right" ? "8px 0 12px 16px" : "8px 16px 12px 0";
+      if ((wrap === "tight" || wrap === "through") && image?.src) {
+        frame.style.shapeOutside = `url("${image.src.replaceAll('"', '%22')}")`;
+        frame.style.shapeMargin = wrap === "tight" ? "6px" : "0px";
+      }
+    } else if (wrap === "top_bottom") {
+      frame.style.clear = "both";
+      frame.style.margin = align === "left" ? "12px auto 12px 0" : align === "right" ? "12px 0 12px auto" : "12px auto";
+    } else if (wrap === "behind" || wrap === "front") {
+      frame.style.position = "absolute";
+      frame.style.zIndex = wrap === "behind" ? "0" : "20";
+      frame.style.pointerEvents = "auto";
+      if (align === "left") frame.style.left = "0";
+      if (align === "right") frame.style.right = "0";
+      if (align === "center") {
+        frame.style.left = "50%";
+        frame.style.transform = "translateX(-50%)";
+      }
+      frame.style.margin = "0";
+    }
+
+    setSelectedImageWrap(wrap);
+    setSelectedImageAlign(align);
+    setSelectedImageWidth(safeWidth);
+    captureEditor();
+    window.setTimeout(schedulePagination, 0);
+  }
+
+  function syncSelectedImage(frame: HTMLElement) {
+    const imageId = frame.dataset.psylatticeImageId || "";
+    if (!imageId) return;
+    const width = Number.parseFloat(frame.dataset.width || frame.style.width || "60") || 60;
+    setSelectedImageId(imageId);
+    setSelectedImageWidth(Math.max(10, Math.min(100, width)));
+    setSelectedImageWrap((frame.dataset.wrap as ImageWrapMode) || "top_bottom");
+    setSelectedImageAlign((frame.dataset.align as ImageAlignment) || "center");
+    setImageMenuOpen(true);
+  }
+
+  function deleteSelectedImage() {
+    const frame = currentImageFrame();
+    if (!frame) return;
+    if (!window.confirm("Delete this image?")) return;
+    frame.remove();
+    setSelectedImageId("");
+    setImageMenuOpen(false);
+    captureEditor(undefined, true);
+    window.setTimeout(schedulePagination, 0);
+    setNotice("Image deleted.");
+  }
+
+  function caretRangeAtPoint(x: number, y: number): Range | null {
+    const doc = document as Document & {
+      caretRangeFromPoint?: (clientX: number, clientY: number) => Range | null;
+      caretPositionFromPoint?: (clientX: number, clientY: number) => { offsetNode: Node; offset: number } | null;
+    };
+    if (doc.caretRangeFromPoint) return doc.caretRangeFromPoint(x, y);
+    const position = doc.caretPositionFromPoint?.(x, y);
+    if (!position) return null;
+    const range = document.createRange();
+    range.setStart(position.offsetNode, position.offset);
+    range.collapse(true);
+    return range;
+  }
+
+  function editorAtPoint(x: number, y: number) {
+    const hit = document.elementFromPoint(x, y) as HTMLElement | null;
+    return hit?.closest<HTMLElement>(".research-paper-editor") || null;
+  }
+
+  async function imageFileToDataUrl(file: File) {
+    if (!file.type.startsWith("image/")) throw new Error("Choose a PNG, JPEG, WEBP or other browser-supported image.");
+    if (file.size > 12 * 1024 * 1024) throw new Error("Images must be 12 MB or smaller.");
+    const original = await new Promise<string>((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => resolve(String(reader.result || ""));
+      reader.onerror = () => reject(new Error("That image could not be read."));
+      reader.readAsDataURL(file);
+    });
+    const bitmap = await new Promise<HTMLImageElement>((resolve, reject) => {
+      const image = new Image();
+      image.onload = () => resolve(image);
+      image.onerror = () => reject(new Error("That image could not be decoded."));
+      image.src = original;
+    });
+    const maxDimension = 2400;
+    const scale = Math.min(1, maxDimension / Math.max(bitmap.naturalWidth || 1, bitmap.naturalHeight || 1));
+    if (scale >= 0.999) return original;
+    const canvas = document.createElement("canvas");
+    canvas.width = Math.max(1, Math.round(bitmap.naturalWidth * scale));
+    canvas.height = Math.max(1, Math.round(bitmap.naturalHeight * scale));
+    const context = canvas.getContext("2d");
+    if (!context) return original;
+    context.drawImage(bitmap, 0, 0, canvas.width, canvas.height);
+    const mime = file.type === "image/png" ? "image/png" : "image/jpeg";
+    return canvas.toDataURL(mime, mime === "image/jpeg" ? 0.9 : undefined);
+  }
+
+  async function insertImageFile(file: File) {
+    if (!editorRef.current || imageUploading) return;
+    setImageUploading(true);
+    setError("");
+    try {
+      const src = await imageFileToDataUrl(file);
+      const imageId = crypto.randomUUID();
+      const alt = escapeHtml(file.name.replace(/\.[^.]+$/, ""));
+      execCommand(
+        "insertHTML",
+        `<span class="research-image-frame" data-psylattice-image-id="${imageId}" data-wrap="top_bottom" data-align="center" data-width="60" contenteditable="false" title="Drag image to reposition" style="display:block;position:relative;width:60%;max-width:100%;margin:12px auto;clear:both;"><img src="${src}" alt="${alt}" draggable="false" style="display:block;width:100%;height:auto;max-width:100%;pointer-events:none;"><span class="research-image-resize-handle" contenteditable="false" title="Drag to resize image">↘</span></span><p><br></p>`
+      );
+      setSelectedImageId(imageId);
+      setSelectedImageWidth(60);
+      setSelectedImageWrap("top_bottom");
+      setSelectedImageAlign("center");
+      setImageMenuOpen(true);
+      setNotice("Image inserted. Drag the picture itself to reposition it, drag ↘ to resize, or use Picture layout for wrapping.");
+      window.setTimeout(schedulePagination, 0);
+    } catch (imageError) {
+      setError(imageError instanceof Error ? imageError.message : "The image could not be inserted.");
+    } finally {
+      setImageUploading(false);
+      if (imageInputRef.current) imageInputRef.current.value = "";
+    }
+  }
+
+  function handleEditorClick(event: React.MouseEvent<HTMLDivElement>) {
+    const target = event.target as HTMLElement;
+    const imageFrame = target.closest<HTMLElement>("[data-psylattice-image-id]");
+    if (imageFrame?.dataset.psylatticeImageId) {
+      syncSelectedImage(imageFrame);
+      return;
+    }
+
+    const cell = target.closest<HTMLTableCellElement>("td,th");
+    const table = target.closest<HTMLTableElement>("table");
+    if (table) {
+      const frame = ensureTableFrame(table);
+      if (frame?.dataset.psylatticeTableId) {
+        const row = cell?.parentElement instanceof HTMLTableRowElement ? cell.parentElement.rowIndex : 0;
+        const column = cell?.cellIndex ?? 0;
+        setSelectedTableCell({ tableId: frame.dataset.psylatticeTableId, row, column });
+        setSelectedTableWidth(Math.round(Number.parseFloat(frame.style.width || "100")) || 100);
+        setTableMenuOpen(true);
+        captureEditor();
+      }
+      return;
+    }
+  }
+
+  function handleEditorPointerDown(event: React.PointerEvent<HTMLDivElement>) {
+    const target = event.target as HTMLElement;
+    const imageHandle = target.closest<HTMLElement>(".research-image-resize-handle");
+    const tableHandle = target.closest<HTMLElement>(".research-table-resize-handle");
+    const resizeFrame = imageHandle?.closest<HTMLElement>("[data-psylattice-image-id]") || tableHandle?.closest<HTMLElement>("[data-psylattice-table-id]");
+
+    // Existing direct resize behaviour for images and tables.
+    if (resizeFrame && (imageHandle || tableHandle)) {
+      event.preventDefault();
+      event.stopPropagation();
+      const editor = resizeFrame.closest<HTMLElement>(".research-paper-editor");
+      if (!editor) return;
+      const startX = event.clientX;
+      const startWidth = resizeFrame.getBoundingClientRect().width;
+      const editorWidth = Math.max(1, editor.getBoundingClientRect().width);
+      const minPercent = imageHandle ? 10 : 25;
+      const move = (moveEvent: PointerEvent) => {
+        const nextPixels = Math.max(editorWidth * minPercent / 100, Math.min(editorWidth, startWidth + moveEvent.clientX - startX));
+        const percent = Math.max(minPercent, Math.min(100, Math.round((nextPixels / editorWidth) * 100)));
+        resizeFrame.style.width = `${percent}%`;
+        if (imageHandle) {
+          resizeFrame.dataset.width = String(percent);
+          setSelectedImageWidth(percent);
+        } else {
+          setSelectedTableWidth(percent);
+        }
+      };
+      const up = () => {
+        document.removeEventListener("pointermove", move);
+        document.removeEventListener("pointerup", up);
+        captureEditor();
+        window.setTimeout(schedulePagination, 0);
+      };
+      document.addEventListener("pointermove", move);
+      document.addEventListener("pointerup", up, { once: true });
+      return;
+    }
+
+    // Drag the image itself to move it. Flowing wrap modes are dropped at the
+    // nearest text caret; front/behind modes are freely positioned on a page.
+    const imageFrame = target.closest<HTMLElement>("[data-psylattice-image-id]");
+    if (!imageFrame) return;
+    syncSelectedImage(imageFrame);
+    event.preventDefault();
+    event.stopPropagation();
+
+    const startEditor = imageFrame.closest<HTMLElement>(".research-paper-editor");
+    if (!startEditor) return;
+    const wrap = (imageFrame.dataset.wrap as ImageWrapMode) || "top_bottom";
+    const freePosition = wrap === "front" || wrap === "behind";
+    const startX = event.clientX;
+    const startY = event.clientY;
+    let lastX = startX;
+    let lastY = startY;
+    let moved = false;
+    const previousTransform = imageFrame.style.transform;
+
+    imageFrame.classList.add("research-image-dragging");
+
+    const move = (moveEvent: PointerEvent) => {
+      lastX = moveEvent.clientX;
+      lastY = moveEvent.clientY;
+      const dx = lastX - startX;
+      const dy = lastY - startY;
+      if (!moved && Math.hypot(dx, dy) < 4) return;
+      moved = true;
+
+      if (freePosition) {
+        const oldPointerEvents = imageFrame.style.pointerEvents;
+        imageFrame.style.pointerEvents = "none";
+        const destinationEditor = editorAtPoint(lastX, lastY) || startEditor;
+        imageFrame.style.pointerEvents = oldPointerEvents || "auto";
+        if (destinationEditor !== imageFrame.parentElement && destinationEditor !== imageFrame.closest(".research-paper-editor")) {
+          destinationEditor.appendChild(imageFrame);
+        }
+        const editorRect = destinationEditor.getBoundingClientRect();
+        const frameRect = imageFrame.getBoundingClientRect();
+        const left = Math.max(0, Math.min(Math.max(0, editorRect.width - frameRect.width), lastX - editorRect.left - frameRect.width / 2));
+        const top = Math.max(0, Math.min(Math.max(0, editorRect.height - frameRect.height), lastY - editorRect.top - 18));
+        imageFrame.style.position = "absolute";
+        imageFrame.style.float = "none";
+        imageFrame.style.clear = "none";
+        imageFrame.style.left = `${Math.round(left)}px`;
+        imageFrame.style.top = `${Math.round(top)}px`;
+        imageFrame.style.right = "auto";
+        imageFrame.style.transform = "none";
+        imageFrame.style.margin = "0";
+        imageFrame.dataset.freeX = String(Math.round(left));
+        imageFrame.dataset.freeY = String(Math.round(top));
+      } else {
+        imageFrame.style.transform = `translate3d(${dx}px, ${dy}px, 0)`;
+      }
+    };
+
+    const up = () => {
+      document.removeEventListener("pointermove", move);
+      document.removeEventListener("pointerup", up);
+      imageFrame.classList.remove("research-image-dragging");
+
+      if (moved && !freePosition) {
+        imageFrame.style.transform = previousTransform || "none";
+        const oldPointerEvents = imageFrame.style.pointerEvents;
+        imageFrame.style.pointerEvents = "none";
+        const range = caretRangeAtPoint(lastX, lastY);
+        imageFrame.style.pointerEvents = oldPointerEvents || "auto";
+        if (range) {
+          const container = range.startContainer instanceof Element ? range.startContainer : range.startContainer.parentElement;
+          const destinationEditor = container?.closest<HTMLElement>(".research-paper-editor");
+          if (destinationEditor && !imageFrame.contains(range.startContainer)) {
+            range.insertNode(imageFrame);
+            applyImageLayout(wrap, (imageFrame.dataset.align as ImageAlignment) || "center", Number(imageFrame.dataset.width || 60));
+          }
+        }
+      } else if (!moved) {
+        imageFrame.style.transform = previousTransform;
+      }
+
+      captureEditor(undefined, true);
+      window.setTimeout(schedulePagination, 0);
+    };
+
+    document.addEventListener("pointermove", move);
+    document.addEventListener("pointerup", up, { once: true });
+  }
+
+  function plainTextToHtml(text: string) {
+    const normalized = text.replace(/\r\n?/g, "\n").trim();
+    if (!normalized) return "";
+    return normalized
+      .split(/\n{2,}/)
+      .map((paragraph) => `<p>${escapeHtml(paragraph).replaceAll("\n", "<br>")}</p>`)
+      .join("");
+  }
+
+  async function importExistingDocument() {
+    if (!importFile || !userId || importing) return;
+    setImporting(true);
+    setError("");
+    setNotice("");
+    try {
+      const extension = importFile.name.split(".").pop()?.toLowerCase() || "";
+      let importedHtml = "";
+      if (extension === "docx") {
+        const mammoth = await import("mammoth");
+        const result = await mammoth.convertToHtml({ arrayBuffer: await importFile.arrayBuffer() });
+        importedHtml = result.value || "";
+      } else if (extension === "html" || extension === "htm") {
+        importedHtml = await importFile.text();
+      } else if (extension === "txt" || extension === "md" || extension === "markdown") {
+        importedHtml = plainTextToHtml(await importFile.text());
+      } else {
+        throw new Error("Import currently supports Word .docx, HTML, Markdown and plain-text documents.");
+      }
+      const safeHtml = sanitizeHtml(importedHtml);
+      const safeText = stripHtml(safeHtml);
+      const targetFolder = importFolderId === "root" ? null : importFolderId;
+      const nextTitle = importTitle.trim() || importFile.name.replace(/\.[^.]+$/, "") || "Imported paper";
+      const supabase = createClient();
+      const { data, error: importError } = await supabase
+        .from("research_writing_documents")
+        .insert({
+          owner_user_id: userId,
+          folder_id: targetFolder,
+          title: nextTitle,
+          document_type: "paper",
+          format_style: "freeform",
+          content_html: safeHtml,
+          content_text: safeText,
+          editor_settings: DEFAULT_SETTINGS,
+        })
+        .select("id,owner_user_id,folder_id,title,document_type,format_style,content_html,content_text,editor_settings,pinned,created_at,updated_at")
+        .single();
+      if (importError || !data) throw new Error(importError?.message || "The imported paper could not be saved.");
+      setDocuments((current) => [data as DocumentRow, ...current]);
+      setSelectedDocumentId(data.id);
+      setSelectedFolderId(targetFolder || "root");
+      setImportOpen(false);
+      setImportFile(null);
+      setImportTitle("");
+      setNotice(`Imported ${importFile.name} into ${folderPathLabel(targetFolder)}.`);
+    } catch (importError) {
+      setError(importError instanceof Error ? importError.message : "The document could not be imported.");
+    } finally {
+      setImporting(false);
+      if (importInputRef.current) importInputRef.current.value = "";
+    }
+  }
+
+  function exportHtmlDocument(pageSize: "letter" | "a4") {
+    const pageLabel = pageSize === "a4" ? "8.27in 11.69in" : "8.5in 11in";
+    const html = sanitizeHtml(combinedEditorHtml());
+    const columnCss = settings.columns === 2 ? "column-count:2;column-gap:.28in;" : "";
+    return `<!doctype html><html><head><meta charset="utf-8"><title>${escapeHtml(title || "PsyLattice thesis")}</title><style>@page{size:${pageLabel};margin:${settings.margin_in}in;}body{font-family:${JSON.stringify(settings.font_family)};font-size:${settings.font_size_pt}pt;line-height:${settings.line_spacing};color:#0f172a;text-align:${settings.text_align};${columnCss}}p{margin-top:0;margin-bottom:${settings.paragraph_spacing_pt}pt;text-indent:${settings.first_line_indent_in}in;}h1,h2,h3{break-after:avoid;}h1+p,h2+p,h3+p,blockquote p,li p{ text-indent:0;}table{width:100%;border-collapse:collapse;margin:1em 0;column-span:all;}th,td{border:1px solid #94a3b8;padding:6px 8px;text-align:left;vertical-align:top;}th{background:#f8fafc;font-weight:700;}img{max-width:100%;height:auto;}hr{border:0;border-top:1px solid #cbd5e1;margin:1em 0;column-span:all;}.research-image-resize-handle,.research-table-resize-handle{display:none!important;}</style></head><body>${html}</body></html>`;
+  }
+
+  async function exportCurrentDocument() {
+    if (!selectedDocument || exporting) return;
+    setExporting(true);
+    setError("");
+    try {
+      const filename = safeFilename(title || selectedDocument.title);
+      const exportHtml = exportHtmlDocument(exportPageSize);
+      if (applyExportSizeToCanvas && settings.page_size !== exportPageSize) {
+        const nextSettings = { ...settings, page_size: exportPageSize };
+        setSettings(nextSettings);
+        setDirty(true);
+        window.setTimeout(() => replaceVisiblePages(combinedEditorHtml(), nextSettings, true), 0);
+      }
+      if (exportFormat === "docx") {
+        const module = await import("html-docx-js-typescript");
+        const twips = Math.round(settings.margin_in * 1440);
+        const result = await module.asBlob(exportHtml, {
+          orientation: "portrait",
+          margins: { top: twips, right: twips, bottom: twips, left: twips, header: 720, footer: 720, gutter: 0 },
+        });
+        const blob = result instanceof Blob ? result : new Blob([result as BlobPart], { type: "application/vnd.openxmlformats-officedocument.wordprocessingml.document" });
+        downloadBlob(blob, `${filename}.docx`);
+      } else {
+        const module = await import("html2pdf.js");
+        const html2pdf = (module as { default?: any }).default || module;
+        const container = document.createElement("div");
+        const widthIn = exportPageSize === "a4" ? 8.27 : 8.5;
+        container.style.width = `${Math.max(4, widthIn - settings.margin_in * 2)}in`;
+        container.style.fontFamily = settings.font_family;
+        container.style.fontSize = `${settings.font_size_pt}pt`;
+        container.style.lineHeight = String(settings.line_spacing);
+        container.style.textAlign = settings.text_align;
+        container.innerHTML = sanitizeHtml(combinedEditorHtml());
+        document.body.appendChild(container);
+        await html2pdf()
+          .set({
+            margin: settings.margin_in,
+            filename: `${filename}.pdf`,
+            image: { type: "jpeg", quality: 0.98 },
+            html2canvas: { scale: 2, useCORS: true, backgroundColor: "#ffffff" },
+            jsPDF: { unit: "in", format: exportPageSize === "a4" ? "a4" : "letter", orientation: "portrait" },
+            pagebreak: { mode: ["css", "legacy"] },
+          })
+          .from(container)
+          .save();
+        container.remove();
+      }
+      setExportOpen(false);
+      setNotice(`Exported ${filename}.${exportFormat}.`);
+    } catch (exportError) {
+      setError(exportError instanceof Error ? exportError.message : "The paper could not be exported.");
+    } finally {
+      setExporting(false);
+    }
   }
 
   async function createFolder(parentFolderId: string | null = null) {
@@ -854,7 +1562,7 @@ export default function ResearchWritingWorkspace({
     if (!userId) return;
     const folderId = selectedFolderId !== "all" && selectedFolderId !== "root" ? selectedFolderId : null;
     const supabase = createClient();
-    const preset = FORMAT_PRESETS.apa7_student;
+    const preset = FORMAT_PRESETS.freeform;
     const { data, error: createError } = await supabase
       .from("research_writing_documents")
       .insert({
@@ -862,7 +1570,7 @@ export default function ResearchWritingWorkspace({
         folder_id: folderId,
         title: "Untitled paper",
         document_type: "paper",
-        format_style: "apa7_student",
+        format_style: "freeform",
         editor_settings: preset.settings,
       })
       .select("id,owner_user_id,folder_id,title,document_type,format_style,content_html,content_text,editor_settings,pinned,created_at,updated_at")
@@ -922,8 +1630,20 @@ export default function ResearchWritingWorkspace({
   }
 
   function applyFormatPreset(nextFormat: FormatStyle) {
-    const nextSettings = FORMAT_PRESETS[nextFormat].settings;
     const currentHtml = combinedEditorHtml();
+
+    if (nextFormat === "freeform") {
+      // Free form is intentionally non-destructive: leaving a formal preset
+      // stops preset enforcement but preserves the researcher's current layout.
+      setFormatStyle("freeform");
+      setDirty(true);
+      setGuidelinesOpen(false);
+      setConsentPrompt(null);
+      setNotice("Free form enabled. Your current paper layout is preserved and can now be designed manually.");
+      return;
+    }
+
+    const nextSettings = FORMAT_PRESETS[nextFormat].settings;
     setFormatStyle(nextFormat);
     setSettings(nextSettings);
     setDirty(true);
@@ -1120,12 +1840,15 @@ export default function ResearchWritingWorkspace({
   }
 
   return (
-    <div className="relative isolate overflow-visible rounded-[30px] border border-slate-200/90 bg-white shadow-[0_14px_40px_rgba(15,23,42,0.07)]">
+    <div className={fullScreenMode
+      ? "fixed inset-0 z-[110] isolate flex h-[100dvh] flex-col overflow-hidden bg-white"
+      : "relative isolate overflow-visible rounded-[30px] border border-slate-200/90 bg-white shadow-[0_14px_40px_rgba(15,23,42,0.07)]"
+    }>
       {error && <div className="border-b border-red-200 bg-red-50/70 px-5 py-3 text-xs text-red-700">{error}</div>}
       {notice && <div className="border-b border-cyan-100 bg-cyan-50/60 px-5 py-2.5 text-xs text-cyan-900">{notice}</div>}
 
-      <div className={`grid min-h-[760px] ${navigatorCollapsed ? "xl:grid-cols-[minmax(0,1fr)]" : "xl:grid-cols-[240px_250px_minmax(0,1fr)]"}`}>
-        <aside className={`${navigatorCollapsed ? "hidden" : ""} border-b border-slate-200 bg-slate-50/70 p-4 xl:border-b-0 xl:border-r`}>
+      <div className={`grid ${fullScreenMode ? "min-h-0 flex-1" : "min-h-[760px]"} ${navigatorCollapsed ? "xl:grid-cols-[minmax(0,1fr)]" : "xl:grid-cols-[240px_250px_minmax(0,1fr)]"}`}>
+        <aside className={`${navigatorCollapsed ? "hidden" : ""} border-b border-slate-200 bg-slate-50/70 p-4 xl:sticky xl:self-start xl:overflow-y-auto xl:border-b-0 xl:border-r ${fullScreenMode ? "xl:top-0 xl:h-full xl:max-h-[100dvh]" : "xl:top-[82px] xl:max-h-[calc(100vh-98px)]"}`}>
           <div className="flex items-center justify-between">
             <div>
               <p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-cyan-700">Research files</p>
@@ -1167,7 +1890,7 @@ export default function ResearchWritingWorkspace({
           </div>
         </aside>
 
-        <section className={`${navigatorCollapsed ? "hidden" : ""} border-b border-slate-200 p-4 xl:border-b-0 xl:border-r`}>
+        <section className={`${navigatorCollapsed ? "hidden" : ""} border-b border-slate-200 bg-white p-4 xl:sticky xl:self-start xl:overflow-hidden xl:border-b-0 xl:border-r ${fullScreenMode ? "xl:top-0 xl:h-full xl:max-h-[100dvh]" : "xl:top-[82px] xl:max-h-[calc(100vh-98px)]"}`}>
           <div className="flex items-center gap-2">
             <div className="relative min-w-0 flex-1">
               <Search className="absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-slate-400" />
@@ -1176,7 +1899,7 @@ export default function ResearchWritingWorkspace({
             <button type="button" onClick={() => void createDocument()} title="New document" className="rounded-xl bg-slate-950 p-2.5 text-white shadow-sm"><FilePlus2 className="h-4 w-4" /></button>
           </div>
 
-          <div className="mt-4 max-h-[690px] space-y-2 overflow-y-auto pr-1">
+          <div className={`mt-4 space-y-2 overflow-y-auto pr-1 ${fullScreenMode ? "max-h-[calc(100dvh-92px)]" : "max-h-[calc(100vh-174px)]"}`}>
             {filteredDocuments.length === 0 ? (
               <div className="rounded-2xl border border-dashed border-slate-200 bg-slate-50/60 p-6 text-center">
                 <FileText className="mx-auto h-7 w-7 text-slate-300" />
@@ -1196,7 +1919,7 @@ export default function ResearchWritingWorkspace({
                     <p className="line-clamp-2 text-xs font-semibold text-slate-800">{documentRow.title}</p>
                     <p className="mt-1 line-clamp-2 text-[10px] leading-4 text-slate-400">{documentRow.content_text || "Empty document"}</p>
                     <div className="mt-2 flex items-center gap-1.5">
-                      <span className="rounded-full bg-slate-100 px-2 py-1 text-[9px] text-slate-500">{FORMAT_PRESETS[documentRow.format_style]?.shortLabel || "Custom"}</span>
+                      <span className="rounded-full bg-slate-100 px-2 py-1 text-[9px] text-slate-500">{FORMAT_PRESETS[documentRow.format_style]?.shortLabel || "Free form"}</span>
                       {documentRow.pinned && <span className="text-[10px] text-amber-500">★</span>}
                     </div>
                     <p className="mt-2 text-[9px] text-slate-400">{relativeDate(documentRow.updated_at)}</p>
@@ -1207,7 +1930,7 @@ export default function ResearchWritingWorkspace({
           </div>
         </section>
 
-        <main className="relative min-w-0 bg-[#eef3f6]">
+        <main className={`relative min-w-0 bg-[#eef3f6] ${fullScreenMode ? "h-full min-h-0 overflow-y-auto" : ""}`}>
           {!selectedDocument ? (
             <div className="flex min-h-[760px] items-center justify-center p-8">
               <div className="max-w-sm rounded-[26px] border border-slate-200 bg-white p-8 text-center shadow-sm">
@@ -1218,8 +1941,8 @@ export default function ResearchWritingWorkspace({
               </div>
             </div>
           ) : (
-            <div className="min-h-[760px]">
-              <div className={navigatorCollapsed ? "sticky top-[82px] z-30" : "contents"}>
+            <div className={fullScreenMode ? "min-h-full" : "min-h-[760px]"}>
+              <div className={`sticky ${fullScreenMode ? "top-0" : "top-[82px]"} z-40 shadow-[0_8px_22px_rgba(15,23,42,0.045)]`}>
               <div className="border-b border-slate-200 bg-white px-4 py-3">
                 <div className="flex flex-wrap items-center gap-2">
                   {navigatorCollapsed && (
@@ -1245,14 +1968,47 @@ export default function ResearchWritingWorkspace({
                   <button type="button" onClick={() => void togglePin()} className="rounded-lg border border-slate-200 bg-white px-2.5 py-2 text-[10px] text-slate-500">{selectedDocument.pinned ? "★ Pinned" : "☆ Pin"}</button>
                   <button type="button" onClick={() => void loadRevisions()} title="Version history" className="rounded-lg border border-slate-200 bg-white p-2 text-slate-500"><History className="h-4 w-4" /></button>
                   <button type="button" onClick={() => setGuidelinesOpen(true)} title="Format guidelines" className="rounded-lg border border-slate-200 bg-white p-2 text-slate-500"><PanelRightOpen className="h-4 w-4" /></button>
+                  <button
+                    type="button"
+                    onClick={fullScreenMode ? exitFullScreenMode : enterFullScreenMode}
+                    title={fullScreenMode ? "Exit full screen" : "Open full-screen Thesis Builder"}
+                    aria-label={fullScreenMode ? "Exit full-screen Thesis Builder" : "Open full-screen Thesis Builder"}
+                    className={`rounded-lg border p-2 transition ${fullScreenMode ? "border-cyan-300 bg-cyan-50 text-cyan-800" : "border-slate-200 bg-white text-slate-500 hover:text-cyan-800"}`}
+                  >
+                    {fullScreenMode ? <Minimize2 className="h-4 w-4" /> : <Maximize2 className="h-4 w-4" />}
+                  </button>
                   {chatUseDocument && <span className="rounded-full border border-cyan-200 bg-cyan-50 px-2.5 py-1.5 text-[9px] font-semibold text-cyan-900">AI paper access on</span>}
                   <button type="button" onClick={() => void saveDocument(false)} disabled={saving} className="flex items-center gap-1.5 rounded-lg bg-slate-950 px-3 py-2 text-[10px] font-semibold text-white disabled:opacity-50"><Save className="h-3.5 w-3.5" /> {saving ? "Saving…" : dirty ? "Save" : "Saved"}</button>
                   <button type="button" onClick={() => void deleteDocument(selectedDocument)} title="Delete document" className="rounded-lg border border-red-100 bg-white p-2 text-red-500"><Trash2 className="h-4 w-4" /></button>
                 </div>
               </div>
 
-              <div className={`${navigatorCollapsed ? "" : "sticky top-[82px] z-20"} border-b border-slate-200 bg-white/96 px-4 py-2.5 backdrop-blur-xl`}>
+              <div className="border-b border-slate-200 bg-white/97 px-4 py-2.5 backdrop-blur-xl">
                 <div className="flex flex-wrap items-center gap-1.5">
+                  <ToolbarButton
+                    title="Import existing work"
+                    onClick={() => {
+                      setImportFolderId(selectedFolderId !== "all" ? selectedFolderId : "root");
+                      setImportFile(null);
+                      setImportTitle("");
+                      setImportOpen(true);
+                    }}
+                  >
+                    <span className="flex items-center gap-1.5 whitespace-nowrap font-semibold"><FileUp className="h-3.5 w-3.5" /> Import</span>
+                  </ToolbarButton>
+                  <ToolbarButton
+                    title="Export paper"
+                    onClick={() => {
+                      if (!selectedDocument) return;
+                      setExportPageSize(settings.page_size);
+                      setApplyExportSizeToCanvas(false);
+                      setExportOpen(true);
+                    }}
+                  >
+                    <span className="flex items-center gap-1.5 whitespace-nowrap font-semibold"><Download className="h-3.5 w-3.5" /> Export</span>
+                  </ToolbarButton>
+                  <span className="mx-1 h-6 w-px bg-slate-200" />
+
                   <div className="mr-1 flex items-center gap-1 rounded-xl border border-cyan-200 bg-cyan-50/60 px-2 py-1">
                     <Sparkles className="h-3.5 w-3.5 text-cyan-700" />
                     <select
@@ -1300,7 +2056,67 @@ export default function ResearchWritingWorkspace({
                   <span className="mx-1 h-6 w-px bg-slate-200" />
                   <ToolbarButton title="Add link" onClick={createLink}><LinkIcon className="h-3.5 w-3.5" /></ToolbarButton>
                   <ToolbarButton title="Remove link" onClick={() => execCommand("unlink")}>Unlink</ToolbarButton>
-                  <ToolbarButton title="Insert table" onClick={insertTable}><Table2 className="h-3.5 w-3.5" /></ToolbarButton>
+                  <div className="relative">
+                    <ToolbarButton title="Table maker and editor" onClick={() => setTableMenuOpen((value) => !value)} active={tableMenuOpen || Boolean(selectedTableCell)}><Table2 className="h-3.5 w-3.5" /></ToolbarButton>
+                    {tableMenuOpen && (
+                      <div className="absolute right-0 top-10 z-50 w-[310px] rounded-2xl border border-slate-200 bg-white p-3 shadow-2xl" onMouseDown={(event) => event.stopPropagation()}>
+                        <div className="flex items-center justify-between gap-3">
+                          <div><p className="text-[11px] font-semibold text-slate-900">Table designer</p><p className="mt-0.5 text-[9px] text-slate-400">Create or edit the selected table.</p></div>
+                          <button type="button" onClick={() => setTableMenuOpen(false)} className="rounded-lg p-1.5 text-slate-400 hover:bg-slate-100"><X className="h-3.5 w-3.5" /></button>
+                        </div>
+                        <div className="mt-3 rounded-xl bg-slate-50 p-3">
+                          <p className="text-[9px] font-semibold uppercase tracking-[0.12em] text-slate-400">New table</p>
+                          <div className="mt-2 grid grid-cols-[1fr_1fr_auto] gap-2">
+                            <label className="text-[9px] text-slate-500">Rows<input type="number" min={1} max={30} value={tableRows} onChange={(event) => setTableRows(Math.max(1, Math.min(30, Number(event.target.value) || 1)))} className="mt-1 w-full rounded-lg border border-slate-200 bg-white px-2 py-1.5 text-[10px]" /></label>
+                            <label className="text-[9px] text-slate-500">Columns<input type="number" min={1} max={12} value={tableColumns} onChange={(event) => setTableColumns(Math.max(1, Math.min(12, Number(event.target.value) || 1)))} className="mt-1 w-full rounded-lg border border-slate-200 bg-white px-2 py-1.5 text-[10px]" /></label>
+                            <button type="button" onClick={() => insertTable()} className="self-end rounded-lg bg-slate-950 px-3 py-2 text-[10px] font-semibold text-white">Insert</button>
+                          </div>
+                        </div>
+                        {selectedTableCell && (
+                          <div className="mt-3 space-y-3">
+                            <div className="flex flex-wrap gap-1.5">
+                              <button type="button" onClick={addTableRow} className="rounded-lg border border-slate-200 px-2.5 py-1.5 text-[9px] font-semibold text-slate-600">+ Row</button>
+                              <button type="button" onClick={addTableColumn} className="rounded-lg border border-slate-200 px-2.5 py-1.5 text-[9px] font-semibold text-slate-600">+ Column</button>
+                              <button type="button" onClick={deleteTableRow} className="rounded-lg border border-slate-200 px-2.5 py-1.5 text-[9px] text-slate-500">− Row</button>
+                              <button type="button" onClick={deleteTableColumn} className="rounded-lg border border-slate-200 px-2.5 py-1.5 text-[9px] text-slate-500">− Column</button>
+                              <button type="button" onClick={toggleTableHeaderRow} className="rounded-lg border border-slate-200 px-2.5 py-1.5 text-[9px] text-slate-500">Header row</button>
+                            </div>
+                            <label className="block text-[9px] text-slate-500">Table width · {selectedTableWidth}%<input type="range" min={25} max={100} step={1} value={selectedTableWidth} onChange={(event) => setTableWidthPercent(Number(event.target.value))} className="mt-1 w-full accent-cyan-700" /></label>
+                            <p className="text-[9px] leading-4 text-slate-400">You can also drag the ↘ handle at the lower-right corner of a selected table.</p>
+                            <button type="button" onClick={deleteSelectedTable} className="w-full rounded-lg border border-red-200 px-3 py-2 text-[9px] font-semibold text-red-700">Delete table</button>
+                          </div>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                  <input ref={imageInputRef} type="file" accept="image/*" className="hidden" onChange={(event) => { const file = event.target.files?.[0]; if (file) void insertImageFile(file); }} />
+                  <ToolbarButton title="Upload picture" onClick={() => imageInputRef.current?.click()} active={imageUploading}><ImagePlus className="h-3.5 w-3.5" /></ToolbarButton>
+                  <div className="relative">
+                    <ToolbarButton title="Picture layout and text wrapping" onClick={() => setImageMenuOpen((value) => !value)} active={imageMenuOpen || Boolean(selectedImageId)}><Settings2 className="h-3.5 w-3.5" /></ToolbarButton>
+                    {imageMenuOpen && (
+                      <div className="absolute right-0 top-10 z-50 w-[330px] rounded-2xl border border-slate-200 bg-white p-3 shadow-2xl" onMouseDown={(event) => event.stopPropagation()}>
+                        <div className="flex items-center justify-between"><div><p className="text-[11px] font-semibold text-slate-900">Picture layout</p><p className="mt-0.5 text-[9px] text-slate-400">Select an image in the paper, then choose wrapping.</p></div><button type="button" onClick={() => setImageMenuOpen(false)} className="rounded-lg p-1.5 text-slate-400 hover:bg-slate-100"><X className="h-3.5 w-3.5" /></button></div>
+                        {!selectedImageId ? (
+                          <button type="button" onClick={() => imageInputRef.current?.click()} className="mt-3 flex w-full items-center justify-center gap-2 rounded-xl bg-slate-950 px-3 py-2.5 text-[10px] font-semibold text-white"><ImagePlus className="h-3.5 w-3.5" /> Upload picture</button>
+                        ) : (
+                          <div className="mt-3 space-y-3">
+                            <div className="grid grid-cols-2 gap-1.5">
+                              {[
+                                ["inline", "In line with text"], ["square", "Square"], ["tight", "Tight"], ["through", "Through"], ["top_bottom", "Top & bottom"], ["behind", "Behind text"], ["front", "In front of text"],
+                              ].map(([value, label]) => <button key={value} type="button" onClick={() => applyImageLayout(value as ImageWrapMode, selectedImageAlign, selectedImageWidth)} className={`rounded-lg border px-2 py-2 text-[9px] font-medium ${selectedImageWrap === value ? "border-cyan-300 bg-cyan-50 text-cyan-900" : "border-slate-200 text-slate-600"}`}>{label}</button>)}
+                            </div>
+                            <div>
+                              <p className="text-[9px] text-slate-500">Position</p>
+                              <div className="mt-1.5 grid grid-cols-3 gap-1.5">{(["left", "center", "right"] as ImageAlignment[]).map((value) => <button key={value} type="button" onClick={() => applyImageLayout(selectedImageWrap, value, selectedImageWidth)} className={`rounded-lg border px-2 py-1.5 text-[9px] capitalize ${selectedImageAlign === value ? "border-cyan-300 bg-cyan-50 text-cyan-900" : "border-slate-200 text-slate-600"}`}>{value}</button>)}</div>
+                            </div>
+                            <label className="block text-[9px] text-slate-500">Image width · {selectedImageWidth}%<input type="range" min={10} max={100} value={selectedImageWidth} onChange={(event) => applyImageLayout(selectedImageWrap, selectedImageAlign, Number(event.target.value))} className="mt-1 w-full accent-cyan-700" /></label>
+                            <div className="rounded-xl border border-cyan-100 bg-cyan-50/55 px-2.5 py-2 text-[9px] leading-4 text-cyan-900">Drag the <strong>picture itself</strong> to move it. Inline/Square/Tight/Through/Top &amp; bottom drop at the nearest text position. Behind/In front can be freely placed anywhere on the paper. Drag ↘ to resize.</div>
+                            <button type="button" onClick={deleteSelectedImage} className="flex w-full items-center justify-center gap-1.5 rounded-lg border border-red-200 bg-white px-3 py-2 text-[9px] font-semibold text-red-700 hover:bg-red-50"><Trash2 className="h-3.5 w-3.5" /> Delete image</button>
+                          </div>
+                        )}
+                      </div>
+                    )}
+                  </div>
                   <ToolbarButton title="Horizontal rule" onClick={() => execCommand("insertHorizontalRule")}><Pilcrow className="h-3.5 w-3.5" /></ToolbarButton>
                   <ToolbarButton title="Undo" onClick={() => execCommand("undo")}><Undo2 className="h-3.5 w-3.5" /></ToolbarButton>
                   <ToolbarButton title="Redo" onClick={() => execCommand("redo")}><Redo2 className="h-3.5 w-3.5" /></ToolbarButton>
@@ -1334,6 +2150,8 @@ export default function ResearchWritingWorkspace({
                           contentEditable
                           suppressContentEditableWarning
                           onFocus={() => { editorRef.current = pageRefs.current[pageIndex] || null; }}
+                          onClick={handleEditorClick}
+                          onPointerDown={handleEditorPointerDown}
                           onInput={() => captureEditor(pageIndex, false)}
                           onBlur={() => captureEditor(pageIndex, true)}
                           onPaste={(event) => {
@@ -1363,6 +2181,47 @@ export default function ResearchWritingWorkspace({
           )}
         </main>
       </div>
+
+      {importOpen && (
+        <div className="fixed inset-0 z-[75] flex items-center justify-center bg-slate-950/35 p-4" onMouseDown={(event) => event.target === event.currentTarget && !importing && setImportOpen(false)}>
+          <div className="w-full max-w-xl rounded-[28px] border border-slate-200 bg-white p-6 shadow-2xl">
+            <div className="flex items-start justify-between gap-4">
+              <div><p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-cyan-700">Import existing work</p><h3 className="mt-1 text-xl font-semibold text-slate-950">Bring an existing paper into Thesis Builder</h3><p className="mt-2 text-xs leading-5 text-slate-500">Choose the source file, the title PsyLattice should use, and exactly which visual folder should contain it.</p></div>
+              <button type="button" disabled={importing} onClick={() => setImportOpen(false)} className="rounded-xl border border-slate-200 p-2 text-slate-500 disabled:opacity-40"><X className="h-4 w-4" /></button>
+            </div>
+            <input ref={importInputRef} type="file" accept=".docx,.html,.htm,.md,.markdown,.txt" className="hidden" onChange={(event) => { const file = event.target.files?.[0] || null; setImportFile(file); if (file) setImportTitle(file.name.replace(/\.[^.]+$/, "")); }} />
+            <div className="mt-5 space-y-4">
+              <div className="rounded-2xl border border-dashed border-slate-300 bg-slate-50/70 p-4">
+                <button type="button" onClick={() => importInputRef.current?.click()} className="flex w-full items-center justify-center gap-2 rounded-xl bg-white px-4 py-3 text-xs font-semibold text-slate-700 shadow-sm ring-1 ring-slate-200"><FileUp className="h-4 w-4 text-cyan-700" /> {importFile ? "Choose a different file" : "Choose file"}</button>
+                <p className="mt-3 text-center text-[10px] text-slate-400">Word .docx · HTML · Markdown · TXT</p>
+                {importFile && <div className="mt-3 rounded-xl border border-cyan-100 bg-cyan-50/60 px-3 py-2.5"><p className="truncate text-xs font-semibold text-cyan-950">{importFile.name}</p><p className="mt-1 text-[9px] text-cyan-800/70">{Math.max(1, Math.round(importFile.size / 1024)).toLocaleString()} KB</p></div>}
+              </div>
+              <label className="block"><span className="text-[10px] font-semibold text-slate-600">Document title</span><input value={importTitle} onChange={(event) => setImportTitle(event.target.value)} placeholder="Paper title" className="mt-1.5 w-full rounded-xl border border-slate-200 px-3 py-2.5 text-xs outline-none focus:border-cyan-400" /></label>
+              <label className="block"><span className="text-[10px] font-semibold text-slate-600">Place inside folder</span><select value={importFolderId} onChange={(event) => setImportFolderId(event.target.value)} className="mt-1.5 w-full rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-xs text-slate-700 outline-none focus:border-cyan-400"><option value="root">Unfiled</option>{folders.map((folder) => <option key={folder.id} value={folder.id}>{folderPathLabel(folder.id)}</option>)}</select></label>
+              <div className="rounded-xl bg-slate-50 px-3 py-2 text-[9px] leading-4 text-slate-500">Imported Word documents are converted into editable Thesis Builder content. Complex Word-only objects may need a quick visual check after import.</div>
+            </div>
+            <div className="mt-5 flex justify-end gap-2 border-t border-slate-100 pt-4"><button type="button" disabled={importing} onClick={() => setImportOpen(false)} className="rounded-xl border border-slate-200 px-4 py-2.5 text-xs font-semibold text-slate-600">Cancel</button><button type="button" disabled={!importFile || importing} onClick={() => void importExistingDocument()} className="rounded-xl bg-slate-950 px-4 py-2.5 text-xs font-semibold text-white disabled:opacity-35">{importing ? "Importing…" : "Import into Thesis Builder"}</button></div>
+          </div>
+        </div>
+      )}
+
+      {exportOpen && selectedDocument && (
+        <div className="fixed inset-0 z-[75] flex items-center justify-center bg-slate-950/35 p-4" onMouseDown={(event) => event.target === event.currentTarget && !exporting && setExportOpen(false)}>
+          <div className="w-full max-w-lg rounded-[28px] border border-slate-200 bg-white p-6 shadow-2xl">
+            <div className="flex items-start justify-between gap-4"><div><p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-cyan-700">Export</p><h3 className="mt-1 text-xl font-semibold text-slate-950">Export “{title || selectedDocument.title}”</h3><p className="mt-2 text-xs leading-5 text-slate-500">Choose a file format and output paper size. Export uses the current paper text, tables, images and formatting.</p></div><button type="button" disabled={exporting} onClick={() => setExportOpen(false)} className="rounded-xl border border-slate-200 p-2 text-slate-500"><X className="h-4 w-4" /></button></div>
+            <div className="mt-5 grid grid-cols-2 gap-2">
+              <button type="button" onClick={() => setExportFormat("pdf")} className={`rounded-2xl border p-4 text-left ${exportFormat === "pdf" ? "border-cyan-300 bg-cyan-50" : "border-slate-200 bg-white"}`}><p className="text-sm font-semibold text-slate-900">PDF</p><p className="mt-1 text-[10px] leading-4 text-slate-500">Submission-ready paged document.</p></button>
+              <button type="button" onClick={() => setExportFormat("docx")} className={`rounded-2xl border p-4 text-left ${exportFormat === "docx" ? "border-cyan-300 bg-cyan-50" : "border-slate-200 bg-white"}`}><p className="text-sm font-semibold text-slate-900">Word (.docx)</p><p className="mt-1 text-[10px] leading-4 text-slate-500">Continue editing in Microsoft Word.</p></button>
+            </div>
+            <div className="mt-5">
+              <p className="text-[10px] font-semibold uppercase tracking-[0.12em] text-slate-400">Paper size</p>
+              <div className="mt-2 grid grid-cols-2 gap-2"><button type="button" onClick={() => setExportPageSize("letter")} className={`rounded-xl border px-3 py-3 text-left ${exportPageSize === "letter" ? "border-cyan-300 bg-cyan-50" : "border-slate-200"}`}><p className="text-xs font-semibold text-slate-800">US Letter</p><p className="mt-1 text-[9px] text-slate-400">8.5 × 11 in</p></button><button type="button" onClick={() => setExportPageSize("a4")} className={`rounded-xl border px-3 py-3 text-left ${exportPageSize === "a4" ? "border-cyan-300 bg-cyan-50" : "border-slate-200"}`}><p className="text-xs font-semibold text-slate-800">A4</p><p className="mt-1 text-[9px] text-slate-400">210 × 297 mm</p></button></div>
+            </div>
+            <label className="mt-4 flex items-center justify-between rounded-xl border border-slate-200 px-3 py-2.5 text-[10px] text-slate-600"><span>Use this paper size in the Thesis Builder canvas too</span><input type="checkbox" checked={applyExportSizeToCanvas} onChange={(event) => setApplyExportSizeToCanvas(event.target.checked)} /></label>
+            <div className="mt-5 flex justify-end gap-2 border-t border-slate-100 pt-4"><button type="button" disabled={exporting} onClick={() => setExportOpen(false)} className="rounded-xl border border-slate-200 px-4 py-2.5 text-xs font-semibold text-slate-600">Cancel</button><button type="button" disabled={exporting} onClick={() => void exportCurrentDocument()} className="flex items-center gap-2 rounded-xl bg-slate-950 px-4 py-2.5 text-xs font-semibold text-white disabled:opacity-40"><Download className="h-4 w-4" /> {exporting ? "Exporting…" : `Export ${exportFormat === "pdf" ? "PDF" : "Word"}`}</button></div>
+          </div>
+        </div>
+      )}
 
       {guidelinesOpen && (
         <div className="fixed inset-0 z-50 flex justify-end bg-slate-950/20 backdrop-blur-[1px]" onMouseDown={(event) => event.target === event.currentTarget && setGuidelinesOpen(false)}>
@@ -1425,7 +2284,7 @@ export default function ResearchWritingWorkspace({
 
       {aiToast && <div className="fixed right-5 top-5 z-[80] max-w-sm rounded-2xl border border-cyan-200 bg-white px-4 py-3 text-xs leading-5 text-cyan-950 shadow-xl"><div className="flex gap-2"><Sparkles className="mt-0.5 h-4 w-4 shrink-0 text-cyan-700" /><span>{aiToast}</span></div></div>}
 
-      {navigatorCollapsed && selectedDocument && (
+      {(navigatorCollapsed || fullScreenMode) && selectedDocument && (
         <div className="fixed bottom-6 left-1/2 z-50 flex -translate-x-1/2 items-center gap-1 rounded-full border border-slate-700/70 bg-slate-950/95 p-1.5 text-white shadow-[0_18px_45px_rgba(15,23,42,0.28)] backdrop-blur-xl">
           <button
             type="button"
@@ -1485,7 +2344,15 @@ export default function ResearchWritingWorkspace({
       )}
 
       <style jsx global>{`
+        .research-paper-editor { position: relative; }
         .research-paper-editor:empty::before { content: attr(data-placeholder); color: #94a3b8; pointer-events: none; }
+        .research-image-frame { box-sizing: border-box; border: 1px solid transparent; border-radius: 4px; cursor: grab; touch-action: none; user-select: none; }
+        .research-image-frame:hover { border-color: #67e8f9; box-shadow: 0 0 0 2px rgba(103,232,249,.16); }
+        .research-image-frame.research-image-dragging { cursor: grabbing; border-color: #06b6d4; box-shadow: 0 0 0 3px rgba(6,182,212,.16), 0 14px 35px rgba(15,23,42,.14); opacity: .96; }
+        .research-image-frame img { pointer-events: none; user-select: none; }
+        .research-image-resize-handle, .research-table-resize-handle { position: absolute; right: -7px; bottom: -7px; z-index: 30; display: flex; width: 18px; height: 18px; cursor: nwse-resize; align-items: center; justify-content: center; border: 1px solid #0891b2; border-radius: 5px; background: white; color: #0e7490; font-size: 10px; line-height: 1; box-shadow: 0 2px 8px rgba(15,23,42,.12); user-select: none; }
+        .research-table-frame { box-sizing: border-box; }
+        .research-table-frame:hover { outline: 1px solid #67e8f9; outline-offset: 4px; }
         .research-paper-editor h1 { margin: 1.2em 0 .55em; font-size: 1.65em; font-weight: 700; line-height: 1.2; break-after: avoid; }
         .research-paper-editor h2 { margin: 1.1em 0 .5em; font-size: 1.35em; font-weight: 700; line-height: 1.25; break-after: avoid; }
         .research-paper-editor h3 { margin: 1em 0 .45em; font-size: 1.12em; font-weight: 700; break-after: avoid; }
@@ -1496,7 +2363,7 @@ export default function ResearchWritingWorkspace({
         .research-paper-editor ol { list-style: decimal; padding-left: 1.4em; margin: .5em 0; }
         .research-paper-editor blockquote { margin: .8em 0 .8em .5in; }
         .research-paper-editor a { color: #0e7490; text-decoration: underline; }
-        .research-paper-editor table { width: 100%; border-collapse: collapse; margin: 1em 0; column-span: all; }
+        .research-paper-editor table { width: 100%; border-collapse: collapse; margin: 0; column-span: all; table-layout: auto; }
         .research-paper-editor th, .research-paper-editor td { border: 1px solid #94a3b8; padding: 6px 8px; text-align: left; vertical-align: top; }
         .research-paper-editor th { background: #f8fafc; font-weight: 700; }
         .research-paper-editor hr { border: 0; border-top: 1px solid #cbd5e1; margin: 1em 0; column-span: all; }

@@ -13,6 +13,7 @@ import {
   AlignLeft,
   AlignRight,
   Bold,
+  Check,
   ChevronDown,
   ChevronRight,
   FilePlus2,
@@ -38,6 +39,7 @@ import {
   PanelRightOpen,
   Pilcrow,
   Redo2,
+  Ruler,
   Save,
   Search,
   Send,
@@ -76,12 +78,20 @@ type EditorSettings = {
   font_family: string;
   font_size_pt: number;
   line_spacing: number;
-  margin_in: number;
+  margin_top_in: number;
+  margin_right_in: number;
+  margin_bottom_in: number;
+  margin_left_in: number;
   page_size: "letter" | "a4";
   first_line_indent_in: number;
   paragraph_spacing_pt: number;
   text_align: "left" | "justify";
   columns: 1 | 2;
+};
+
+type StoredEditorSettings = Partial<EditorSettings> & {
+  /** Legacy Thesis Builder 1H and earlier stored one shared margin value. */
+  margin_in?: number;
 };
 
 type DocumentRow = {
@@ -93,7 +103,7 @@ type DocumentRow = {
   format_style: FormatStyle;
   content_html: string;
   content_text: string;
-  editor_settings: Partial<EditorSettings> | null;
+  editor_settings: StoredEditorSettings | null;
   pinned: boolean;
   created_at: string;
   updated_at: string;
@@ -108,7 +118,7 @@ type RevisionRow = {
   content_html: string;
   content_text: string;
   format_style: FormatStyle;
-  editor_settings: Partial<EditorSettings> | null;
+  editor_settings: StoredEditorSettings | null;
   created_at: string;
 };
 
@@ -128,6 +138,7 @@ type ImageWrapMode =
   | "front";
 type ImageAlignment = "left" | "center" | "right";
 type SelectedTableCell = { tableId: string; row: number; column: number } | null;
+type MarginSide = "top" | "right" | "bottom" | "left";
 
 type FormatPreset = {
   id: FormatStyle;
@@ -145,7 +156,10 @@ const DEFAULT_SETTINGS: EditorSettings = {
   font_family: "Times New Roman",
   font_size_pt: 12,
   line_spacing: 2,
-  margin_in: 1,
+  margin_top_in: 1,
+  margin_right_in: 1,
+  margin_bottom_in: 1,
+  margin_left_in: 1,
   page_size: "letter",
   first_line_indent_in: 0.5,
   paragraph_spacing_pt: 0,
@@ -153,12 +167,56 @@ const DEFAULT_SETTINGS: EditorSettings = {
   columns: 1,
 };
 
+const FREEFORM_SETTINGS: EditorSettings = {
+  font_family: "Times New Roman",
+  font_size_pt: 12,
+  line_spacing: 1,
+  margin_top_in: 0,
+  margin_right_in: 0,
+  margin_bottom_in: 0,
+  margin_left_in: 0,
+  page_size: "letter",
+  first_line_indent_in: 0,
+  paragraph_spacing_pt: 0,
+  text_align: "left",
+  columns: 1,
+};
+
+const EDITOR_COLOR_SWATCHES = [
+  "#0f172a",
+  "#334155",
+  "#64748b",
+  "#94a3b8",
+  "#ffffff",
+  "#991b1b",
+  "#dc2626",
+  "#f97316",
+  "#f59e0b",
+  "#eab308",
+  "#16a34a",
+  "#059669",
+  "#0891b2",
+  "#0284c7",
+  "#2563eb",
+  "#4f46e5",
+  "#7c3aed",
+  "#a21caf",
+  "#db2777",
+  "#ffe4e6",
+  "#fef3c7",
+  "#fef9c3",
+  "#dcfce7",
+  "#cffafe",
+  "#dbeafe",
+  "#ede9fe",
+];
+
 const FORMAT_PRESETS: Record<FormatStyle, FormatPreset> = {
   freeform: {
     id: "freeform",
     label: "Free form · Design it yourself",
     shortLabel: "Free form",
-    settings: { ...DEFAULT_SETTINGS },
+    settings: { ...FREEFORM_SETTINGS },
     guidelines: [
       "No academic style preset is enforced in Free form.",
       "Choose your own font, size, spacing, margins, page size, alignment, columns, tables, figures and visual layout.",
@@ -242,7 +300,10 @@ const FORMAT_PRESETS: Record<FormatStyle, FormatPreset> = {
       font_family: "Times New Roman",
       font_size_pt: 10,
       line_spacing: 1,
-      margin_in: 0.75,
+      margin_top_in: 0.75,
+      margin_right_in: 0.75,
+      margin_bottom_in: 0.75,
+      margin_left_in: 0.75,
       page_size: "letter",
       first_line_indent_in: 0.18,
       paragraph_spacing_pt: 0,
@@ -286,8 +347,33 @@ const FONT_SIZE_COMMANDS = [
   { label: "32", value: "7" },
 ];
 
-function normalizeSettings(value: Partial<EditorSettings> | null | undefined, format: FormatStyle): EditorSettings {
-  return { ...FORMAT_PRESETS[format].settings, ...(value || {}) } as EditorSettings;
+function normalizeSettings(value: StoredEditorSettings | null | undefined, format: FormatStyle): EditorSettings {
+  const preset = FORMAT_PRESETS[format].settings;
+  const stored = value || {};
+  const legacyMargin = typeof stored.margin_in === "number" ? stored.margin_in : undefined;
+  const hasDirectionalMargins =
+    typeof stored.margin_top_in === "number" ||
+    typeof stored.margin_right_in === "number" ||
+    typeof stored.margin_bottom_in === "number" ||
+    typeof stored.margin_left_in === "number";
+
+  // Free-form documents created before 1I inherited the old academic 1-inch
+  // margin silently. Treat that legacy shared value as no margin so existing
+  // Free-form papers become genuinely free-form. Formal presets preserve their
+  // legacy shared margin by mapping it onto all four sides.
+  const fallbackMargin = format === "freeform" ? 0 : legacyMargin ?? preset.margin_top_in;
+  const next: EditorSettings = {
+    ...preset,
+    ...stored,
+    margin_top_in: hasDirectionalMargins ? stored.margin_top_in ?? preset.margin_top_in : fallbackMargin,
+    margin_right_in: hasDirectionalMargins ? stored.margin_right_in ?? preset.margin_right_in : fallbackMargin,
+    margin_bottom_in: hasDirectionalMargins ? stored.margin_bottom_in ?? preset.margin_bottom_in : fallbackMargin,
+    margin_left_in: hasDirectionalMargins ? stored.margin_left_in ?? preset.margin_left_in : fallbackMargin,
+  };
+
+  // Never carry the legacy field back into the live settings object.
+  delete (next as EditorSettings & { margin_in?: number }).margin_in;
+  return next;
 }
 
 function sanitizeHtml(html: string) {
@@ -453,6 +539,11 @@ export default function ResearchWritingWorkspace({
   const editorRef = useRef<HTMLDivElement | null>(null);
   const pageRefs = useRef<Record<number, HTMLDivElement | null>>({});
   const paginationTimerRef = useRef<number | null>(null);
+  // Selection used by toolbar popovers. Native colour inputs steal focus from a
+  // contenteditable element, so we keep an exact cloned Range and restore it
+  // before applying text colour/highlight commands.
+  const formattingSelectionRef = useRef<Range | null>(null);
+  const formattingColorInputActiveRef = useRef(false);
   const [paginationRevision, setPaginationRevision] = useState(0);
   const [pageHtml, setPageHtml] = useState<string[]>([""]);
   const [navigatorCollapsed, setNavigatorCollapsed] = useState(false);
@@ -475,7 +566,14 @@ export default function ResearchWritingWorkspace({
   const [contentHtml, setContentHtml] = useState("");
   const [contentText, setContentText] = useState("");
   const [formatStyle, setFormatStyle] = useState<FormatStyle>("freeform");
-  const [settings, setSettings] = useState<EditorSettings>(DEFAULT_SETTINGS);
+  const [settings, setSettings] = useState<EditorSettings>(FREEFORM_SETTINGS);
+  const [marginMenuOpen, setMarginMenuOpen] = useState(false);
+  const [textColorMenuOpen, setTextColorMenuOpen] = useState(false);
+  const [highlightColorMenuOpen, setHighlightColorMenuOpen] = useState(false);
+  const [fontSizeMenuOpen, setFontSizeMenuOpen] = useState(false);
+  const [selectionFontSizeValue, setSelectionFontSizeValue] = useState("3");
+  const [textColorValue, setTextColorValue] = useState("#0f172a");
+  const [highlightColorValue, setHighlightColorValue] = useState("#fff59d");
 
   const [guidelinesOpen, setGuidelinesOpen] = useState(false);
   const [historyOpen, setHistoryOpen] = useState(false);
@@ -549,6 +647,16 @@ export default function ResearchWritingWorkspace({
     };
   }, [fullScreenMode]);
 
+  useEffect(() => {
+    if (!dirty) return;
+    const warnBeforeUnload = (event: BeforeUnloadEvent) => {
+      event.preventDefault();
+      event.returnValue = "";
+    };
+    window.addEventListener("beforeunload", warnBeforeUnload);
+    return () => window.removeEventListener("beforeunload", warnBeforeUnload);
+  }, [dirty]);
+
   const enterFullScreenMode = useCallback(() => {
     setFullScreenMode(true);
     setPaperZoom((current) => Math.max(current, 100));
@@ -576,6 +684,13 @@ export default function ResearchWritingWorkspace({
     [documents, selectedDocumentId]
   );
 
+  useEffect(() => {
+    formattingSelectionRef.current = null;
+    setTextColorMenuOpen(false);
+    setHighlightColorMenuOpen(false);
+    setFontSizeMenuOpen(false);
+  }, [selectedDocumentId]);
+
   const currentPreset = FORMAT_PRESETS[formatStyle];
 
   function folderPathLabel(folderId: string | null) {
@@ -596,14 +711,75 @@ export default function ResearchWritingWorkspace({
   function pageGeometry(targetSettings: EditorSettings = settings) {
     const width = targetSettings.page_size === "a4" ? 794 : 816;
     const height = targetSettings.page_size === "a4" ? 1123 : 1056;
-    const margin = Math.max(0.35, targetSettings.margin_in) * 96;
+    const top = Math.max(0, targetSettings.margin_top_in) * 96;
+    const right = Math.max(0, targetSettings.margin_right_in) * 96;
+    const bottom = Math.max(0, targetSettings.margin_bottom_in) * 96;
+    const left = Math.max(0, targetSettings.margin_left_in) * 96;
     return {
       width,
       height,
-      margin,
-      contentWidth: Math.max(240, width - margin * 2),
-      contentHeight: Math.max(320, height - margin * 2),
+      top,
+      right,
+      bottom,
+      left,
+      contentWidth: Math.max(120, width - left - right),
+      contentHeight: Math.max(160, height - top - bottom),
     };
+  }
+
+  function clampMargin(value: number) {
+    return Math.max(0, Math.min(3.5, Math.round(value * 20) / 20));
+  }
+
+  function marginValue(side: MarginSide) {
+    if (side === "top") return settings.margin_top_in;
+    if (side === "right") return settings.margin_right_in;
+    if (side === "bottom") return settings.margin_bottom_in;
+    return settings.margin_left_in;
+  }
+
+  function updateMargin(
+    side: "top" | "right" | "bottom" | "left",
+    value: number
+  ) {
+    const next = {
+      ...settings,
+      [`margin_${side}_in`]: clampMargin(value),
+    } as EditorSettings;
+    const html = combinedEditorHtml();
+    setSettings(next);
+    setDirty(true);
+    window.requestAnimationFrame(() => replaceVisiblePages(html, next, true));
+  }
+
+  function setAllMargins(value: number) {
+    const margin = clampMargin(value);
+    const next: EditorSettings = {
+      ...settings,
+      margin_top_in: margin,
+      margin_right_in: margin,
+      margin_bottom_in: margin,
+      margin_left_in: margin,
+    };
+    const html = combinedEditorHtml();
+    setSettings(next);
+    setDirty(true);
+    window.requestAnimationFrame(() => replaceVisiblePages(html, next, true));
+  }
+
+  function resetMarginsToPreset() {
+    const preset = FORMAT_PRESETS[formatStyle].settings;
+    const next: EditorSettings = {
+      ...settings,
+      margin_top_in: preset.margin_top_in,
+      margin_right_in: preset.margin_right_in,
+      margin_bottom_in: preset.margin_bottom_in,
+      margin_left_in: preset.margin_left_in,
+    };
+    const html = combinedEditorHtml();
+    setSettings(next);
+    setDirty(true);
+    window.requestAnimationFrame(() => replaceVisiblePages(html, next, true));
   }
 
   function orderedPageElements() {
@@ -841,10 +1017,10 @@ export default function ResearchWritingWorkspace({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedDocument]);
 
-  async function saveDocument(silent = false) {
+  async function saveDocument() {
     if (!selectedDocument || !userId || saving) return;
     setSaving(true);
-    if (!silent) setNotice("");
+    setNotice("");
     setError("");
     const supabase = createClient();
     const safeHtml = sanitizeHtml(combinedEditorHtml());
@@ -872,16 +1048,13 @@ export default function ResearchWritingWorkspace({
     setContentHtml(safeHtml);
     setContentText(safeText);
     setDirty(false);
-    if (!silent) setNotice("Saved");
+    setNotice("Saved");
     setSaving(false);
   }
 
-  useEffect(() => {
-    if (!dirty || !selectedDocumentId) return;
-    const timer = window.setTimeout(() => void saveDocument(true), 1100);
-    return () => window.clearTimeout(timer);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [dirty, title, contentHtml, formatStyle, settings, selectedDocumentId]);
+  // Intentionally no autosave. Draft changes remain local until the researcher
+  // explicitly presses Save. Reloading or reopening the document restores the
+  // last saved database version.
 
   function captureEditor(pageIndex?: number, forceRepaginate = false) {
     if (typeof pageIndex === "number" && pageRefs.current[pageIndex]) {
@@ -894,6 +1067,65 @@ export default function ResearchWritingWorkspace({
     if (forceRepaginate || (activePage && activePage.scrollHeight > activePage.clientHeight + 2)) {
       schedulePagination();
     }
+  }
+
+  function captureFormattingSelection() {
+    const selection = window.getSelection();
+    if (!selection || selection.rangeCount === 0) return;
+    const range = selection.getRangeAt(0);
+    const page = orderedPageElements().find((candidate) =>
+      candidate.contains(range.commonAncestorContainer)
+    );
+    if (!page) return;
+    editorRef.current = page;
+    formattingSelectionRef.current = range.cloneRange();
+  }
+
+  function restoreFormattingSelection() {
+    const stored = formattingSelectionRef.current;
+    if (!stored) return false;
+
+    const page = orderedPageElements().find((candidate) =>
+      candidate.contains(stored.commonAncestorContainer)
+    );
+    if (!page) {
+      formattingSelectionRef.current = null;
+      return false;
+    }
+
+    page.focus({ preventScroll: true });
+    editorRef.current = page;
+    const selection = window.getSelection();
+    if (!selection) return false;
+    try {
+      selection.removeAllRanges();
+      selection.addRange(stored.cloneRange());
+      return true;
+    } catch {
+      formattingSelectionRef.current = null;
+      return false;
+    }
+  }
+
+  function applyPreservedFormatting(command: "foreColor" | "hiliteColor", value: string) {
+    restoreFormattingSelection();
+    if (!editorRef.current) return;
+    document.execCommand("styleWithCSS", false, "true");
+    document.execCommand(command, false, value);
+    captureFormattingSelection();
+    captureEditor();
+  }
+
+  // Native <select> controls steal focus from contenteditable in Safari. Font
+  // size therefore uses the same saved-Range flow as colour/highlight so the
+  // exact selected text remains selected while the size menu is open.
+  function applyPreservedFontSize(value: string) {
+    restoreFormattingSelection();
+    if (!editorRef.current) return;
+    document.execCommand("styleWithCSS", false, "true");
+    document.execCommand("fontSize", false, value);
+    captureFormattingSelection();
+    captureEditor();
   }
 
   function execCommand(command: string, value?: string) {
@@ -1378,6 +1610,7 @@ export default function ResearchWritingWorkspace({
 
   async function importExistingDocument() {
     if (!importFile || !userId || importing) return;
+    if (!confirmDiscardUnsavedChanges()) return;
     setImporting(true);
     setError("");
     setNotice("");
@@ -1410,7 +1643,7 @@ export default function ResearchWritingWorkspace({
           format_style: "freeform",
           content_html: safeHtml,
           content_text: safeText,
-          editor_settings: DEFAULT_SETTINGS,
+          editor_settings: FREEFORM_SETTINGS,
         })
         .select("id,owner_user_id,folder_id,title,document_type,format_style,content_html,content_text,editor_settings,pinned,created_at,updated_at")
         .single();
@@ -1434,7 +1667,7 @@ export default function ResearchWritingWorkspace({
     const pageLabel = pageSize === "a4" ? "8.27in 11.69in" : "8.5in 11in";
     const html = sanitizeHtml(combinedEditorHtml());
     const columnCss = settings.columns === 2 ? "column-count:2;column-gap:.28in;" : "";
-    return `<!doctype html><html><head><meta charset="utf-8"><title>${escapeHtml(title || "PsyLattice thesis")}</title><style>@page{size:${pageLabel};margin:${settings.margin_in}in;}body{font-family:${JSON.stringify(settings.font_family)};font-size:${settings.font_size_pt}pt;line-height:${settings.line_spacing};color:#0f172a;text-align:${settings.text_align};${columnCss}}p{margin-top:0;margin-bottom:${settings.paragraph_spacing_pt}pt;text-indent:${settings.first_line_indent_in}in;}h1,h2,h3{break-after:avoid;}h1+p,h2+p,h3+p,blockquote p,li p{ text-indent:0;}table{width:100%;border-collapse:collapse;margin:1em 0;column-span:all;}th,td{border:1px solid #94a3b8;padding:6px 8px;text-align:left;vertical-align:top;}th{background:#f8fafc;font-weight:700;}img{max-width:100%;height:auto;}hr{border:0;border-top:1px solid #cbd5e1;margin:1em 0;column-span:all;}.research-image-resize-handle,.research-table-resize-handle{display:none!important;}</style></head><body>${html}</body></html>`;
+    return `<!doctype html><html><head><meta charset="utf-8"><title>${escapeHtml(title || "PsyLattice thesis")}</title><style>@page{size:${pageLabel};margin:${settings.margin_top_in}in ${settings.margin_right_in}in ${settings.margin_bottom_in}in ${settings.margin_left_in}in;}body{font-family:${JSON.stringify(settings.font_family)};font-size:${settings.font_size_pt}pt;line-height:${settings.line_spacing};color:#0f172a;text-align:${settings.text_align};${columnCss}}p{margin-top:0;margin-bottom:${settings.paragraph_spacing_pt}pt;text-indent:${settings.first_line_indent_in}in;}h1,h2,h3{break-after:avoid;}h1+p,h2+p,h3+p,blockquote p,li p{ text-indent:0;}table{width:100%;border-collapse:collapse;margin:1em 0;column-span:all;}th,td{border:1px solid #94a3b8;padding:6px 8px;text-align:left;vertical-align:top;}th{background:#f8fafc;font-weight:700;}img{max-width:100%;height:auto;}hr{border:0;border-top:1px solid #cbd5e1;margin:1em 0;column-span:all;}.research-image-resize-handle,.research-table-resize-handle{display:none!important;}</style></head><body>${html}</body></html>`;
   }
 
   async function exportCurrentDocument() {
@@ -1452,10 +1685,17 @@ export default function ResearchWritingWorkspace({
       }
       if (exportFormat === "docx") {
         const module = await import("html-docx-js-typescript");
-        const twips = Math.round(settings.margin_in * 1440);
         const result = await module.asBlob(exportHtml, {
           orientation: "portrait",
-          margins: { top: twips, right: twips, bottom: twips, left: twips, header: 720, footer: 720, gutter: 0 },
+          margins: {
+            top: Math.round(settings.margin_top_in * 1440),
+            right: Math.round(settings.margin_right_in * 1440),
+            bottom: Math.round(settings.margin_bottom_in * 1440),
+            left: Math.round(settings.margin_left_in * 1440),
+            header: 720,
+            footer: 720,
+            gutter: 0,
+          },
         });
         const blob = result instanceof Blob ? result : new Blob([result as BlobPart], { type: "application/vnd.openxmlformats-officedocument.wordprocessingml.document" });
         downloadBlob(blob, `${filename}.docx`);
@@ -1464,7 +1704,7 @@ export default function ResearchWritingWorkspace({
         const html2pdf = (module as { default?: any }).default || module;
         const container = document.createElement("div");
         const widthIn = exportPageSize === "a4" ? 8.27 : 8.5;
-        container.style.width = `${Math.max(4, widthIn - settings.margin_in * 2)}in`;
+        container.style.width = `${Math.max(1, widthIn - settings.margin_left_in - settings.margin_right_in)}in`;
         container.style.fontFamily = settings.font_family;
         container.style.fontSize = `${settings.font_size_pt}pt`;
         container.style.lineHeight = String(settings.line_spacing);
@@ -1473,7 +1713,7 @@ export default function ResearchWritingWorkspace({
         document.body.appendChild(container);
         await html2pdf()
           .set({
-            margin: settings.margin_in,
+            margin: [settings.margin_top_in, settings.margin_left_in, settings.margin_bottom_in, settings.margin_right_in],
             filename: `${filename}.pdf`,
             image: { type: "jpeg", quality: 0.98 },
             html2canvas: { scale: 2, useCORS: true, backgroundColor: "#ffffff" },
@@ -1558,8 +1798,21 @@ export default function ResearchWritingWorkspace({
     setSelectedFolderId("all");
   }
 
+  function confirmDiscardUnsavedChanges() {
+    if (!dirty) return true;
+    return window.confirm(
+      "This paper has unsaved changes. Continue without saving and return to its last saved version?"
+    );
+  }
+
+  function openDocument(documentId: string) {
+    if (documentId === selectedDocumentId) return;
+    if (!confirmDiscardUnsavedChanges()) return;
+    setSelectedDocumentId(documentId);
+  }
+
   async function createDocument() {
-    if (!userId) return;
+    if (!userId || !confirmDiscardUnsavedChanges()) return;
     const folderId = selectedFolderId !== "all" && selectedFolderId !== "root" ? selectedFolderId : null;
     const supabase = createClient();
     const preset = FORMAT_PRESETS.freeform;
@@ -1701,7 +1954,7 @@ export default function ResearchWritingWorkspace({
     replaceVisiblePages(revision.content_html, nextSettings, false);
     setDirty(true);
     setHistoryOpen(false);
-    setNotice("Revision restored. Saving…");
+    setNotice("Revision restored. Click Save to keep this version.");
   }
 
   function showAiAccessToast(enabled = true) {
@@ -1816,8 +2069,9 @@ export default function ResearchWritingWorkspace({
   const pageStyle: React.CSSProperties = {
     width: `${geometry.width}px`,
     height: `${geometry.height}px`,
-    padding: `${geometry.margin}px`,
+    padding: `${geometry.top}px ${geometry.right}px ${geometry.bottom}px ${geometry.left}px`,
     boxSizing: "border-box",
+    position: "relative",
     transform: `scale(${zoomScale})`,
     transformOrigin: "top left",
   };
@@ -1848,7 +2102,7 @@ export default function ResearchWritingWorkspace({
       {notice && <div className="border-b border-cyan-100 bg-cyan-50/60 px-5 py-2.5 text-xs text-cyan-900">{notice}</div>}
 
       <div className={`grid ${fullScreenMode ? "min-h-0 flex-1" : "min-h-[760px]"} ${navigatorCollapsed ? "xl:grid-cols-[minmax(0,1fr)]" : "xl:grid-cols-[240px_250px_minmax(0,1fr)]"}`}>
-        <aside className={`${navigatorCollapsed ? "hidden" : ""} border-b border-slate-200 bg-slate-50/70 p-4 xl:sticky xl:self-start xl:overflow-y-auto xl:border-b-0 xl:border-r ${fullScreenMode ? "xl:top-0 xl:h-full xl:max-h-[100dvh]" : "xl:top-[82px] xl:max-h-[calc(100vh-98px)]"}`}>
+        <aside className={`${navigatorCollapsed ? "hidden" : ""} border-b border-slate-200 bg-slate-50 p-4 xl:sticky xl:self-start xl:overflow-y-auto xl:border-b-0 xl:border-r ${fullScreenMode ? "xl:top-0 xl:h-full xl:max-h-[100dvh]" : "xl:top-[82px] xl:h-[calc(100vh-98px)] xl:max-h-[calc(100vh-98px)]"}`}>
           <div className="flex items-center justify-between">
             <div>
               <p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-cyan-700">Research files</p>
@@ -1910,7 +2164,7 @@ export default function ResearchWritingWorkspace({
               <button
                 key={documentRow.id}
                 type="button"
-                onClick={() => setSelectedDocumentId(documentRow.id)}
+                onClick={() => openDocument(documentRow.id)}
                 className={`w-full rounded-2xl border p-3 text-left transition ${documentRow.id === selectedDocumentId ? "border-cyan-300 bg-cyan-50/70" : "border-slate-200 bg-white hover:bg-slate-50"}`}
               >
                 <div className="flex items-start gap-2">
@@ -1978,7 +2232,7 @@ export default function ResearchWritingWorkspace({
                     {fullScreenMode ? <Minimize2 className="h-4 w-4" /> : <Maximize2 className="h-4 w-4" />}
                   </button>
                   {chatUseDocument && <span className="rounded-full border border-cyan-200 bg-cyan-50 px-2.5 py-1.5 text-[9px] font-semibold text-cyan-900">AI paper access on</span>}
-                  <button type="button" onClick={() => void saveDocument(false)} disabled={saving} className="flex items-center gap-1.5 rounded-lg bg-slate-950 px-3 py-2 text-[10px] font-semibold text-white disabled:opacity-50"><Save className="h-3.5 w-3.5" /> {saving ? "Saving…" : dirty ? "Save" : "Saved"}</button>
+                  <button type="button" onClick={() => void saveDocument()} disabled={saving} className="flex items-center gap-1.5 rounded-lg bg-slate-950 px-3 py-2 text-[10px] font-semibold text-white disabled:opacity-50"><Save className="h-3.5 w-3.5" /> {saving ? "Saving…" : dirty ? "Save" : "Saved"}</button>
                   <button type="button" onClick={() => void deleteDocument(selectedDocument)} title="Delete document" className="rounded-lg border border-red-100 bg-white p-2 text-red-500"><Trash2 className="h-4 w-4" /></button>
                 </div>
               </div>
@@ -2021,12 +2275,128 @@ export default function ResearchWritingWorkspace({
                     </select>
                   </div>
 
+                  <div className="relative">
+                    <ToolbarButton
+                      title="Adjust page margins"
+                      onClick={() => setMarginMenuOpen((value) => !value)}
+                      active={marginMenuOpen}
+                    >
+                      <span className="flex items-center gap-1.5 whitespace-nowrap font-semibold"><Ruler className="h-3.5 w-3.5" /> Margins</span>
+                    </ToolbarButton>
+                    {marginMenuOpen && (
+                      <div
+                        className="absolute left-0 top-10 z-50 w-[360px] rounded-2xl border border-slate-200 bg-white p-4 shadow-2xl"
+                        onMouseDown={(event) => event.stopPropagation()}
+                      >
+                        <div className="flex items-start justify-between gap-4">
+                          <div>
+                            <p className="text-[11px] font-semibold text-slate-900">Page margins</p>
+                            <p className="mt-1 text-[9px] leading-4 text-slate-400">Adjust each edge live. These changes remain unsaved until you click Save.</p>
+                          </div>
+                          <button type="button" onClick={() => setMarginMenuOpen(false)} className="rounded-lg p-1.5 text-slate-400 hover:bg-slate-100"><X className="h-3.5 w-3.5" /></button>
+                        </div>
+
+                        <div className="mt-3 flex flex-wrap gap-1.5">
+                          {[0, 0.5, 0.75, 1].map((value) => (
+                            <button key={value} type="button" onClick={() => setAllMargins(value)} className="rounded-lg border border-slate-200 bg-white px-2.5 py-1.5 text-[9px] font-semibold text-slate-600 hover:border-cyan-300 hover:bg-cyan-50">All {value}"</button>
+                          ))}
+                          <button type="button" onClick={resetMarginsToPreset} className="rounded-lg border border-cyan-200 bg-cyan-50 px-2.5 py-1.5 text-[9px] font-semibold text-cyan-800">Reset to {currentPreset.shortLabel}</button>
+                        </div>
+
+                        <div className="mt-4 grid gap-3">
+                          {([
+                            ["top", "Top"],
+                            ["right", "Right"],
+                            ["bottom", "Bottom"],
+                            ["left", "Left"],
+                          ] as Array<[MarginSide, string]>).map(([side, label]) => {
+                            const value = marginValue(side);
+                            return (
+                              <div key={side} className="grid grid-cols-[52px_1fr_64px] items-center gap-2">
+                                <span className="text-[9px] font-semibold text-slate-500">{label}</span>
+                                <input
+                                  type="range"
+                                  min={0}
+                                  max={3.5}
+                                  step={0.05}
+                                  value={value}
+                                  onChange={(event) => updateMargin(side, Number(event.target.value))}
+                                  className="w-full accent-cyan-700"
+                                />
+                                <label className="flex items-center rounded-lg border border-slate-200 bg-white px-2">
+                                  <input
+                                    type="number"
+                                    min={0}
+                                    max={3.5}
+                                    step={0.05}
+                                    value={value}
+                                    onChange={(event) => updateMargin(side, Number(event.target.value))}
+                                    className="w-full border-0 bg-transparent py-1.5 text-right text-[9px] font-semibold text-slate-700 outline-none"
+                                  />
+                                  <span className="ml-1 text-[9px] text-slate-400">in</span>
+                                </label>
+                              </div>
+                            );
+                          })}
+                        </div>
+
+                        <div className="mt-4 rounded-xl border border-cyan-100 bg-cyan-50/60 px-3 py-2 text-[9px] leading-4 text-cyan-900">
+                          The dashed cyan box on each page is the current writable area. Free form defaults to 0-inch margins; academic presets start at their recommended values but can still be overridden here.
+                        </div>
+                      </div>
+                    )}
+                  </div>
+
                   <select value={settings.font_family} onChange={(event) => { setSettings((current) => ({ ...current, font_family: event.target.value })); setDirty(true); execCommand("fontName", event.target.value); window.setTimeout(schedulePagination, 0); }} className="h-8 rounded-lg border border-slate-200 bg-white px-2 text-[10px] text-slate-600" title="Font family">
                     {FONT_FAMILIES.map((font) => <option key={font} value={font}>{font}</option>)}
                   </select>
-                  <select defaultValue="3" onChange={(event) => execCommand("fontSize", event.target.value)} className="h-8 rounded-lg border border-slate-200 bg-white px-2 text-[10px] text-slate-600" title="Selection font size">
-                    {FONT_SIZE_COMMANDS.map((size) => <option key={size.value} value={size.value}>{size.label} pt</option>)}
-                  </select>
+                  <div className="relative">
+                    <ToolbarButton
+                      title="Selection font size"
+                      active={fontSizeMenuOpen}
+                      onClick={() => {
+                        captureFormattingSelection();
+                        setTextColorMenuOpen(false);
+                        setHighlightColorMenuOpen(false);
+                        setFontSizeMenuOpen((value) => !value);
+                      }}
+                    >
+                      <span className="whitespace-nowrap text-[10px] font-medium">
+                        {FONT_SIZE_COMMANDS.find((size) => size.value === selectionFontSizeValue)?.label || "12"} pt
+                      </span>
+                      <ChevronDown className="ml-1 h-3 w-3" />
+                    </ToolbarButton>
+                    {fontSizeMenuOpen && (
+                      <div
+                        className="absolute left-0 top-10 z-[80] w-[118px] rounded-2xl border border-slate-200 bg-white p-2 shadow-2xl"
+                        onMouseDown={(event) => event.preventDefault()}
+                      >
+                        <p className="px-2 pb-1.5 text-[9px] font-semibold text-slate-500">Font size</p>
+                        <div className="space-y-0.5">
+                          {FONT_SIZE_COMMANDS.map((size) => (
+                            <button
+                              key={size.value}
+                              type="button"
+                              onMouseDown={(event) => {
+                                event.preventDefault();
+                                setSelectionFontSizeValue(size.value);
+                                applyPreservedFontSize(size.value);
+                                setFontSizeMenuOpen(false);
+                              }}
+                              className={`flex w-full items-center justify-between rounded-lg px-2.5 py-2 text-left text-[10px] transition hover:bg-slate-50 ${
+                                selectionFontSizeValue === size.value
+                                  ? "bg-cyan-50 font-semibold text-cyan-900"
+                                  : "text-slate-600"
+                              }`}
+                            >
+                              <span>{size.label} pt</span>
+                              {selectionFontSizeValue === size.value && <Check className="h-3 w-3" />}
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                  </div>
                   <select defaultValue="p" onChange={(event) => execCommand("formatBlock", event.target.value)} className="h-8 rounded-lg border border-slate-200 bg-white px-2 text-[10px] text-slate-600" title="Paragraph style">
                     <option value="p">Normal</option><option value="h1">Heading 1</option><option value="h2">Heading 2</option><option value="h3">Heading 3</option><option value="blockquote">Quote</option>
                   </select>
@@ -2036,8 +2406,161 @@ export default function ResearchWritingWorkspace({
                   <ToolbarButton title="Italic" onClick={() => execCommand("italic")}><Italic className="h-3.5 w-3.5" /></ToolbarButton>
                   <ToolbarButton title="Underline" onClick={() => execCommand("underline")}><Underline className="h-3.5 w-3.5" /></ToolbarButton>
                   <ToolbarButton title="Strikethrough" onClick={() => execCommand("strikeThrough")}><Strikethrough className="h-3.5 w-3.5" /></ToolbarButton>
-                  <label title="Text colour" className="flex h-8 items-center gap-1 rounded-lg border border-slate-200 bg-white px-2 text-[10px] text-slate-500"><Type className="h-3.5 w-3.5" /><input type="color" defaultValue="#0f172a" onChange={(event) => execCommand("foreColor", event.target.value)} className="h-4 w-5 border-0 bg-transparent p-0" /></label>
-                  <label title="Highlight" className="flex h-8 items-center gap-1 rounded-lg border border-slate-200 bg-white px-2 text-[10px] text-slate-500"><Highlighter className="h-3.5 w-3.5" /><input type="color" defaultValue="#fff59d" onChange={(event) => execCommand("hiliteColor", event.target.value)} className="h-4 w-5 border-0 bg-transparent p-0" /></label>
+                  <div className="relative">
+                    <ToolbarButton
+                      title="Text colour"
+                      active={textColorMenuOpen}
+                      onClick={() => {
+                        captureFormattingSelection();
+                        setHighlightColorMenuOpen(false);
+                        setFontSizeMenuOpen(false);
+                        setTextColorMenuOpen((value) => !value);
+                      }}
+                    >
+                      <Type className="h-3.5 w-3.5" />
+                      <span
+                        className="ml-1 h-1.5 w-4 rounded-full ring-1 ring-slate-200"
+                        style={{ backgroundColor: textColorValue }}
+                      />
+                    </ToolbarButton>
+                    {textColorMenuOpen && (
+                      <div
+                        className="absolute left-0 top-10 z-[80] w-[222px] rounded-2xl border border-slate-200 bg-white p-3 shadow-2xl"
+                        onMouseDown={(event) => event.preventDefault()}
+                      >
+                        <div className="flex items-center justify-between gap-2">
+                          <div>
+                            <p className="text-[10px] font-semibold text-slate-900">Text colour</p>
+                            <p className="mt-0.5 text-[8px] text-slate-400">Your selected text stays selected.</p>
+                          </div>
+                          <button
+                            type="button"
+                            onMouseDown={(event) => { event.preventDefault(); setTextColorMenuOpen(false); }}
+                            className="rounded-lg p-1.5 text-slate-400 hover:bg-slate-100"
+                          >
+                            <X className="h-3 w-3" />
+                          </button>
+                        </div>
+                        <div className="mt-3 grid grid-cols-7 gap-1.5">
+                          {EDITOR_COLOR_SWATCHES.map((color) => (
+                            <button
+                              key={`text-${color}`}
+                              type="button"
+                              title={color}
+                              onMouseDown={(event) => {
+                                event.preventDefault();
+                                setTextColorValue(color);
+                                applyPreservedFormatting("foreColor", color);
+                                setTextColorMenuOpen(false);
+                              }}
+                              className="h-6 w-6 rounded-md border border-slate-200 shadow-sm transition hover:scale-110 hover:ring-2 hover:ring-cyan-200"
+                              style={{ backgroundColor: color }}
+                            />
+                          ))}
+                        </div>
+                        <div className="mt-3 flex items-center justify-between gap-3 border-t border-slate-100 pt-3">
+                          <span className="text-[9px] font-medium text-slate-500">Custom colour</span>
+                          <label className="flex items-center gap-2 rounded-lg border border-slate-200 px-2 py-1">
+                            <span className="h-4 w-4 rounded border border-slate-200" style={{ backgroundColor: textColorValue }} />
+                            <input
+                              type="color"
+                              value={textColorValue}
+                              onMouseDown={(event) => {
+                                event.stopPropagation();
+                                captureFormattingSelection();
+                                formattingColorInputActiveRef.current = true;
+                              }}
+                              onChange={(event) => {
+                                const color = event.target.value;
+                                setTextColorValue(color);
+                                applyPreservedFormatting("foreColor", color);
+                              }}
+                              onBlur={() => { formattingColorInputActiveRef.current = false; }}
+                              className="h-5 w-7 cursor-pointer border-0 bg-transparent p-0"
+                            />
+                          </label>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+
+                  <div className="relative">
+                    <ToolbarButton
+                      title="Highlight"
+                      active={highlightColorMenuOpen}
+                      onClick={() => {
+                        captureFormattingSelection();
+                        setTextColorMenuOpen(false);
+                        setFontSizeMenuOpen(false);
+                        setHighlightColorMenuOpen((value) => !value);
+                      }}
+                    >
+                      <Highlighter className="h-3.5 w-3.5" />
+                      <span
+                        className="ml-1 h-1.5 w-4 rounded-full ring-1 ring-slate-200"
+                        style={{ backgroundColor: highlightColorValue }}
+                      />
+                    </ToolbarButton>
+                    {highlightColorMenuOpen && (
+                      <div
+                        className="absolute left-0 top-10 z-[80] w-[222px] rounded-2xl border border-slate-200 bg-white p-3 shadow-2xl"
+                        onMouseDown={(event) => event.preventDefault()}
+                      >
+                        <div className="flex items-center justify-between gap-2">
+                          <div>
+                            <p className="text-[10px] font-semibold text-slate-900">Highlight</p>
+                            <p className="mt-0.5 text-[8px] text-slate-400">Choose a colour without losing selection.</p>
+                          </div>
+                          <button
+                            type="button"
+                            onMouseDown={(event) => { event.preventDefault(); setHighlightColorMenuOpen(false); }}
+                            className="rounded-lg p-1.5 text-slate-400 hover:bg-slate-100"
+                          >
+                            <X className="h-3 w-3" />
+                          </button>
+                        </div>
+                        <div className="mt-3 grid grid-cols-7 gap-1.5">
+                          {EDITOR_COLOR_SWATCHES.map((color) => (
+                            <button
+                              key={`highlight-${color}`}
+                              type="button"
+                              title={color}
+                              onMouseDown={(event) => {
+                                event.preventDefault();
+                                setHighlightColorValue(color);
+                                applyPreservedFormatting("hiliteColor", color);
+                                setHighlightColorMenuOpen(false);
+                              }}
+                              className="h-6 w-6 rounded-md border border-slate-200 shadow-sm transition hover:scale-110 hover:ring-2 hover:ring-cyan-200"
+                              style={{ backgroundColor: color }}
+                            />
+                          ))}
+                        </div>
+                        <div className="mt-3 flex items-center justify-between gap-3 border-t border-slate-100 pt-3">
+                          <span className="text-[9px] font-medium text-slate-500">Custom highlight</span>
+                          <label className="flex items-center gap-2 rounded-lg border border-slate-200 px-2 py-1">
+                            <span className="h-4 w-4 rounded border border-slate-200" style={{ backgroundColor: highlightColorValue }} />
+                            <input
+                              type="color"
+                              value={highlightColorValue}
+                              onMouseDown={(event) => {
+                                event.stopPropagation();
+                                captureFormattingSelection();
+                                formattingColorInputActiveRef.current = true;
+                              }}
+                              onChange={(event) => {
+                                const color = event.target.value;
+                                setHighlightColorValue(color);
+                                applyPreservedFormatting("hiliteColor", color);
+                              }}
+                              onBlur={() => { formattingColorInputActiveRef.current = false; }}
+                              className="h-5 w-7 cursor-pointer border-0 bg-transparent p-0"
+                            />
+                          </label>
+                        </div>
+                      </div>
+                    )}
+                  </div>
 
                   <span className="mx-1 h-6 w-px bg-slate-200" />
                   <ToolbarButton title="Align left" onClick={() => execCommand("justifyLeft")}><AlignLeft className="h-3.5 w-3.5" /></ToolbarButton>
@@ -2152,8 +2675,13 @@ export default function ResearchWritingWorkspace({
                           onFocus={() => { editorRef.current = pageRefs.current[pageIndex] || null; }}
                           onClick={handleEditorClick}
                           onPointerDown={handleEditorPointerDown}
+                          onMouseUp={captureFormattingSelection}
+                          onKeyUp={captureFormattingSelection}
                           onInput={() => captureEditor(pageIndex, false)}
-                          onBlur={() => captureEditor(pageIndex, true)}
+                          onBlur={() => {
+                            if (formattingColorInputActiveRef.current) return;
+                            captureEditor(pageIndex, true);
+                          }}
                           onPaste={(event) => {
                             editorRef.current = pageRefs.current[pageIndex] || null;
                             const pastedHtml = event.clipboardData.getData("text/html");
@@ -2166,6 +2694,18 @@ export default function ResearchWritingWorkspace({
                           className="research-paper-editor"
                           style={pageContentStyle}
                         />
+                        {marginMenuOpen && (
+                          <div
+                            aria-hidden="true"
+                            className="pointer-events-none absolute border border-dashed border-cyan-400/80"
+                            style={{
+                              top: `${geometry.top}px`,
+                              right: `${geometry.right}px`,
+                              bottom: `${geometry.bottom}px`,
+                              left: `${geometry.left}px`,
+                            }}
+                          />
+                        )}
                       </div>
                       </div>
                     </div>

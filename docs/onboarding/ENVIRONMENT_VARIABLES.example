@@ -1,0 +1,25 @@
+# PsyLattice web local environment template
+# COPY NAMES ONLY. Obtain real values through the team secret manager.
+# Never commit .env.local.
+
+NEXT_PUBLIC_SUPABASE_URL=
+NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY=
+# Legacy fallbacks only if current code/deployment still requires them:
+# NEXT_PUBLIC_SUPABASE_ANON_KEY=
+# NEXT_PUBLIC_SUPABASE_KEY=
+
+# Server secrets
+SUPABASE_SERVICE_ROLE_KEY=
+OPENAI_API_KEY=
+RESEND_API_KEY=
+CRON_SECRET=
+
+# App/email configuration
+PSYLATTICE_EMAIL_FROM=
+NEXT_PUBLIC_APP_URL=
+PSYLATTICE_APP_URL=
+
+# Optional AI model overrides
+PSYLATTICE_AI_GUIDE_MODEL=
+PSYLATTICE_RESEARCH_AI_MODEL=
+PSYLATTICE_WRITING_AI_MODEL=

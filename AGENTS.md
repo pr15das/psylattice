@@ -20,7 +20,7 @@ PsyLattice is a psychological research and behavioral assessment platform with t
 - **Research** — study configuration, questionnaires, consent, participant workflows, research data, and exports.
 - **Clinical** — professional-facing assessment and client-management concepts.
 
-These workspaces are at different levels of maturity. Self and Research contain live functionality. Clinical is currently a prototype/demo and must not be treated as production-ready or represented as a verified clinical system.
+These workspaces may be at different levels of maturity. Verify the current implementation and `docs/ai-context/16-CURRENT-STATE-ROADMAP.md` before describing any workspace or feature as production-ready. Never represent Clinical access as professional verification unless an authoritative verification system actually enforces that claim.
 
 The current application uses Next.js App Router, React, strict TypeScript, Tailwind CSS, Supabase Auth/Postgres, and an OpenAI-backed API route. Much of the Self and Research data access occurs directly from client components through Supabase. The database schema, migrations, RLS policies, grants, and participant RPC definitions may not be present in this repository, so never infer or silently alter them.
 
@@ -206,3 +206,201 @@ The repository may contain pre-existing lint failures and currently has limited 
 - Keep changes scoped to the requested task.
 - Do not stage, commit, create branches, push, or open pull requests unless requested.
 - Avoid destructive commands and confirm exact targets before any deletion explicitly requested by the user.
+
+## PsyLattice shared project context and source of truth
+
+These repository-level instructions are supplemented by the version-controlled engineering context under `docs/ai-context/`. For substantial work, the repository should teach both human engineers and AI coding agents how PsyLattice is intended to behave.
+
+### Read context before substantial changes
+
+Before an architectural, database, UX, research-scoring, participant-flow, export, AI, deployment, or production-support change, read:
+
+- `docs/ai-context/00-START-HERE.md`
+- the relevant subsystem document under `docs/ai-context/`
+- `docs/ai-context/17-KNOWN-BUGS-AND-REGRESSIONS.md`
+
+For deployment/support tasks also read:
+
+- `docs/ai-context/11-SECURITY-PRIVACY-RLS.md`
+- `docs/ai-context/12-OPERATIONS-USER-SUPPORT-RUNBOOK.md`
+- `docs/ai-context/13-DEV-DEPLOYMENT-WORKFLOW.md`
+
+For onboarding or infrastructure ownership also read:
+
+- `docs/onboarding/PsyLattice_Engineer_Onboarding_Manual.md`
+- `docs/onboarding/FIRST_DAY_ACCESS_CHECKLIST.md`
+
+### Current Git is authoritative
+
+The checked-out Git repository is the implementation source of truth.
+
+Historical ChatGPT-generated phase packages, ZIP files, copied components, old migration bundles, screenshots, conversation attachments, and previous handoff files are reference material only.
+
+Never replace a current repository file with an older generated version merely because the older file already contains a requested feature.
+
+Instead:
+
+1. inspect the current Git version;
+2. identify the smallest required change;
+3. diff any historical/reference implementation if useful;
+4. port only the required behavior into the current file;
+5. preserve everything added since that historical version.
+
+This is especially important for:
+
+- `app/researcher/page.tsx`
+- `app/self/page.tsx`
+- `app/study/[token]/page.tsx`
+- `components/CognitiveRunner.tsx`
+- `components/CognitiveStudyRunner.tsx`
+- `components/CognitiveLab.tsx`
+- `components/CognitiveTaskBuilder.tsx`
+- `components/CognitiveBatteryBuilder.tsx`
+- `components/ResearchAiAssistant.tsx`
+- `components/ResearchWritingWorkspace.tsx`
+- Android `MainActivity.kt` and related mobile infrastructure
+
+### Integrated product model
+
+PsyLattice is one connected psychology platform, not a set of unrelated features.
+
+The Research workflow should remain conceptually consistent with:
+
+**Build → Save → Reuse → Assemble → Collect → Connect → Analyse → Interpret → Export**
+
+Cognitive Lab owns reusable cognitive tasks and batteries. Questionnaire Library owns reusable questionnaire definitions/versions. Study Builder owns the complete participant protocol and cross-type ordering.
+
+Before introducing a new architecture, scoring system, export pathway, state-management pattern, notification stack, association engine, AI-calculation layer, or visual language, inspect the current implementation and context documents first.
+
+### Preserve Study Builder flexibility
+
+The participant flow must support cross-type ordering, for example:
+
+`questionnaire → cognitive task → questionnaire → demographics → cognitive task → EMA`
+
+A preserved cognitive battery is one logical Study Flow unit. An expanded battery becomes ordinary cognitive task elements and may be interleaved with questionnaires, demographics, and other study elements.
+
+Do not reintroduce a separate Beginner/Advanced mode. Simplify one capable interface.
+
+### Preserve cognitive task and battery integrity
+
+Published cognitive task versions and published battery versions are immutable concepts. Studies and batteries pin exact versions. Editing a later draft must not silently alter an already-published study, pilot, or battery.
+
+A cognitive battery is an orchestration layer. Child tasks continue to run their normal task-specific PsyLattice runtimes and store their ordinary cognitive sessions/trials. Do not create a competing second result system for battery tasks.
+
+Already-assigned randomized/counterbalanced battery order must remain stable across reload/resume.
+
+Stored deterministic task summaries are authoritative. Research AI may interpret stored results but should not silently recalculate BART, Mental Rotation, Card Sorting, Corsi, Stop-Signal, or other official PsyLattice task summaries from raw records when an authoritative stored summary exists.
+
+Do not invent normative cutoffs.
+
+PsyLattice Card Sorting is an original WCST-style paradigm and must not be represented as the official/proprietary WCST or as using proprietary scoring/norms.
+
+PsyLattice Mental Rotation uses original generated stimuli and must not be represented as reproducing a commercial/proprietary standardized stimulus set.
+
+### Research data and export integrity
+
+PsyLattice should preserve complete raw observations while also providing clean researcher-friendly summaries and analysis-ready exports.
+
+Never silently:
+
+- drop raw observations;
+- overwrite authoritative stored task scores;
+- exclude participants because a quality flag exists;
+- change deterministic variable naming without considering downstream analysis scripts;
+- change pseudonymous/direct-identifier export defaults casually;
+- alter TEST/LIVE separation.
+
+Quality flags are review signals, not automatic exclusions unless a study explicitly defines a rule otherwise.
+
+Study Associations should reuse the existing association engine and numeric `Analysis_Wide`/analysis-compatible variables rather than creating a new task-specific correlation system.
+
+### Thesis Builder invariants
+
+Thesis Builder is a substantial research-writing subsystem. Preserve these current decisions unless explicitly changed by product direction:
+
+- **Free form** is the default for new/imported documents;
+- Free form must not inherit an academic preset's margins;
+- margins are independently adjustable per side;
+- academic presets provide defaults/guidance but can be overridden;
+- autosave is intentionally **off**;
+- database persistence occurs through explicit **Save**;
+- unsaved-change protections must remain;
+- the paged editor/focus/full-screen/zoom behavior should remain coherent;
+- Import/Export belongs in the main editor toolbar;
+- image/table functionality and Word/PDF import/export should not be accidentally removed;
+- selection-safe text colour, highlight, and font-size controls must preserve the selected browser `Range`;
+- formatting controls that steal `contenteditable` focus should use the same selection-preservation approach rather than a fragile native control workaround.
+
+Writing AI must never silently read the current paper. Document access is user-controlled, visibly indicated, and session-scoped. Do not weaken this consent boundary without an explicit product decision.
+
+### AI-development and AI-product rules
+
+When ChatGPT, Codex, or another AI coding system is used:
+
+- give it access to the current repository rather than relying on old pasted files;
+- instruct it to read this `AGENTS.md` first;
+- instruct it to read `docs/ai-context/00-START-HERE.md` and relevant subsystem documents;
+- let current Git override historical phase files;
+- prefer surgical patches over whole-file rewrites;
+- never send `.env.local`, API/service keys, passwords, participant data, clinical data, identifiable research records, private manuscripts, or production database dumps merely to provide coding context.
+
+Product AI should remain an interpretation/support layer rather than silently becoming the deterministic scoring engine. Clinical/Self AI must remain non-diagnostic and non-prescriptive.
+
+### Supabase RLS and PostgreSQL grants both matter
+
+RLS policies do not replace table/function grants. When adding or changing a database surface, verify both:
+
+- correct RLS ownership/role policies; and
+- explicit privileges for the role actually used by the client/server path.
+
+A prior Cognitive Battery permissions failure occurred because RLS was correct but authenticated table `GRANT` permissions were missing. Do not “fix” a permission error by disabling RLS.
+
+### Secrets and mobile boundaries
+
+Never expose service-role keys, OpenAI keys, Resend keys, cron secrets, signing secrets, admin tokens, or production credentials in client code, Android/iOS code, documentation, logs, screenshots, Git history, tickets, WhatsApp, or AI prompts.
+
+Only public Supabase client configuration belongs in the browser/mobile app. Service-role/admin credentials remain server-side.
+
+### UX and design language
+
+PsyLattice should feel minimal, modern, calm, premium, and purpose-built for psychologists.
+
+Preserve the existing logo and visual identity. Prefer clean white/slate surfaces, restrained cyan/teal accents, subtle violet where established, clear hierarchy, refined spacing, borders/shadows, and product-like feedback.
+
+Avoid generic AI-dashboard styling, especially loud red/green success/error cards and unnecessary decorative gradients. Use red primarily for genuinely destructive/safety/error meaning.
+
+When creating researcher documentation, prefer custom illustrations/diagrams over screenshots of the website when visual teaching is needed.
+
+### Deferred features are not forgotten bugs
+
+Some features were deliberately deferred. Do not revive them from an old phase package merely because code/plans exist. Current notable examples include:
+
+- Research collaborator / Team & Permissions expansion until the web workflow is intentionally restarted;
+- broad native push-notification architecture while email/unified notification work remains the current delivery path;
+- iOS/watchOS work until explicitly prioritized.
+
+Check `docs/ai-context/14-DEFERRED-AND-NON-GOALS.md` and the current roadmap before treating a deferred feature as missing implementation.
+
+### Runtime baseline
+
+The repository is standardized on **Node 24 LTS** through nvm and `.nvmrc`.
+
+Typical local sequence:
+
+```bash
+nvm use
+npm ci
+npm run dev
+# test locally
+npm run build
+```
+
+Do not run `npm audit fix --force` casually on the production codebase.
+
+### Context maintenance
+
+When a merge materially changes PsyLattice architecture, product behavior, infrastructure, scientific scoring, data contracts, deployment, a major design decision, or a known regression, update the relevant document under `docs/ai-context/` and `docs/ai-context/16-CURRENT-STATE-ROADMAP.md` when feasible.
+
+The repository should become the durable shared memory for the PsyLattice engineering team and its AI tools.
+

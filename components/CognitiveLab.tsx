@@ -31,8 +31,9 @@ import {
 import { createClient } from "@/lib/supabase/client";
 import CognitiveTaskBuilder from "./CognitiveTaskBuilder";
 import CognitiveLearningHub from "./CognitiveLearningHub";
+import CognitiveBatteryBuilder from "./CognitiveBatteryBuilder";
 
-type CognitiveTab = "overview" | "learn" | "library" | "tasks" | "pilots";
+type CognitiveTab = "overview" | "learn" | "library" | "tasks" | "batteries" | "pilots";
 
 type CognitiveTask = {
   id: string;
@@ -703,6 +704,7 @@ export default function CognitiveLab() {
     { id: "learn", label: "Learn", icon: BookOpenCheck },
     { id: "library", label: "Task Templates", icon: Library },
     { id: "tasks", label: "My Cognitive Tasks", icon: FlaskConical },
+    { id: "batteries", label: "Batteries", icon: Layers3 },
     { id: "pilots", label: "Pilot Sessions", icon: BarChart3 },
   ];
 
@@ -715,17 +717,17 @@ export default function CognitiveLab() {
           <div>
             <div className="flex flex-wrap items-center gap-2">
               <span className="rounded-full border border-cyan-200 bg-white px-3 py-1.5 text-[10px] font-semibold uppercase tracking-[0.16em] text-cyan-900 shadow-[0_5px_16px_rgba(8,145,178,0.09)]">
-                Cognitive Lab · Phase 1F
+                Cognitive Lab · 2M
               </span>
               <span className="rounded-full border border-slate-200 bg-white px-3 py-1.5 text-[10px] font-semibold text-slate-500 shadow-[0_4px_12px_rgba(15,23,42,0.05)]">
-                Learn + Preview + Pilot + Study execution
+                Tasks + Batteries + Preview + Study execution
               </span>
             </div>
             <h2 className="mt-5 max-w-2xl text-3xl font-semibold tracking-[-0.04em] sm:text-4xl">
-              Build reusable cognitive tasks, then place them inside complete PsyLattice studies.
+              Build reusable cognitive tasks and batteries, then place them inside complete PsyLattice studies.
             </h2>
             <p className="mt-4 max-w-2xl text-sm leading-7 text-slate-500">
-              Cognitive Lab owns the task definition and version history. Study Builder owns when and where the task runs in the participant flow. The Participant Runner executes it, and Research Data owns the resulting trial-level dataset.
+              Cognitive Lab owns reusable task definitions, version history and cognitive batteries. Study Builder owns when and where they run in the participant flow. Participant Runner executes them, and Research Data owns the resulting trial-level dataset.
             </p>
           </div>
 
@@ -1192,6 +1194,8 @@ export default function CognitiveLab() {
             );
           })()}
         </div>
+      ) : tab === "batteries" ? (
+        <CognitiveBatteryBuilder />
       ) : tab === "tasks" ? (
         <div className="grid gap-5 xl:grid-cols-[1fr_.8fr]">
           <section className="rounded-[26px] border border-slate-300/70 bg-white p-5 shadow-[0_2px_6px_rgba(15,23,42,0.04),0_12px_30px_rgba(15,23,42,0.07)] sm:p-6">

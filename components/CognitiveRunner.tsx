@@ -596,10 +596,14 @@ export default function CognitiveRunner_PHASE_1C_BROWSER_PREVIEW({
   taskId,
   versionId,
   onClose,
+  onCompletionAction,
+  completionActionLabel,
 }: {
   taskId: string;
   versionId: string;
   onClose: () => void;
+  onCompletionAction?: () => void;
+  completionActionLabel?: string;
 }) {
   const [task, setTask] = useState<TaskRow | null>(null);
   const [version, setVersion] = useState<VersionRow | null>(null);
@@ -3389,7 +3393,7 @@ export default function CognitiveRunner_PHASE_1C_BROWSER_PREVIEW({
 
             <div className="mt-6 flex flex-wrap gap-3">
               <button type="button" onClick={() => { setPhase("preflight"); setSessionId(""); setResults([]); setSummary(null); }} className="inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-4 py-3 text-xs font-semibold text-slate-700 shadow-[0_8px_20px_rgba(15,23,42,0.07)] transition hover:-translate-y-0.5 hover:shadow-[0_12px_26px_rgba(15,23,42,0.10)]"><RotateCcw className="h-4 w-4" /> Run another preview</button>
-              <button type="button" onClick={() => void exitPreview()} className="rounded-xl bg-slate-950 px-5 py-3 text-xs font-semibold text-white">Back to Task Builder</button>
+              <button type="button" onClick={() => { if (onCompletionAction) onCompletionAction(); else void exitPreview(); }} className="rounded-xl bg-slate-950 px-5 py-3 text-xs font-semibold text-white">{onCompletionAction ? (completionActionLabel || "Continue") : "Back to Task Builder"}</button>
             </div>
           </div>
         )}

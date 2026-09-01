@@ -7,6 +7,7 @@ import { createClient } from "@/lib/supabase/client";
 import PsyLatticeLogo from "@/components/PsyLatticeLogo";
 import { InlineFeedback } from "@/components/PsyLatticeUI";
 import CognitiveStudyRunner, { type StudyCognitiveDefinition } from "@/components/CognitiveStudyRunner";
+import CognitivePilotRunner from "@/components/CognitivePilotRunner";
 import {
   ambulatoryVisibleItems,
   cleanHiddenAmbulatoryResponses,
@@ -180,6 +181,25 @@ type PublicStudyCognitiveTask = {
   administration_mode: "once" | "scheduled" | "repeated" | "conditional";
   completed: boolean;
   skipped: boolean;
+  battery?: {
+    group_key: string;
+    battery_id: string;
+    battery_version_id: string;
+    battery_title: string;
+    battery_version_label?: string;
+    item_id?: string;
+    item_position?: number;
+    assigned_order_index?: number;
+    group_size?: number;
+    order_mode?: "fixed" | "randomized" | "counterbalanced";
+    counterbalance_strategy?: "latin_square" | "balanced_latin_square";
+    participant_intro?: string;
+    show_task_progress?: boolean;
+    show_transition_screens?: boolean;
+    transition_text?: string;
+    break_after_seconds?: number;
+    estimated_minutes?: string | null;
+  } | null;
   definition: StudyCognitiveDefinition;
 };
 
@@ -2472,12 +2492,61 @@ function DemographicInput({
 
 export default function ParticipantStudyPage() {
   const params = useParams<{ token: string }>();
-  const token = String(params?.token || "");
+  const routeToken = String(params?.token || "").trim();
+  const [publicRouteKind, setPublicRouteKind] = useState<"checking" | "pilot" | "study">("checking");
+
+  // Study links and cognitive pilot links deliberately share /study/[token].
+  // We identify the token against the public pilot RPC first instead of
+  // encoding route type into the URL. This avoids brittle prefixes/query params.
+  const pilotToken = publicRouteKind === "pilot" ? routeToken : "";
+  const token = publicRouteKind === "study" ? routeToken : "";
 
   const [payload, setPayload] = useState<PublicStudyPayload | null>(null);
   const [loading, setLoading] = useState(true);
   const [pageError, setPageError] = useState("");
   const [testProtocolResetNotice, setTestProtocolResetNotice] = useState("");
+
+  useEffect(() => {
+    let cancelled = false;
+
+    async function identifyPublicToken() {
+      if (!routeToken) {
+        if (!cancelled) {
+          setPublicRouteKind("study");
+          setLoading(false);
+          setPageError("This study link is incomplete.");
+        }
+        return;
+      }
+
+      setPublicRouteKind("checking");
+      setLoading(true);
+      setPageError("");
+
+      const supabase = createClient();
+      const { data, error } = await supabase.rpc(
+        "psylattice_public_cognitive_pilot",
+        { p_token: routeToken }
+      );
+
+      if (cancelled) return;
+
+      if (!error && data?.ok === true) {
+        setPublicRouteKind("pilot");
+        setLoading(false);
+        return;
+      }
+
+      // Not a pilot token (or the pilot RPC is unavailable): continue through
+      // the existing study-link loader without changing normal study behavior.
+      setPublicRouteKind("study");
+    }
+
+    void identifyPublicToken();
+    return () => {
+      cancelled = true;
+    };
+  }, [routeToken]);
 
   const [participantCode, setParticipantCode] = useState("");
   const [sessionToken, setSessionToken] = useState("");
@@ -2512,6 +2581,12 @@ export default function ParticipantStudyPage() {
     schema: 0,
     demographics_position: null,
   });
+  const [batteryBreak, setBatteryBreak] = useState<{
+    batteryTitle: string;
+    seconds: number;
+    tasks: PublicStudyCognitiveTask[];
+  } | null>(null);
+  const [batteryBreakRemaining, setBatteryBreakRemaining] = useState(0);
 
   const [phase, setPhase] = useState<
     | "landing"
@@ -2519,6 +2594,7 @@ export default function ParticipantStudyPage() {
     | "demographics"
     | "measures"
     | "cognitive"
+    | "battery_break"
     | "study_dashboard"
     | "ambulatory_checkin"
     | "followup_contact"
@@ -2577,6 +2653,14 @@ export default function ParticipantStudyPage() {
 
   const currentCognitiveTask =
     studyCognitiveTasks[currentCognitiveIndex] || null;
+
+  useEffect(() => {
+    if (phase !== "battery_break" || !batteryBreak || batteryBreakRemaining <= 0) return;
+    const timer = window.setInterval(() => {
+      setBatteryBreakRemaining((value) => Math.max(0, value - 1));
+    }, 1000);
+    return () => window.clearInterval(timer);
+  }, [phase, batteryBreak, batteryBreakRemaining]);
 
   async function loadStudyCognitiveTasks(activeSessionToken: string) {
     const emptyResult = {
@@ -2769,6 +2853,10 @@ export default function ParticipantStudyPage() {
 
   useEffect(() => {
     async function loadStudy() {
+      if (pilotToken) {
+        setLoading(false);
+        return;
+      }
       if (!token) return;
 
       setLoading(true);
@@ -3098,7 +3186,7 @@ export default function ParticipantStudyPage() {
     }
 
     void loadStudy();
-  }, [token]);
+  }, [token, pilotToken]);
 
   useEffect(() => {
     if (phase !== "measures") return;
@@ -4066,8 +4154,9 @@ export default function ParticipantStudyPage() {
   async function handleCognitiveTaskComplete(result?: { skipped?: boolean }) {
     if (!currentCognitiveTask) return;
 
+    const completedTask = currentCognitiveTask;
     const updated = studyCognitiveTasks.map((task) =>
-      task.study_cognitive_task_id === currentCognitiveTask.study_cognitive_task_id
+      task.study_cognitive_task_id === completedTask.study_cognitive_task_id
         ? {
             ...task,
             completed: !result?.skipped,
@@ -4078,6 +4167,20 @@ export default function ParticipantStudyPage() {
 
     setStudyCognitiveTasks(updated);
     setCognitiveRunnerOpen(false);
+
+    const requestedBreak = !result?.skipped
+      ? Math.max(0, Number(completedTask.battery?.break_after_seconds || 0))
+      : 0;
+    if (completedTask.battery?.group_key && requestedBreak > 0) {
+      setBatteryBreak({
+        batteryTitle: completedTask.battery.battery_title || "Cognitive battery",
+        seconds: requestedBreak,
+        tasks: updated,
+      });
+      setBatteryBreakRemaining(requestedBreak);
+      setPhase("battery_break");
+      return;
+    }
 
     await continueBaselineFlow({ tasksOverride: updated });
   }
@@ -4251,6 +4354,27 @@ export default function ParticipantStudyPage() {
     } else {
       setPhase("complete");
     }
+  }
+
+  if (publicRouteKind === "checking") {
+    return (
+      <Shell>
+        <Card title="Opening link">
+          <p className="text-sm text-slate-500">
+            Checking the PsyLattice participant link...
+          </p>
+        </Card>
+      </Shell>
+    );
+  }
+
+  if (pilotToken) {
+    return (
+      <CognitivePilotRunner
+        token={pilotToken}
+        onClose={() => window.location.assign("/")}
+      />
+    );
   }
 
   if (loading) {
@@ -5784,6 +5908,40 @@ export default function ParticipantStudyPage() {
     );
   }
 
+  if (phase === "battery_break" && batteryBreak) {
+    return (
+      <Shell>
+        <div className="space-y-5">
+          {payload?.link?.is_test_link && (
+            <div className="rounded-full border border-violet-300/75 bg-[#f7f4ff] px-5 py-3 text-xs text-violet-800">
+              TEST participation · Participant ID {publicId}
+            </div>
+          )}
+          <Card title="Battery break" description={batteryBreak.batteryTitle}>
+            <div className="rounded-[22px] border border-cyan-200 bg-[#ecfbff] p-5 text-center">
+              <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-cyan-700">Configured recovery interval</p>
+              <p className="mt-3 text-4xl font-semibold tracking-[-0.04em] text-slate-950">{batteryBreakRemaining}s</p>
+              <p className="mx-auto mt-3 max-w-lg text-sm leading-6 text-slate-600">Take the configured break before continuing with the study. PsyLattice will keep your completed task data saved while you wait.</p>
+            </div>
+            <button
+              type="button"
+              disabled={batteryBreakRemaining > 0}
+              onClick={() => {
+                const tasks = batteryBreak.tasks;
+                setBatteryBreak(null);
+                setBatteryBreakRemaining(0);
+                void continueBaselineFlow({ tasksOverride: tasks });
+              }}
+              className="mt-5 rounded-full bg-slate-950 px-5 py-3 text-sm font-semibold text-white disabled:cursor-not-allowed disabled:opacity-40"
+            >
+              Continue study
+            </button>
+          </Card>
+        </div>
+      </Shell>
+    );
+  }
+
   if (phase === "cognitive") {
     if (cognitiveRunnerOpen && currentCognitiveTask) {
       return (
@@ -5828,6 +5986,15 @@ export default function ParticipantStudyPage() {
     const completedCount = studyCognitiveTasks.filter(
       (task) => task.completed || task.skipped
     ).length;
+    const battery = currentCognitiveTask.battery || null;
+    const batteryTasks = battery?.group_key
+      ? studyCognitiveTasks
+          .filter((task) => task.battery?.group_key === battery.group_key)
+          .sort((a, b) => Number(a.battery?.assigned_order_index || a.position) - Number(b.battery?.assigned_order_index || b.position))
+      : [];
+    const batteryTaskIndex = battery
+      ? Math.max(0, batteryTasks.findIndex((task) => task.study_cognitive_task_id === currentCognitiveTask.study_cognitive_task_id))
+      : -1;
 
     return (
       <Shell>
@@ -5852,6 +6019,26 @@ export default function ParticipantStudyPage() {
               />
             </div>
           </div>
+          {battery && (
+            <div className="rounded-[24px] border border-cyan-200 bg-[#ecfbff] p-5 shadow-[0_8px_22px_rgba(8,145,178,0.08)]">
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                <div>
+                  <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-cyan-700">Cognitive battery</p>
+                  <p className="mt-1 text-base font-semibold text-cyan-950">{battery.battery_title}</p>
+                </div>
+                {battery.show_task_progress !== false && (
+                  <span className="rounded-full border border-cyan-200 bg-white px-3 py-1.5 text-[10px] font-semibold text-cyan-900">Task {batteryTaskIndex + 1} of {batteryTasks.length || battery.group_size || 1}</span>
+                )}
+              </div>
+              {batteryTaskIndex === 0 && battery.participant_intro && (
+                <p className="mt-3 whitespace-pre-wrap text-sm leading-6 text-cyan-900/80">{battery.participant_intro}</p>
+              )}
+              {battery.show_transition_screens !== false && battery.transition_text && (
+                <div className="mt-3 rounded-2xl border border-cyan-100 bg-white/80 p-4 text-sm leading-6 text-slate-600">{battery.transition_text}</div>
+              )}
+              <p className="mt-3 text-[10px] text-cyan-800/70">{battery.order_mode === "fixed" ? "Fixed battery order" : battery.order_mode === "counterbalanced" ? "Counterbalanced order assigned for this participant" : "Randomised order assigned for this participant"}</p>
+            </div>
+          )}
           <Card title={currentCognitiveTask.definition.task.title || "Cognitive task"}>
             <p className="text-sm leading-6 text-slate-600">
               {currentCognitiveTask.definition.task.description ||
@@ -5877,7 +6064,7 @@ export default function ParticipantStudyPage() {
               onClick={() => { setPageError(""); setCognitiveRunnerOpen(true); }}
               className="mt-5 rounded-full bg-slate-950 px-5 py-3 text-sm font-semibold text-white shadow-[0_4px_10px_rgba(15,23,42,0.18),0_12px_26px_rgba(15,23,42,0.15)] transition hover:-translate-y-px"
             >
-              Start cognitive task
+              {battery ? `Start task ${batteryTaskIndex + 1} of ${batteryTasks.length || battery.group_size || 1}` : "Start cognitive task"}
             </button>
           </Card>
         </div>

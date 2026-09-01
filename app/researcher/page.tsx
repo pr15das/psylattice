@@ -10,6 +10,7 @@ import {
   CalendarClock,
   Database,
   FileDown,
+  FileText,
   FlaskConical,
   LayoutDashboard,
   Link2,
@@ -23,8 +24,11 @@ import PsyLatticeLogo from "@/components/PsyLatticeLogo";
 import AccountSwitcher from "@/components/AccountSwitcher";
 import FollowupManager from "@/components/FollowupManager";
 import ResearchAiAssistant from "@/components/ResearchAiAssistant";
+import ResearchWritingWorkspace from "@/components/ResearchWritingWorkspace";
 import ResearchStudyAssociations from "@/components/ResearchStudyAssociations";
 import CognitiveLab from "../../components/CognitiveLab";
+import StudyBatteryPicker, { type StudyBatterySelection } from "@/components/StudyBatteryPicker";
+import { buildBatteryReporting, type BatteryAssignmentLike } from "@/lib/research/batteryReporting";
 import {
   buildCognitiveAttachmentAnalysis,
   compareConditions,
@@ -47,6 +51,7 @@ type Screen =
   | "builder"
   | "library"
   | "cognitive"
+  | "writing"
   | "ambulatory"
   | "followup"
   | "participants"
@@ -67,6 +72,7 @@ const navigation: {
   { id: "builder", label: "Study Builder", group: "Research" },
   { id: "library", label: "Questionnaire Library", group: "Research" },
   { id: "cognitive", label: "Cognitive Lab", group: "Research" },
+  { id: "writing", label: "Thesis Builder", group: "Research" },
   { id: "ambulatory", label: "Ambulatory Assessment", group: "Research" },
   { id: "followup", label: "Follow-up Manager", group: "Research" },
   { id: "participants", label: "Participants", group: "Research" },
@@ -86,6 +92,7 @@ const sidebarIcons: Record<Screen, LucideIcon> = {
   builder: Workflow,
   library: BookOpen,
   cognitive: BrainCircuit,
+  writing: FileText,
   ambulatory: Activity,
   followup: CalendarClock,
   participants: Users,
@@ -1713,6 +1720,7 @@ function StudyBuilder({
     version_label: string;
     required: boolean;
     administration_mode: "once" | "scheduled" | "repeated" | "conditional";
+    schedule_config?: Record<string, any>;
     position?: number;
   };
 
@@ -2221,7 +2229,7 @@ function StudyBuilder({
 
         supabase
           .from("study_cognitive_tasks")
-          .select("id,task_id,version_id,position,required,administration_mode,cognitive_tasks(title,description,domain),cognitive_task_versions(version_label,version_number,status)")
+          .select("id,task_id,version_id,position,required,administration_mode,schedule_config,cognitive_tasks(title,description,domain),cognitive_task_versions(version_label,version_number,status)")
           .eq("study_id", initialStudyId)
           .eq("owner_user_id", user.id)
           .order("position", { ascending: true }),
@@ -2344,6 +2352,7 @@ function StudyBuilder({
             administration_mode: ["scheduled", "repeated", "conditional"].includes(row.administration_mode)
               ? row.administration_mode
               : "once",
+            schedule_config: row.schedule_config && typeof row.schedule_config === "object" ? row.schedule_config : {},
             position: Number(row.position || 0),
           }))
         );
@@ -2573,6 +2582,7 @@ function StudyBuilder({
         version_label: task.published_version_label || "Published version",
         required: true,
         administration_mode: "once",
+        schedule_config: {},
       },
     ]);
     setBaselineFlow((previous) => [
@@ -2581,23 +2591,132 @@ function StudyBuilder({
     ]);
   }
 
+  function batteryGroupKey(item: StudyCognitiveTaskDraft | undefined | null) {
+    const raw = item?.schedule_config?.battery;
+    return raw && typeof raw === "object" ? String((raw as Record<string, any>).group_key || "") : "";
+  }
+
+  function addStudyBattery(battery: StudyBatterySelection, mode: "battery" | "expand") {
+    setStudyError("");
+    setSaveMessage("");
+    if (!battery.items.length) {
+      setStudyError(`${battery.title} does not contain any pinned tasks.`);
+      return;
+    }
+
+    const groupKey = mode === "battery" ? makeId("battery-group") : "";
+    const nextTasks: StudyCognitiveTaskDraft[] = battery.items
+      .slice()
+      .sort((a, b) => a.position - b.position)
+      .map((batteryItem) => {
+        const task = cognitiveCatalogue.find((candidate) => candidate.id === batteryItem.task_id);
+        const batteryConfig = mode === "battery"
+          ? {
+              battery: {
+                group_key: groupKey,
+                battery_id: battery.battery_id,
+                battery_version_id: battery.battery_version_id,
+                battery_title: battery.title,
+                battery_version_label: battery.version_label,
+                item_id: batteryItem.id,
+                item_position: batteryItem.position,
+                order_mode: battery.order_mode,
+                counterbalance_strategy: battery.counterbalance_strategy,
+                participant_intro: battery.participant_intro,
+                show_task_progress: battery.show_task_progress,
+                show_transition_screens: battery.show_transition_screens,
+                transition_text: batteryItem.transition_text,
+                break_after_seconds: batteryItem.break_after_seconds,
+                estimated_minutes: batteryItem.estimated_minutes_snapshot,
+              },
+            }
+          : {
+              expanded_from_battery: {
+                battery_id: battery.battery_id,
+                battery_version_id: battery.battery_version_id,
+                battery_title: battery.title,
+                battery_version_label: battery.version_label,
+                item_id: batteryItem.id,
+                original_position: batteryItem.position,
+              },
+            };
+        return {
+          id: makeId("cognitive"),
+          task_id: batteryItem.task_id,
+          version_id: batteryItem.task_version_id,
+          title: task?.title || batteryItem.task_title_snapshot,
+          description: task?.description || batteryItem.task_description || "",
+          domain: task?.domain || batteryItem.task_domain_snapshot || "general",
+          version_label: batteryItem.version_label || "Published version",
+          required: batteryItem.required,
+          administration_mode: "once" as const,
+          schedule_config: batteryConfig,
+        };
+      });
+
+    setStudyCognitiveTasks((previous) => [...previous, ...nextTasks]);
+    setBaselineFlow((previous) => [
+      ...previous,
+      ...nextTasks.map((item) => ({ id: `flow-${item.id}`, kind: "cognitive" as const, ref_id: item.id })),
+    ]);
+    setComponents((previous) => ({ ...previous, cognitive: true }));
+    setSaveMessage(mode === "battery"
+      ? `${battery.title} added as a preserved battery. Participant order will follow its ${battery.order_mode === "fixed" ? "fixed" : battery.order_mode} assignment rule.`
+      : `${battery.title} expanded into ${nextTasks.length} ordinary Study Flow tasks.`);
+  }
+
   function updateStudyCognitiveTask(id: string, patch: Partial<StudyCognitiveTaskDraft>) {
     setStudyCognitiveTasks((previous) => previous.map((item) => item.id === id ? { ...item, ...patch } : item));
   }
 
   function removeStudyCognitiveTask(id: string) {
-    setStudyCognitiveTasks((previous) => previous.filter((item) => item.id !== id));
-    setBaselineFlow((previous) => previous.filter((item) => !(item.kind === "cognitive" && item.ref_id === id)));
+    const target = studyCognitiveTasks.find((item) => item.id === id);
+    const groupKey = batteryGroupKey(target);
+    const ids = new Set(
+      groupKey
+        ? studyCognitiveTasks.filter((item) => batteryGroupKey(item) === groupKey).map((item) => item.id)
+        : [id]
+    );
+    setStudyCognitiveTasks((previous) => previous.filter((item) => !ids.has(item.id)));
+    setBaselineFlow((previous) => previous.filter((item) => !(item.kind === "cognitive" && ids.has(item.ref_id))));
   }
 
   function moveBaselineFlowItem(refId: string, direction: -1 | 1) {
     setBaselineFlow((previous) => {
-      const index = previous.findIndex((item) => item.ref_id === refId);
-      const target = index + direction;
-      if (index < 0 || target < 0 || target >= previous.length) return previous;
-      const next = [...previous];
-      [next[index], next[target]] = [next[target], next[index]];
-      return next;
+      // Treat each preserved battery as one indivisible Study Flow unit. This keeps
+      // questionnaires/demographics from being accidentally moved between battery
+      // children and also repairs a previously interleaved local draft on the next move.
+      const cognitiveById = new Map(studyCognitiveTasks.map((item) => [item.id, item]));
+      const seenGroups = new Set<string>();
+      const units: BaselineFlowItem[][] = [];
+
+      for (const flowItem of previous) {
+        const cognitive = flowItem.kind === "cognitive" ? cognitiveById.get(flowItem.ref_id) : null;
+        const groupKey = batteryGroupKey(cognitive);
+        if (!groupKey) {
+          units.push([flowItem]);
+          continue;
+        }
+        if (seenGroups.has(groupKey)) continue;
+        seenGroups.add(groupKey);
+        const groupIds = new Set(
+          studyCognitiveTasks
+            .filter((item) => batteryGroupKey(item) === groupKey)
+            .map((item) => item.id)
+        );
+        const groupUnit = previous.filter(
+          (item) => item.kind === "cognitive" && groupIds.has(item.ref_id)
+        );
+        if (groupUnit.length) units.push(groupUnit);
+      }
+
+      const unitIndex = units.findIndex((unit) => unit.some((item) => item.ref_id === refId));
+      const targetIndex = unitIndex + direction;
+      if (unitIndex < 0 || targetIndex < 0 || targetIndex >= units.length) return previous;
+
+      const next = [...units];
+      [next[unitIndex], next[targetIndex]] = [next[targetIndex], next[unitIndex]];
+      return next.flat();
     });
   }
 
@@ -3143,7 +3262,7 @@ function StudyBuilder({
               position: flowPosition("cognitive", item.id, index + 1),
               required: item.required,
               administration_mode: item.administration_mode,
-              schedule_config: {},
+              schedule_config: item.schedule_config || {},
               condition_config: {},
             }))
           );
@@ -4251,6 +4370,7 @@ function StudyBuilder({
                             <div className="flex flex-wrap items-center gap-2">
                               <p className="font-medium">{item.title}</p>
                               <Status type="success">{item.version_label}</Status>
+                              {batteryGroupKey(item) && <Status type="accent">Battery · {String((item.schedule_config?.battery as any)?.battery_title || "Cognitive battery")}</Status>}
                             </div>
                             <p className="mt-1 text-xs capitalize text-slate-400">{item.domain.replaceAll("_", " ")}</p>
                             {item.description && <p className="mt-2 line-clamp-2 text-sm leading-6 text-slate-500">{item.description}</p>}
@@ -4258,7 +4378,7 @@ function StudyBuilder({
                           <div className="flex shrink-0 gap-2">
                             <button type="button" onClick={() => moveStudyCognitiveTask(item.id, -1)} disabled={index === 0} className="rounded-lg border shadow-[0_3px_10px_rgba(15,23,42,0.05)] border-slate-200 px-2.5 py-1.5 text-xs disabled:opacity-30">↑</button>
                             <button type="button" onClick={() => moveStudyCognitiveTask(item.id, 1)} disabled={index === studyCognitiveTasks.length - 1} className="rounded-lg border shadow-[0_3px_10px_rgba(15,23,42,0.05)] border-slate-200 px-2.5 py-1.5 text-xs disabled:opacity-30">↓</button>
-                            <button type="button" onClick={() => removeStudyCognitiveTask(item.id)} className="rounded-lg border shadow-[0_3px_10px_rgba(15,23,42,0.05)] border-red-200 px-2.5 py-1.5 text-xs text-red-700">Remove</button>
+                            <button type="button" onClick={() => removeStudyCognitiveTask(item.id)} className="rounded-lg border shadow-[0_3px_10px_rgba(15,23,42,0.05)] border-red-200 px-2.5 py-1.5 text-xs text-red-700">{batteryGroupKey(item) ? "Remove battery" : "Remove"}</button>
                           </div>
                         </div>
                         <div className="mt-4 grid gap-3 sm:grid-cols-2">
@@ -4277,6 +4397,8 @@ function StudyBuilder({
                   </div>
                 )}
               </div>
+
+              <StudyBatteryPicker onAddBattery={addStudyBattery} />
 
               <div className="rounded-2xl border shadow-[0_8px_24px_rgba(15,23,42,0.065),0_2px_6px_rgba(15,23,42,0.035)] border-slate-300/70 bg-white p-5">
                 <div className="flex flex-col justify-between gap-3 sm:flex-row sm:items-end">
@@ -10188,6 +10310,10 @@ type ResearchDatasetType =
   | "bart_decisions"
   | "mental_rotation_summary"
   | "mental_rotation_trials"
+  | "battery_summary"
+  | "battery_task_matrix"
+  | "battery_assignments"
+  | "battery_order_diagnostics"
   | "consent"
   | "ambulatory_checkins"
   | "ambulatory_responses"
@@ -10386,7 +10512,10 @@ type ResearchDataCognitiveAttachment = {
   domain: string;
   version_label: string;
   version_number: number;
+  schedule_config: Record<string, unknown>;
 };
+
+type ResearchDataBatteryAssignment = BatteryAssignmentLike;
 
 type ResearchDataCognitiveSession = {
   id: string;
@@ -10454,6 +10583,7 @@ type ResearchDataBundle = {
   ambulatoryCheckins: ResearchDataAmbulatoryCheckin[];
   ambulatoryResponses: ResearchDataAmbulatoryResponse[];
   cognitiveAttachments: ResearchDataCognitiveAttachment[];
+  batteryAssignments: ResearchDataBatteryAssignment[];
   cognitiveSessions: ResearchDataCognitiveSession[];
   cognitiveTrials: ResearchDataCognitiveTrial[];
   followupWaves: ResearchDataFollowupWave[];
@@ -10496,6 +10626,7 @@ const emptyResearchDataBundle: ResearchDataBundle = {
   ambulatoryCheckins: [],
   ambulatoryResponses: [],
   cognitiveAttachments: [],
+  batteryAssignments: [],
   cognitiveSessions: [],
   cognitiveTrials: [],
   followupWaves: [],
@@ -10649,6 +10780,13 @@ function researchFilterBundleToParticipantIds(
         participantIds.has(response.participant_id) &&
         ambulatoryCheckinIds.has(response.checkin_id)
     ),
+    batteryAssignments: bundle.batteryAssignments.filter((assignment) =>
+      bundle.sessions.some(
+        (session) =>
+          session.id === assignment.participant_session_id &&
+          participantIds.has(session.participant_id)
+      )
+    ),
     cognitiveSessions,
     cognitiveTrials: bundle.cognitiveTrials.filter((trial) =>
       cognitiveSessionIds.has(trial.session_id)
@@ -10675,6 +10813,10 @@ const researchDatasetLabels: Record<ResearchDatasetType, string> = {
   bart_decisions: "BART decisions — raw pump / collect data",
   mental_rotation_summary: "Mental Rotation summaries — participant level",
   mental_rotation_trials: "Mental Rotation trials — raw image comparisons",
+  battery_summary: "Cognitive battery summaries — participant level",
+  battery_task_matrix: "Cognitive battery task completion matrix",
+  battery_assignments: "Cognitive battery assignments — raw order data",
+  battery_order_diagnostics: "Cognitive battery order diagnostics — descriptive",
   consent: "Consent records",
   ambulatory_checkins: "Ambulatory check-ins — one row per check-in",
   ambulatory_responses: "Ambulatory responses — one row per item response",
@@ -10920,6 +11062,7 @@ function useResearchDataWorkspace() {
         ambulatoryCheckinResult,
         ambulatoryResponseResult,
         cognitiveAttachmentResult,
+        batteryAssignmentResult,
         followupWaveResult,
         exportLogResult,
       ] = await Promise.all([
@@ -11014,10 +11157,16 @@ function useResearchDataWorkspace() {
         supabase
           .from("study_cognitive_tasks")
           .select(
-            "id, task_id, version_id, position, required, administration_mode, cognitive_tasks(title,short_title,domain), cognitive_task_versions(version_label,version_number)"
+            "id, task_id, version_id, position, required, administration_mode, schedule_config, cognitive_tasks(title,short_title,domain), cognitive_task_versions(version_label,version_number)"
           )
           .eq("study_id", selectedStudyId)
           .order("position", { ascending: true }),
+
+        supabase
+          .from("cognitive_battery_assignments")
+          .select("id, participant_session_id, study_id, battery_group_key, battery_id, battery_version_id, order_mode, counterbalance_strategy, assignment_index, assigned_item_ids, created_at")
+          .eq("study_id", selectedStudyId)
+          .order("created_at", { ascending: false }),
 
         supabase
           .from("study_followup_waves")
@@ -11048,6 +11197,7 @@ function useResearchDataWorkspace() {
         ambulatoryCheckinResult,
         ambulatoryResponseResult,
         cognitiveAttachmentResult,
+        batteryAssignmentResult,
         followupWaveResult,
       ];
 
@@ -11147,6 +11297,7 @@ function useResearchDataWorkspace() {
           domain: String(row.cognitive_tasks?.domain || "general"),
           version_label: String(row.cognitive_task_versions?.version_label || "Published version"),
           version_number: Number(row.cognitive_task_versions?.version_number || 1),
+          schedule_config: row.schedule_config && typeof row.schedule_config === "object" ? row.schedule_config : {},
         }));
 
       let cognitiveSessions: ResearchDataCognitiveSession[] = [];
@@ -11218,6 +11369,7 @@ function useResearchDataWorkspace() {
         ambulatoryResponses:
           (ambulatoryResponseResult.data || []) as ResearchDataAmbulatoryResponse[],
         cognitiveAttachments,
+        batteryAssignments: (batteryAssignmentResult.data || []) as ResearchDataBatteryAssignment[],
         cognitiveSessions,
         cognitiveTrials,
         followupWaves:
@@ -13667,6 +13819,130 @@ function researchBuildRows(
     ).filter((row) => row.paradigm === "mental_rotation");
   }
 
+  if (
+    datasetType === "battery_summary" ||
+    datasetType === "battery_task_matrix" ||
+    datasetType === "battery_assignments" ||
+    datasetType === "battery_order_diagnostics"
+  ) {
+    const reporting = buildBatteryReporting({
+      participants: bundle.participants,
+      participantSessions: bundle.sessions,
+      attachments: bundle.cognitiveAttachments,
+      cognitiveSessions: bundle.cognitiveSessions,
+      assignments: bundle.batteryAssignments,
+      includeTestData,
+    });
+
+    if (datasetType === "battery_summary") {
+      return reporting.participantReports.map((report) => {
+        const participant = researchParticipantForId(bundle, report.participantId);
+        return {
+          participant: identityMap.get(report.participantId) || "",
+          is_test: participant?.is_test ?? false,
+          participant_session_id: report.participantSessionId,
+          battery_group_key: report.batteryGroupKey,
+          battery_id: report.batteryId,
+          battery_version_id: report.batteryVersionId,
+          battery_title: report.batteryTitle,
+          battery_version: report.batteryVersionLabel,
+          order_mode: report.orderMode,
+          counterbalance_strategy: report.counterbalanceStrategy,
+          assignment_index: report.assignmentIndex,
+          assigned_task_order: report.assignedTaskTitles.join(" → "),
+          total_tasks: report.totalTasks,
+          required_tasks: report.requiredTasks,
+          completed_tasks: report.completedTasks,
+          completed_required_tasks: report.completedRequiredTasks,
+          completion_rate: report.completionRate,
+          battery_started: report.started ? 1 : 0,
+          battery_completed: report.completed ? 1 : 0,
+          started_at: report.startedAt || "",
+          completed_at: report.completedAt || "",
+          duration_seconds: report.durationSeconds ?? "",
+        };
+      });
+    }
+
+    if (datasetType === "battery_task_matrix") {
+      return reporting.participantReports.map((report) => {
+        const participant = researchParticipantForId(bundle, report.participantId);
+        const row: ResearchTableRow = {
+          participant: identityMap.get(report.participantId) || "",
+          is_test: participant?.is_test ?? false,
+          participant_session_id: report.participantSessionId,
+          battery_title: report.batteryTitle,
+          battery_version: report.batteryVersionLabel,
+          order_mode: report.orderMode,
+          assignment_index: report.assignmentIndex,
+          battery_completed: report.completed ? 1 : 0,
+        };
+        report.taskStates.forEach((state, index) => {
+          const slot = String(index + 1).padStart(2, "0");
+          row[`task_${slot}_title`] = state.taskTitle;
+          row[`task_${slot}_assigned_position`] = state.assignedPosition;
+          row[`task_${slot}_configured_position`] = state.configuredPosition;
+          row[`task_${slot}_required`] = state.required ? 1 : 0;
+          row[`task_${slot}_status`] = state.status;
+          row[`task_${slot}_completed`] = state.status === "completed" ? 1 : 0;
+          row[`task_${slot}_duration_seconds`] = state.durationSeconds ?? "";
+        });
+        return row;
+      });
+    }
+
+    if (datasetType === "battery_assignments") {
+      const participantSessionById = new Map(
+        bundle.sessions.map((session) => [session.id, session])
+      );
+      return bundle.batteryAssignments.flatMap((assignment) => {
+        const participantSession = participantSessionById.get(
+          assignment.participant_session_id
+        );
+        if (!participantSession || !participantIds.has(participantSession.participant_id)) return [];
+        const participant = researchParticipantForId(bundle, participantSession.participant_id);
+        const group = reporting.groups.find(
+          (candidate) => candidate.groupKey === assignment.battery_group_key
+        );
+        const titleByItemId = new Map(
+          (group?.items || []).map((item) => [item.itemId, item.taskTitle])
+        );
+        return [{
+          participant: identityMap.get(participantSession.participant_id) || "",
+          is_test: participant?.is_test ?? false,
+          participant_session_id: assignment.participant_session_id,
+          battery_group_key: assignment.battery_group_key,
+          battery_id: assignment.battery_id || group?.batteryId || "",
+          battery_version_id: assignment.battery_version_id || group?.batteryVersionId || "",
+          battery_title: group?.batteryTitle || "Cognitive battery",
+          battery_version: group?.batteryVersionLabel || "",
+          order_mode: assignment.order_mode,
+          counterbalance_strategy: assignment.counterbalance_strategy,
+          assignment_index: assignment.assignment_index,
+          assigned_item_ids_json: researchValueText(assignment.assigned_item_ids),
+          assigned_task_order: assignment.assigned_item_ids
+            .map((itemId) => titleByItemId.get(itemId) || itemId)
+            .join(" → "),
+          assigned_at: assignment.created_at,
+        }];
+      });
+    }
+
+    return reporting.orderDiagnostics.map((diagnostic) => ({
+      battery_group_key: diagnostic.batteryGroupKey,
+      battery_title: diagnostic.batteryTitle,
+      task: diagnostic.taskTitle,
+      study_cognitive_task_id: diagnostic.taskAttachmentId,
+      order_mode: diagnostic.orderMode,
+      slot_summaries_json: researchValueText(diagnostic.slotSummaries),
+      max_completion_rate_difference: diagnostic.maxCompletionRateDifference ?? "",
+      max_median_duration_ratio: diagnostic.maxMedianDurationRatio ?? "",
+      researcher_review_recommended: diagnostic.reviewRecommended ? 1 : 0,
+      review_reason: diagnostic.reviewReason,
+      inferential_test_run: 0,
+    }));
+  }
+
   if (datasetType === "consent") {
     return bundle.consents
       .filter((consent) => participantIds.has(consent.participant_id))
@@ -14615,6 +14891,101 @@ function researchBuildCodebook(
        "mental_rotation_timed_out","stimulus_variables_json","stimulus_payload_json","response_payload_json",
        "timing_json","recorded_at"].includes(row.variable)
     );
+  }
+
+  if (datasetType === "battery_summary") {
+    return [
+      ...common,
+      ["participant_session_id", "Participant session ID", "String", "cognitive_battery_assignments", "Participant session in which this battery order was assigned."],
+      ["battery_group_key", "Study battery placement key", "String", "study_cognitive_tasks.schedule_config", "Stable identifier for this preserved battery placement inside the study."],
+      ["battery_id", "Cognitive battery ID", "String", "cognitive_battery_assignments", "Reusable Cognitive Lab battery identity."],
+      ["battery_version_id", "Battery version ID", "String", "cognitive_battery_assignments", "Frozen published battery version used by this study placement."],
+      ["battery_title", "Battery title", "String", "study_cognitive_tasks.schedule_config", "Participant-facing/researcher-facing battery title snapshot."],
+      ["battery_version", "Battery version", "String", "study_cognitive_tasks.schedule_config", "Frozen battery version label."],
+      ["order_mode", "Battery order mode", "Categorical", "cognitive_battery_assignments", "fixed, randomized or counterbalanced."],
+      ["counterbalance_strategy", "Counterbalance strategy", "Categorical", "cognitive_battery_assignments", "Latin Square strategy when counterbalancing is enabled."],
+      ["assignment_index", "Assignment index", "Integer", "cognitive_battery_assignments", "Deterministic assignment row/index used to generate the stored task order."],
+      ["assigned_task_order", "Assigned task order", "String", "cognitive_battery_assignments + study metadata", "Human-readable task order received by the participant."],
+      ["total_tasks", "Tasks in battery", "Integer", "derived", "Total child cognitive tasks in this preserved battery placement."],
+      ["required_tasks", "Required tasks", "Integer", "derived", "Required child tasks used for battery completion."],
+      ["completed_tasks", "Completed tasks", "Integer", "derived from cognitive_task_sessions", "Completed child task sessions."],
+      ["completed_required_tasks", "Completed required tasks", "Integer", "derived from cognitive_task_sessions", "Completed required child task sessions."],
+      ["completion_rate", "Battery completion proportion", "Numeric 0-1", "derived", "Completed required tasks divided by required tasks."],
+      ["battery_started", "Battery started", "Binary 0/1", "derived", "1 when at least one child cognitive session started."],
+      ["battery_completed", "Battery completed", "Binary 0/1", "derived", "1 when all required child tasks completed."],
+      ["started_at", "Battery start", "ISO timestamp", "derived from cognitive_task_sessions", "Earliest child-task start timestamp."],
+      ["completed_at", "Battery completion", "ISO timestamp", "derived from cognitive_task_sessions", "Latest required child-task completion timestamp once the battery is complete."],
+      ["duration_seconds", "Battery duration", "Seconds", "derived", "Elapsed wall-clock seconds between first task start and completed battery end; includes configured transitions/breaks and participant pauses."],
+    ].map((row: any) => Array.isArray(row) ? ({ variable: row[0], label: row[1], type: row[2], source: row[3], notes: row[4] }) : row) as ResearchCodebookRow[];
+  }
+
+  if (datasetType === "battery_task_matrix") {
+    const groups = buildBatteryReporting({
+      participants: bundle.participants,
+      participantSessions: bundle.sessions,
+      attachments: bundle.cognitiveAttachments,
+      cognitiveSessions: bundle.cognitiveSessions,
+      assignments: bundle.batteryAssignments,
+      includeTestData: true,
+    }).groups;
+    const maxTasks = Math.max(0, ...groups.map((group) => group.items.length));
+    const dynamic: ResearchCodebookRow[] = [];
+    for (let index = 1; index <= maxTasks; index += 1) {
+      const slot = String(index).padStart(2, "0");
+      dynamic.push(
+        { variable: `task_${slot}_title`, label: `Assigned task ${index} title`, type: "String", source: "battery assignment + study_cognitive_tasks", notes: "Task occupying this participant-specific battery slot." },
+        { variable: `task_${slot}_assigned_position`, label: `Assigned task ${index} slot`, type: "Integer", source: "cognitive_battery_assignments", notes: "Participant-specific order position." },
+        { variable: `task_${slot}_configured_position`, label: `Assigned task ${index} configured position`, type: "Integer", source: "study_cognitive_tasks.schedule_config", notes: "Original battery-builder position before randomisation/counterbalancing." },
+        { variable: `task_${slot}_required`, label: `Assigned task ${index} required`, type: "Binary 0/1", source: "study_cognitive_tasks", notes: "Whether this child task is required." },
+        { variable: `task_${slot}_status`, label: `Assigned task ${index} session status`, type: "Categorical", source: "cognitive_task_sessions", notes: "not_started or stored child cognitive session status." },
+        { variable: `task_${slot}_completed`, label: `Assigned task ${index} completed`, type: "Binary 0/1", source: "cognitive_task_sessions", notes: "1 when the child cognitive session completed." },
+        { variable: `task_${slot}_duration_seconds`, label: `Assigned task ${index} duration`, type: "Seconds", source: "derived from cognitive_task_sessions", notes: "Child task elapsed time when both start/end timestamps are present." },
+      );
+    }
+    return [
+      ...common,
+      { variable: "participant_session_id", label: "Participant session ID", type: "String", source: "cognitive_battery_assignments", notes: "Participant session receiving this battery." },
+      { variable: "battery_title", label: "Battery title", type: "String", source: "study_cognitive_tasks.schedule_config", notes: "Battery placement title." },
+      { variable: "battery_version", label: "Battery version", type: "String", source: "study_cognitive_tasks.schedule_config", notes: "Frozen battery version." },
+      { variable: "order_mode", label: "Order mode", type: "Categorical", source: "cognitive_battery_assignments", notes: "fixed, randomized or counterbalanced." },
+      { variable: "assignment_index", label: "Assignment index", type: "Integer", source: "cognitive_battery_assignments", notes: "Stored deterministic assignment index." },
+      { variable: "battery_completed", label: "Battery completed", type: "Binary 0/1", source: "derived", notes: "1 when required tasks are complete." },
+      ...dynamic,
+    ];
+  }
+
+  if (datasetType === "battery_assignments") {
+    return [
+      ...common,
+      { variable: "participant_session_id", label: "Participant session ID", type: "String", source: "cognitive_battery_assignments", notes: "Participant session receiving the stored order." },
+      { variable: "battery_group_key", label: "Study battery placement key", type: "String", source: "cognitive_battery_assignments", notes: "Preserved battery placement inside this study." },
+      { variable: "battery_id", label: "Battery ID", type: "String", source: "cognitive_battery_assignments", notes: "Reusable Cognitive Lab battery identity." },
+      { variable: "battery_version_id", label: "Battery version ID", type: "String", source: "cognitive_battery_assignments", notes: "Frozen battery version." },
+      { variable: "battery_title", label: "Battery title", type: "String", source: "study_cognitive_tasks.schedule_config", notes: "Battery title snapshot." },
+      { variable: "battery_version", label: "Battery version label", type: "String", source: "study_cognitive_tasks.schedule_config", notes: "Frozen version label." },
+      { variable: "order_mode", label: "Order mode", type: "Categorical", source: "cognitive_battery_assignments", notes: "fixed, randomized or counterbalanced." },
+      { variable: "counterbalance_strategy", label: "Counterbalance strategy", type: "Categorical", source: "cognitive_battery_assignments", notes: "Strategy used when counterbalancing is enabled." },
+      { variable: "assignment_index", label: "Assignment index", type: "Integer", source: "cognitive_battery_assignments", notes: "Stored assignment index." },
+      { variable: "assigned_item_ids_json", label: "Assigned battery item IDs", type: "JSON text", source: "cognitive_battery_assignments", notes: "Exact stored immutable assigned item order." },
+      { variable: "assigned_task_order", label: "Assigned task order", type: "String", source: "derived from stored assignment", notes: "Human-readable task order." },
+      { variable: "assigned_at", label: "Assignment timestamp", type: "ISO timestamp", source: "cognitive_battery_assignments", notes: "When PsyLattice first persisted this participant's battery order." },
+    ];
+  }
+
+  if (datasetType === "battery_order_diagnostics") {
+    return [
+      { variable: "battery_group_key", label: "Study battery placement key", type: "String", source: "study metadata", notes: "Preserved battery placement." },
+      { variable: "battery_title", label: "Battery title", type: "String", source: "study metadata", notes: "Battery title." },
+      { variable: "task", label: "Cognitive task", type: "String", source: "study_cognitive_tasks", notes: "Task evaluated across assigned battery slots." },
+      { variable: "study_cognitive_task_id", label: "Study cognitive task ID", type: "String", source: "study_cognitive_tasks", notes: "Pinned task attachment." },
+      { variable: "order_mode", label: "Order mode", type: "Categorical", source: "cognitive_battery_assignments", notes: "Randomised/counterbalanced battery mode." },
+      { variable: "slot_summaries_json", label: "Assigned-slot summaries", type: "JSON text", source: "derived", notes: "Per-slot assigned N, completed N, completion rate and median duration." },
+      { variable: "max_completion_rate_difference", label: "Maximum completion-rate difference", type: "Numeric proportion", source: "derived", notes: "Descriptive max-minus-min completion rate across slots with at least 5 assigned participants. No inferential test." },
+      { variable: "max_median_duration_ratio", label: "Maximum median-duration ratio", type: "Numeric ratio", source: "derived", notes: "Descriptive maximum/minimum median duration across slots with at least 5 completed observations. No inferential test." },
+      { variable: "researcher_review_recommended", label: "Researcher review recommended", type: "Binary 0/1", source: "deterministic rule", notes: "Flags a large descriptive slot pattern for review; never an automatic exclusion." },
+      { variable: "review_reason", label: "Review reason", type: "String", source: "deterministic rule", notes: "Transparent descriptive reason." },
+      { variable: "inferential_test_run", label: "Inferential order-effect test run", type: "Binary 0/1", source: "PsyLattice boundary", notes: "Always 0 in 2N. Researchers should run an appropriate model if testing order effects." },
+    ];
   }
 
   if (datasetType === "consent") {
@@ -15628,6 +15999,36 @@ function researchBuildUniversalWorkbook(
       includeTestData,
       includeDirectIdentifiers
     ),
+    researchWorkbookDatasetSheet(
+      bundle,
+      "battery_summary",
+      "Battery_Summary",
+      "clean",
+      "Participant × preserved cognitive-battery overview with assigned order, completion, timing and duration metadata.",
+      identityMode,
+      includeTestData,
+      includeDirectIdentifiers
+    ),
+    researchWorkbookDatasetSheet(
+      bundle,
+      "battery_task_matrix",
+      "Battery_Task_Matrix",
+      "clean",
+      "Wide participant × battery task-completion matrix retaining participant-specific assigned slots.",
+      identityMode,
+      includeTestData,
+      includeDirectIdentifiers
+    ),
+    researchWorkbookDatasetSheet(
+      bundle,
+      "battery_order_diagnostics",
+      "Battery_Order_Review",
+      "clean",
+      "Descriptive assigned-slot completion/duration diagnostics for randomized or counterbalanced batteries; no inferential order-effect test is implied.",
+      identityMode,
+      includeTestData,
+      includeDirectIdentifiers
+    ),
     {
       name: "Cognitive_Conditions",
       kind: "clean",
@@ -15717,6 +16118,16 @@ function researchBuildUniversalWorkbook(
       "Cognitive_Sessions_RAW",
       "raw",
       "Study cognitive sessions including deterministic summaries, device information and timing diagnostics.",
+      identityMode,
+      includeTestData,
+      includeDirectIdentifiers
+    ),
+    researchWorkbookDatasetSheet(
+      bundle,
+      "battery_assignments",
+      "Battery_Assignments_RAW",
+      "raw",
+      "Exact participant-session battery assignment index and stored item order for reproducible randomisation/counterbalancing review.",
       identityMode,
       includeTestData,
       includeDirectIdentifiers
@@ -15843,6 +16254,9 @@ function researchBuildUniversalWorkbook(
           "card_sorting_summary",
           "bart_summary",
           "mental_rotation_summary",
+          "battery_summary",
+          "battery_task_matrix",
+          "battery_order_diagnostics",
           "ambulatory_wide",
           "ambulatory_participant_days",
         ]
@@ -15858,6 +16272,7 @@ function researchBuildUniversalWorkbook(
             "card_sorting_trials",
             "bart_decisions",
             "mental_rotation_trials",
+            "battery_assignments",
             "ambulatory_checkins",
             "ambulatory_responses",
             "consent",
@@ -15882,6 +16297,10 @@ function researchBuildUniversalWorkbook(
             "bart_decisions",
             "mental_rotation_summary",
             "mental_rotation_trials",
+            "battery_summary",
+            "battery_task_matrix",
+            "battery_assignments",
+            "battery_order_diagnostics",
             "consent",
             "ambulatory_checkins",
             "ambulatory_responses",
@@ -18226,6 +18645,21 @@ function DataDashboard({
       session.status === "completed"
   );
 
+  const batteryReporting = buildBatteryReporting({
+    participants: bundle.participants,
+    participantSessions: bundle.sessions,
+    attachments: bundle.cognitiveAttachments,
+    cognitiveSessions: bundle.cognitiveSessions,
+    assignments: bundle.batteryAssignments,
+    includeTestData: false,
+  });
+  const batteryAssignedRuns = batteryReporting.participantReports.length;
+  const batteryCompletedRuns = batteryReporting.participantReports.filter((row) => row.completed).length;
+  const batteryCompletionPercent = batteryAssignedRuns > 0
+    ? Math.round((batteryCompletedRuns / batteryAssignedRuns) * 100)
+    : 0;
+  const batteryOrderReviewCount = batteryReporting.orderDiagnostics.filter((row) => row.reviewRecommended).length;
+
   const requiredBaselineMeasures = bundle.measures.filter(
     (measure) =>
       measure.measurement_point === "baseline" && measure.required
@@ -18826,6 +19260,53 @@ function DataDashboard({
           detail="Excluded from exports by default"
         />
       </div>
+
+      {batteryReporting.groups.length > 0 && (
+        <Panel
+          title="Cognitive battery overview"
+          description="Battery-level orchestration metadata derived from stored participant assignments and ordinary child cognitive sessions. Task scores remain in their task-specific datasets."
+        >
+          <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+            <StatCard label="Battery placements" value={String(batteryReporting.groups.length)} detail="Preserved batteries configured in this study" />
+            <StatCard label="Assigned runs" value={String(batteryAssignedRuns)} detail="Participant sessions with a stored deterministic battery order" />
+            <StatCard label="Completed batteries" value={String(batteryCompletedRuns)} detail={batteryAssignedRuns > 0 ? `${batteryCompletionPercent}% of assigned runs` : "No assigned runs yet"} />
+            <StatCard label="Order-pattern reviews" value={String(batteryOrderReviewCount)} detail="Descriptive review prompts only — no inferential order-effect test" />
+          </div>
+
+          <div className="mt-5 grid gap-4 lg:grid-cols-2">
+            {batteryReporting.groupSummaries.map((group) => (
+              <div key={group.batteryGroupKey} className="rounded-2xl border border-slate-200 bg-white p-4 shadow-[0_5px_18px_rgba(15,23,42,0.05)]">
+                <div className="flex flex-wrap items-start justify-between gap-3">
+                  <div>
+                    <p className="text-sm font-semibold text-slate-950">{group.batteryTitle}</p>
+                    <p className="mt-1 text-[11px] text-slate-500">{group.batteryVersionLabel} · {group.taskCount} tasks · {group.orderMode.replaceAll("_", " ")}</p>
+                  </div>
+                  <Status type={group.completionRate !== null && group.completionRate < 0.8 ? "warning" : "accent"}>
+                    {group.completionRate === null ? "No assignments" : `${Math.round(group.completionRate * 100)}% complete`}
+                  </Status>
+                </div>
+                <div className="mt-4 grid grid-cols-3 gap-3 text-center">
+                  <div className="rounded-xl bg-slate-50 p-3"><p className="text-lg font-semibold text-slate-950">{group.assignedParticipants}</p><p className="text-[9px] uppercase tracking-wide text-slate-400">Assigned</p></div>
+                  <div className="rounded-xl bg-slate-50 p-3"><p className="text-lg font-semibold text-slate-950">{group.completedParticipants}</p><p className="text-[9px] uppercase tracking-wide text-slate-400">Completed</p></div>
+                  <div className="rounded-xl bg-slate-50 p-3"><p className="text-lg font-semibold text-slate-950">{group.medianDurationSeconds === null ? "—" : `${Math.round(group.medianDurationSeconds / 60)}m`}</p><p className="text-[9px] uppercase tracking-wide text-slate-400">Median duration</p></div>
+                </div>
+              </div>
+            ))}
+          </div>
+
+          {batteryOrderReviewCount > 0 && (
+            <div className="mt-5 space-y-2">
+              <p className="text-xs font-semibold text-slate-900">Descriptive order-pattern review</p>
+              {batteryReporting.orderDiagnostics.filter((row) => row.reviewRecommended).slice(0, 8).map((row) => (
+                <div key={`${row.batteryGroupKey}-${row.taskAttachmentId}`} className="border-l-2 border-amber-300 py-1 pl-3 text-[11px] leading-5 text-slate-600">
+                  <span className="font-semibold text-slate-800">{row.batteryTitle} · {row.taskTitle}:</span> {row.reviewReason}
+                </div>
+              ))}
+              <p className="text-[10px] leading-5 text-slate-400">These rules only surface large descriptive differences across assigned positions when minimum cell sizes are met. They do not establish a causal or statistically significant order effect.</p>
+            </div>
+          )}
+        </Panel>
+      )}
 
       <div className="grid gap-5 xl:grid-cols-[1.05fr_.95fr]">
         <Panel
@@ -22358,6 +22839,7 @@ export default function ResearcherWorkspace() {
   ] = useState(false);
   const [sidebarCollapsed, setSidebarCollapsed] =
     useState(false);
+  const [thesisFocusMode, setThesisFocusMode] = useState(false);
 
   useEffect(() => {
     const saved = window.localStorage.getItem(
@@ -22422,6 +22904,13 @@ export default function ResearcherWorkspace() {
       case "cognitive":
         return <CognitiveLab />;
 
+      case "writing":
+        return (
+          <ResearchWritingWorkspace
+            onFocusModeChange={setThesisFocusMode}
+          />
+        );
+
       case "ambulatory":
         return (
           <AmbulatoryBuilder
@@ -22481,6 +22970,8 @@ export default function ResearcherWorkspace() {
       "Search the research catalogue, review administration and scoring, open manuals and official resources, and verify questionnaire usage rights.",
     cognitive:
       "Create reusable cognitive task definitions, start from PsyLattice templates, and prepare versioned tasks for experiments and longitudinal research.",
+    writing:
+      "Build and organise thesis and paper drafts in nested visual folders, write in a paged academic editor, apply format presets, and use consent-gated AI writing support.",
     ambulatory:
       "Design repeated real-world EMA and ESM assessment protocols.",
     followup:
@@ -22818,13 +23309,18 @@ export default function ResearcherWorkspace() {
         {/* Main content */}
 
         <section
-          className={`min-w-0 p-5 transition-[margin] duration-200 sm:p-6 lg:p-8 ${
+          className={`min-w-0 transition-[margin,padding] duration-200 ${
+            screen === "writing" && thesisFocusMode
+              ? "p-2 sm:p-3 lg:p-4"
+              : "p-5 sm:p-6 lg:p-8"
+          } ${
             sidebarCollapsed
               ? "lg:ml-[94px]"
               : "lg:ml-[268px]"
           }`}
         >
-          <div className="mx-auto max-w-[1450px]">
+          <div className={screen === "writing" && thesisFocusMode ? "mx-auto max-w-none" : "mx-auto max-w-[1450px]"}>
+            {!(screen === "writing" && thesisFocusMode) && (
             <div className="mb-7 flex flex-col gap-3 rounded-[28px] border border-slate-200/80 bg-white/88 px-5 py-5 shadow-[0_2px_5px_rgba(15,23,42,0.04),0_12px_32px_rgba(15,23,42,0.075),0_34px_76px_rgba(8,145,178,0.045)] backdrop-blur-xl sm:px-6">
               <div className="flex flex-wrap items-center gap-2">
                 <Status type="accent">Researcher workspace</Status>
@@ -22846,6 +23342,7 @@ export default function ResearcherWorkspace() {
                 </p>
               </div>
             </div>
+            )}
 
             {renderScreen()}
           </div>

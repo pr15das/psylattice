@@ -369,6 +369,10 @@ function normalizeSettings(value: StoredEditorSettings | null | undefined, forma
     margin_right_in: hasDirectionalMargins ? stored.margin_right_in ?? preset.margin_right_in : fallbackMargin,
     margin_bottom_in: hasDirectionalMargins ? stored.margin_bottom_in ?? preset.margin_bottom_in : fallbackMargin,
     margin_left_in: hasDirectionalMargins ? stored.margin_left_in ?? preset.margin_left_in : fallbackMargin,
+    // Free form must not inherit the historical 0.5-inch academic paragraph
+    // indent from older documents/settings. Margins control the writable page
+    // area; they must never create an extra gap on the first line.
+    first_line_indent_in: format === "freeform" ? 0 : stored.first_line_indent_in ?? preset.first_line_indent_in,
   };
 
   // Never carry the legacy field back into the live settings object.
@@ -1663,20 +1667,12 @@ export default function ResearchWritingWorkspace({
     }
   }
 
-  function exportHtmlDocument(pageSize: "letter" | "a4") {
-    const pageLabel = pageSize === "a4" ? "8.27in 11.69in" : "8.5in 11in";
-    const html = sanitizeHtml(combinedEditorHtml());
-    const columnCss = settings.columns === 2 ? "column-count:2;column-gap:.28in;" : "";
-    return `<!doctype html><html><head><meta charset="utf-8"><title>${escapeHtml(title || "PsyLattice thesis")}</title><style>@page{size:${pageLabel};margin:${settings.margin_top_in}in ${settings.margin_right_in}in ${settings.margin_bottom_in}in ${settings.margin_left_in}in;}body{font-family:${JSON.stringify(settings.font_family)};font-size:${settings.font_size_pt}pt;line-height:${settings.line_spacing};color:#0f172a;text-align:${settings.text_align};${columnCss}}p{margin-top:0;margin-bottom:${settings.paragraph_spacing_pt}pt;text-indent:${settings.first_line_indent_in}in;}h1,h2,h3{break-after:avoid;}h1+p,h2+p,h3+p,blockquote p,li p{ text-indent:0;}table{width:100%;border-collapse:collapse;margin:1em 0;column-span:all;}th,td{border:1px solid #94a3b8;padding:6px 8px;text-align:left;vertical-align:top;}th{background:#f8fafc;font-weight:700;}img{max-width:100%;height:auto;}hr{border:0;border-top:1px solid #cbd5e1;margin:1em 0;column-span:all;}.research-image-resize-handle,.research-table-resize-handle{display:none!important;}</style></head><body>${html}</body></html>`;
-  }
-
   async function exportCurrentDocument() {
     if (!selectedDocument || exporting) return;
     setExporting(true);
     setError("");
     try {
       const filename = safeFilename(title || selectedDocument.title);
-      const exportHtml = exportHtmlDocument(exportPageSize);
       if (applyExportSizeToCanvas && settings.page_size !== exportPageSize) {
         const nextSettings = { ...settings, page_size: exportPageSize };
         setSettings(nextSettings);
@@ -1684,45 +1680,186 @@ export default function ResearchWritingWorkspace({
         window.setTimeout(() => replaceVisiblePages(combinedEditorHtml(), nextSettings, true), 0);
       }
       if (exportFormat === "docx") {
-        const module = await import("html-docx-js-typescript");
-        const result = await module.asBlob(exportHtml, {
-          orientation: "portrait",
-          margins: {
-            top: Math.round(settings.margin_top_in * 1440),
-            right: Math.round(settings.margin_right_in * 1440),
-            bottom: Math.round(settings.margin_bottom_in * 1440),
-            left: Math.round(settings.margin_left_in * 1440),
-            header: 720,
-            footer: 720,
-            gutter: 0,
-          },
+        // html-docx-js-typescript builds Word files around the legacy altChunk
+        // mechanism. Those files can download successfully yet open as blank in
+        // some Word/Office environments. Use dom-docx instead so the exported
+        // document contains native editable OOXML paragraphs/tables/images.
+        const { convertHtmlToDocx } = await import("dom-docx/browser");
+        const exportSettings: EditorSettings = { ...settings, page_size: exportPageSize };
+        const docxPages = paginateHtml(combinedEditorHtml(), exportSettings);
+        const docxHtml = docxPages
+          .map((page, index) => `${page}${index < docxPages.length - 1 ? '<div style="break-after:page"></div>' : ''}`)
+          .join("");
+
+        const exportRoot = document.createElement("div");
+        exportRoot.className = "research-paper-editor";
+        Object.assign(exportRoot.style, {
+          position: "fixed",
+          left: "-100000px",
+          top: "0",
+          width: `${Math.max(1, pageGeometry(exportSettings).contentWidth)}px`,
+          backgroundColor: "#ffffff",
+          color: "#0f172a",
+          fontFamily: exportSettings.font_family,
+          fontSize: `${exportSettings.font_size_pt}pt`,
+          lineHeight: String(exportSettings.line_spacing),
+          textAlign: exportSettings.text_align,
+          pointerEvents: "none",
+          zIndex: "-1",
         });
-        const blob = result instanceof Blob ? result : new Blob([result as BlobPart], { type: "application/vnd.openxmlformats-officedocument.wordprocessingml.document" });
-        downloadBlob(blob, `${filename}.docx`);
+        exportRoot.innerHTML = sanitizeHtml(docxHtml);
+        exportRoot.querySelectorAll(".research-image-resize-handle,.research-table-resize-handle").forEach((node) => node.remove());
+        document.body.appendChild(exportRoot);
+
+        try {
+          if (document.fonts?.ready) await document.fonts.ready;
+          const blob = await convertHtmlToDocx(exportRoot.innerHTML, {
+            styleSource: "computed",
+            root: exportRoot,
+            pageSize: exportPageSize,
+            orientation: "portrait",
+            margins: {
+              top: exportSettings.margin_top_in,
+              right: exportSettings.margin_right_in,
+              bottom: exportSettings.margin_bottom_in,
+              left: exportSettings.margin_left_in,
+            },
+            defaultFont: {
+              family: exportSettings.font_family,
+              sizePt: exportSettings.font_size_pt,
+            },
+            metadata: {
+              title: title || selectedDocument.title || "PsyLattice thesis",
+              creator: "PsyLattice Thesis Builder",
+            },
+          });
+          downloadBlob(blob, `${filename}.docx`);
+        } finally {
+          exportRoot.remove();
+        }
       } else {
-        const module = await import("html2pdf.js");
-        const html2pdf = (module as { default?: any }).default || module;
-        const container = document.createElement("div");
-        const widthIn = exportPageSize === "a4" ? 8.27 : 8.5;
-        container.style.width = `${Math.max(1, widthIn - settings.margin_left_in - settings.margin_right_in)}in`;
-        container.style.fontFamily = settings.font_family;
-        container.style.fontSize = `${settings.font_size_pt}pt`;
-        container.style.lineHeight = String(settings.line_spacing);
-        container.style.textAlign = settings.text_align;
-        container.innerHTML = sanitizeHtml(combinedEditorHtml());
-        document.body.appendChild(container);
-        await html2pdf()
-          .set({
-            margin: [settings.margin_top_in, settings.margin_left_in, settings.margin_bottom_in, settings.margin_right_in],
-            filename: `${filename}.pdf`,
-            image: { type: "jpeg", quality: 0.98 },
-            html2canvas: { scale: 2, useCORS: true, backgroundColor: "#ffffff" },
-            jsPDF: { unit: "in", format: exportPageSize === "a4" ? "a4" : "letter", orientation: "portrait" },
-            pagebreak: { mode: ["css", "legacy"] },
-          })
-          .from(container)
-          .save();
-        container.remove();
+        // Tailwind 4 and modern browsers can expose colours as oklch()/oklab()/color(),
+        // which the html2canvas bundled inside html2pdf.js cannot parse. Render the
+        // already-paginated Thesis Builder pages with html2canvas-pro instead; it
+        // supports modern CSS colour functions and keeps PDF page boundaries aligned
+        // with the Thesis Builder's own pagination.
+        const [{ default: html2canvas }, { jsPDF }] = await Promise.all([
+          import("html2canvas-pro"),
+          import("jspdf"),
+        ]);
+
+        const exportSettings: EditorSettings = { ...settings, page_size: exportPageSize };
+        const exportGeometry = pageGeometry(exportSettings);
+        const pdfPages = paginateHtml(combinedEditorHtml(), exportSettings);
+        const pageWidthIn = exportPageSize === "a4" ? 8.27 : 8.5;
+        const pageHeightIn = exportPageSize === "a4" ? 11.69 : 11;
+
+        const mount = document.createElement("div");
+        Object.assign(mount.style, {
+          position: "fixed",
+          left: "-100000px",
+          top: "0",
+          width: `${exportGeometry.width}px`,
+          background: "#ffffff",
+          pointerEvents: "none",
+          zIndex: "-1",
+        });
+        document.body.appendChild(mount);
+
+        try {
+          if (document.fonts?.ready) await document.fonts.ready;
+
+          const pdf = new jsPDF({
+            unit: "in",
+            format: exportPageSize === "a4" ? "a4" : "letter",
+            orientation: "portrait",
+            compress: true,
+          });
+
+          for (let pageIndex = 0; pageIndex < pdfPages.length; pageIndex += 1) {
+            const page = document.createElement("div");
+            Object.assign(page.style, {
+              width: `${exportGeometry.width}px`,
+              height: `${exportGeometry.height}px`,
+              padding: `${exportGeometry.top}px ${exportGeometry.right}px ${exportGeometry.bottom}px ${exportGeometry.left}px`,
+              boxSizing: "border-box",
+              position: "relative",
+              overflow: "hidden",
+              backgroundColor: "#ffffff",
+              color: "#0f172a",
+            });
+
+            const content = document.createElement("div");
+            content.className = "research-paper-editor";
+            Object.assign(content.style, {
+              width: "100%",
+              height: `${exportGeometry.contentHeight}px`,
+              overflow: "hidden",
+              fontFamily: exportSettings.font_family,
+              fontSize: `${exportSettings.font_size_pt}pt`,
+              lineHeight: String(exportSettings.line_spacing),
+              textAlign: exportSettings.text_align,
+              columnCount: String(exportSettings.columns),
+              columnGap: exportSettings.columns === 2 ? "0.28in" : "normal",
+              columnFill: exportSettings.columns === 2 ? "auto" : "balance",
+              outline: "none",
+            });
+            content.innerHTML = pdfPages[pageIndex] || "";
+
+            // Editing-only controls must never appear in the exported document.
+            content
+              .querySelectorAll(".research-image-resize-handle, .research-table-resize-handle")
+              .forEach((element) => element.remove());
+            content.querySelectorAll("[contenteditable]").forEach((element) => element.removeAttribute("contenteditable"));
+            content.querySelectorAll("[title]").forEach((element) => element.removeAttribute("title"));
+
+            page.appendChild(content);
+            mount.appendChild(page);
+
+            const images = Array.from(content.querySelectorAll("img"));
+            await Promise.all(
+              images.map((image) =>
+                image.complete
+                  ? Promise.resolve()
+                  : new Promise<void>((resolve) => {
+                      const finish = () => resolve();
+                      image.addEventListener("load", finish, { once: true });
+                      image.addEventListener("error", finish, { once: true });
+                    })
+              )
+            );
+
+            const canvas = await html2canvas(page, {
+              scale: 2,
+              useCORS: true,
+              backgroundColor: "#ffffff",
+              logging: false,
+              width: exportGeometry.width,
+              height: exportGeometry.height,
+              windowWidth: exportGeometry.width,
+              windowHeight: exportGeometry.height,
+            });
+
+            if (pageIndex > 0) {
+              pdf.addPage(exportPageSize === "a4" ? "a4" : "letter", "portrait");
+            }
+            pdf.addImage(
+              canvas.toDataURL("image/jpeg", 0.98),
+              "JPEG",
+              0,
+              0,
+              pageWidthIn,
+              pageHeightIn,
+              undefined,
+              "FAST"
+            );
+            page.remove();
+          }
+
+          pdf.save(`${filename}.pdf`);
+        } finally {
+          mount.remove();
+        }
       }
       setExportOpen(false);
       setNotice(`Exported ${filename}.${exportFormat}.`);

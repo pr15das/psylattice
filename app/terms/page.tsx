@@ -7,7 +7,7 @@ export default function TermsPage() {
       eyebrow="Legal"
       title="Terms of Use"
       description="These Terms of Use explain the rules that apply when you access or use PsyLattice, including PsyLattice Self, Research, Clinical, study participation and Luna AI features."
-      notice="Pre-launch legal draft — this version is designed to cover the intended PsyLattice product and pricing model, but it should be reviewed by qualified counsel before commercial, clinical or research launch."
+      notice="Pre-launch legal draft — this version reflects the current intended PsyLattice product, India Research pricing, Free / Study Pass / Researcher Pro model and fair-use structure, but it should be reviewed by qualified counsel before commercial, clinical or research launch."
       sections={[
         {
           title: "1. About these Terms",
@@ -171,10 +171,10 @@ export default function TermsPage() {
               </p>
               <p>
                 At the current intended launch pricing, Self is planned at
-                ₹59 per month or ₹590 per year in India and €4.99 per month or
-                €49.90 per year in Europe. Prices may be revised before or after
-                launch. The price shown to you at checkout is the price that
-                applies to that purchase.
+                ₹59 per month or ₹590 per year in India. Prices may be revised
+                before or after launch. The price shown to you at checkout is the
+                price that applies to that purchase. PsyLattice may introduce
+                region-specific pricing in other countries at a later date.
               </p>
               <p>
                 If your subscription is recurring, it renews automatically for
@@ -213,58 +213,114 @@ export default function TermsPage() {
           ),
         },
         {
-          title: "9. Researcher accounts",
+          title: "9. Researcher accounts and plan structure",
           content: (
             <div className="space-y-4">
               <p>
-                The intended basic Researcher account is free. Researchers may
-                use supported tools to prepare, configure, preview and test
-                studies without paying a recurring researcher subscription.
+                PsyLattice Research is offered through a free researcher plan,
+                one-time Study Passes and recurring Researcher Pro plans. The
+                exact plan, price and entitlement displayed on the Pricing page
+                or at checkout controls for that purchase.
               </p>
               <p>
-                A study fee is required when a researcher activates a study for
-                real participant data collection, unless PsyLattice expressly
-                provides a free or sponsored study allocation.
+                <strong>Researcher Free</strong> is intended to let a researcher
+                build and run one genuine live study without a recurring fee. The
+                current intended allowance is one live study with up to 75
+                participants, together with supported core research, analysis and
+                export tools.
+              </p>
+              <p>
+                The Free plan is intentionally subject to lower-cost safeguards.
+                It does not include user-uploaded image, audio or video media in
+                Researcher workflows, participant study flows or Thesis Builder,
+                and AI-assisted features are subject to a lower usage allowance.
+                Built-in PsyLattice stimuli or other platform-provided media may
+                still be available where expressly supported.
+              </p>
+              <p>
+                Drafting, preview and TEST workflows may be available without
+                consuming a paid Study Pass, subject to technical and fair-use
+                safeguards. PsyLattice may prevent attempts to use preview or TEST
+                functionality as a substitute for genuine live data collection.
               </p>
             </div>
           ),
         },
         {
-          title: "10. Live research study pricing and participant limits",
+          title: "10. Research pricing, live-study limits and paid entitlements",
           content: (
             <div className="space-y-4">
               <p>
-                The intended launch structure provides two standard live-study
-                tiers. The exact price displayed at checkout controls.
+                The current intended launch pricing below applies to India.
+                PsyLattice is not publishing a separate European pricing scheme at
+                this time. Prices may change, and the amount, currency, taxes and
+                entitlement shown at checkout are authoritative for the purchase
+                being made. Region-specific pricing may be introduced later.
               </p>
               <ul className="list-disc space-y-2 pl-5">
                 <li>
-                  <strong>Standard Study:</strong> currently planned at ₹49 in
-                  India or €3.99 in Europe for one live study with up to 500
-                  participants.
+                  <strong>Researcher Free:</strong> ₹0 in India, with one live
+                  study and up to 75 participants. User-uploaded image, audio and
+                  video media are not included, and AI-assisted features have a
+                  limited allowance.
                 </li>
                 <li>
-                  <strong>Large Study:</strong> currently planned at ₹99 in India
-                  or €7.99 in Europe for one live study with up to 1,000
-                  participants.
+                  <strong>Study Pass:</strong> ₹499 in India for one study,
+                  with up to 500 participants and the paid Research feature set
+                  for that study, including supported media uploads. The current intended Study Pass includes up to 12
+                  months of active data collection from activation. After that
+                  collection period, PsyLattice may place the study into a
+                  non-collecting or read-only state while continuing to make
+                  supported analysis and export functions available. Extensions
+                  may be offered separately.
                 </li>
                 <li>
-                  <strong>More than 1,000 participants:</strong> requires a
-                  larger-study or institutional arrangement if offered by
-                  PsyLattice.
+                  <strong>Researcher Pro Monthly:</strong> ₹349 per month in
+                  India. The current intended allowance is up to three
+                  simultaneously live studies and up to 700 active participant
+                  slots across those live studies, together with the paid Research
+                  feature set.
+                </li>
+                <li>
+                  <strong>Researcher Pro Annual:</strong> ₹3,499 per year in
+                  India, with the same current core Researcher Pro entitlement as
+                  the monthly plan for the annual billing period.
                 </li>
               </ul>
               <p>
-                Test and preview sessions do not count toward a live participant
-                allocation. Unless otherwise stated in the study setup, a unique
-                participant who starts a live study may count toward the study’s
-                participant limit even if that participant does not complete the
-                entire study.
+                Paid Research plans may include supported media uploads,
+                Cognitive Lab and Battery features, ambulatory and longitudinal
+                workflows, research analysis and exports, Research AI and the
+                supported Thesis Builder feature set. Feature availability may
+                still depend on the study design, device, region, third-party
+                service, licence status or technical compatibility.
               </p>
               <p>
-                When the purchased participant limit is reached, PsyLattice may
-                prevent additional participants from starting the study until an
-                eligible upgrade or larger-study arrangement is purchased.
+                AI-assisted features on all plans are subject to reasonable
+                technical, safety, abuse-prevention and fair-use limits. Paid
+                plans receive higher usage allowances than Researcher Free, but a
+                paid plan does not create a right to unlimited model calls,
+                unlimited tokens, automated bulk generation or abusive automated
+                use. PsyLattice may apply per-day, rolling, model-specific,
+                token-based or cost-based safeguards. Where a user reaches an
+                applicable limit, AI access may pause until the allowance resets
+                or another eligible entitlement is obtained.
+              </p>
+              <p>
+                Participant limits refer to participant allocations or unique
+                participant/session usage as determined by the applicable study
+                workflow, not merely to the number of URLs generated. Test and
+                preview sessions do not normally count toward a live participant
+                allocation. Unless otherwise stated, a participant who starts a
+                live study may count toward the applicable limit even if that
+                participant does not complete the entire study.
+              </p>
+              <p>
+                When a participant, live-study, media, storage or other plan limit
+                is reached, PsyLattice may prevent additional use of the limited
+                function until capacity becomes available, a study is closed, an
+                eligible upgrade or add-on is purchased, or another arrangement is
+                agreed.
               </p>
             </div>
           ),
@@ -296,8 +352,9 @@ export default function TermsPage() {
               <p>
                 A study becomes live when it is activated for genuine participant
                 recruitment or data collection rather than preview or internal
-                testing. A paid study activation applies to that study project
-                and its purchased participant limit.
+                testing. A live study uses the entitlement attached to the
+                researcher’s current plan or Study Pass, including the applicable
+                live-study and participant limits.
               </p>
               <p>
                 Researchers should finalise material study content before
@@ -419,15 +476,23 @@ export default function TermsPage() {
           ),
         },
         {
-          title: "17. Luna AI",
+          title: "17. AI-assisted features, including Luna and Research AI",
           content: (
             <div className="space-y-4">
               <p>
-                Luna is an AI-assisted feature intended to help users navigate
-                PsyLattice, reflect on information and understand available
-                self-assessment or platform features. Luna is not a doctor,
-                psychologist, psychotherapist, emergency responder or substitute
-                for professional care.
+                PsyLattice may provide AI-assisted features including Luna,
+                Research AI, writing or Thesis Builder assistance and other
+                supported AI tools. These features are intended to support
+                navigation, reflection, drafting, explanation and research
+                workflows; they are not substitutes for professional clinical
+                judgment, scientific responsibility or independent verification.
+              </p>
+              <p>
+                Luna is not a doctor, psychologist, psychotherapist, emergency
+                responder or substitute for professional care. Research AI does
+                not replace a researcher’s responsibility to verify scoring,
+                statistical outputs, source material, interpretations and research
+                conclusions.
               </p>
               <p>
                 AI systems can misunderstand context, generate inaccurate or
@@ -437,15 +502,18 @@ export default function TermsPage() {
                 safety, research or professional decisions are involved.
               </p>
               <p>
-                Luna access may be subject to daily, monthly, technical or fair-use
-                limits. The allowance displayed in the applicable plan or product
-                interface applies. Unused usage allowances do not have monetary
-                value unless expressly stated otherwise.
+                AI access may be subject to daily, monthly, rolling, model-specific,
+                token-based, technical or fair-use limits. Different plans may
+                receive different allowances. PsyLattice is not required to
+                advertise every internal abuse-prevention or cost-control threshold,
+                but users will not be charged a new recurring amount merely because
+                an internal AI allowance is reached. Unused usage allowances do not
+                have monetary value unless expressly stated otherwise.
               </p>
               <p>
-                Data handling associated with Luna, including use of external AI
-                service providers where applicable, will be described in the
-                PsyLattice Privacy Policy and related notices.
+                Data handling associated with AI-assisted features, including use
+                of external AI service providers where applicable, will be
+                described in the PsyLattice Privacy Policy and related notices.
               </p>
             </div>
           ),
@@ -491,7 +559,7 @@ export default function TermsPage() {
           ),
         },
         {
-          title: "20. Payments, taxes and billing",
+          title: "20. Payments, taxes, billing and plan changes",
           content: (
             <div className="space-y-4">
               <p>
@@ -505,6 +573,23 @@ export default function TermsPage() {
                 authorise the applicable payment provider to charge the payment
                 method you select for purchases and recurring renewals that you
                 approve.
+              </p>
+              <p>
+                A Study Pass is a one-time entitlement for the identified study
+                and does not itself create a recurring Researcher Pro
+                subscription. Researcher Pro Monthly and Researcher Pro Annual are
+                recurring plans where recurring billing is expressly shown and
+                authorised at checkout.
+              </p>
+              <p>
+                If a Researcher Pro subscription expires or is cancelled, the
+                account may return to the then-current Free entitlement at the end
+                of the paid billing period. If the account then exceeds Free-plan
+                limits, PsyLattice may require the researcher to reduce the number
+                of live studies, pause additional participant collection, stop new
+                paid-only media uploads or purchase another eligible entitlement.
+                Existing research responses will not be silently altered merely
+                because a subscription ends.
               </p>
               <p>
                 If payment fails, access to paid features may be restricted after
@@ -521,19 +606,27 @@ export default function TermsPage() {
           content: (
             <div className="space-y-4">
               <p>
-                You may cancel future renewal of a recurring Self subscription
-                through the billing controls made available by PsyLattice.
-                Except where applicable law, a specific offer or a refund policy
-                states otherwise, cancellation does not normally create a
-                prorated refund for an already-started paid billing period.
+                You may cancel future renewal of a recurring Self, Researcher Pro
+                Monthly or Researcher Pro Annual subscription through the billing
+                controls made available by PsyLattice. Except where applicable law,
+                a specific offer or a refund policy states otherwise, cancellation
+                normally takes effect at the end of the current paid billing period
+                and does not create a prorated refund for a billing period that has
+                already started.
               </p>
               <p>
-                A one-time research study fee is intended to pay for activation
-                of a live data-collection allocation. Once the study has been
-                activated for real data collection or participant data have been
-                collected, the study fee is generally non-refundable except where
-                required by law, where PsyLattice has made a billing error or
-                where an expressly stated refund policy applies.
+                A Study Pass is a one-time research entitlement. Once its study has
+                been activated for genuine data collection, paid-only resources
+                have been materially consumed or participant data have been
+                collected, the Study Pass is generally non-refundable except where
+                required by law, where PsyLattice has made a billing error or where
+                an expressly stated refund policy applies.
+              </p>
+              <p>
+                Cancellation or expiry of a paid plan does not by itself erase
+                research data. Continued access, export, media retention and
+                collection status remain subject to the applicable plan, Data
+                Policy, retention rules and legal obligations.
               </p>
               <p>
                 Nothing in these Terms removes mandatory consumer rights. Where
@@ -623,7 +716,11 @@ export default function TermsPage() {
               <p>
                 Researchers should regularly export and securely retain research
                 data needed for their own records rather than treating PsyLattice
-                as the sole permanent archive for a study.
+                as the sole permanent archive for a study. A study may become
+                non-collecting or read-only after a Study Pass collection period
+                ends, a subscription expires or a plan limit is reached, while
+                supported analysis and export access may continue according to the
+                applicable plan and retention policy.
               </p>
               <p>
                 Account deletion or study closure may not immediately remove all

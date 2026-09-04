@@ -26,6 +26,7 @@ import FollowupManager from "@/components/FollowupManager";
 import ResearchAiAssistant from "@/components/ResearchAiAssistant";
 import ResearchWritingWorkspace from "@/components/ResearchWritingWorkspace";
 import ResearchStudyAssociations from "@/components/ResearchStudyAssociations";
+import AnalysisLab from "@/components/AnalysisLab";
 import CognitiveLab from "../../components/CognitiveLab";
 import StudyBatteryPicker, { type StudyBatterySelection } from "@/components/StudyBatteryPicker";
 import { buildBatteryReporting, type BatteryAssignmentLike } from "@/lib/research/batteryReporting";
@@ -58,6 +59,7 @@ type Screen =
   | "links"
   | "data"
   | "explorer"
+  | "analysis"
   | "exports"
   | "ethics"
   | "team";
@@ -80,6 +82,7 @@ const navigation: {
 
   { id: "data", label: "Data Dashboard", group: "Data" },
   { id: "explorer", label: "Data Explorer", group: "Data" },
+  { id: "analysis", label: "Analysis Lab", group: "Data" },
   { id: "exports", label: "Export Data", group: "Data" },
 
   { id: "ethics", label: "Ethics & Consent", group: "Governance" },
@@ -99,6 +102,7 @@ const sidebarIcons: Record<Screen, LucideIcon> = {
   links: Link2,
   data: BarChart3,
   explorer: Database,
+  analysis: BarChart3,
   exports: FileDown,
   ethics: ShieldCheck,
   team: Users,
@@ -20802,6 +20806,294 @@ function DataExplorer() {
   );
 }
 
+
+/* =========================================================
+   ANALYSIS LAB — DEDICATED DATA ROUTE
+   ========================================================= */
+
+function AnalysisLabWorkspace() {
+  const {
+    studies,
+    selectedStudyId,
+    setSelectedStudyId,
+    selectedStudy,
+    bundle,
+    loading,
+    error,
+  } = useResearchDataWorkspace();
+
+  const [datasetType, setDatasetType] =
+    useState<ResearchDatasetType>("analysis_wide");
+  const [includeTestData, setIncludeTestData] = useState(false);
+
+  const rows = useMemo(
+    () =>
+      researchBuildRows(
+        bundle,
+        datasetType,
+        "pseudonymous",
+        includeTestData,
+        false
+      ),
+    [bundle, datasetType, includeTestData]
+  );
+
+  const codebook = useMemo(
+    () => researchBuildCodebook(bundle, datasetType, false),
+    [bundle, datasetType]
+  );
+
+  const analysisDatasetOptions: Array<{
+    value: ResearchDatasetType;
+    eyebrow: string;
+    description: string;
+    recommended?: boolean;
+  }> = [
+    {
+      value: "analysis_wide",
+      eyebrow: "Participant level",
+      description:
+        "Questionnaires, demographics and cognitive summaries together in one row per participant.",
+      recommended: true,
+    },
+    {
+      value: "questionnaire_scores",
+      eyebrow: "Questionnaires",
+      description: "Long-format questionnaire score records.",
+    },
+    {
+      value: "cognitive_participant_summary",
+      eyebrow: "Cognitive",
+      description: "Participant-level cognitive performance summaries.",
+    },
+    {
+      value: "cognitive_trials",
+      eyebrow: "Cognitive raw",
+      description: "One row per cognitive trial for trial-level inspection.",
+    },
+    {
+      value: "stop_signal_summary",
+      eyebrow: "Task summary",
+      description: "Participant-level Stop-Signal performance metrics.",
+    },
+    {
+      value: "corsi_summary",
+      eyebrow: "Task summary",
+      description: "Participant-level Corsi spatial span metrics.",
+    },
+    {
+      value: "card_sorting_summary",
+      eyebrow: "Task summary",
+      description: "Participant-level card-sorting performance metrics.",
+    },
+    {
+      value: "bart_summary",
+      eyebrow: "Task summary",
+      description: "Participant-level BART risk-taking metrics.",
+    },
+    {
+      value: "mental_rotation_summary",
+      eyebrow: "Task summary",
+      description: "Participant-level Mental Rotation performance metrics.",
+    },
+    {
+      value: "battery_summary",
+      eyebrow: "Battery",
+      description: "Participant-level cognitive battery summaries.",
+    },
+    {
+      value: "ambulatory_wide",
+      eyebrow: "EMA / ESM",
+      description: "One row per ambulatory check-in with analysis-ready variables.",
+    },
+    {
+      value: "ambulatory_participant_days",
+      eyebrow: "EMA / ESM",
+      description: "One row per participant-day for compliance and longitudinal summaries.",
+    },
+  ];
+
+  const activeDatasetOption =
+    analysisDatasetOptions.find((option) => option.value === datasetType) ||
+    analysisDatasetOptions[0];
+
+  const participantCount = bundle.participants.filter(
+    (participant) => includeTestData || !participant.is_test
+  ).length;
+
+  const numericCandidateCount = codebook.filter((variable) =>
+    /(number|numeric|integer|float|decimal|score|scale|reaction|rt|boolean)/i.test(
+      variable.type || ""
+    )
+  ).length;
+
+  return (
+    <div className="space-y-5">
+      <section className="relative overflow-hidden rounded-[30px] border border-slate-300/70 bg-white shadow-[0_2px_5px_rgba(15,23,42,.035),0_18px_46px_rgba(15,23,42,.075),0_46px_100px_rgba(15,23,42,.055)]">
+        <div className="absolute inset-0 bg-[radial-gradient(circle_at_8%_0%,rgba(34,211,238,.14),transparent_32%),radial-gradient(circle_at_92%_0%,rgba(139,92,246,.10),transparent_28%)]" />
+        <div className="relative px-5 py-6 sm:px-7 sm:py-7">
+          <div className="flex flex-col gap-5 xl:flex-row xl:items-start xl:justify-between">
+            <div className="max-w-3xl">
+              <div className="flex flex-wrap items-center gap-2">
+                <span className="rounded-full border border-cyan-200/80 bg-white/90 px-3 py-1 text-[10px] font-semibold uppercase tracking-[.1em] text-cyan-800 shadow-sm">
+                  Analysis Lab · V1
+                </span>
+                <span className="rounded-full border border-slate-200 bg-white/80 px-3 py-1 text-[10px] font-semibold text-slate-500 shadow-sm">
+                  Statistics calculated deterministically
+                </span>
+              </div>
+
+              <h2 className="mt-4 text-[30px] font-semibold tracking-[-0.045em] text-slate-950 sm:text-[36px]">
+                Turn collected data into research-ready results.
+              </h2>
+
+              <p className="mt-3 max-w-2xl text-[13px] leading-6 text-slate-500">
+                Choose a PsyLattice study and analysis frame, select variables, and build reproducible statistical outputs without leaving the Research workspace.
+              </p>
+            </div>
+
+            <div className="grid w-full gap-2 sm:grid-cols-3 xl:w-auto xl:min-w-[420px]">
+              {[
+                ["Rows", rows.length.toLocaleString(), "Current frame"],
+                ["Participants", participantCount.toLocaleString(), includeTestData ? "Live + TEST" : "Live only"],
+                ["Variables", codebook.length.toLocaleString(), `${numericCandidateCount} numeric hints`],
+              ].map(([label, value, detail]) => (
+                <div
+                  key={label}
+                  className="rounded-[20px] border border-white/90 bg-white/82 p-4 shadow-[0_2px_4px_rgba(15,23,42,.025),0_10px_24px_rgba(15,23,42,.05)] backdrop-blur"
+                >
+                  <p className="text-[9px] font-semibold uppercase tracking-[.1em] text-slate-400">
+                    {label}
+                  </p>
+                  <p className="mt-2 text-[24px] font-semibold tracking-[-.035em] text-slate-950">
+                    {loading ? "…" : value}
+                  </p>
+                  <p className="mt-1 text-[9px] text-slate-400">{detail}</p>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section className="rounded-[26px] border border-slate-300/70 bg-white p-4 shadow-[0_2px_5px_rgba(15,23,42,.03),0_12px_30px_rgba(15,23,42,.06)] sm:p-5">
+        <div className="grid gap-4 xl:grid-cols-[minmax(220px,.8fr)_minmax(280px,1.2fr)_auto] xl:items-end">
+          <label>
+            <span className="text-[10px] font-semibold uppercase tracking-[.08em] text-slate-400">
+              Study
+            </span>
+            <select
+              value={selectedStudyId}
+              onChange={(event) => setSelectedStudyId(event.target.value)}
+              className="mt-2 w-full border border-slate-300/70 bg-white px-4 py-3 text-sm font-semibold text-slate-800"
+            >
+              {studies.map((study) => (
+                <option key={study.id} value={study.id}>
+                  {study.title}
+                </option>
+              ))}
+            </select>
+          </label>
+
+          <label>
+            <span className="text-[10px] font-semibold uppercase tracking-[.08em] text-slate-400">
+              Analysis dataset
+            </span>
+            <select
+              value={datasetType}
+              onChange={(event) =>
+                setDatasetType(event.target.value as ResearchDatasetType)
+              }
+              className="mt-2 w-full border border-slate-300/70 bg-white px-4 py-3 text-sm font-semibold text-slate-800"
+            >
+              {analysisDatasetOptions.map((option) => (
+                <option key={option.value} value={option.value}>
+                  {option.recommended ? "Recommended · " : ""}
+                  {researchDatasetLabels[option.value]}
+                </option>
+              ))}
+            </select>
+          </label>
+
+          <label className="flex min-h-[48px] cursor-pointer items-center gap-2 rounded-full border border-slate-300/70 bg-white px-4 py-3 text-xs font-semibold text-slate-600 shadow-[0_4px_14px_rgba(15,23,42,.05)]">
+            <input
+              type="checkbox"
+              checked={includeTestData}
+              onChange={(event) => setIncludeTestData(event.target.checked)}
+            />
+            Include TEST data
+          </label>
+        </div>
+
+        <div className="mt-4 flex flex-col gap-3 rounded-[20px] border border-slate-100 bg-slate-50/70 px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
+          <div>
+            <div className="flex flex-wrap items-center gap-2">
+              <span className="rounded-full border border-cyan-200/80 bg-cyan-50 px-2.5 py-1 text-[9px] font-semibold text-cyan-800">
+                {activeDatasetOption.eyebrow}
+              </span>
+              {activeDatasetOption.recommended && (
+                <span className="rounded-full border border-violet-200/80 bg-violet-50 px-2.5 py-1 text-[9px] font-semibold text-violet-700">
+                  Recommended starting frame
+                </span>
+              )}
+            </div>
+            <p className="mt-2 text-[11px] leading-5 text-slate-500">
+              {activeDatasetOption.description}
+            </p>
+          </div>
+
+          <div className="shrink-0 text-right">
+            <p className="text-[9px] font-semibold uppercase tracking-[.08em] text-slate-400">
+              Identity mode
+            </p>
+            <p className="mt-1 text-[10px] font-semibold text-slate-700">
+              Pseudonymous · direct identifiers hidden
+            </p>
+          </div>
+        </div>
+      </section>
+
+      {error && (
+        <div className="border-l-2 border-rose-400 py-1 pl-3 text-sm text-rose-700">
+          {error}
+        </div>
+      )}
+
+      {!selectedStudy && (
+        <div className="border-l-2 border-cyan-400 py-1 pl-3 text-xs leading-5 text-slate-500">
+          No PsyLattice study is selected yet. The Analysis Lab can still be used with an external CSV from the canvas below.
+        </div>
+      )}
+
+      <AnalysisLab
+        rows={rows}
+        codebook={codebook}
+        datasetLabel={researchDatasetLabels[datasetType]}
+        studyTitle={selectedStudy?.title || ""}
+        datasetKey={`${selectedStudyId}:${datasetType}:${includeTestData ? "test" : "live"}`}
+        studyOptions={studies.map((study) => ({
+          value: study.id,
+          label: study.title,
+        }))}
+        selectedStudyId={selectedStudyId}
+        onStudyChange={setSelectedStudyId}
+        datasetOptions={analysisDatasetOptions.map((option) => ({
+          value: option.value,
+          label: researchDatasetLabels[option.value],
+          eyebrow: option.eyebrow,
+          description: option.description,
+          recommended: option.recommended,
+        }))}
+        selectedDatasetValue={datasetType}
+        onDatasetChange={(value) => setDatasetType(value as ResearchDatasetType)}
+        includeTestData={includeTestData}
+        onIncludeTestDataChange={setIncludeTestData}
+        identityModeLabel="Pseudonymous · direct identifiers hidden"
+      />
+    </div>
+  );
+}
+
 /* =========================================================
    EXPORT DATA
    ========================================================= */
@@ -22945,6 +23237,9 @@ export default function ResearcherWorkspace() {
       case "explorer":
         return <DataExplorer />;
 
+      case "analysis":
+        return <AnalysisLabWorkspace />;
+
       case "exports":
         return <ExportData />;
 
@@ -22984,6 +23279,8 @@ export default function ResearcherWorkspace() {
       "Monitor incoming responses, completeness and data-quality signals.",
     explorer:
       "Inspect participant observations and study variables before analysis.",
+    analysis:
+      "Run deterministic statistical analyses on PsyLattice study data or an external dataset in a dedicated analysis workspace.",
     exports:
       "Prepare clean research datasets for statistical analysis.",
     ethics:
@@ -23260,7 +23557,7 @@ export default function ResearcherWorkspace() {
                         {!sidebarCollapsed && (
                           <div className="flex min-w-0 flex-1 items-center gap-2">
                             <span className="min-w-0 truncate">{item.label}</span>
-                            {item.id === "cognitive" && (
+                            {(item.id === "cognitive" || item.id === "analysis") && (
                               <span className="ml-auto inline-flex shrink-0 items-center overflow-hidden rounded-full border shadow-[0_5px_16px_rgba(15,23,42,0.075),0_1px_3px_rgba(15,23,42,0.04)] border-cyan-200 bg-cyan-50 text-[8px] font-bold uppercase tracking-[0.12em] text-cyan-800">
                                 <span className="px-1.5 py-0.5">New</span>
                                 <span className="h-3 w-px bg-cyan-200" aria-hidden="true" />
@@ -23270,12 +23567,13 @@ export default function ResearcherWorkspace() {
                           </div>
                         )}
 
-                        {sidebarCollapsed && item.id === "cognitive" && (
+                        {sidebarCollapsed && (item.id === "cognitive" || item.id === "analysis") && (
                           <span
                             className="absolute right-1 top-1 flex h-3.5 min-w-3.5 items-center justify-center rounded-full border shadow-[0_5px_16px_rgba(15,23,42,0.075),0_1px_3px_rgba(15,23,42,0.04)] border-white bg-cyan-600 px-0.5 text-[7px] font-bold uppercase leading-none text-white shadow-sm"
                             aria-hidden="true"
+                          title="New · Beta"
                           >
-                            β
+                            Nβ
                           </span>
                         )}
                       </button>

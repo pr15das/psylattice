@@ -2823,8 +2823,31 @@ export default function ResearchWritingWorkspace({
                             editorRef.current = pageRefs.current[pageIndex] || null;
                             const pastedHtml = event.clipboardData.getData("text/html");
                             if (!pastedHtml) return;
+
+                            const safeHtml = sanitizeHtml(pastedHtml);
+                            const isAnalysisTable = safeHtml.includes(
+                              'data-psylattice-analysis-table="true"'
+                            );
+
                             event.preventDefault();
-                            execCommand("insertHTML", sanitizeHtml(pastedHtml));
+                            execCommand("insertHTML", safeHtml);
+
+                            if (isAnalysisTable) {
+                              window.setTimeout(() => {
+                                const page = pageRefs.current[pageIndex];
+                                page
+                                  ?.querySelectorAll<HTMLTableElement>(
+                                    '[data-psylattice-analysis-table="true"] table[data-psylattice-analysis-output="true"]'
+                                  )
+                                  .forEach((table) => {
+                                    ensureTableFrame(table);
+                                  });
+                                captureEditor(pageIndex, false);
+                                schedulePagination();
+                              }, 0);
+                              return;
+                            }
+
                             schedulePagination();
                           }}
                           data-placeholder={pageIndex === 0 ? "Start writing your paper…" : ""}
@@ -3043,6 +3066,60 @@ export default function ResearchWritingWorkspace({
         .research-paper-editor table { width: 100%; border-collapse: collapse; margin: 0; column-span: all; table-layout: auto; }
         .research-paper-editor th, .research-paper-editor td { border: 1px solid #94a3b8; padding: 6px 8px; text-align: left; vertical-align: top; }
         .research-paper-editor th { background: #f8fafc; font-weight: 700; }
+
+        /* Analysis Lab tables paste as publication-style tables rather than generic editor grids. */
+        .research-paper-editor [data-psylattice-analysis-table="true"] {
+          display: block;
+          width: 100%;
+          max-width: 100%;
+          margin: .35em 0 1em;
+          break-inside: avoid-page;
+          page-break-inside: avoid;
+        }
+        .research-paper-editor [data-psylattice-analysis-table="true"] .research-table-frame {
+          width: 100% !important;
+          max-width: 100% !important;
+          margin: .35em 0 .25em !important;
+        }
+        .research-paper-editor [data-psylattice-analysis-table="true"] table {
+          width: 100% !important;
+          max-width: 100% !important;
+          table-layout: fixed !important;
+          border: 0 !important;
+          border-collapse: collapse !important;
+          background: transparent !important;
+        }
+        .research-paper-editor [data-psylattice-analysis-table="true"] th,
+        .research-paper-editor [data-psylattice-analysis-table="true"] td {
+          border: 0 !important;
+          background: transparent !important;
+          padding: 5px 6px !important;
+          font-size: .88em;
+          line-height: 1.3;
+          overflow-wrap: anywhere;
+          word-break: normal;
+        }
+        .research-paper-editor [data-psylattice-analysis-table="true"] thead th {
+          border-top: 1.5px solid currentColor !important;
+          border-bottom: 1px solid currentColor !important;
+          font-weight: 600;
+        }
+        .research-paper-editor [data-psylattice-analysis-table="true"] tbody tr:last-child td {
+          border-bottom: 1.5px solid currentColor !important;
+        }
+        .research-paper-editor [data-psylattice-analysis-table="true"] th:not(:first-child),
+        .research-paper-editor [data-psylattice-analysis-table="true"] td:not(:first-child) {
+          text-align: center;
+          font-variant-numeric: tabular-nums;
+        }
+        .research-paper-editor [data-psylattice-analysis-table="true"] .research-table-resize-handle {
+          opacity: 0;
+          transition: opacity .16s ease;
+        }
+        .research-paper-editor [data-psylattice-analysis-table="true"]:hover .research-table-resize-handle,
+        .research-paper-editor [data-psylattice-analysis-table="true"] .research-table-frame:hover .research-table-resize-handle {
+          opacity: 1;
+        }
         .research-paper-editor hr { border: 0; border-top: 1px solid #cbd5e1; margin: 1em 0; column-span: all; }
         .research-paper-editor img { max-width: 100%; height: auto; }
       `}</style>

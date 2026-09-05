@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { BrainCircuit, Sparkles, ShieldCheck, RefreshCw } from "lucide-react";
+import { BrainCircuit, Sparkles, ShieldCheck, RefreshCw, History, X } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import {
   buildCognitiveAttachmentAnalysis,
@@ -101,6 +101,12 @@ const suggestedPrompts = [
   "What can I safely say in a Results section from the analyses already run?",
   "What important statistical analyses are still missing?",
 ];
+
+function researchConversationTitle(question: string) {
+  const clean = question.replace(/\s+/g, " ").trim();
+  if (!clean) return "Research Assistant conversation";
+  return clean.length <= 88 ? clean : `${clean.slice(0, 85)}…`;
+}
 
 function numeric(value: unknown) {
   const next = typeof value === "number" ? value : Number(value);
@@ -1214,6 +1220,11 @@ export default function ResearchAiAssistant({ studyId, studyTitle }: Props) {
   const [draft, setDraft] = useState("");
   const [sending, setSending] = useState(false);
   const [chatError, setChatError] = useState("");
+  const [saveHistoryEnabled, setSaveHistoryEnabled] = useState(false);
+  const [currentConversationId, setCurrentConversationId] = useState("");
+  const [savedMessageCount, setSavedMessageCount] = useState(0);
+  const [historyError, setHistoryError] = useState("");
+  const [historyPermissionOpen, setHistoryPermissionOpen] = useState(false);
 
   async function refreshContext() {
     setLoadingContext(true);
@@ -1238,6 +1249,8 @@ export default function ResearchAiAssistant({ studyId, studyTitle }: Props) {
     setMessages([]);
     setDraft("");
     setChatError("");
+    setCurrentConversationId("");
+    setSavedMessageCount(0);
     void refreshContext();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [studyId, includeTestData]);
@@ -1257,18 +1270,87 @@ export default function ResearchAiAssistant({ studyId, studyTitle }: Props) {
     return fitContext(context);
   }, [loaded, includeParticipantLevel]);
 
+  async function createSavedConversation(title: string) {
+    const supabase = createClient();
+    const { data: auth, error: authError } = await supabase.auth.getUser();
+    if (authError || !auth.user) throw new Error("Your PsyLattice session has expired.");
+    const { data, error } = await supabase
+      .from("research_ai_conversations")
+      .insert({
+        owner_user_id: auth.user.id,
+        surface: "research",
+        study_id: studyId,
+        document_id: null,
+        title: title || "Research Assistant conversation",
+      })
+      .select("id")
+      .single();
+    if (error || !data?.id) throw new Error(error?.message || "The Research Assistant conversation could not be saved.");
+    const id = String(data.id);
+    setCurrentConversationId(id);
+    setSavedMessageCount(0);
+    return id;
+  }
+
+  async function persistSavedMessage(conversationId: string, message: ChatMessage) {
+    const supabase = createClient();
+    const { data: auth, error: authError } = await supabase.auth.getUser();
+    if (authError || !auth.user) throw new Error("Your PsyLattice session has expired.");
+    const { error } = await supabase.from("research_ai_messages").insert({
+      conversation_id: conversationId,
+      owner_user_id: auth.user.id,
+      role: message.role,
+      content: message.content.slice(0, 12000),
+      metadata: {},
+    });
+    if (error) throw new Error(error.message || "The Research Assistant message could not be saved.");
+    await supabase.from("research_ai_conversations").update({ updated_at: new Date().toISOString() }).eq("id", conversationId);
+  }
+
+  async function enableHistorySaving() {
+    setHistoryPermissionOpen(false);
+    setHistoryError("");
+    try {
+      let conversationId = currentConversationId;
+      if (!conversationId) {
+        const firstUser = messages.find((message) => message.role === "user")?.content || "Research Assistant conversation";
+        conversationId = await createSavedConversation(researchConversationTitle(firstUser));
+      }
+      const unsavedMessages = messages.slice(currentConversationId ? savedMessageCount : 0);
+      for (const message of unsavedMessages) await persistSavedMessage(conversationId, message);
+      setSavedMessageCount(messages.length);
+      setSaveHistoryEnabled(true);
+    } catch (error) {
+      setSaveHistoryEnabled(false);
+      setHistoryError(error instanceof Error ? error.message : "Conversation saving could not be enabled.");
+    }
+  }
+
   async function send(questionOverride?: string) {
     const question = (questionOverride ?? draft).trim();
     if (!question || !effectiveContext || sending) return;
 
-    const nextMessages: ChatMessage[] = [
-      ...messages,
-      { role: "user", content: question },
-    ];
+    const userMessage: ChatMessage = { role: "user", content: question };
+    const nextMessages: ChatMessage[] = [...messages, userMessage];
     setMessages(nextMessages);
     setDraft("");
     setSending(true);
     setChatError("");
+
+    let persistenceConversationId = currentConversationId;
+    if (saveHistoryEnabled) {
+      try {
+        if (!persistenceConversationId) {
+          persistenceConversationId = await createSavedConversation(researchConversationTitle(question));
+        }
+        await persistSavedMessage(persistenceConversationId, userMessage);
+        setSavedMessageCount((count) => count + 1);
+      } catch (error) {
+        setSaveHistoryEnabled(false);
+        persistenceConversationId = "";
+        setHistoryError(error instanceof Error ? error.message : "This Research Assistant conversation could not be saved.");
+      }
+    }
 
     try {
       const response = await fetch("/api/research-assistant", {
@@ -1288,10 +1370,17 @@ export default function ResearchAiAssistant({ studyId, studyTitle }: Props) {
       if (!response.ok || !data.ok || !data.reply) {
         throw new Error(data.error || "The Research Assistant could not respond.");
       }
-      setMessages((current) => [
-        ...current,
-        { role: "assistant", content: data.reply as string },
-      ]);
+      const assistantMessage: ChatMessage = { role: "assistant", content: data.reply as string };
+      setMessages((current) => [...current, assistantMessage]);
+      if (saveHistoryEnabled && persistenceConversationId) {
+        try {
+          await persistSavedMessage(persistenceConversationId, assistantMessage);
+          setSavedMessageCount((count) => count + 1);
+        } catch (error) {
+          setSaveHistoryEnabled(false);
+          setHistoryError(error instanceof Error ? error.message : "The Research Assistant reply could not be saved.");
+        }
+      }
     } catch (error) {
       setChatError(
         error instanceof Error
@@ -1370,6 +1459,17 @@ export default function ResearchAiAssistant({ studyId, studyTitle }: Props) {
             />
             Include pseudonymous participant-level summaries
           </label>
+          <button
+            type="button"
+            onClick={() => {
+              if (saveHistoryEnabled) setSaveHistoryEnabled(false);
+              else setHistoryPermissionOpen(true);
+            }}
+            className={`flex items-center gap-2 rounded-xl border px-3 py-2 text-xs font-medium ${saveHistoryEnabled ? "border-emerald-200 bg-emerald-50 text-emerald-800" : "border-slate-200 bg-white text-slate-600"}`}
+          >
+            <History className="h-3.5 w-3.5" />
+            {saveHistoryEnabled ? "Saving this conversation" : "Save conversation history"}
+          </button>
         </div>
 
         {loadingContext ? (
@@ -1395,6 +1495,12 @@ export default function ResearchAiAssistant({ studyId, studyTitle }: Props) {
             ))}
           </div>
         ) : null}
+
+        {historyError && (
+          <div className="mt-3 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-xs leading-5 text-amber-800">
+            {historyError}
+          </div>
+        )}
 
         {loaded && (
           <>
@@ -1475,6 +1581,8 @@ export default function ResearchAiAssistant({ studyId, studyTitle }: Props) {
                     setMessages([]);
                     setDraft("");
                     setChatError("");
+                    setCurrentConversationId("");
+                    setSavedMessageCount(0);
                   }}
                   disabled={sending || messages.length === 0}
                   className="rounded-xl border border-slate-200 bg-white px-4 py-3 text-xs font-semibold text-slate-500 disabled:opacity-40"
@@ -1485,11 +1593,30 @@ export default function ResearchAiAssistant({ studyId, studyTitle }: Props) {
             </div>
 
             <p className="mt-3 text-[11px] leading-5 text-slate-400">
-              AI chat history is kept only in this page state and is not stored by this feature. Numerical conclusions must come from the PsyLattice analysis engine or an explicitly run statistical module.
+              {saveHistoryEnabled ? "Conversation saving is on for this chat. Saved research discussions remain private to your PsyLattice account and are not supplied to Analysis AI later unless you explicitly select and permit them." : "Conversation saving is off. Turn it on only if you want this research discussion available for later, explicitly permitted Analysis AI context."} Numerical conclusions must still come from the PsyLattice analysis engine or an explicitly run statistical module.
             </p>
           </>
         )}
       </div>
+
+
+      {historyPermissionOpen && (
+        <div className="fixed inset-0 z-[320] flex items-center justify-center bg-slate-950/40 p-4 backdrop-blur-[2px]">
+          <div className="w-full max-w-md rounded-[24px] border border-slate-200 bg-white p-5 shadow-2xl">
+            <div className="flex items-start justify-between gap-4">
+              <div className="flex h-10 w-10 items-center justify-center rounded-2xl bg-emerald-50 text-emerald-800"><History className="h-5 w-5" /></div>
+              <button type="button" onClick={() => setHistoryPermissionOpen(false)} className="rounded-full border border-slate-200 p-2 text-slate-400"><X className="h-4 w-4" /></button>
+            </div>
+            <h3 className="mt-4 text-lg font-semibold text-slate-950">Save this Research Assistant conversation?</h3>
+            <p className="mt-2 text-[11px] leading-5 text-slate-500">PsyLattice will save this chat in your own research account so it can appear in the Analysis AI past-conversation picker later. Existing messages in this chat will be saved when you approve.</p>
+            <div className="mt-4 rounded-xl border border-amber-200 bg-amber-50 p-3 text-[9px] leading-4 text-amber-900">Saving does not automatically let another AI session read the conversation. Analysis AI still requires you to select the exact saved chat and grant access separately.</div>
+            <div className="mt-5 flex justify-end gap-2">
+              <button type="button" onClick={() => setHistoryPermissionOpen(false)} className="rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-[10px] font-semibold text-slate-600">Cancel</button>
+              <button type="button" onClick={() => void enableHistorySaving()} className="rounded-xl bg-slate-950 px-4 py-2.5 text-[10px] font-semibold text-white">Enable saving</button>
+            </div>
+          </div>
+        </div>
+      )}
     </section>
   );
 }

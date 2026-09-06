@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import ExcelJS from "exceljs";
+import { createClient } from "@/lib/supabase/server";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -19,6 +20,9 @@ type ExportRequest = {
 
 const XLSX_MIME =
   "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet";
+const MAX_REQUEST_BYTES = 64 * 1024 * 1024;
+const MAX_TOTAL_CELLS = 8_000_000;
+const MAX_CELL_CHARS = 32_767;
 
 function safeSheetName(value: string, fallback: string) {
   const cleaned = value
@@ -147,6 +151,27 @@ function applyNumberFormat(
 }
 
 export async function POST(request: NextRequest) {
+  const supabase = await createClient();
+  const {
+    data: { user },
+    error: userError,
+  } = await supabase.auth.getUser();
+
+  if (userError || !user) {
+    return NextResponse.json(
+      { ok: false, error: "Authentication is required to generate a research export." },
+      { status: 401, headers: { "Cache-Control": "no-store" } }
+    );
+  }
+
+  const contentLength = Number(request.headers.get("content-length"));
+  if (Number.isFinite(contentLength) && contentLength > MAX_REQUEST_BYTES) {
+    return NextResponse.json(
+      { ok: false, error: "The export request is too large." },
+      { status: 413, headers: { "Cache-Control": "no-store" } }
+    );
+  }
+
   let body: ExportRequest;
 
   try {
@@ -183,6 +208,7 @@ export async function POST(request: NextRequest) {
   }
 
   let totalRows = 0;
+  let totalCells = 0;
   const usedNames = new Set<string>();
 
   try {
@@ -221,6 +247,20 @@ export async function POST(request: NextRequest) {
         throw new Error(
           `Worksheet ${sheet.name || sheetIndex + 1} has ${columns.length.toLocaleString()} columns, which is too close to Excel's worksheet limit. Use long/raw exports or reduce the selected variables.`
         );
+      }
+
+      totalCells += rows.length * columns.length;
+      if (totalCells > MAX_TOTAL_CELLS) {
+        throw new Error("This export is too large to generate safely. Reduce the selected data or export a smaller dataset.");
+      }
+
+      for (const row of rows) {
+        for (const column of columns) {
+          const value = excelValue(row[column]);
+          if (typeof value === "string" && value.length > MAX_CELL_CHARS) {
+            throw new Error("This export contains a cell value that is too large for Excel.");
+          }
+        }
       }
 
       if (columns.length === 0) {
@@ -317,15 +357,9 @@ export async function POST(request: NextRequest) {
         worksheet.headerFooter.oddFooter = `PsyLattice · ${sheet.description.slice(0, 180)}`;
       }
     });
-  } catch (error) {
+  } catch {
     return NextResponse.json(
-      {
-        ok: false,
-        error:
-          error instanceof Error
-            ? error.message
-            : "The Excel workbook could not be prepared.",
-      },
+      { ok: false, error: "The Excel workbook could not be prepared." },
       { status: 400 }
     );
   }
@@ -337,14 +371,11 @@ export async function POST(request: NextRequest) {
     responseBody = new Blob([excelBuffer as unknown as BlobPart], {
       type: XLSX_MIME,
     });
-  } catch (error) {
+  } catch {
     return NextResponse.json(
       {
         ok: false,
-        error:
-          error instanceof Error
-            ? error.message
-            : "The XLSX workbook could not be generated.",
+        error: "The XLSX workbook could not be generated.",
       },
       { status: 500 }
     );

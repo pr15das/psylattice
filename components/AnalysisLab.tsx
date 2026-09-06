@@ -197,13 +197,30 @@ const defaultOptions: Record<DescriptiveOptionKey, boolean> = {
   kurtosis: false,
 };
 
+type AnalysisNavCategory = "explore" | "compare" | "model" | "scales" | "design";
+
 type AnalysisCatalogueItem = {
   id: ActiveAnalysis;
   title: string;
   description: string;
   available: boolean;
+  category: AnalysisNavCategory;
   badge?: string;
 };
+
+type AnalysisNavCategoryDefinition = {
+  id: AnalysisNavCategory;
+  label: string;
+  description: string;
+};
+
+const analysisNavCategories: AnalysisNavCategoryDefinition[] = [
+  { id: "explore", label: "Explore", description: "Understand the data" },
+  { id: "compare", label: "Compare", description: "Group and condition differences" },
+  { id: "model", label: "Model", description: "Regression and advanced models" },
+  { id: "scales", label: "Scales", description: "Psychometrics" },
+  { id: "design", label: "Design", description: "Planning" },
+];
 
 const analysisCatalogue: AnalysisCatalogueItem[] = [
   {
@@ -211,98 +228,120 @@ const analysisCatalogue: AnalysisCatalogueItem[] = [
     title: "Descriptives",
     description: "Summaries, distributions and frequencies",
     available: true,
+    category: "explore",
   },
   {
     id: "diagnostics",
     title: "Diagnostics",
     description: "Normality, outliers and variance checks",
     available: true,
+    category: "explore",
   },
   {
     id: "visualizations",
     title: "Visualizations",
     description: "Scatter, distributions, means and interaction plots",
     available: true,
+    category: "explore",
   },
   {
     id: "correlations",
     title: "Correlations",
     description: "Pearson and Spearman associations",
     available: true,
-  },
-  {
-    id: "ttests",
-    title: "T-tests",
-    description: "Independent and paired comparisons",
-    available: true,
-  },
-  {
-    id: "nonparametric",
-    title: "Non-parametric",
-    description: "Rank-based group and repeated tests",
-    available: true,
+    category: "explore",
   },
   {
     id: "categorical",
     title: "Categorical",
     description: "Contingency tables, χ², Fisher and effect sizes",
     available: true,
+    category: "explore",
+  },
+  {
+    id: "ttests",
+    title: "T-tests",
+    description: "Independent and paired comparisons",
+    available: true,
+    category: "compare",
+  },
+  {
+    id: "nonparametric",
+    title: "Non-parametric",
+    description: "Rank-based group and repeated tests",
+    available: true,
+    category: "compare",
   },
   {
     id: "anova",
     title: "ANOVA",
     description: "One-way, factorial, ANCOVA and repeated measures",
     available: true,
+    category: "compare",
   },
   {
     id: "regression",
     title: "Regression",
     description: "Multiple linear models and diagnostics",
     available: true,
+    category: "model",
   },
   {
     id: "process",
     title: "Mediation & moderation",
     description: "Indirect effects, interactions and simple slopes",
     available: true,
+    category: "model",
   },
   {
     id: "mixed",
     title: "Mixed models",
     description: "Linear, binary and count outcomes nested within participants or clusters",
     available: true,
+    category: "model",
+    badge: "Core",
   },
   {
     id: "logistic",
     title: "Categorical regression",
     description: "Binary, multinomial and ordinal logistic models",
     available: true,
+    category: "model",
   },
   {
     id: "count",
     title: "Count models",
     description: "Poisson and negative-binomial event/count regression",
     available: true,
+    category: "model",
   },
   {
     id: "reliability",
     title: "Reliability",
     description: "Cronbach’s α, item-rest and scale diagnostics",
     available: true,
+    category: "scales",
+    badge: "Scale",
   },
   {
     id: "factor",
     title: "Factor analysis",
     description: "EFA, KMO, Bartlett and rotated factor loadings",
     available: true,
+    category: "scales",
   },
   {
     id: "power",
     title: "Power & sample size",
     description: "A priori planning, achieved power and effect-size utilities",
     available: true,
+    category: "design",
   },
 ];
+
+function analysisCategoryFor(id: ActiveAnalysis): AnalysisNavCategory {
+  return analysisCatalogue.find((item) => item.id === id)?.category ?? "explore";
+}
 
 function formatNumber(value: number | null, digits = 3) {
   if (value === null || !Number.isFinite(value)) return "—";
@@ -1564,6 +1603,7 @@ export default function AnalysisLab({
   identityModeLabel = "Pseudonymous · direct identifiers hidden",
 }: AnalysisLabProps) {
   const [activeAnalysis, setActiveAnalysis] = useState<ActiveAnalysis>("descriptives");
+  const [analysisCategoryTab, setAnalysisCategoryTab] = useState<AnalysisNavCategory>("explore");
   const [correlationMethod, setCorrelationMethod] = useState<CorrelationMethod>("pearson");
   const [tTestMode, setTTestMode] = useState<TTestMode>("independent");
   const [tTestEstimator, setTTestEstimator] = useState<IndependentTTestEstimator>("welch");
@@ -1827,6 +1867,14 @@ export default function AnalysisLab({
   const workbenchDatasetIdentity = `${sourceMode}|${sourceDatasetKey}|${preparedViewActive ? "prepared" : "raw"}`;
 
   useEffect(() => {
+    const nextCategory = analysisCategoryFor(activeAnalysis);
+    if (nextCategory !== analysisCategoryTab) {
+      setAnalysisCategoryTab(nextCategory);
+    }
+  }, [activeAnalysis]);
+
+
+  useEffect(() => {
     setAnalysisFilters([]);
     setNumericTransforms([]);
     setComputedVariables([]);
@@ -1851,6 +1899,11 @@ export default function AnalysisLab({
   const analysisAiPreparedVariablePreview = useMemo(
     () => preparation.canPrepare ? inferAnalysisVariables(preparation.rows, preparation.codebook) : [],
     [preparation.canPrepare, preparation.rows, preparation.codebook]
+  );
+
+  const visibleAnalysisCatalogue = useMemo(
+    () => analysisCatalogue.filter((analysis) => analysis.category === analysisCategoryTab),
+    [analysisCategoryTab]
   );
 
   const numericWorkbenchVariables = useMemo(
@@ -6463,94 +6516,111 @@ export default function AnalysisLab({
             </div>
           ) : (
             <>
-          <div className="px-1">
-            <p className="text-[9px] font-semibold uppercase tracking-[.13em] text-slate-400">
-              Analyses
-            </p>
-            <p className="mt-1 text-[11px] leading-5 text-slate-500">
-              Choose a statistical workflow.
-            </p>
-          </div>
+              <div className="px-1">
+                <p className="text-[9px] font-semibold uppercase tracking-[.13em] text-slate-400">
+                  Analyses
+                </p>
+                <p className="mt-1 text-[11px] leading-5 text-slate-500">
+                  Choose a statistical workflow.
+                </p>
+              </div>
 
-          <div className="mt-4 space-y-1.5">
-            {analysisCatalogue.map((analysis) => {
-              const selected = analysis.id === activeAnalysis;
-              return (
-              <button
-                key={analysis.id}
-                type="button"
-                disabled={!analysis.available}
-                onClick={() => {
-                  if (
-                    analysis.id === "descriptives" ||
-                    analysis.id === "visualizations" ||
-                    analysis.id === "diagnostics" ||
-                    analysis.id === "correlations" ||
-                    analysis.id === "ttests" ||
-                    analysis.id === "nonparametric" ||
-                    analysis.id === "categorical" ||
-                    analysis.id === "anova" ||
-                    analysis.id === "regression" ||
-                    analysis.id === "process" ||
-                    analysis.id === "mixed" ||
-                    analysis.id === "logistic" ||
-                    analysis.id === "count" ||
-                    analysis.id === "reliability" ||
-                    analysis.id === "factor" ||
-                    analysis.id === "power"
-                  ) {
-                    setActiveAnalysis(analysis.id);
-                    if (analysis.id === "mixed" && sourceMode === "study" && preparation.canPrepare) {
-                      setUsePreparedData(false);
-                    }
-                  }
-                }}
-                className={`w-full rounded-2xl border p-3 text-left ${
-                  selected
-                    ? "border-slate-900 bg-slate-950 text-white shadow-[0_8px_20px_rgba(15,23,42,.14)]"
-                    : analysis.available
-                      ? "border-slate-200 bg-white text-slate-700 hover:border-cyan-200 hover:bg-cyan-50/40"
-                      : "cursor-default border-transparent bg-transparent text-slate-400 hover:translate-y-0"
-                }`}
-              >
-                <div className="flex items-start justify-between gap-2">
-                  <div>
-                    <p className="text-[12px] font-semibold">{analysis.title}</p>
-                    <p
-                      className={`mt-1 text-[9px] leading-4 ${
-                        selected ? "text-slate-300" : analysis.available ? "text-slate-500" : "text-slate-400"
+              <div className="mt-4 w-full overflow-hidden rounded-[22px] border border-slate-200 bg-[linear-gradient(145deg,#f7fcfd_0%,#ffffff_60%,#f8fafc_100%)] p-2 shadow-[0_8px_24px_rgba(15,23,42,.06)] ring-1 ring-cyan-100/50">
+                <div className="grid w-full grid-cols-3 gap-1">
+                  {analysisNavCategories.slice(0, 3).map((category) => {
+                    const selected = analysisCategoryTab === category.id;
+                    return (
+                      <button
+                        key={category.id}
+                        type="button"
+                        onClick={() => setAnalysisCategoryTab(category.id)}
+                        className={`min-w-0 w-full whitespace-nowrap rounded-[13px] border px-1 py-2.5 text-center text-[9px] font-semibold leading-none transition-all duration-200 2xl:text-[10px] ${
+                          selected
+                            ? "border-cyan-300 bg-white text-slate-950 shadow-[0_5px_14px_rgba(15,23,42,.10)] ring-1 ring-cyan-200/70"
+                            : "border-transparent bg-transparent text-slate-500 hover:border-slate-200 hover:bg-white/80 hover:text-slate-800"
+                        }`}
+                      >
+                        {category.label}
+                      </button>
+                    );
+                  })}
+                </div>
+
+                <div className="mx-auto mt-1 grid w-[68%] min-w-0 grid-cols-2 gap-1">
+                  {analysisNavCategories.slice(3).map((category) => {
+                    const selected = analysisCategoryTab === category.id;
+                    return (
+                      <button
+                        key={category.id}
+                        type="button"
+                        onClick={() => setAnalysisCategoryTab(category.id)}
+                        className={`min-w-0 w-full whitespace-nowrap rounded-[13px] border px-1 py-2.5 text-center text-[9px] font-semibold leading-none transition-all duration-200 2xl:text-[10px] ${
+                          selected
+                            ? "border-cyan-300 bg-white text-slate-950 shadow-[0_5px_14px_rgba(15,23,42,.10)] ring-1 ring-cyan-200/70"
+                            : "border-transparent bg-transparent text-slate-500 hover:border-slate-200 hover:bg-white/80 hover:text-slate-800"
+                        }`}
+                      >
+                        {category.label}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+
+              <div className="mt-4 space-y-1.5">
+                {visibleAnalysisCatalogue.map((analysis) => {
+                  const selected = analysis.id === activeAnalysis;
+                  return (
+                    <button
+                      key={analysis.id}
+                      type="button"
+                      disabled={!analysis.available}
+                      onClick={() => {
+                        setActiveAnalysis(analysis.id);
+                        if (analysis.id === "mixed" && sourceMode === "study" && preparation.canPrepare) {
+                          setUsePreparedData(false);
+                        }
+                      }}
+                      className={`w-full rounded-2xl border p-3 text-left transition ${
+                        selected
+                          ? "border-slate-900 bg-slate-950 text-white shadow-[0_8px_20px_rgba(15,23,42,.14)]"
+                          : analysis.available
+                            ? "border-slate-200 bg-white text-slate-700 hover:border-cyan-200 hover:bg-cyan-50/40"
+                            : "cursor-default border-transparent bg-transparent text-slate-400"
                       }`}
                     >
-                      {analysis.description}
-                    </p>
-                  </div>
-                  {analysis.available ? (
-                    <div className="flex shrink-0 items-center gap-1.5">
-                      {analysis.badge ? (
-                        <span className={`rounded-full px-1.5 py-0.5 text-[7px] font-semibold uppercase tracking-[.06em] ${selected ? "bg-white/10 text-cyan-100" : "border border-cyan-100 bg-cyan-50 text-cyan-700"}`}>{analysis.badge}</span>
-                      ) : null}
-                      <ChevronRight className="mt-0.5 h-3.5 w-3.5" />
-                    </div>
-                  ) : (
-                    <span className="shrink-0 rounded-full bg-slate-200/70 px-1.5 py-0.5 text-[8px] font-semibold uppercase tracking-[.06em] text-slate-500">
-                      Next
-                    </span>
-                  )}
-                </div>
-              </button>
-              );
-            })}
-          </div>
+                      <div className="flex items-start justify-between gap-2">
+                        <div>
+                          <p className="text-[12px] font-semibold">{analysis.title}</p>
+                          <p className={`mt-1 text-[9px] leading-4 ${selected ? "text-slate-300" : "text-slate-500"}`}>
+                            {analysis.description}
+                          </p>
+                        </div>
+                        {analysis.available ? (
+                          <div className="flex shrink-0 items-center gap-1.5">
+                            {analysis.badge ? (
+                              <span className={`rounded-full px-1.5 py-0.5 text-[7px] font-semibold uppercase tracking-[.06em] ${selected ? "bg-white/10 text-cyan-100" : "border border-cyan-100 bg-cyan-50 text-cyan-700"}`}>
+                                {analysis.badge}
+                              </span>
+                            ) : null}
+                            <ChevronRight className="mt-0.5 h-3.5 w-3.5" />
+                          </div>
+                        ) : null}
+                      </div>
+                    </button>
+                  );
+                })}
+              </div>
 
-          <div className="mt-6 rounded-2xl border border-cyan-100 bg-[linear-gradient(145deg,#effcff,#ffffff)] p-3.5">
-            <div className="flex items-center gap-2">
-              <Sparkles className="h-3.5 w-3.5 text-cyan-700" />
-              <p className="text-[10px] font-semibold text-slate-800">Analysis V1</p>
-            </div>
-            <p className="mt-2 text-[9px] leading-4 text-slate-500">
-              Statistics are computed locally from the selected dataset. AI can later explain verified results, but it does not calculate them.
-            </p>
-          </div>
+              <div className="mt-6 rounded-2xl border border-cyan-100 bg-[linear-gradient(145deg,#effcff,#ffffff)] p-3.5">
+                <div className="flex items-center gap-2">
+                  <Sparkles className="h-3.5 w-3.5 text-cyan-700" />
+                  <p className="text-[10px] font-semibold text-slate-800">Analysis V1</p>
+                </div>
+                <p className="mt-2 text-[9px] leading-4 text-slate-500">
+                  Statistics are computed locally from the selected dataset. AI explains verified results; it does not calculate them.
+                </p>
+              </div>
             </>
           )}
         </aside>

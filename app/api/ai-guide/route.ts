@@ -1,6 +1,7 @@
 import OpenAI from "openai";
 import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
+import { aiRateLimitResponse, consumeAiRateLimit } from "@/lib/ai/rateLimit";
 
 const openai = new OpenAI();
 
@@ -31,6 +32,10 @@ export async function POST(request: Request) {
           status: 401,
         }
       );
+    }
+
+    if (!consumeAiRateLimit("guide", user.id)) {
+      return aiRateLimitResponse();
     }
 
     // -------------------------------------------------
@@ -170,11 +175,8 @@ STYLE:
         response.output_text ||
         "I couldn't generate a response. Please try again.",
     });
-  } catch (error) {
-    console.error(
-      "PsyLattice AI Guide error:",
-      error
-    );
+  } catch {
+    console.error("PsyLattice AI Guide request failed.");
 
     return NextResponse.json(
       {

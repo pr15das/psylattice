@@ -1,6 +1,7 @@
 import OpenAI from "openai";
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
+import { aiRateLimitResponse, consumeAiRateLimit } from "@/lib/ai/rateLimit";
 
 export const dynamic = "force-dynamic";
 
@@ -105,6 +106,10 @@ export async function POST(request: NextRequest) {
       return jsonError("Your PsyLattice session has expired. Please sign in again.", 401);
     }
 
+    if (!consumeAiRateLimit("research", user.id)) {
+      return aiRateLimitResponse();
+    }
+
     const apiKey = process.env.OPENAI_API_KEY;
     if (!apiKey) {
       return jsonError("The PsyLattice Research Assistant is not configured.", 503);
@@ -166,13 +171,8 @@ export async function POST(request: NextRequest) {
       { ok: true, reply },
       { headers: { "Cache-Control": "no-store" } }
     );
-  } catch (error) {
-    console.error("PsyLattice Research Assistant request failed:", error);
-    return jsonError(
-      error instanceof Error
-        ? error.message
-        : "The Research Assistant could not respond. Please try again.",
-      500
-    );
+  } catch {
+    console.error("PsyLattice Research Assistant request failed.");
+    return jsonError("Unable to process the Research Assistant request right now.", 500);
   }
 }

@@ -1,6 +1,7 @@
 import OpenAI from "openai";
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
+import { aiRateLimitResponse, consumeAiRateLimit } from "@/lib/ai/rateLimit";
 
 export const dynamic = "force-dynamic";
 
@@ -101,6 +102,10 @@ export async function POST(request: NextRequest) {
 
     if (userError || !user) return jsonError("Your PsyLattice session has expired. Please sign in again.", 401);
 
+    if (!consumeAiRateLimit("writing", user.id)) {
+      return aiRateLimitResponse();
+    }
+
     const apiKey = process.env.OPENAI_API_KEY;
     if (!apiKey) return jsonError("The PsyLattice Writing Assistant is not configured.", 503);
 
@@ -166,8 +171,8 @@ export async function POST(request: NextRequest) {
     const reply = response.output_text?.trim();
     if (!reply) return jsonError("The Writing Assistant returned an empty response.", 502);
     return NextResponse.json({ ok: true, reply }, { headers: { "Cache-Control": "no-store" } });
-  } catch (error) {
-    console.error("PsyLattice Writing Assistant request failed:", error);
-    return jsonError(error instanceof Error ? error.message : "The Writing Assistant could not respond. Please try again.", 500);
+  } catch {
+    console.error("PsyLattice Writing Assistant request failed.");
+    return jsonError("Unable to process the Writing Assistant request right now.", 500);
   }
 }

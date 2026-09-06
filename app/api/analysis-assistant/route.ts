@@ -1,6 +1,7 @@
 import OpenAI from "openai";
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
+import { aiRateLimitResponse, consumeAiRateLimit } from "@/lib/ai/rateLimit";
 
 export const dynamic = "force-dynamic";
 
@@ -590,6 +591,10 @@ export async function POST(request: NextRequest) {
     const { data: { user }, error: userError } = await supabase.auth.getUser();
     if (userError || !user) return jsonError("Your PsyLattice session has expired. Please sign in again.", 401);
 
+    if (!consumeAiRateLimit("analysis", user.id)) {
+      return aiRateLimitResponse();
+    }
+
     const apiKey = process.env.OPENAI_API_KEY;
     if (!apiKey) return jsonError("PsyLattice Analysis AI is not configured.", 503);
 
@@ -654,8 +659,8 @@ export async function POST(request: NextRequest) {
       { ok: true, reply: extracted.reply, proposal: extracted.proposal, workflow: extracted.workflow },
       { headers: { "Cache-Control": "no-store" } }
     );
-  } catch (error) {
-    console.error("PsyLattice Analysis AI request failed:", error);
-    return jsonError(error instanceof Error ? error.message : "Analysis AI could not respond. Please try again.", 500);
+  } catch {
+    console.error("PsyLattice Analysis AI request failed.");
+    return jsonError("Unable to process the Analysis AI request right now.", 500);
   }
 }

@@ -1,6 +1,7 @@
 import OpenAI from "openai";
 import { createClient } from "@supabase/supabase-js";
 import { NextRequest, NextResponse } from "next/server";
+import { aiRateLimitResponse, consumeAiRateLimit } from "@/lib/ai/rateLimit";
 
 export const dynamic = "force-dynamic";
 
@@ -130,6 +131,10 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    if (!consumeAiRateLimit("mobileGuide", user.id)) {
+      return aiRateLimitResponse();
+    }
+
     const apiKey = process.env.OPENAI_API_KEY;
     if (!apiKey) {
       return jsonError("The PsyLattice AI Guide is not configured.", 503);
@@ -156,14 +161,9 @@ export async function POST(request: NextRequest) {
       { ok: true, reply },
       { headers: { "Cache-Control": "no-store" } }
     );
-  } catch (error) {
-    console.error("PsyLattice mobile AI Guide request failed:", error);
+  } catch {
+    console.error("PsyLattice mobile AI Guide request failed.");
 
-    return jsonError(
-      error instanceof Error
-        ? error.message
-        : "The AI Guide could not respond. Please try again.",
-      500
-    );
+    return jsonError("Unable to process the AI Guide request right now.", 500);
   }
 }

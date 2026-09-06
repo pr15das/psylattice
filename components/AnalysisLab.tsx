@@ -6108,7 +6108,7 @@ export default function AnalysisLab({
           </div>
 
           <div className="flex min-w-0 justify-start xl:justify-center">
-            <div className="flex max-w-full flex-wrap items-center gap-0.5 rounded-2xl border border-cyan-100/80 bg-[linear-gradient(180deg,#f9fdff_0%,#f5f8fb_100%)] p-1 shadow-[0_4px_14px_rgba(15,23,42,.045)]">
+            <div className="flex max-w-full flex-wrap items-center gap-0.5 rounded-2xl border border-slate-800 bg-[linear-gradient(180deg,#111827_0%,#0f172a_100%)] p-1 shadow-[0_8px_20px_rgba(15,23,42,.16)] ring-1 ring-cyan-300/15">
               {analysisNavCategories.map((category) => {
                 const selected = analysisCategoryTab === category.id;
                 return (
@@ -6118,8 +6118,8 @@ export default function AnalysisLab({
                     onClick={() => setAnalysisCategoryTab(category.id)}
                     className={`relative shrink-0 whitespace-nowrap rounded-xl px-3.5 py-1.5 text-[9px] font-semibold transition-all duration-150 ${
                       selected
-                        ? "bg-white text-slate-950 shadow-[0_3px_10px_rgba(15,23,42,.08)] ring-1 ring-cyan-300"
-                        : "text-slate-500 hover:bg-white/70 hover:text-slate-800"
+                        ? "bg-white text-slate-950 shadow-[0_4px_12px_rgba(0,0,0,.22)] ring-1 ring-cyan-300"
+                        : "text-slate-300 hover:bg-white/10 hover:text-white"
                     }`}
                     title={category.description}
                   >

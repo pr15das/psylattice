@@ -6073,7 +6073,7 @@ export default function AnalysisLab({
       )}
 
       <div className="shrink-0 border-b border-slate-200/80 bg-white px-4 py-2.5 sm:px-5">
-        <div className="flex flex-wrap items-center justify-between gap-2">
+        <div className="grid gap-2.5 xl:grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] xl:items-center">
           <div className="flex min-w-0 items-center gap-2.5">
             <button
               type="button"
@@ -6107,7 +6107,31 @@ export default function AnalysisLab({
             </div>
           </div>
 
-          <div className="flex items-center gap-2">
+          <div className="flex min-w-0 justify-start xl:justify-center">
+            <div className="flex max-w-full flex-wrap items-center gap-0.5 rounded-2xl border border-cyan-100/80 bg-[linear-gradient(180deg,#f9fdff_0%,#f5f8fb_100%)] p-1 shadow-[0_4px_14px_rgba(15,23,42,.045)]">
+              {analysisNavCategories.map((category) => {
+                const selected = analysisCategoryTab === category.id;
+                return (
+                  <button
+                    key={category.id}
+                    type="button"
+                    onClick={() => setAnalysisCategoryTab(category.id)}
+                    className={`relative shrink-0 whitespace-nowrap rounded-xl px-3.5 py-1.5 text-[9px] font-semibold transition-all duration-150 ${
+                      selected
+                        ? "bg-white text-slate-950 shadow-[0_3px_10px_rgba(15,23,42,.08)] ring-1 ring-cyan-300"
+                        : "text-slate-500 hover:bg-white/70 hover:text-slate-800"
+                    }`}
+                    title={category.description}
+                  >
+                    {category.label}
+                    {selected ? <span className="absolute inset-x-3 bottom-0.5 h-px rounded-full bg-cyan-400" /> : null}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+
+          <div className="flex items-center justify-start gap-2 xl:justify-end">
             {preparation.canPrepare ? (
               <div className="flex items-center rounded-full border border-slate-200 bg-slate-50 p-0.5">
                 <button
@@ -6517,54 +6541,17 @@ export default function AnalysisLab({
           ) : (
             <>
               <div className="px-1">
-                <p className="text-[9px] font-semibold uppercase tracking-[.13em] text-slate-400">
-                  Analyses
-                </p>
+                <div className="flex items-center justify-between gap-2">
+                  <p className="text-[9px] font-semibold uppercase tracking-[.13em] text-slate-400">
+                    {analysisNavCategories.find((category) => category.id === analysisCategoryTab)?.label} analyses
+                  </p>
+                  <span className="rounded-full border border-slate-200 bg-white px-2 py-0.5 text-[7px] font-semibold text-slate-400">
+                    {visibleAnalysisCatalogue.length}
+                  </span>
+                </div>
                 <p className="mt-1 text-[11px] leading-5 text-slate-500">
                   Choose a statistical workflow.
                 </p>
-              </div>
-
-              <div className="mt-4 w-full overflow-hidden rounded-[22px] border border-slate-200 bg-[linear-gradient(145deg,#f7fcfd_0%,#ffffff_60%,#f8fafc_100%)] p-2 shadow-[0_8px_24px_rgba(15,23,42,.06)] ring-1 ring-cyan-100/50">
-                <div className="grid w-full grid-cols-3 gap-1">
-                  {analysisNavCategories.slice(0, 3).map((category) => {
-                    const selected = analysisCategoryTab === category.id;
-                    return (
-                      <button
-                        key={category.id}
-                        type="button"
-                        onClick={() => setAnalysisCategoryTab(category.id)}
-                        className={`min-w-0 w-full whitespace-nowrap rounded-[13px] border px-1 py-2.5 text-center text-[9px] font-semibold leading-none transition-all duration-200 2xl:text-[10px] ${
-                          selected
-                            ? "border-cyan-300 bg-white text-slate-950 shadow-[0_5px_14px_rgba(15,23,42,.10)] ring-1 ring-cyan-200/70"
-                            : "border-transparent bg-transparent text-slate-500 hover:border-slate-200 hover:bg-white/80 hover:text-slate-800"
-                        }`}
-                      >
-                        {category.label}
-                      </button>
-                    );
-                  })}
-                </div>
-
-                <div className="mx-auto mt-1 grid w-[68%] min-w-0 grid-cols-2 gap-1">
-                  {analysisNavCategories.slice(3).map((category) => {
-                    const selected = analysisCategoryTab === category.id;
-                    return (
-                      <button
-                        key={category.id}
-                        type="button"
-                        onClick={() => setAnalysisCategoryTab(category.id)}
-                        className={`min-w-0 w-full whitespace-nowrap rounded-[13px] border px-1 py-2.5 text-center text-[9px] font-semibold leading-none transition-all duration-200 2xl:text-[10px] ${
-                          selected
-                            ? "border-cyan-300 bg-white text-slate-950 shadow-[0_5px_14px_rgba(15,23,42,.10)] ring-1 ring-cyan-200/70"
-                            : "border-transparent bg-transparent text-slate-500 hover:border-slate-200 hover:bg-white/80 hover:text-slate-800"
-                        }`}
-                      >
-                        {category.label}
-                      </button>
-                    );
-                  })}
-                </div>
               </div>
 
               <div className="mt-4 space-y-1.5">

@@ -8,6 +8,7 @@ import {
   BookOpen,
   BrainCircuit,
   CalendarClock,
+  CreditCard,
   Database,
   FileDown,
   FileText,
@@ -45,6 +46,7 @@ import {
   type AmbulatoryScheduleDraft,
   type AmbulatoryQuestionnaireOption,
 } from "@/components/AmbulatoryProtocolBuilder";
+import { AiBudgetIndicator, AiModelSwitcher, PlansAndBilling } from "@/components/AiProductUi";
 
 type Screen =
   | "dashboard"
@@ -62,7 +64,8 @@ type Screen =
   | "analysis"
   | "exports"
   | "ethics"
-  | "team";
+  | "team"
+  | "billing";
 
 const navigation: {
   id: Screen;
@@ -87,6 +90,7 @@ const navigation: {
 
   { id: "ethics", label: "Ethics & Consent", group: "Governance" },
   { id: "team", label: "Team & Permissions", group: "Governance" },
+  { id: "billing", label: "Plans & Billing", group: "Governance" },
 ];
 
 const sidebarIcons: Record<Screen, LucideIcon> = {
@@ -106,6 +110,7 @@ const sidebarIcons: Record<Screen, LucideIcon> = {
   exports: FileDown,
   ethics: ShieldCheck,
   team: Users,
+  billing: CreditCard,
 };
 
 function ArrowIcon() {
@@ -21065,6 +21070,7 @@ function AnalysisLabWorkspace() {
         </div>
       )}
 
+      <div className="mb-3 flex justify-end"><AiModelSwitcher /></div>
       <AnalysisLab
         rows={rows}
         codebook={codebook}
@@ -23249,6 +23255,9 @@ export default function ResearcherWorkspace() {
       case "team":
         return <TeamPermissions />;
 
+      case "billing":
+        return <PlansAndBilling />;
+
       default:
         return <Dashboard changeScreen={setScreen} />;
     }
@@ -23287,6 +23296,8 @@ export default function ResearcherWorkspace() {
       "Manage research approval, participant information and consent versions.",
     team:
       "Control who can access, edit and export information within your studies.",
+    billing:
+      "Review plans, AI allowance and presentation-only capacity options.",
   };
 
   const groups: ("Research" | "Data" | "Governance")[] = [
@@ -23434,6 +23445,8 @@ export default function ResearcherWorkspace() {
           </div>
 
           <div className="hidden items-center gap-3 sm:flex">
+            <AiBudgetIndicator />
+            <AiModelSwitcher />
             <Status type="accent">Researcher</Status>
 
             <AccountSwitcher

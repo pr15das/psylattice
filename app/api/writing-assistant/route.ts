@@ -126,13 +126,16 @@ export async function POST(request: NextRequest) {
     const formatStyle = typeof body.format_style === "string" && FORMAT_LABELS[body.format_style] ? body.format_style : "custom";
     const formatLabel = FORMAT_LABELS[formatStyle];
     const documentTitle = typeof body.document_title === "string" ? body.document_title.trim().slice(0, 300) : ownedDocument.title;
-    const documentText = parseDocumentText(body.document_text);
+    // The client must explicitly grant access for this request. Do not use the
+    // presence of document_text as proof of permission.
+    const allowDocumentAccess = body.allow_document_access === true;
+    const documentText = allowDocumentAccess ? parseDocumentText(body.document_text) : "";
 
     const openai = new OpenAI({ apiKey });
     const model = process.env.PSYLATTICE_WRITING_AI_MODEL || process.env.PSYLATTICE_RESEARCH_AI_MODEL || process.env.PSYLATTICE_AI_GUIDE_MODEL || "gpt-5.6";
 
     if (action === "restructure") {
-      if (!documentText) return jsonError("Document access is required to restructure the paper.");
+      if (!allowDocumentAccess || !documentText) return jsonError("Document access is required to restructure the paper.");
       const response = await openai.responses.create({
         model,
         instructions: RESTRUCTURE_INSTRUCTIONS,

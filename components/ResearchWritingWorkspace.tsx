@@ -2127,6 +2127,7 @@ export default function ResearchWritingWorkspace({
         document_id: selectedDocument.id,
         messages: nextMessages,
         document_title: title,
+        allow_document_access: chatUseDocument,
         document_text: chatUseDocument ? combinedEditorText() : undefined,
         format_style: formatStyle,
       });
@@ -2148,6 +2149,8 @@ export default function ResearchWritingWorkspace({
         action: "restructure",
         document_id: selectedDocument.id,
         document_title: title,
+        // Restructure is an explicit, consented document operation.
+        allow_document_access: true,
         document_text: combinedEditorText(),
         format_style: targetFormat,
       });

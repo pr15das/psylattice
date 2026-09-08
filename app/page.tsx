@@ -410,24 +410,22 @@ const pricingContent = {
       {
         id: "researcher",
         eyebrow: "Start researching for free",
-        title: "Researcher Free",
-        price: "Free",
+        title: "Free",
+        price: "₹0",
         cadence: "",
         featured: true,
         description:
           "Build, publish and run one real PsyLattice study at no cost. Upgrade when you need another study, more participants, media or higher usage.",
         bullets: [
-          "1 live study included",
-          "Up to 75 participants",
-          "Questionnaire Library, Study Builder and Cognitive Lab",
-          "Thesis Builder with text-based workflows",
-          "Research data, analysis and exports",
-          "Limited AI assistance",
-          "No image, audio or video uploads",
+          "1 study",
+          "Basic participant capacity",
+          "Small AI allowance",
+          "PsyLattice Auto only",
+          "No custom media",
         ],
         ctaLabel: "Start researching free",
         ctaHref: "/signin",
-        note: "No card required. Your free live-study allowance includes up to 75 participants. Participants never pay. Additional studies, media uploads and higher usage are available on paid research plans.",
+        note: "Try PsyLattice. Participants never pay. Additional capacity and features are available on paid research plans.",
       },
       {
         id: "study-pass",
@@ -439,14 +437,11 @@ const pricingContent = {
         description:
           "For a thesis, dissertation or individual research project that needs the full PsyLattice research toolkit without a recurring subscription.",
         bullets: [
-          "1 live purchased study",
-          "Up to 500 participants",
-          "All Research features unlocked",
-          "Media uploads included",
-          "Cognitive Lab and Cognitive Batteries",
-          "EMA / ESM, follow-up and wearable workflows",
-          "Research AI, advanced analysis and exports",
-          "Full Thesis Builder",
+          "1 serious study",
+          "500 participants",
+          "200 AI credits",
+          "Some model choice",
+          "No custom media",
         ],
         ctaLabel: "Get a Study Pass",
         ctaHref: "/signin",
@@ -454,47 +449,47 @@ const pricingContent = {
       },
       {
         id: "research-pro-monthly",
-        eyebrow: "For regular researchers",
-        title: "Researcher Pro",
-        price: "₹349",
+        eyebrow: "Complete research workspace",
+        title: "Pro Monthly",
+        price: "₹749",
         cadence: "/month",
         featured: true,
         description:
-          "For researchers running multiple projects who want the complete PsyLattice research workspace without paying per study.",
+          "For researchers running multiple projects with the complete PsyLattice research workspace.",
         bullets: [
-          "Up to 3 simultaneously live studies",
-          "Up to 700 active participant slots",
-          "All Research features unlocked",
-          "Media uploads included",
-          "Cognitive Lab and Cognitive Batteries",
-          "EMA / ESM, follow-up and wearable workflows",
-          "Research AI, advanced analysis and exports",
-          "Full Thesis Builder",
+          "Multiple studies",
+          "700 participants",
+          "300 AI credits",
+          "Full AI model switcher",
+          "Custom image/audio/video stimuli",
+          "2 GB media storage",
         ],
-        ctaLabel: "Get Researcher Pro",
+        ctaLabel: "Get Pro Monthly",
         ctaHref: "/signin",
         note: "No per-study publication charge while subscribed. AI assistance and high-cost services are subject to reasonable fair-use limits.",
       },
       {
         id: "research-pro-annual",
         eyebrow: "Best value",
-        title: "Researcher Pro Annual",
-        price: "₹3,499",
+        title: "Pro Annual",
+        price: "₹7,499",
         cadence: "/year",
         featured: true,
         description:
           "The complete Researcher Pro workspace at a lower effective monthly price for researchers who use PsyLattice throughout the year.",
         bullets: [
-          "Everything in Researcher Pro",
-          "Equivalent to about ₹292/month",
-          "Up to 3 simultaneously live studies",
-          "Up to 700 active participant slots",
-          "Media uploads included",
-          "No per-study publication charge while subscribed",
+          "Everything in Pro",
+          "Multiple studies",
+          "700 participants",
+          "300 AI credits",
+          "Full AI model switcher",
+          "Custom media",
+          "5 GB media storage",
+          "Approximately 17% cheaper than monthly",
         ],
         ctaLabel: "Choose annual Pro",
         ctaHref: "/signin",
-        note: "Save ₹689 compared with paying ₹349 every month for a full year. AI assistance and high-cost services are subject to reasonable fair-use limits.",
+        note: "Best value for active researchers. AI assistance uses the included allowance.",
       },
       {
         id: "participants",
@@ -4252,7 +4247,7 @@ export default function Home() {
                 <strong className="font-semibold text-slate-800">
                   Researchers:
                 </strong>{" "}
-                1 live study + 75 participants free · then Study Pass or Pro
+                1 study free · then Study Pass or Pro
               </span>
               <span>
                 <strong className="font-semibold text-slate-800">
@@ -4297,8 +4292,8 @@ export default function Home() {
                     Start free. Pay only when your research needs more.
                   </h3>
                   <p className="mt-2 text-sm text-slate-500">
-                    Run one live study with up to 75 participants for free. Upgrade to a
-                    Study Pass for one larger project or Researcher Pro for ongoing research.
+                    Try PsyLattice with one study for free. Upgrade to a Study Pass for one
+                    serious project or Pro for ongoing research.
                   </p>
                 </div>
 
@@ -4320,7 +4315,7 @@ export default function Home() {
                         A real free research tier
                       </p>
                       <p className="mt-2 text-sm leading-6 text-cyan-950">
-                        Publish one live study with up to 75 participants. Free includes core research tools, limited AI and text-only Thesis Builder workflows; media uploads unlock on paid research plans.
+                        Free includes one study, a small AI allowance and PsyLattice Auto; custom media uploads are available only on Pro Monthly and Pro Annual.
                       </p>
                     </div>
                     <span className="w-fit rounded-full bg-white px-4 py-2 text-xs font-semibold text-cyan-800 shadow-sm">

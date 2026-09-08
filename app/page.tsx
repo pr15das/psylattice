@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import PsyLatticeLogo from "@/components/PsyLatticeLogo";
+import StudyPassCheckout from "@/components/StudyPassCheckout";
 import {
   Activity,
   ArrowRight,
@@ -4404,7 +4405,7 @@ export default function Home() {
                           {card.note}
                         </div>
 
-                        <Link
+                        {card.id === "study-pass" ? <StudyPassCheckout className="mt-4" /> : <Link
                           href={card.ctaHref}
                           className={`mt-4 inline-flex w-full items-center justify-center gap-2 rounded-xl px-5 py-3 text-sm font-semibold transition ${
                             card.id === "research-pro-monthly"
@@ -4416,7 +4417,7 @@ export default function Home() {
                         >
                           {card.ctaLabel}
                           <ArrowRight className="h-4 w-4" />
-                        </Link>
+                        </Link>}
 
                         <p className="mt-3 text-[11px] leading-5 text-slate-400">
                           By continuing, you agree to the{" "}

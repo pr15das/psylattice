@@ -46,7 +46,7 @@ import {
   type AmbulatoryScheduleDraft,
   type AmbulatoryQuestionnaireOption,
 } from "@/components/AmbulatoryProtocolBuilder";
-import { AiBudgetIndicator, AiModelSwitcher, PlansAndBilling } from "@/components/AiProductUi";
+import { AiBudgetIndicator, AiModelSwitcher, CartButton, PlansAndBilling } from "@/components/AiProductUi";
 
 type Screen =
   | "dashboard"
@@ -23446,6 +23446,7 @@ export default function ResearcherWorkspace() {
 
           <div className="hidden items-center gap-3 sm:flex">
             <AiBudgetIndicator />
+            <CartButton />
             <AiModelSwitcher />
             <Status type="accent">Researcher</Status>
 

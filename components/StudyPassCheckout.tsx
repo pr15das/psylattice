@@ -15,7 +15,7 @@ function loadCheckoutScript() {
   });
 }
 
-export default function StudyPassCheckout({ className = "" }: { className?: string }) {
+export default function StudyPassCheckout({ className = "", buttonLabel = "Get Study Pass" }: { className?: string; buttonLabel?: string }) {
   const [status, setStatus] = useState("");
   const [busy, setBusy] = useState(false);
 
@@ -38,5 +38,5 @@ export default function StudyPassCheckout({ className = "" }: { className?: stri
     } catch (checkoutError) { setStatus(checkoutError instanceof Error ? checkoutError.message : "Checkout could not be started."); setBusy(false); }
   }
 
-  return <div className={className}><button type="button" onClick={() => void startCheckout()} disabled={busy} className="inline-flex w-full items-center justify-center gap-2 rounded-xl bg-slate-950 px-5 py-3 text-sm font-semibold text-white transition hover:bg-slate-800 disabled:cursor-wait disabled:opacity-60">{busy ? "Preparing checkout..." : "Get Study Pass"}</button>{status && <p className="mt-3 text-xs leading-5 text-slate-500" role="status">{status}</p>}</div>;
+  return <div className={className}><button type="button" onClick={() => void startCheckout()} disabled={busy} className="inline-flex w-full items-center justify-center gap-2 rounded-xl bg-slate-950 px-5 py-3 text-sm font-semibold text-white transition hover:bg-slate-800 disabled:cursor-wait disabled:opacity-60">{busy ? "Preparing checkout..." : buttonLabel}</button>{status && <p className="mt-3 text-xs leading-5 text-slate-500" role="status">{status}</p>}</div>;
 }

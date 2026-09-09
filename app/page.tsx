@@ -1,1613 +1,1234 @@
 "use client";
 
-import Link from "next/link";
-import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
-import PsyLatticeLogo from "@/components/PsyLatticeLogo";
-import StudyPassCheckout from "@/components/StudyPassCheckout";
+import {
+  Fragment,
+  Suspense,
+  useEffect,
+  useMemo,
+  useState,
+  type ReactNode,
+} from "react";
 import {
   Activity,
-  ArrowRight,
   BarChart3,
   BellRing,
-  Brain,
+  BookOpen,
   CalendarDays,
   Check,
-  ChevronDown,
   ChevronRight,
-  ClipboardCheck,
   ClipboardList,
   Database,
   FileDown,
   FileText,
-  FlaskConical,
   HeartPulse,
-  Layers3,
-  LockKeyhole,
+  LayoutDashboard,
+  Lock,
   MessageSquare,
-  Microscope,
-  NotebookPen,
+  MonitorSmartphone,
   Search,
+  Settings2,
   ShieldCheck,
   Sparkles,
-  Smartphone,
   Stethoscope,
-  Target,
   Users,
-  Watch,
+  WandSparkles,
   Workflow,
-  X,
-  Eye,
-  Filter,
-  MoreHorizontal,
-  Plus,
-  Send,
-  type LucideIcon,
 } from "lucide-react";
+import { useRouter, useSearchParams } from "next/navigation";
+import PsyLatticeLogo from "@/components/PsyLatticeLogo";
+import { createClient } from "@/lib/supabase/client";
 
-type WorkspaceId = "self" | "research" | "clinical";
-type PreviewKind =
-  | "assessment"
-  | "ai"
-  | "ambulatory"
-  | "regulation"
-  | "progress"
-  | "wearables"
-  | "summary"
-  | "library"
-  | "builder"
-  | "custom"
-  | "participants"
-  | "data"
-  | "export"
-  | "clients"
-  | "history"
-  | "notes"
-  | "followup";
+type Workspace = "self" | "researcher" | "clinician";
 
-type Feature = {
+type TourSlide = {
   id: string;
+  eyebrow: string;
   title: string;
   description: string;
-  icon: LucideIcon;
-  preview: PreviewKind;
-  badge?: string;
+  note?: string;
 };
 
-type Workspace = {
-  id: WorkspaceId;
-  number: string;
-  navLabel: string;
+type TourConfig = {
+  workspace: Workspace;
   label: string;
-  title: string;
-  shortDescription: string;
-  description: string;
-  icon: LucideIcon;
-  features: Feature[];
+  shortLabel: string;
+  destination: string;
+  slides: TourSlide[];
 };
 
-const workspaces: Workspace[] = [
-  {
-    id: "self",
-    number: "01",
-    navLabel: "Self",
-    label: "For individuals",
-    title: "PsyLattice Self",
-    shortDescription: "Assess · Monitor · Regulate",
-    description:
-      "Understand your psychological patterns through structured self-assessments, real-world check-ins and guided self-regulation.",
-    icon: Brain,
-    features: [
+const tourConfigs: Record<Workspace, TourConfig> = {
+  self: {
+    workspace: "self",
+    label: "PsyLattice Self",
+    shortLabel: "Self",
+    destination: "/self",
+    slides: [
       {
-        id: "self-assessments",
-        title: "Validated self-assessment questionnaires",
+        id: "dashboard",
+        eyebrow: "Your overview",
+        title: "Dashboard",
         description:
-          "Use structured psychological self-checks while keeping results organised in your personal workspace.",
-        icon: ClipboardCheck,
-        preview: "assessment",
+          "Your personal overview brings together your clinician connection, assessments, monitoring activity and what needs your attention today.",
+        note:
+          "Connecting with a clinician does not automatically give them access to everything in Self.",
       },
       {
-        id: "ai-guide",
-        title: "AI-guided assessment discovery",
+        id: "ai",
+        eyebrow: "Explore",
+        title: "AI Guide",
         description:
-          "Describe what you have been experiencing and use AI guidance to navigate suitable self-checks without automated diagnosis.",
-        icon: Sparkles,
-        preview: "ai",
-        badge: "AI",
+          "Explore psychological concepts, think about what you may want to assess and reflect on patterns you have noticed.",
+        note:
+          "AI conversations stay outside clinician-sharing permissions.",
       },
       {
-        id: "ambulatory",
-        title: "Ambulatory assessments",
+        id: "assessments",
+        eyebrow: "Measure",
+        title: "Self-Assessments",
         description:
-          "Capture repeated experiences as they occur across everyday situations and routines.",
-        icon: Activity,
-        preview: "ambulatory",
+          "Browse supported measures, complete structured self-assessments and revisit previous results.",
       },
       {
-        id: "self-regulation",
-        title: "Self-regulation tools",
+        id: "monitoring",
+        eyebrow: "Observe",
+        title: "Daily Monitoring",
         description:
-          "Turn reflection into small, structured routines that can be followed over time.",
-        icon: Target,
-        preview: "regulation",
+          "Capture experiences repeatedly using scheduled, event-based or participant-initiated check-ins.",
+      },
+      {
+        id: "regulation",
+        eyebrow: "Act",
+        title: "Self-Regulation",
+        description:
+          "Create small, trackable routines and follow completion across time.",
       },
       {
         id: "progress",
-        title: "Progress tracking",
+        eyebrow: "Understand",
+        title: "Progress",
         description:
-          "Bring repeated measures together to make patterns across time easier to notice.",
-        icon: BarChart3,
-        preview: "progress",
+          "See how assessments, monitoring and other tracked information change over time.",
       },
       {
         id: "wearables",
-        title: "Optional wearable integration",
+        eyebrow: "Optional context",
+        title: "Wearables",
         description:
-          "Add sleep, activity and physiological context when you choose to connect supported wearable data.",
-        icon: Watch,
-        preview: "wearables",
+          "Add optional behavioural or physiological context when wearable integrations are available.",
       },
       {
-        id: "therapist-summary",
-        title: "Therapist Summary",
+        id: "appointments",
+        eyebrow: "Connected care",
+        title: "Appointments",
         description:
-          "Prepare selected information to discuss with your therapist while retaining control over what you share.",
-        icon: FileText,
-        preview: "summary",
+          "See appointments with your current clinician and send appointment requests through PsyLattice.",
+      },
+      {
+        id: "messages",
+        eyebrow: "Connected care",
+        title: "Messages",
+        description:
+          "Use PsyLattice for private, non-emergency communication with your current clinician.",
+      },
+      {
+        id: "privacy",
+        eyebrow: "You stay in control",
+        title: "Privacy & Sharing",
+        description:
+          "Choose exactly which categories of Self information your current clinician can access.",
+        note:
+          "You can change permissions or disconnect your clinician at any time.",
       },
     ],
   },
-  {
-    id: "research",
-    number: "02",
-    navLabel: "Research",
-    label: "For researchers",
-    title: "PsyLattice Research",
-    shortDescription: "Build · Collect · Export",
-    description:
-      "Design psychological studies, deploy questionnaires and ambulatory protocols, manage participants and export research-ready data.",
-    icon: Microscope,
-    features: [
+  researcher: {
+    workspace: "researcher",
+    label: "PsyLattice Research",
+    shortLabel: "Research",
+    destination: "/researcher",
+    slides: [
+      { id: "dashboard", eyebrow: "Research overview", title: "Dashboard", description: "Start with a live overview of your research workspace, then move through the dashboard feature groups one by one." },
+      { id: "studies", eyebrow: "Research home", title: "Studies", description: "Browse every study in your workspace, filter by status, reopen drafts and track participant capacity from one place." },
+      { id: "study-builder", eyebrow: "Design your protocol", title: "Study Builder", description: "Choose exactly what belongs in your study — consent, demographics, questionnaires, cognitive tasks, ambulatory assessments, follow-ups, wearables and more." },
+      { id: "questionnaires", eyebrow: "Research measures", title: "Questionnaire Library", description: "Find research measures, inspect administration and licensing information, or build your own questionnaire with configurable item types, scoring and publication controls." },
+      { id: "cognitive-lab", eyebrow: "Experimental psychology", title: "Cognitive Lab", description: "Start with real cognitive paradigms and customise the protocol, timing, trials and outputs for your own experiment.", note: "Cognitive tasks can be embedded directly inside PsyLattice studies alongside questionnaires and longitudinal assessments." },
+      { id: "thesis-builder", eyebrow: "Research writing", title: "Thesis Builder", description: "Organise research documents, write in a full academic editor and bring analysis output into your manuscript without leaving PsyLattice.", note: "Writing AI assists with explanation, structure and revision while your documents remain researcher-owned." },
+      { id: "ambulatory", eyebrow: "EMA / ESM", title: "Ambulatory Assessment", description: "Build repeated real-world assessments using scheduled check-ins, response windows, reminders, ratings and conditional follow-up blocks." },
+      { id: "participants", eyebrow: "Recruit & monitor", title: "Participants", description: "Track enrolled participants, consent, study status and completion across questionnaires, cognitive tasks and repeated assessments." },
+      { id: "participant-links", eyebrow: "Deploy your study", title: "Participant Links", description: "Create secure participant-facing study links while keeping participants completely outside the Researcher workspace." },
+      { id: "data-dashboard", eyebrow: "Monitor collection", title: "Data Dashboard", description: "Watch live participant activity, completed questionnaires, cognitive-task runs and transparent data-quality checks." },
+      { id: "data-explorer", eyebrow: "Inspect your dataset", title: "Data Explorer", description: "Inspect participant-level records, questionnaire responses and cognitive-task summaries before formal analysis." },
+      { id: "analysis-lab", eyebrow: "Deterministic statistics", title: "Analysis Lab", description: "Explore, compare and model your data using deterministic statistical workflows, including power analysis, effect sizes and model diagnostics.", note: "PsyLattice computes the statistics. Analysis AI explains verified results rather than inventing the calculations." },
+      { id: "export", eyebrow: "Reproducible research", title: "Export Data", description: "Preview exactly what will leave PsyLattice and generate analysis-ready, statistics-compatible or lossless archival workbooks." },
+      { id: "plans-billing", eyebrow: "Research capacity", title: "Plans & Billing", description: "Manage study capacity, participant allowances, AI credits, model access, media storage and optional research add-ons." },
+      { id: "research-ai", eyebrow: "AI across PsyLattice", title: "AI Model Switcher", description: "Use PsyLattice Auto or choose another available model without leaving the research workflow you are currently working in.", note: "Model availability follows your plan and AI allowance." },
+    ],
+  },
+  clinician: {
+    workspace: "clinician",
+    label: "PsyLattice Clinical",
+    shortLabel: "Clinical",
+    destination: "/clinician",
+    slides: [
       {
-        id: "library",
-        title: "Questionnaire Library",
+        id: "clients",
+        eyebrow: "Clinical home",
+        title: "Clients",
         description:
-          "Find reusable psychological measures and keep study instruments organised in one research workflow.",
-        icon: ClipboardList,
-        preview: "library",
+          "Your Clinical workspace centres on connected clients and each active clinician-client relationship.",
       },
       {
-        id: "study-builder",
-        title: "Study Builder",
+        id: "client-overview",
+        eyebrow: "Connected client",
+        title: "Client Overview",
         description:
-          "Configure study information, consent, measures and participant flow before a study goes live.",
-        icon: FlaskConical,
-        preview: "builder",
+          "Open a client to work with authorised assessment, monitoring, progress and clinical information.",
       },
       {
-        id: "custom-questionnaires",
-        title: "Custom questionnaires",
+        id: "assessments",
+        eyebrow: "Measure",
+        title: "Assessments",
         description:
-          "Build study-specific questionnaires when a library measure is not the right fit.",
-        icon: Layers3,
-        preview: "custom",
+          "Assign measures and review assessment information available within the active client relationship.",
       },
       {
-        id: "ema-esm",
-        title: "EMA / ESM protocols",
+        id: "monitoring",
+        eyebrow: "Observe",
+        title: "Monitoring",
         description:
-          "Create repeated real-world assessment schedules with ambulatory windows and participant prompts.",
-        icon: Activity,
-        preview: "ambulatory",
+          "Propose real-world monitoring protocols and review information the client has chosen to share.",
       },
       {
-        id: "participant-dashboards",
-        title: "Participant dashboards",
+        id: "progress",
+        eyebrow: "Longitudinal view",
+        title: "Progress",
         description:
-          "Track participation, phases and completion without mixing research participation with personal Self records.",
-        icon: Users,
-        preview: "participants",
+          "Review authorised information across time rather than relying on isolated appointments or single scores.",
       },
       {
-        id: "research-monitoring",
-        title: "Research data monitoring",
+        id: "care-pathway",
+        eyebrow: "Plan",
+        title: "Care Pathway",
         description:
-          "Inspect study activity, completion, responses and data flags while collection is underway.",
-        icon: Database,
-        preview: "data",
+          "Organise goals, actions, reviews and the evolving structure of professional work.",
       },
       {
-        id: "exports",
-        title: "CSV, XLSX and analysis-ready exports",
+        id: "notes",
+        eyebrow: "Professional workspace",
+        title: "Professional Notes",
         description:
-          "Move from collection to structured datasets with multiple export formats and research-ready views.",
-        icon: FileDown,
-        preview: "export",
+          "Keep clinician-authored notes organised in private folders and professional records.",
+      },
+      {
+        id: "appointments",
+        eyebrow: "Practice workflow",
+        title: "Appointments",
+        description:
+          "Schedule appointments, review client requests and keep client-visible information separate from private notes.",
+      },
+      {
+        id: "messages",
+        eyebrow: "Communication",
+        title: "Secure Messages",
+        description:
+          "Use PsyLattice for private, non-emergency communication with currently connected clients.",
+      },
+      {
+        id: "receptionist",
+        eyebrow: "Optional administration",
+        title: "Receptionist Access",
+        description:
+          "Give a receptionist appointment-management access without exposing confidential clinical areas.",
       },
     ],
   },
-  {
-    id: "clinical",
-    number: "03",
-    navLabel: "Clinical",
-    label: "For professionals",
-    title: "PsyLattice Clinical",
-    shortDescription: "Review · Document · Follow up",
-    description:
-      "Bring assessments, everyday monitoring and authorised physiological context together in a structured professional workspace.",
-    icon: Stethoscope,
-    features: [
-      {
-        id: "client-dashboard",
-        title: "Assigned client dashboard",
-        description:
-          "Keep connected client relationships, access status and relevant shared information in one professional context.",
-        icon: Users,
-        preview: "clients",
-      },
-      {
-        id: "assessment-history",
-        title: "Assessment history",
-        description:
-          "Review supported assessment information across time within the connected client workflow.",
-        icon: ClipboardCheck,
-        preview: "history",
-      },
-      {
-        id: "clinical-monitoring",
-        title: "Ambulatory monitoring",
-        description:
-          "Review authorised real-world monitoring information shared through the connected-care workflow.",
-        icon: Activity,
-        preview: "ambulatory",
-      },
-      {
-        id: "wearable-summaries",
-        title: "Wearable summaries",
-        description:
-          "Add authorised sleep, activity and physiological summaries as context when clients choose to share them.",
-        icon: Watch,
-        preview: "wearables",
-      },
-      {
-        id: "longitudinal-progress",
-        title: "Longitudinal progress",
-        description:
-          "Bring repeated information together to support qualified professional review over time.",
-        icon: BarChart3,
-        preview: "progress",
-      },
-      {
-        id: "professional-notes",
-        title: "Professional notes",
-        description:
-          "Keep clinician-authored working notes organised in a dedicated professional record.",
-        icon: NotebookPen,
-        preview: "notes",
-      },
-      {
-        id: "follow-up",
-        title: "Professional notes and follow-up",
-        description:
-          "Keep appointments, follow-up activity and non-emergency communication attached to the professional workflow.",
-        icon: BellRing,
-        preview: "followup",
-      },
+};
+
+type TourCapability = {
+  title: string;
+  description: string;
+};
+
+type TourFeatureDetails = {
+  capabilities: TourCapability[];
+  takeaway?: string;
+};
+
+const researchTourDetails: Record<string, TourFeatureDetails> = {
+  dashboard: {
+    capabilities: [
+      { title: "See the whole research workspace", description: "The dashboard brings study activity, recruitment, status signals and common actions into one starting view." },
     ],
+    takeaway: "The dashboard is the orientation layer for the Research workspace — it tells you what is happening before you open a specific study or dataset.",
+  },
+  studies: {
+    capabilities: [
+      { title: "Manage the full study lifecycle", description: "Keep drafts, active studies, completed projects and archived work organised in one research home." },
+      { title: "See recruitment at a glance", description: "Participant counts and study status stay visible without opening every project individually." },
+      { title: "Return to work instantly", description: "Filter, search and reopen any saved study exactly where you left it." },
+    ],
+    takeaway: "Studies is the starting point for every research project you create in PsyLattice.",
+  },
+  "study-builder": {
+    capabilities: [
+      { title: "Build a modular protocol", description: "Combine consent, demographics, questionnaires, cognitive tasks, EMA, follow-ups, wearables and uploads." },
+      { title: "Let the workflow adapt", description: "PsyLattice changes the remaining setup steps automatically based on the components you include." },
+      { title: "Keep design decisions explicit", description: "Study safeguards make important consent, identifier and protocol choices visible while you build." },
+    ],
+    takeaway: "The Study Builder turns a research idea into a deployable participant flow.",
+  },
+  questionnaires: {
+    capabilities: [
+      { title: "Use measures responsibly", description: "Search the catalogue, inspect research details and check the recorded licence or usage status before deployment." },
+      { title: "Build original instruments", description: "Create questionnaires from configurable item types, blocks, media, branching and randomisation controls." },
+      { title: "Keep ownership explicit", description: "Choose whether an original instrument stays private, is published freely, or requires permission, with rights confirmation before saving." },
+    ],
+    takeaway: "Questionnaire Library combines measure discovery, usage-rights visibility and a flexible original-instrument builder in one research workflow.",
+  },
+  "cognitive-lab": {
+    capabilities: [
+      { title: "Start from real paradigms", description: "Use study-ready templates for reaction time, inhibition, vigilance, working memory and related constructs." },
+      { title: "Customise the experiment", description: "Edit task timing, trial structure, stimuli, responses and protocol details instead of starting from zero." },
+      { title: "Collect analysis-ready outputs", description: "Each task exposes meaningful performance measures such as accuracy, reaction time, errors and omissions." },
+    ],
+    takeaway: "Cognitive Lab brings experimental psychology directly into the same study workflow as questionnaires and longitudinal data.",
+  },
+  "thesis-builder": {
+    capabilities: [
+      { title: "Keep research writing organised", description: "Store manuscripts, folders and supporting documents inside a dedicated researcher-owned workspace." },
+      { title: "Write with academic controls", description: "Use a full editor with formatting, margins, fonts, imports, exports and structured research documents." },
+      { title: "Bring results into the manuscript", description: "Move tables and interpretations from your research workflow into the thesis without rebuilding them manually." },
+    ],
+    takeaway: "Writing AI can assist with structure and explanation when document access is permitted, while the researcher stays in control.",
+  },
+  ambulatory: {
+    capabilities: [
+      { title: "Measure people in daily life", description: "Create time-contingent, event-contingent and participant-initiated assessments outside the lab." },
+      { title: "Control when responses happen", description: "Set schedules, response windows, reminders and repeated check-ins across days or weeks." },
+      { title: "Build adaptive questions", description: "Use ratings, yes/no items and conditional follow-up blocks to make protocols responsive to participant answers." },
+    ],
+    takeaway: "Ambulatory Assessment is built for EMA, ESM and other repeated-measures designs where within-person change matters.",
+  },
+  participants: {
+    capabilities: [
+      { title: "Monitor enrolment", description: "See who has joined the study and whether each participant is active, completed or still pending." },
+      { title: "Track completion", description: "Follow consent, questionnaires, cognitive tasks and other study components participant by participant." },
+      { title: "Keep research identities separate", description: "Work with participant IDs and study records without exposing participants to the Researcher workspace." },
+    ],
+    takeaway: "Participants gives you the operational view of how your sample is progressing through the study.",
+  },
+  "participant-links": {
+    capabilities: [
+      { title: "Create secure recruitment routes", description: "Generate token-based participant links for saved PsyLattice studies." },
+      { title: "Separate test and live collection", description: "Keep testing records distinguishable from actual research participation before launch." },
+      { title: "Control deployment", description: "Open, pause or reactivate recruitment links while keeping the researcher environment private." },
+    ],
+    takeaway: "Participant Links is where a finished protocol becomes something participants can actually enter.",
+  },
+  "data-dashboard": {
+    capabilities: [
+      { title: "Watch collection as it happens", description: "See live participant counts, responses, completed questionnaires and cognitive-task runs." },
+      { title: "Check completeness early", description: "Spot missing required measures, demographics or consent before analysis begins." },
+      { title: "Keep quality checks transparent", description: "TEST records and direct-identifier fields are surfaced explicitly rather than silently mixed into the main metrics." },
+    ],
+    takeaway: "The Data Dashboard is your study-health view before you move into inspection and statistics.",
+  },
+  "data-explorer": {
+    capabilities: [
+      { title: "Inspect the actual stored dataset", description: "Browse participant, demographic, questionnaire, consent and task records directly." },
+      { title: "Choose the right data view", description: "Switch datasets, search variables and decide whether TEST data or direct identifiers should be visible." },
+      { title: "Review task performance", description: "See cognitive summaries such as completion, accuracy, mean RT, median RT and omissions alongside participant data." },
+    ],
+    takeaway: "Data Explorer lets you understand what was collected before committing to an analysis or export.",
+  },
+  "analysis-lab": {
+    capabilities: [
+      { title: "Run deterministic statistics", description: "PsyLattice performs the calculations from the selected dataset rather than asking an AI model to invent numerical results." },
+      { title: "Move from exploration to modelling", description: "Use dedicated Explore, Compare, Model, Scales and Design workflows for different research questions." },
+      { title: "Plan and interpret responsibly", description: "Power, effect sizes, assumptions, diagnostics and saved results stay connected to the analysis context." },
+    ],
+    takeaway: "Analysis AI explains verified output and helps you reason about it; the statistical engine remains deterministic.",
+  },
+  export: {
+    capabilities: [
+      { title: "Export for the job you are doing", description: "Choose a complete archive, thesis workbook, statistics-ready file or lossless raw-data package." },
+      { title: "Preview before download", description: "See the sample, privacy settings, sheet structure and row counts before a workbook is generated." },
+      { title: "Preserve reproducibility", description: "Clean analysis sheets can sit alongside raw observations, manifests and documentation in the same export." },
+    ],
+    takeaway: "Export Data makes the structure and privacy consequences of an export visible before the file leaves PsyLattice.",
+  },
+  "plans-billing": {
+    capabilities: [
+      { title: "Match capacity to the project", description: "Compare participant allowances and study limits across free, per-study, monthly and annual options." },
+      { title: "Understand AI access", description: "See how AI credits and model choice change with the selected plan." },
+      { title: "Add capacity when needed", description: "Participant expansion, media storage, notification emails and AI add-ons can extend a plan without redesigning the study." },
+    ],
+    takeaway: "Plans & Billing keeps research capacity, AI allowance and optional add-ons visible in one place.",
+  },
+  "research-ai": {
+    capabilities: [
+      { title: "Use one assistant across the workflow", description: "AI support stays available while you design studies, analyse results and write research documents." },
+      { title: "Choose how the work is routed", description: "PsyLattice Auto can select an available model, while eligible plans expose direct model choices." },
+      { title: "Keep AI separate from computation", description: "AI can guide and explain, while deterministic PsyLattice tools remain responsible for statistical calculations and stored research structure." },
+    ],
+    takeaway: "The model switcher changes the AI layer without changing the underlying study, data or analysis workflow.",
+  },
+};
+
+
+type DashboardTourStep = {
+  id: string;
+  title: string;
+  eyebrow: string;
+  description: string;
+  calloutTitle: string;
+  calloutBody: string;
+  targetId: string;
+};
+
+const dashboardTourSteps: DashboardTourStep[] = [
+  {
+    id: "overview-metrics",
+    eyebrow: "Workspace pulse",
+    title: "Your research at a glance",
+    description: "Start with the four summary cards. They show the current state of your workspace before you open any individual study.",
+    calloutTitle: "Workspace summary",
+    calloutBody: "Active studies, live participants, completed participants and TEST records are separated into clear headline metrics.",
+    targetId: "dashboard-overview-metrics",
+  },
+  {
+    id: "recent-studies",
+    eyebrow: "Recent work",
+    title: "Jump back into your studies",
+    description: "The dashboard keeps your most recently updated studies visible so you can return to active work without searching the full Studies page.",
+    calloutTitle: "Your studies",
+    calloutBody: "Recent projects show design type, live-participant counts and current study status in one compact list.",
+    targetId: "dashboard-recent-studies",
+  },
+  {
+    id: "workspace-status",
+    eyebrow: "Workspace health",
+    title: "Spot research status signals",
+    description: "The status panel surfaces operational signals that may need attention before recruitment or analysis moves forward.",
+    calloutTitle: "Research workspace status",
+    calloutBody: "See draft studies, studies without live recruitment and TEST participants without opening each project individually.",
+    targetId: "dashboard-workspace-status",
+  },
+  {
+    id: "quick-actions",
+    eyebrow: "Common workflows",
+    title: "Move directly to the next task",
+    description: "After the overview, the dashboard gives you direct entry points into the research actions you are most likely to perform next.",
+    calloutTitle: "Quick actions",
+    calloutBody: "Create a study, find a questionnaire, generate a participant link or open the participant manager in one click.",
+    targetId: "dashboard-quick-actions",
+  },
+  {
+    id: "latest-study",
+    eyebrow: "Recruitment snapshot",
+    title: "Monitor the latest study",
+    description: "The lower dashboard turns the most recently updated study into a lightweight recruitment snapshot with direct navigation back into the project.",
+    calloutTitle: "Latest study",
+    calloutBody: "See recruitment target, live links and live participants together, then jump straight back into the study when action is needed.",
+    targetId: "dashboard-latest-study",
   },
 ];
 
-const process = [
+
+type StudiesTourStep = {
+  id: string;
+  title: string;
+  eyebrow: string;
+  description: string;
+  calloutTitle: string;
+  calloutBody: string;
+  targetId: string;
+};
+
+const studiesTourSteps: StudiesTourStep[] = [
   {
-    number: "01",
-    title: "Measure",
-    icon: ClipboardCheck,
+    id: "study-library",
+    eyebrow: "Study library",
+    title: "Browse and manage every study",
     description:
-      "Collect psychological information through validated questionnaires, repeated self-report and real-world assessments.",
-    detail:
-      "Structured measures and repeated check-ins create the raw material for understanding change.",
+      "Use status filters, search and the study rows to quickly find drafts, active studies, completed work and archived projects.",
+    calloutTitle: "Studies, filters & status controls",
+    calloutBody:
+      "Filter by lifecycle stage, search by study name, inspect participant counts, and see each study's current status before opening it.",
+    targetId: "studies-library",
   },
   {
-    number: "02",
-    title: "Observe",
-    icon: Activity,
+    id: "study-management",
+    eyebrow: "Study controls",
+    title: "Edit, pause or retire a study safely",
     description:
-      "Understand how experiences change across time, situations and everyday routines.",
-    detail:
-      "Ambulatory measurement helps move beyond a single retrospective snapshot.",
-  },
-  {
-    number: "03",
-    title: "Understand",
-    icon: BarChart3,
-    description:
-      "Organise scores, patterns and longitudinal information into clear, interpretable views.",
-    detail:
-      "PsyLattice keeps the information structured so people can review the pattern rather than hunt for it.",
-  },
-  {
-    number: "04",
-    title: "Act",
-    icon: Target,
-    description:
-      "Support self-regulation, research decisions or qualified professional review.",
-    detail:
-      "The next action depends on context: personal reflection, research decisions or human professional review.",
+      "Open a study to review its configuration, participant counts and deployment controls. Draft studies are easiest to change; once live recruitment has started, protocol-changing edits should be restricted to protect data consistency.",
+    calloutTitle: "Editing & lifecycle safeguards",
+    calloutBody:
+      "Edit the study while it is still safe to change. Use status controls to pause or stop new participation, open participant records or recruitment links, and delete only when the study can be safely removed.",
+    targetId: "studies-management",
   },
 ];
 
-const securityItems = [
+
+type StudyBuilderTourStep = {
+  id: string;
+  title: string;
+  eyebrow: string;
+  description: string;
+  calloutTitle: string;
+  calloutBody: string;
+  targetId: string;
+};
+
+const studyBuilderTourSteps: StudyBuilderTourStep[] = [
   {
-    title: "Role-based access",
+    id: "builder-overview",
+    eyebrow: "Step 1 · Overview",
+    title: "Define the study before adding procedures",
     description:
-      "Personal, research and clinical information remain within appropriately authorised workflows.",
-    icon: LockKeyhole,
+      "Start with the study title, participant-facing description, design type and target sample. These basics become the frame that the rest of the builder follows.",
+    calloutTitle: "Study overview",
+    calloutBody:
+      "Name the study, describe what participants will experience, choose the design and set the planned sample before moving into the protocol itself.",
+    targetId: "study-builder-overview",
   },
   {
-    title: "Granular sharing",
+    id: "builder-components",
+    eyebrow: "Step 2 · Components",
+    title: "Choose what belongs in the protocol",
     description:
-      "Users control which optional information is shared with professionals or studies.",
-    icon: ShieldCheck,
+      "Turn study components on or off before configuring them. The builder adapts the remaining workflow to the elements you actually need.",
+    calloutTitle: "Component-based workflow",
+    calloutBody:
+      "Consent, demographics and baseline measures can sit alongside cognitive tasks, EMA/ESM, follow-ups, wearables, passive context and participant uploads.",
+    targetId: "study-builder-components",
   },
   {
-    title: "Auditability",
+    id: "builder-flow",
+    eyebrow: "Step 3 · Study flow",
+    title: "Control the participant journey",
     description:
-      "Sensitive professional and administrative actions can be recorded in access logs.",
-    icon: FileText,
+      "Arrange the order in which participants encounter the study. Consent stays first, while questionnaires and cognitive tasks can be positioned or repeated as the protocol requires.",
+    calloutTitle: "Participant study flow",
+    calloutBody:
+      "Build the exact sequence participants experience. Consent is locked before research data collection, while later study elements can be added, removed and reordered.",
+    targetId: "study-builder-flow",
   },
   {
-    title: "Human clinical responsibility",
+    id: "builder-consent",
+    eyebrow: "Step 4 · Consent",
+    title: "Configure the consent route",
     description:
-      "Clinical interpretation, diagnosis and treatment decisions remain with qualified professionals.",
-    icon: Stethoscope,
+      "Choose whether consent is built in PsyLattice, obtained externally or not collected digitally, then add participant information and the consent or comprehension items required by your approved protocol.",
+    calloutTitle: "Consent configuration",
+    calloutBody:
+      "Select the consent method, provide participant information, add as many consent questions as needed and mark the items participants must complete before proceeding.",
+    targetId: "study-builder-consent",
+  },
+  {
+    id: "builder-demographics",
+    eyebrow: "Step 5 · Demographics",
+    title: "Build only the demographic fields you need",
+    description:
+      "Quick-add common demographics or create custom questions. Each field can define its response type, guidance, required status and whether it is directly identifying.",
+    calloutTitle: "Flexible demographic fields",
+    calloutBody:
+      "Add standard or custom variables, choose the response format and explicitly flag required or directly identifying information so privacy handling stays visible.",
+    targetId: "study-builder-demographics",
+  },
+  {
+    id: "builder-baseline",
+    eyebrow: "Step 6 · Baseline measures",
+    title: "Attach questionnaires from the library",
+    description:
+      "Search the PsyLattice Questionnaire Library or questionnaires you created yourself, review the available measure information and add the required instruments to this study.",
+    calloutTitle: "Pinned baseline measures",
+    calloutBody:
+      "Browse validated or custom questionnaires and add them directly to the protocol. PsyLattice pins the selected version so later library edits do not silently change the deployed study.",
+    targetId: "study-builder-baseline",
+  },
+  {
+    id: "builder-recruitment",
+    eyebrow: "Step 7 · Recruitment",
+    title: "Save the exact protocol before recruitment",
+    description:
+      "The study needs a saved draft and study ID before TEST or live participant routes can be created from Participant Links.",
+    calloutTitle: "Recruitment starts from a saved draft",
+    calloutBody:
+      "Save the protocol first. Participant Links then creates TEST or live recruitment routes tied to that exact study configuration rather than an unsaved working state.",
+    targetId: "study-builder-recruitment",
+  },
+  {
+    id: "builder-review",
+    eyebrow: "Step 8 · Review",
+    title: "Review the complete protocol before deployment",
+    description:
+      "The final step summarises the selected components and reproducibility safeguards so you can save the study draft and test the full participant experience before live recruitment.",
+    calloutTitle: "Final builder review",
+    calloutBody:
+      "Confirm the selected components, pinned questionnaire and cognitive-task versions, consent and optional longitudinal elements, then use a TEST participant link before going live.",
+    targetId: "study-builder-review",
   },
 ];
 
-const pricingContent = {
-  India: {
-    label: "India",
-    sublabel: "Accessible research pricing for India and Asia",
-    cards: [
-      {
-        id: "self",
-        eyebrow: "For individuals and clients",
-        title: "PsyLattice Self",
-        price: "₹59",
-        cadence: "/month",
-        featured: true,
-        description:
-          "A personal PsyLattice account for self-assessment, daily monitoring, self-regulation, progress tracking and Luna AI.",
-        bullets: [
-          "Full Self workspace",
-          "Assessments and structured self-checks",
-          "Monitoring and longitudinal progress",
-          "Self-regulation tools",
-          "AI guidance",
-          "Can also be used by clients connected to clinicians",
-        ],
-        ctaLabel: "Start with Self",
-        ctaHref: "/signin",
-        note: "Also available annually at ₹590/year.",
-      },
-      {
-        id: "clinician",
-        eyebrow: "For professionals",
-        title: "Clinician account",
-        price: "Free",
-        cadence: "",
-        featured: false,
-        description:
-          "Clinicians can onboard clients, assign assessments, review authorised progress and use the clinical workspace without a subscription fee.",
-        bullets: [
-          "Clinical workspace access",
-          "Invite and onboard clients",
-          "Assign assessments and monitoring",
-          "Review shared progress and summaries",
-          "Clients subscribe to PsyLattice Self if needed",
-        ],
-        ctaLabel: "Create clinician account",
-        ctaHref: "/signin",
-        note: "Clients control what information is shared.",
-      },
-      {
-        id: "researcher",
-        eyebrow: "Start researching for free",
-        title: "Free",
-        price: "₹0",
-        cadence: "",
-        featured: true,
-        description:
-          "Build, publish and run one real PsyLattice study at no cost. Upgrade when you need another study, more participants, media or higher usage.",
-        bullets: [
-          "1 study",
-          "Basic participant capacity",
-          "Small AI allowance",
-          "PsyLattice Auto only",
-          "No custom media",
-        ],
-        ctaLabel: "Start researching free",
-        ctaHref: "/signin",
-        note: "Try PsyLattice. Participants never pay. Additional capacity and features are available on paid research plans.",
-      },
-      {
-        id: "study-pass",
-        eyebrow: "Pay once for one project",
-        title: "Study Pass",
-        price: "₹499",
-        cadence: "/study",
-        featured: false,
-        description:
-          "For a thesis, dissertation or individual research project that needs the full PsyLattice research toolkit without a recurring subscription.",
-        bullets: [
-          "1 serious study",
-          "500 participants",
-          "200 AI credits",
-          "Some model choice",
-          "No custom media",
-        ],
-        ctaLabel: "Get a Study Pass",
-        ctaHref: "/signin",
-        note: "Includes up to 12 months of active data collection. After collection ends, your study remains available for review, analysis and export. AI assistance is subject to fair-use limits.",
-      },
-      {
-        id: "research-pro-monthly",
-        eyebrow: "Complete research workspace",
-        title: "Pro Monthly",
-        price: "₹749",
-        cadence: "/month",
-        featured: true,
-        description:
-          "For researchers running multiple projects with the complete PsyLattice research workspace.",
-        bullets: [
-          "Multiple studies",
-          "700 participants",
-          "300 AI credits",
-          "Full AI model switcher",
-          "Custom image/audio/video stimuli",
-          "2 GB media storage",
-        ],
-        ctaLabel: "Get Pro Monthly",
-        ctaHref: "/signin",
-        note: "No per-study publication charge while subscribed. AI assistance and high-cost services are subject to reasonable fair-use limits.",
-      },
-      {
-        id: "research-pro-annual",
-        eyebrow: "Best value",
-        title: "Pro Annual",
-        price: "₹7,499",
-        cadence: "/year",
-        featured: true,
-        description:
-          "The complete Researcher Pro workspace at a lower effective monthly price for researchers who use PsyLattice throughout the year.",
-        bullets: [
-          "Everything in Pro",
-          "Multiple studies",
-          "700 participants",
-          "300 AI credits",
-          "Full AI model switcher",
-          "Custom media",
-          "5 GB media storage",
-          "Approximately 17% cheaper than monthly",
-        ],
-        ctaLabel: "Choose annual Pro",
-        ctaHref: "/signin",
-        note: "Best value for active researchers. AI assistance uses the included allowance.",
-      },
-      {
-        id: "participants",
-        eyebrow: "For study participants",
-        title: "Participant access",
-        price: "Free",
-        cadence: "",
-        featured: false,
-        description:
-          "People invited into a PsyLattice study can participate without paying for an account.",
-        bullets: [
-          "No subscription required",
-          "Access through study link or participant mobile flow",
-          "Complete assigned study measures",
-          "Research participants never pay to participate",
-        ],
-        ctaLabel: "Learn how studies work",
-        ctaHref: "/signin",
-        note: "Participant access remains free regardless of the researcher's billing option.",
-      },
-    ],
+
+
+type QuestionnaireTourStep = {
+  id: string;
+  title: string;
+  eyebrow: string;
+  description: string;
+  calloutTitle: string;
+  calloutBody: string;
+  targetId: string;
+};
+
+const questionnaireTourSteps: QuestionnaireTourStep[] = [
+  {
+    id: "questionnaire-library-overview",
+    eyebrow: "Catalogue overview",
+    title: "Start with the research measure catalogue",
+    description:
+      "The library separates catalogue size, public-domain status, research-only measures and questionnaires you own, then lets you search and filter before opening any instrument.",
+    calloutTitle: "Search, filter & understand availability",
+    calloutBody:
+      "Use the summary cards, search field, category selector and licence-status filter to narrow the catalogue before deciding whether a measure fits your study.",
+    targetId: "questionnaire-library-overview",
   },
+  {
+    id: "questionnaire-measures",
+    eyebrow: "Measure cards",
+    title: "Review the measure before you use it",
+    description:
+      "Each catalogue card exposes the construct, item count, estimated time, language count and current rights status, with direct access to research details and the recorded licence source.",
+    calloutTitle: "Research details & licence source",
+    calloutBody:
+      "Public-domain, research-only and terms-apply labels stay visible next to the measure. Open the research details and original licence source before deployment.",
+    targetId: "questionnaire-library-measures",
+  },
+  {
+    id: "questionnaire-create",
+    eyebrow: "Original instruments",
+    title: "Create a questionnaire when the catalogue is not enough",
+    description:
+      "At the bottom of the catalogue you can start an original instrument. PsyLattice also keeps the licensing safeguard visible so finding a measure online is never treated as automatic permission to reproduce it.",
+    calloutTitle: "Build original content responsibly",
+    calloutBody:
+      "Create your own questionnaire when needed, but verify third-party permissions separately. PsyLattice records the source and usage status; it does not grant external rights.",
+    targetId: "questionnaire-library-create",
+  },
+  {
+    id: "questionnaire-builder-overview",
+    eyebrow: "Builder · Instrument overview",
+    title: "Define the instrument and its research metadata",
+    description:
+      "Name the questionnaire, add its acronym, category, description, constructs, languages, target population and recall period. The builder summary updates alongside the instrument.",
+    calloutTitle: "Instrument identity & metadata",
+    calloutBody:
+      "Describe what the measure is, who it is for and how it should be recalled. The same builder supports many response formats without redesigning the database.",
+    targetId: "questionnaire-builder-overview",
+  },
+  {
+    id: "questionnaire-administration",
+    eyebrow: "Builder · Administration & ownership",
+    title: "Separate participant instructions from researcher guidance",
+    description:
+      "Provide instructions for participants and researchers, then decide whether the finished instrument remains private, is published for free use, or is discoverable but permission-controlled.",
+    calloutTitle: "Administration, publication & ownership",
+    calloutBody:
+      "Keep participant-facing and researcher-facing guidance separate. Publication controls determine who can discover or use the questionnaire after you save it.",
+    targetId: "questionnaire-builder-administration",
+  },
+  {
+    id: "questionnaire-structure",
+    eyebrow: "Builder · Structure",
+    title: "Build the questionnaire in blocks and items",
+    description:
+      "Create pages or blocks, then add configurable item types. Each item has its own key, response type, statement, help text, subscale membership, required state and reverse-scoring flag.",
+    calloutTitle: "Blocks, items & item-level configuration",
+    calloutBody:
+      "The participant experience is built block by block. Each question stores its own response, validation, scoring and display configuration instead of relying on one fixed questionnaire format.",
+    targetId: "questionnaire-builder-structure",
+  },
+  {
+    id: "questionnaire-response-logic",
+    eyebrow: "Builder · Responses & logic",
+    title: "Control options, media and branching at item level",
+    description:
+      "For scale items, define participant labels, numeric scores and optional weights. You can randomise option order, attach media and add display logic based on earlier answers.",
+    calloutTitle: "Responses, media & branching",
+    calloutBody:
+      "Labels and scoring values are stored separately, media can be attached privately, and conditional display logic lets later items respond to earlier answers.",
+    targetId: "questionnaire-builder-response-logic",
+  },
+  {
+    id: "questionnaire-scoring",
+    eyebrow: "Builder · Scoring & save",
+    title: "Record the scoring plan and confirm your rights before saving",
+    description:
+      "Choose the scoring method, missing-data rule and questionnaire-level randomisation behaviour, add analysis notes, confirm that you created or can reproduce the content, then save or publish according to the selected ownership mode.",
+    calloutTitle: "Scoring, rights confirmation & save",
+    calloutBody:
+      "PsyLattice stores your scoring plan without implying psychometric validity. Rights confirmation is explicit before the instrument can be saved or published.",
+    targetId: "questionnaire-builder-scoring",
+  },
+];
 
-} as const;
+
+type CognitiveTourStep = {
+  id: string;
+  title: string;
+  eyebrow: string;
+  description: string;
+  calloutTitle: string;
+  calloutBody: string;
+  targetId: string;
+};
+
+const cognitiveTourSteps: CognitiveTourStep[] = [
+  {
+    id: "cognitive-overview",
+    eyebrow: "Cognitive Lab overview",
+    title: "Understand how cognitive tasks fit into the research workflow",
+    description:
+      "Cognitive Lab creates reusable task definitions and versioned research assets. Study Builder decides when they run, Participant Runner executes them and Research Data keeps the resulting trial-level output aligned with the study.",
+    calloutTitle: "Reusable tasks, not isolated experiments",
+    calloutBody:
+      "Build a task once, test and version it here, then reuse the frozen version across studies, batteries and longitudinal protocols without rebuilding the paradigm each time.",
+    targetId: "cognitive-overview",
+  },
+  {
+    id: "cognitive-learn",
+    eyebrow: "Learn",
+    title: "Learn the task architecture visually before building",
+    description:
+      "The Learn area explains the path from template to task builder, preview, pilot and study deployment with visual guides and complete examples rather than sending researchers to separate documentation.",
+    calloutTitle: "Built-in experimental psychology guidance",
+    calloutBody:
+      "Use short visual guides to understand task families, trial structure, participant responses and previewing before you begin configuring a paradigm.",
+    targetId: "cognitive-learn",
+  },
+  {
+    id: "cognitive-templates",
+    eyebrow: "Task Templates",
+    title: "Start from established cognitive paradigms",
+    description:
+      "Browse study-ready starter templates by domain, inspect typical outputs and device support, then clone the paradigm into your personal Cognitive Task Library for customisation.",
+    calloutTitle: "A real paradigm is your starting point",
+    calloutBody:
+      "Search by task, construct or output, filter by cognitive domain and compare duration, complexity, expected outputs and supported devices before choosing a template.",
+    targetId: "cognitive-templates",
+  },
+  {
+    id: "cognitive-details",
+    eyebrow: "Template details",
+    title: "Inspect what a task actually measures before cloning it",
+    description:
+      "The task-detail panel explains the construct, typical trial flow, outputs, device guidance, research use cases and the parameters that can be customised.",
+    calloutTitle: "Understand the paradigm before editing it",
+    calloutBody:
+      "For a Corsi task, review forward and backward span, the nine-block sequence flow, expected outputs, device considerations and editable span/timing parameters before adding it to your library.",
+    targetId: "cognitive-details",
+  },
+  {
+    id: "cognitive-my-tasks",
+    eyebrow: "My Cognitive Tasks",
+    title: "Keep working drafts separate from study-ready versions",
+    description:
+      "Your personal task library stores reusable drafts, source information and version history. A working draft can be previewed and piloted before an exact version is frozen for use in studies.",
+    calloutTitle: "Versioning protects reproducibility",
+    calloutBody:
+      "Edit the working draft freely, then mark a tested version ready for studies. Published versions remain frozen so later edits cannot silently alter a deployed protocol.",
+    targetId: "cognitive-my-tasks",
+  },
+  {
+    id: "cognitive-corsi-builder",
+    eyebrow: "Dedicated paradigm builder",
+    title: "Configure a Corsi task with spatial controls built for the paradigm",
+    description:
+      "Dedicated tasks expose the controls researchers actually need: practice, adaptive span progression, forward/backward mode, sequence limits, trial criteria and a live board preview.",
+    calloutTitle: "Paradigm-specific controls stay reproducible",
+    calloutBody:
+      "The fixed Corsi flow preserves the spatial runtime while letting you configure span progression, practice criteria and participant instructions without rebuilding the task from generic blocks.",
+    targetId: "cognitive-corsi-builder",
+  },
+  {
+    id: "cognitive-preview-preflight",
+    eyebrow: "Browser Preview",
+    title: "Check timing and the participant environment before running a task",
+    description:
+      "Preview executes the exact saved task definition in the browser and records timing diagnostics separately from research data. A preflight verifies display timing, visibility, allowed devices and media readiness.",
+    calloutTitle: "Preview timing before collecting research data",
+    calloutBody:
+      "Inspect the browser environment, refresh-rate sampling and display calibration before starting. High-resolution browser timing is useful, but hardware and operating-system conditions still matter.",
+    targetId: "cognitive-preview-preflight",
+  },
+  {
+    id: "cognitive-preview-run",
+    eyebrow: "Participant runtime",
+    title: "Experience the task exactly as a participant will",
+    description:
+      "Run the saved protocol yourself in the isolated Preview runner. For Corsi, the participant sees the unnumbered spatial board, sequence illumination and response prompt exactly as configured.",
+    calloutTitle: "Test the real participant experience",
+    calloutBody:
+      "Preview is not just a static mockup. It runs the actual task, captures responses and lets you verify visual layout, sequence behaviour and usability before piloting or deployment.",
+    targetId: "cognitive-preview-run",
+  },
+  {
+    id: "cognitive-stroop-timeline",
+    eyebrow: "Visual Task Builder",
+    title: "Build generic experimental tasks from ordered timeline steps",
+    description:
+      "The visual Task Builder represents a task as blocks, trial rows and ordered components. A Stroop task can contain instructions, practice and experimental blocks while keeping each part independently configurable.",
+    calloutTitle: "Blocks define the experiment structure",
+    calloutBody:
+      "Use Instructions, Practice and Experimental blocks to organise the protocol. Within each block, the Trial timeline determines the exact sequence of events participants experience.",
+    targetId: "cognitive-stroop-timeline",
+  },
+  {
+    id: "cognitive-stroop-add-step",
+    eyebrow: "Timeline components",
+    title: "Compose a trial from the components your experiment needs",
+    description:
+      "Add fixation, text, images, audio, video, shapes, participant responses, inter-trial intervals or HTML components directly to the trial timeline.",
+    calloutTitle: "A trial is built from explicit steps",
+    calloutBody:
+      "Instead of hiding timing inside code, PsyLattice makes each event visible. Use a standard trial or add individual components such as Fixation, Stimulus, Response and ITI yourself.",
+    targetId: "cognitive-stroop-add-step",
+  },
+  {
+    id: "cognitive-stroop-table",
+    eyebrow: "Trial table",
+    title: "Separate experimental conditions from the timeline",
+    description:
+      "The trial table stores condition variables such as word, colour and correct response. Timeline components can reference those variables, so one task structure can execute many experimental rows.",
+    calloutTitle: "Conditions live in a reusable trial table",
+    calloutBody:
+      "Add variables, import CSV rows, set weights and choose which rows are used. This separates the experimental design matrix from the visual sequence that presents each trial.",
+    targetId: "cognitive-stroop-table",
+  },
+  {
+    id: "cognitive-stroop-random",
+    eyebrow: "Randomisation",
+    title: "Control trial order and sampling explicitly",
+    description:
+      "Choose trial order, sampling method, maximum repeated conditions, participant-level seed behaviour and optional balancing rules for conditions and response mappings.",
+    calloutTitle: "Randomisation is part of the saved protocol",
+    calloutBody:
+      "The rules used to randomise trials are stored with the task rather than improvised at run time, making the experimental procedure easier to inspect and reproduce.",
+    targetId: "cognitive-stroop-random",
+  },
+  {
+    id: "cognitive-stroop-score",
+    eyebrow: "Scoring & devices",
+    title: "Define what the task records and where it is allowed to run",
+    description:
+      "Specify metric keys, timing precision, raw-trial retention, summary outputs, timing diagnostics and allowed participant devices before the task becomes study-ready.",
+    calloutTitle: "Outputs and compatibility are explicit",
+    calloutBody:
+      "Keep raw trial-level data when needed, calculate summary metrics, collect timing diagnostics and restrict device classes so the deployed task matches the requirements of your experimental design.",
+    targetId: "cognitive-stroop-score",
+  },
+];
 
 
-const ANDROID_BETA_FILE_ID = "1hzWlv_JGRLd047m0dd2pqoSmjKlQ9Mha";
-const ANDROID_BETA_URL = `https://drive.google.com/uc?export=download&id=${ANDROID_BETA_FILE_ID}`;
-const ANDROID_BETA_DRIVE_URL =
-  "https://drive.google.com/file/d/1hzWlv_JGRLd047m0dd2pqoSmjKlQ9Mha/view?usp=drive_web";
+type ThesisTourStep = {
+  id: string;
+  title: string;
+  eyebrow: string;
+  description: string;
+  calloutTitle: string;
+  calloutBody: string;
+  targetId: string;
+};
 
-function CheckMark() {
-  return <Check className="h-4 w-4 shrink-0" strokeWidth={1.9} />;
+const thesisTourSteps: ThesisTourStep[] = [
+  {
+    id: "thesis-files",
+    eyebrow: "Research files",
+    title: "Organise every thesis and paper inside a private writing workspace",
+    description:
+      "Use nested folders, document search and researcher-owned files to keep theses, manuscripts and supporting drafts organised without mixing them into the participant-facing research workflow.",
+    calloutTitle: "Your research writing stays organised",
+    calloutBody:
+      "Create folders inside folders, search documents and keep multiple papers in one workspace. Documents are researcher-owned, and Writing AI does not automatically read them.",
+    targetId: "thesis-files",
+  },
+  {
+    id: "thesis-editor",
+    eyebrow: "Academic editor",
+    title: "Write in a full paged editor and bring research output directly into the manuscript",
+    description:
+      "The editor includes import/export, margins, fonts, spacing, paragraph controls, links, tables and a paged document view. Analysis tables can live directly inside the paper instead of being rebuilt elsewhere.",
+    calloutTitle: "A real academic editor, not a notes box",
+    calloutBody:
+      "Write and format the manuscript while keeping tables and research output visible in the same document. Import and export stay available from the editor toolbar.",
+    targetId: "thesis-editor",
+  },
+  {
+    id: "thesis-presets",
+    eyebrow: "Format presets",
+    title: "Switch between Freeform and complete academic or institution-specific formats",
+    description:
+      "Choose Freeform when you want full manual control, or apply a preset such as APA 7 Student, APA 7 Professional, MLA 9, Chicago/Turabian, IEEE or a custom institution-specific format.",
+    calloutTitle: "Freeform or one-click academic formatting",
+    calloutBody:
+      "The format menu can snap page setup, typography, spacing and structural expectations to a selected style. Custom / institution-specific presets let a university or department format be represented too.",
+    targetId: "thesis-presets",
+  },
+  {
+    id: "thesis-format-guide",
+    eyebrow: "Preset structure",
+    title: "See exactly what the selected preset changes before you restructure the paper",
+    description:
+      "A format guide explains page rules and the expected document structure. For APA 7 Professional, for example, the guide can show title page, abstract, keywords, introduction, method, results, discussion, references and tables/figures.",
+    calloutTitle: "The preset defines the formatting frame",
+    calloutBody:
+      "Selecting a preset applies its page-level rules and exposes the expected structure. Institution-specific presets can carry local thesis requirements, while Freeform leaves the document unconstrained.",
+    targetId: "thesis-format-guide",
+  },
+  {
+    id: "thesis-writing-ai",
+    eyebrow: "Writing AI",
+    title: "Use Writing AI to restructure the current paper into the selected format",
+    description:
+      "Writing AI starts with document access off. When you deliberately enable access to the current paper, you can ask it to reorganise headings, sections and wording around the selected APA, MLA, IEEE or institution-specific structure while you remain in control of the final document.",
+    calloutTitle: "AI restructures only when you permit document access",
+    calloutBody:
+      "Choose the target preset first, turn on ‘Allow AI to read current paper’, then ask Writing AI to restructure the thesis to that preset or your institution’s template. The preset controls formatting; AI helps reorganise the content and section structure for you to review.",
+    targetId: "thesis-writing-ai",
+  },
+  {
+    id: "thesis-fullscreen",
+    eyebrow: "Focus mode",
+    title: "Expand into a full-screen writing environment when you need uninterrupted editing",
+    description:
+      "Full-screen view removes the surrounding Research workspace navigation and keeps the document title, formatting toolbar, page canvas, zoom controls and Writing AI available in a distraction-reduced editor.",
+    calloutTitle: "Turn Thesis Builder into a focused writing desk",
+    calloutBody:
+      "Use the expand control to hide the surrounding workspace and devote the display to the manuscript. The Files button takes you back to document organisation without losing your writing state.",
+    targetId: "thesis-fullscreen",
+  },
+  {
+    id: "thesis-results",
+    eyebrow: "Research-to-writing workflow",
+    title: "Keep statistical tables and research results inside the same writing workflow",
+    description:
+      "PsyLattice can place analysis-ready tables and structured research output into the thesis editor, so the document can be formatted, interpreted and revised without recreating results manually in another application.",
+    calloutTitle: "Move from analysis to manuscript without rebuilding the result",
+    calloutBody:
+      "Tables from the research workflow remain editable document content. Combine them with your narrative, apply the selected format and use Writing AI for explanation or restructuring when current-paper access is enabled.",
+    targetId: "thesis-results",
+  },
+];
+
+
+
+type AmbulatoryTourStep = {
+  id: string;
+  title: string;
+  eyebrow: string;
+  description: string;
+  calloutTitle: string;
+  calloutBody: string;
+  targetId: string;
+};
+
+const ambulatoryTourSteps: AmbulatoryTourStep[] = [
+  {
+    id: "ambulatory-protocol",
+    eyebrow: "Protocol setup",
+    title: "Define the repeated-measures study before adding prompts",
+    description:
+      "Choose the PsyLattice study, protocol duration and protocol name, then decide whether study email reminders or participant feedback summaries belong in the design.",
+    calloutTitle: "Ambulatory protocol settings",
+    calloutBody:
+      "The protocol is attached to a saved research study. Duration, reminder behaviour and feedback options are visible before any sampling schedule is configured.",
+    targetId: "ambulatory-protocol",
+  },
+  {
+    id: "ambulatory-triggers",
+    eyebrow: "Sampling strategy",
+    title: "Choose how each real-world assessment is triggered",
+    description:
+      "PsyLattice supports fixed-time, random-window, interval-contingent, event-contingent, participant-initiated and Sensor / Health Connect event triggers inside the same ambulatory builder.",
+    calloutTitle: "Multiple EMA / ESM trigger modes",
+    calloutBody:
+      "Select the sampling logic that matches the research question instead of forcing every ambulatory study into a fixed schedule.",
+    targetId: "ambulatory-trigger-types",
+  },
+  {
+    id: "ambulatory-time",
+    eyebrow: "Time-contingent EMA",
+    title: "Schedule check-ins with response windows and reminders",
+    description:
+      "For a fixed-time assessment, define the check-in time, how long the response remains available and the email reminder participants receive when the prompt opens.",
+    calloutTitle: "Scheduled real-world check-ins",
+    calloutBody:
+      "A morning assessment can open at 09:00, remain available for a defined response window and send a study reminder without changing the actual questionnaire content.",
+    targetId: "ambulatory-time-checkin",
+  },
+  {
+    id: "ambulatory-items",
+    eyebrow: "Assessment content",
+    title: "Build the prompt participants answer in the moment",
+    description:
+      "Add ratings, Yes / No questions and other response blocks, mark required items and attach conditional follow-up blocks that only appear when a response rule is met.",
+    calloutTitle: "Nested and conditional assessment blocks",
+    calloutBody:
+      "Configure a stress slider from 0 to 10, label the scale clearly, then branch into additional questions only when the participant's answer requires them.",
+    targetId: "ambulatory-response-blocks",
+  },
+  {
+    id: "ambulatory-android",
+    eyebrow: "Android companion",
+    title: "Use the real Android companion with Health Connect",
+    description:
+      "The Android companion can participate in ambulatory collection by reading only the Health Connect data the participant explicitly permits on their Android device. The first supported streams shown here are heart rate, steps, sleep duration and exercise-session events.",
+    calloutTitle: "Real Android + Health Connect support",
+    calloutBody:
+      "Participants grant each Health Connect permission on-device. The Android companion can evaluate permitted sensor context and notify PsyLattice when the configured research rule is satisfied.",
+    targetId: "ambulatory-android-support",
+  },
+  {
+    id: "ambulatory-sensor-rule",
+    eyebrow: "Sensor-contingent sampling",
+    title: "Turn permitted mobile context into a controlled research trigger",
+    description:
+      "Choose the Health Connect data type and condition, then constrain the rule with active hours, prompt limits and cooldowns. You can also store only the trigger event rather than unnecessary sensor detail.",
+    calloutTitle: "Sensor rules include anti-overprompt safeguards",
+    calloutBody:
+      "Set the active window, maximum prompts per day and cooldown period so a sensor-contingent study remains bounded and reproducible rather than continuously interrupting participants.",
+    targetId: "ambulatory-sensor-rule",
+  },
+  {
+    id: "ambulatory-notification",
+    eyebrow: "Participant delivery",
+    title: "The companion turns a matched rule into an actual PsyLattice prompt",
+    description:
+      "When the Android companion confirms the configured sensor rule, PsyLattice records the sensor event and opens the ambulatory assessment. The companion shows the configured notification so the participant can complete the check-in.",
+    calloutTitle: "From Health Connect event to participant check-in",
+    calloutBody:
+      "The research rule, notification title and message are defined in the protocol. The app is the participant-side delivery layer; it does not independently invent when or why an assessment should appear.",
+    targetId: "ambulatory-trigger-action",
+  },
+];
+
+
+type AnalysisTourStep = {
+  id: string;
+  title: string;
+  eyebrow: string;
+  description: string;
+  calloutTitle: string;
+  calloutBody: string;
+  targetId: string;
+};
+
+const analysisTourSteps: AnalysisTourStep[] = [
+  {
+    id: "analysis-environment",
+    eyebrow: "Integrated analysis environment",
+    title: "Turn collected research data into reproducible statistical output",
+    description:
+      "Analysis Lab keeps the selected study, analysis-ready dataset, variable set, statistical workflow, results, saved records and AI explanation layer together in one research environment.",
+    calloutTitle: "A complete analysis workspace",
+    calloutBody:
+      "Move from descriptives and diagnostics to correlations, comparisons, models, scales and study-design utilities without exporting the dataset first. PsyLattice performs the numerical calculations deterministically; Analysis AI explains the verified output.",
+    targetId: "analysis-environment",
+  },
+  {
+    id: "analysis-fullscreen",
+    eyebrow: "Focused analysis mode",
+    title: "Expand Analysis Lab into a full-screen statistical workspace",
+    description:
+      "Full screen removes the surrounding Research workspace chrome and gives the analysis canvas the entire display while preserving the selected study, dataset, variables and statistical context.",
+    calloutTitle: "Full-screen analysis canvas",
+    calloutBody:
+      "Use full screen when the analysis itself becomes the task. The same deterministic engine, variable controls, result records and Analysis AI remain available, but the canvas gains room for large matrices, models, diagnostics and formatted output.",
+    targetId: "analysis-fullscreen",
+  },
+];
+
+type CollectionTourStep = {
+  id: string;
+  eyebrow: string;
+  title: string;
+  description: string;
+  calloutTitle: string;
+  calloutBody: string;
+  targetId: string;
+};
+
+const participantsTourSteps: CollectionTourStep[] = [
+  {
+    id: "participants-controls",
+    eyebrow: "Participant operations",
+    title: "Choose the study, search the sample and filter participant state",
+    description: "Participant management stays scoped to one study. Search pseudonymous participant IDs and filter active or completed records without opening individual participant pages.",
+    calloutTitle: "Study-scoped participant controls",
+    calloutBody: "Select the study first, then search or filter the sample. This keeps participant operations tied to the correct protocol and makes active versus completed records immediately visible.",
+    targetId: "participants-controls",
+  },
+  {
+    id: "participants-table",
+    eyebrow: "Participant progress",
+    title: "Read consent and completion participant by participant",
+    description: "Each row combines the pseudonymous participant ID, lifecycle status, recorded consent, questionnaire completion, cognitive-task completion and enrolment date.",
+    calloutTitle: "Monitor the sample without exposing identity",
+    calloutBody: "The participant table is an operational study view: status, consent and completion across study components stay visible alongside PsyLattice participant IDs.",
+    targetId: "participants-table",
+  },
+];
+
+const participantLinksTourSteps: CollectionTourStep[] = [
+  {
+    id: "participant-links-create",
+    eyebrow: "Recruitment deployment",
+    title: "Turn a saved study into a secure participant route",
+    description: "Select the saved study and generate a token-based participant link. Participants enter the protocol through that route and never enter the Researcher workspace.",
+    calloutTitle: "Create a participant-facing route",
+    calloutBody: "Participant Links deploys a saved protocol through a long tokenised URL. Keep TEST and live routes separate so setup checks never become mixed with real research participation.",
+    targetId: "participant-links-create",
+  },
+  {
+    id: "participant-links-manage",
+    eyebrow: "Deployment control",
+    title: "Copy, open, pause or reactivate recruitment links",
+    description: "Each route exposes its live status and participant count while giving the researcher explicit control over whether new participants can enter.",
+    calloutTitle: "Control recruitment after launch",
+    calloutBody: "Copy or open a route when recruiting, pause it when participation should stop, and reactivate it only when appropriate. Live collection should remain tied to a stable protocol version.",
+    targetId: "participant-links-manage",
+  },
+];
+
+const dataDashboardTourSteps: CollectionTourStep[] = [
+  {
+    id: "data-dashboard-metrics",
+    eyebrow: "Collection health",
+    title: "See incoming research data at a glance",
+    description: "Headline cards separate live participants, item responses, questionnaire completions, cognitive-task runs and configured direct-identifier fields.",
+    calloutTitle: "Live collection summary",
+    calloutBody: "Use these cards as the first health check for a running study. TEST records remain separate from live collection, and direct-identifier fields are surfaced explicitly.",
+    targetId: "data-dashboard-metrics",
+  },
+  {
+    id: "data-dashboard-quality",
+    eyebrow: "Completeness & quality",
+    title: "Catch missing study components before formal analysis",
+    description: "Completeness and transparent rule-based checks surface missing baseline measures, demographics, consent, TEST records and direct-identifier configuration.",
+    calloutTitle: "Transparent quality checks",
+    calloutBody: "These are visible review signals, not hidden automatic exclusions. Check what is missing while collection is still active, then make the analysis decision yourself.",
+    targetId: "data-dashboard-quality",
+  },
+];
+
+const dataExplorerTourSteps: CollectionTourStep[] = [
+  {
+    id: "data-explorer-controls",
+    eyebrow: "Dataset inspection",
+    title: "Choose exactly which stored dataset you want to inspect",
+    description: "Select the study and dataset, search participants or variables, and explicitly decide whether TEST data or direct identifiers should be visible.",
+    calloutTitle: "Control the inspection frame",
+    calloutBody: "Data Explorer starts with the data view, not a statistical test. TEST-data and direct-identifier switches make potentially sensitive or non-live records explicit before inspection.",
+    targetId: "data-explorer-controls",
+  },
+  {
+    id: "data-explorer-table",
+    eyebrow: "Stored records",
+    title: "Inspect the participant-level table before analysing it",
+    description: "The selected study produces a participant-level view of enrolment, completion, consent and component-level study fields.",
+    calloutTitle: "See what was actually stored",
+    calloutBody: "Inspect rows and variables directly before choosing an analysis. Search and filters control the visible preview, and Copy table follows the rows currently shown.",
+    targetId: "data-explorer-table",
+  },
+  {
+    id: "data-explorer-cognitive",
+    eyebrow: "Cognitive outputs",
+    title: "Review cognitive-task performance beside the participant dataset",
+    description: "Cognitive administrations expose completion, accuracy, reaction-time summaries and omissions derived from stored task trials.",
+    calloutTitle: "Cognitive results stay connected to the study",
+    calloutBody: "Accuracy, mean RT, median RT, completion and omissions can be inspected alongside the study dataset before you move into Analysis Lab or export the data.",
+    targetId: "data-explorer-cognitive",
+  },
+];
+
+const exportTourSteps: CollectionTourStep[] = [
+  {
+    id: "export-modes",
+    eyebrow: "Export purpose",
+    title: "Choose the export that matches the research job",
+    description: "Use a complete archive, thesis/analysis workbook, statistics-ready dataset or lossless raw archive instead of forcing every project into one generic spreadsheet.",
+    calloutTitle: "Four export purposes, one source study",
+    calloutBody: "Choose the structure based on what happens next: reproducibility archive, practical thesis work, SPSS/jamovi/JASP analysis, or preservation of raw observations.",
+    targetId: "export-modes",
+  },
+  {
+    id: "export-summary",
+    eyebrow: "Privacy preview",
+    title: "Know exactly what leaves PsyLattice before downloading",
+    description: "Preview the study, population, participant count, identity mode, direct-identifier handling, TEST-data handling and worksheet counts before generation.",
+    calloutTitle: "Preview sample and privacy choices",
+    calloutBody: "Verify pseudonymous IDs, identifier exclusions and the selected live sample before the file leaves PsyLattice instead of discovering those choices after download.",
+    targetId: "export-summary",
+  },
+  {
+    id: "export-workbook",
+    eyebrow: "Workbook structure",
+    title: "Inspect the exact clean, raw and documentation sheets",
+    description: "The workbook preview exposes sheet names, clean/raw/documentation groups and row counts before the Excel file is generated.",
+    calloutTitle: "Reproducibility is visible before export",
+    calloutBody: "Clean analysis sheets can sit beside raw observations, manifests and README documentation. The declared structure is visible before the download is created.",
+    targetId: "export-workbook",
+  },
+];
+
+const navIcons: Record<string, ReactNode> = {
+  dashboard: <LayoutDashboard className="h-3.5 w-3.5" />,
+  ai: <Sparkles className="h-3.5 w-3.5" />,
+  assessments: <ClipboardList className="h-3.5 w-3.5" />,
+  monitoring: <Activity className="h-3.5 w-3.5" />,
+  regulation: <HeartPulse className="h-3.5 w-3.5" />,
+  progress: <BarChart3 className="h-3.5 w-3.5" />,
+  wearables: <MonitorSmartphone className="h-3.5 w-3.5" />,
+  appointments: <CalendarDays className="h-3.5 w-3.5" />,
+  messages: <MessageSquare className="h-3.5 w-3.5" />,
+  privacy: <ShieldCheck className="h-3.5 w-3.5" />,
+  studies: <BookOpen className="h-3.5 w-3.5" />,
+  "study-builder": <Workflow className="h-3.5 w-3.5" />,
+  questionnaires: <ClipboardList className="h-3.5 w-3.5" />,
+  "custom-questionnaires": <WandSparkles className="h-3.5 w-3.5" />,
+  "cognitive-lab": <Activity className="h-3.5 w-3.5" />,
+  ambulatory: <BellRing className="h-3.5 w-3.5" />,
+  "wearable-data": <MonitorSmartphone className="h-3.5 w-3.5" />,
+  participants: <Users className="h-3.5 w-3.5" />,
+  followups: <BellRing className="h-3.5 w-3.5" />,
+  data: <Database className="h-3.5 w-3.5" />,
+  "analysis-lab": <BarChart3 className="h-3.5 w-3.5" />,
+  "thesis-builder": <FileText className="h-3.5 w-3.5" />,
+  "research-ai": <Sparkles className="h-3.5 w-3.5" />,
+  export: <FileDown className="h-3.5 w-3.5" />,
+  clients: <Users className="h-3.5 w-3.5" />,
+  "client-overview": <LayoutDashboard className="h-3.5 w-3.5" />,
+  "care-pathway": <Workflow className="h-3.5 w-3.5" />,
+  notes: <FileText className="h-3.5 w-3.5" />,
+  receptionist: <Settings2 className="h-3.5 w-3.5" />,
+};
+
+function normaliseWorkspace(value: string | null): Workspace | null {
+  if (value === "self" || value === "researcher" || value === "clinician") {
+    return value;
+  }
+  return null;
 }
 
-function MobileEcosystemVisual() {
-  const modes = [
-    {
-      id: "health",
-      icon: HeartPulse,
-      label: "Health Connect",
-      title: "Permission-based health context",
-      description:
-        "Sleep, activity and supported physiological context can feed configured Android workflows.",
-      screenTitle: "Health context",
-      screenMeta: "Health Connect active",
-      screenBody: "Permission-based signals can add real-world context to supported research and monitoring workflows.",
-      statOne: "Sleep",
-      statTwo: "Activity",
-      badge: "Connected",
-    },
-    {
-      id: "wearables",
-      icon: Watch,
-      label: "Wearable context",
-      title: "Supported wearable-derived data",
-      description:
-        "Bring supported wearable-derived data into configured research workflows through Android Health Connect.",
-      screenTitle: "Wearable context",
-      screenMeta: "Synced through Health Connect",
-      screenBody: "Keep wearable context alongside the psychological measurements that give it meaning.",
-      statOne: "Steps",
-      statTwo: "Sleep",
-      badge: "Permission active",
-    },
-    {
-      id: "research",
-      icon: Microscope,
-      label: "Research",
-      title: "Ambulatory and longitudinal studies",
-      description:
-        "EMA / ESM protocols, participant prompts and repeated follow-up stay connected across time.",
-      screenTitle: "EMA / ESM protocol",
-      screenMeta: "3 prompts today",
-      screenBody: "Repeated check-ins capture experiences closer to when they happen instead of relying only on recall.",
-      statOne: "91%",
-      statTwo: "14 days",
-      badge: "Study active",
-    },
-    {
-      id: "care",
-      icon: Stethoscope,
-      label: "Connected care",
-      title: "Follow-up beyond the session",
-      description:
-        "Appointments, secure messages and authorised longitudinal context stay available in the same account.",
-      screenTitle: "Connected follow-up",
-      screenMeta: "Next appointment · 25 Aug",
-      screenBody: "Keep appointments, secure communication and authorised progress connected between sessions.",
-      statOne: "1 appt",
-      statTwo: "2 messages",
-      badge: "Connected",
-    },
-  ] as const;
-
-  const [activeModeId, setActiveModeId] = useState<(typeof modes)[number]["id"]>("research");
-  const activeMode = modes.find((mode) => mode.id === activeModeId) ?? modes[2];
-
-  const leftModes = modes.slice(0, 2);
-  const rightModes = modes.slice(2);
-
-  return (
-    <div className="relative mx-auto w-full max-w-[590px] py-3">
-      <div className="pointer-events-none absolute left-1/2 top-1/2 h-[410px] w-[410px] -translate-x-1/2 -translate-y-1/2 rounded-full bg-cyan-200/35 blur-3xl" />
-
-      <div className="relative grid items-center gap-5 sm:grid-cols-[1fr_230px_1fr]">
-        <div className="space-y-3 sm:text-right">
-          {leftModes.map((mode) => {
-            const Icon = mode.icon;
-            const selected = mode.id === activeModeId;
-            return (
-              <button
-                key={mode.id}
-                type="button"
-                onClick={() => setActiveModeId(mode.id)}
-                className={`w-full rounded-2xl border p-4 text-left shadow-sm backdrop-blur transition duration-200 sm:text-right ${
-                  selected
-                    ? "border-cyan-300 bg-white shadow-[0_12px_30px_-22px_rgba(8,145,178,.55)]"
-                    : "border-slate-200 bg-white/90 hover:border-cyan-200 hover:bg-white"
-                }`}
-              >
-                <div className="flex items-center gap-3 sm:flex-row-reverse">
-                  <div
-                    className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-xl transition ${
-                      selected ? "bg-cyan-100 text-cyan-900" : "bg-cyan-50 text-cyan-800"
-                    }`}
-                  >
-                    <Icon className="h-5 w-5" />
-                  </div>
-                  <div className="min-w-0">
-                    <div className="flex items-center gap-2 sm:justify-end">
-                      <p
-                        className={`text-[10px] font-semibold uppercase tracking-[0.14em] ${
-                          selected ? "text-cyan-900" : "text-slate-800"
-                        }`}
-                      >
-                        {mode.label}
-                      </p>
-                      {selected && <span className="h-1.5 w-1.5 rounded-full bg-cyan-600" />}
-                    </div>
-                    <p className="mt-1 text-xs leading-5 text-slate-500">{mode.description}</p>
-                  </div>
-                </div>
-              </button>
-            );
-          })}
-        </div>
-
-        <div className="relative mx-auto w-[220px] rounded-[38px] border-[7px] border-slate-950 bg-slate-950 p-2 shadow-[0_32px_80px_-30px_rgba(15,23,42,.58)]">
-          <div className="absolute left-1/2 top-2 h-4 w-20 -translate-x-1/2 rounded-full bg-slate-950" />
-          <div className="overflow-hidden rounded-[28px] bg-[#f7faf9]">
-            <div className="flex items-center justify-between border-b border-slate-200 bg-white px-3 pb-2 pt-5">
-              <div className="flex items-center gap-2">
-                <PsyLatticeLogo size={22} />
-              </div>
-              <BellRing className="h-3.5 w-3.5 text-slate-500" />
-            </div>
-
-            <div className="p-3">
-              <div key={activeMode.id} className="rounded-2xl bg-slate-950 p-3 text-white">
-                <p className="text-[7px] font-semibold uppercase tracking-[0.15em] text-cyan-300">
-                  {activeMode.label}
-                </p>
-                <p className="mt-1 text-sm font-semibold">{activeMode.screenTitle}</p>
-                <p className="mt-1 text-[8px] leading-4 text-slate-300">{activeMode.screenBody}</p>
-              </div>
-
-              <div className="mt-2.5 grid grid-cols-2 gap-2">
-                <div className="rounded-xl border border-slate-200 bg-white p-2.5">
-                  <Activity className="h-3.5 w-3.5 text-cyan-700" />
-                  <p className="mt-2 text-[9px] font-semibold text-slate-800">{activeMode.statOne}</p>
-                  <p className="mt-0.5 text-[7px] text-slate-400">{activeMode.label}</p>
-                </div>
-                <div className="rounded-xl border border-slate-200 bg-white p-2.5">
-                  <HeartPulse className="h-3.5 w-3.5 text-cyan-700" />
-                  <p className="mt-2 text-[9px] font-semibold text-slate-800">{activeMode.statTwo}</p>
-                  <p className="mt-0.5 text-[7px] text-slate-400">Current context</p>
-                </div>
-              </div>
-
-              <div className="mt-2.5 rounded-xl border border-cyan-100 bg-cyan-50/80 p-2.5">
-                <div className="flex items-center justify-between gap-2">
-                  <p className="text-[8px] font-semibold text-cyan-900">{activeMode.title}</p>
-                  <span className="shrink-0 rounded-full bg-white px-1.5 py-0.5 text-[6px] font-semibold text-cyan-700">
-                    {activeMode.badge}
-                  </span>
-                </div>
-                <p className="mt-1 text-[7px] leading-3 text-cyan-800/70">{activeMode.screenMeta}</p>
-              </div>
-
-              <div className="mt-3 flex items-center justify-around rounded-2xl border border-slate-200 bg-white px-2 py-2 shadow-sm">
-                {modes.map((mode) => {
-                  const Icon = mode.icon;
-                  const selected = mode.id === activeModeId;
-                  return (
-                    <button
-                      key={mode.id}
-                      type="button"
-                      onClick={() => setActiveModeId(mode.id)}
-                      aria-label={`Show ${mode.label}`}
-                      className={`flex h-7 w-7 items-center justify-center rounded-lg transition ${
-                        selected ? "bg-cyan-50 text-cyan-800" : "text-slate-400 hover:bg-slate-50 hover:text-slate-600"
-                      }`}
-                    >
-                      <Icon className="h-3.5 w-3.5" />
-                    </button>
-                  );
-                })}
-              </div>
-            </div>
-          </div>
-        </div>
-
-        <div className="space-y-3">
-          {rightModes.map((mode) => {
-            const Icon = mode.icon;
-            const selected = mode.id === activeModeId;
-            return (
-              <button
-                key={mode.id}
-                type="button"
-                onClick={() => setActiveModeId(mode.id)}
-                className={`w-full rounded-2xl border p-4 text-left shadow-sm backdrop-blur transition duration-200 ${
-                  selected
-                    ? "border-cyan-300 bg-white shadow-[0_12px_30px_-22px_rgba(8,145,178,.55)]"
-                    : "border-slate-200 bg-white/90 hover:border-cyan-200 hover:bg-white"
-                }`}
-              >
-                <div className="flex items-center gap-3">
-                  <div
-                    className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-xl transition ${
-                      selected ? "bg-cyan-100 text-cyan-900" : "bg-slate-950 text-cyan-200"
-                    }`}
-                  >
-                    <Icon className="h-5 w-5" />
-                  </div>
-                  <div className="min-w-0">
-                    <div className="flex items-center gap-2">
-                      <p
-                        className={`text-[10px] font-semibold uppercase tracking-[0.14em] ${
-                          selected ? "text-cyan-900" : "text-slate-800"
-                        }`}
-                      >
-                        {mode.label}
-                      </p>
-                      {selected && <span className="h-1.5 w-1.5 rounded-full bg-cyan-600" />}
-                    </div>
-                    <p className="mt-1 text-xs leading-5 text-slate-500">{mode.description}</p>
-                  </div>
-                </div>
-              </button>
-            );
-          })}
-        </div>
-      </div>
-
-      <div className="relative mt-6 flex flex-wrap justify-center gap-2">
-        <span className="rounded-full border border-cyan-200 bg-cyan-50 px-3 py-1.5 text-[10px] font-semibold text-cyan-800">
-          Android beta · available now
-        </span>
-        <span className="rounded-full border border-slate-200 bg-white px-3 py-1.5 text-[10px] font-semibold text-slate-500">
-          iPhone + Apple Health + Apple Watch · coming soon
-        </span>
-      </div>
-    </div>
-  );
-}
-
-
-function UpcomingCapabilitiesShowcase() {
-  const upcoming = [
-    {
-      id: "cognitive",
-      icon: Brain,
-      eyebrow: "Cognitive Lab",
-      title: "Run real cognitive experiments inside PsyLattice.",
-      description:
-        "Template-based and custom cognitive tasks will let researchers combine questionnaires, EMA and cognitive performance in one study pipeline.",
-      points: [
-        "Template library for Stroop, Flanker, Go/No-Go, N-back, PVT and more.",
-        "Trial-level reaction time, accuracy and timing-ready exports.",
-        "Practice blocks, randomisation, feedback, counterbalancing and adaptive flow.",
-      ],
-      chips: ["Task Builder", "Reaction time", "Templates", "Longitudinal cognition"],
-      statA: "10+ launch templates",
-      statB: "Trial-level exports",
-      accent: "from-cyan-300/22 via-cyan-50 to-white",
-      panelTint: "border-cyan-200 bg-cyan-50/85 text-cyan-900",
-      illustration: (
-        <div className="space-y-3">
-          <div className="rounded-2xl border border-slate-200 bg-white p-3 shadow-sm">
-            <div className="flex items-center justify-between gap-3 border-b border-slate-200 pb-2.5">
-              <div>
-                <p className="text-[10px] font-semibold uppercase tracking-[0.15em] text-cyan-800">
-                  Task Builder
-                </p>
-                <p className="mt-1 text-xs font-semibold text-slate-900">Emotional Stroop · draft</p>
-              </div>
-              <span className="rounded-full border border-cyan-200 bg-cyan-50 px-2.5 py-1 text-[9px] font-semibold text-cyan-800">
-                Preview
-              </span>
-            </div>
-            <div className="mt-3 grid gap-2">
-              {[
-                ["Fixation", "500 ms"],
-                ["Word stimulus", "max 1500 ms"],
-                ["Response keys", "R · G · B · Y"],
-                ["Feedback", "practice only"],
-              ].map(([label, meta]) => (
-                <div key={label} className="flex items-center justify-between rounded-xl border border-slate-200 bg-slate-50 px-3 py-2.5">
-                  <p className="text-[11px] font-semibold text-slate-800">{label}</p>
-                  <p className="text-[10px] text-slate-500">{meta}</p>
-                </div>
-              ))}
-            </div>
-          </div>
-          <div className="grid grid-cols-2 gap-3">
-            <div className="rounded-2xl border border-slate-200 bg-white p-3 shadow-sm">
-              <FlaskConical className="h-4 w-4 text-cyan-700" />
-              <p className="mt-2 text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-500">Trial table</p>
-              <p className="mt-1 text-xs font-semibold text-slate-900">Conditions + correct responses</p>
-            </div>
-            <div className="rounded-2xl border border-slate-200 bg-white p-3 shadow-sm">
-              <BarChart3 className="h-4 w-4 text-cyan-700" />
-              <p className="mt-2 text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-500">Outputs</p>
-              <p className="mt-1 text-xs font-semibold text-slate-900">RT, accuracy & summary scores</p>
-            </div>
-          </div>
-        </div>
-      ),
-    },
-    {
-      id: "device-data",
-      icon: Database,
-      eyebrow: "Device-based collection",
-      title: "Broader device and sensor-aware study workflows.",
-      description:
-        "PsyLattice will expand contextual data collection while remaining selective about what is actually stored and used in research workflows.",
-      points: [
-        "Health Connect today, with Apple Health / HealthKit support planned on iPhone.",
-        "Event-based and windowed data capture instead of default raw-data warehousing.",
-        "Use contextual signals to trigger EMA, follow-up, or future cognitive tasks.",
-      ],
-      chips: ["Health Connect", "HealthKit", "Event windows", "Context triggers"],
-      statA: "Selective storage",
-      statB: "Cross-device design",
-      accent: "from-cyan-500/20 via-sky-100 to-white",
-      panelTint: "border-cyan-200 bg-cyan-50/85 text-cyan-900",
-      illustration: (
-        <div className="space-y-3">
-          <div className="rounded-[22px] border border-slate-200/90 bg-white p-4 shadow-[0_2px_5px_rgba(15,23,42,.035),0_12px_28px_rgba(15,23,42,.07)]">
-            <div className="grid gap-3 sm:grid-cols-[1fr_auto_1fr_auto_1fr] sm:items-center">
-              <div className="rounded-2xl border border-slate-200 bg-slate-50 px-3 py-3 text-center">
-                <Watch className="mx-auto h-5 w-5 text-cyan-700" />
-                <p className="mt-2 text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-500">Wearable</p>
-              </div>
-              <ArrowRight className="mx-auto hidden h-4 w-4 text-slate-300 sm:block" />
-              <div className="rounded-2xl border border-cyan-200 bg-cyan-50 px-3 py-3 text-center">
-                <HeartPulse className="mx-auto h-5 w-5 text-cyan-800" />
-                <p className="mt-2 text-[10px] font-semibold uppercase tracking-[0.14em] text-cyan-800">Health layer</p>
-              </div>
-              <ArrowRight className="mx-auto hidden h-4 w-4 text-slate-300 sm:block" />
-              <div className="rounded-2xl border border-slate-200 bg-white px-3 py-3 text-center shadow-sm">
-                <Workflow className="mx-auto h-5 w-5 text-slate-800" />
-                <p className="mt-2 text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-500">Study rule</p>
-              </div>
-            </div>
-          </div>
-          <div className="rounded-2xl border border-slate-200 bg-white p-3 shadow-sm">
-            <div className="flex items-center justify-between">
-              <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-500">Storage strategy</p>
-              <span className="rounded-full border border-cyan-200 bg-cyan-50 px-2.5 py-1 text-[9px] font-semibold text-cyan-800">Lean by default</span>
-            </div>
-            <div className="mt-3 grid grid-cols-2 gap-2">
-              <div className="rounded-xl border border-slate-200 bg-slate-50 p-3">
-                <p className="text-[10px] font-semibold text-slate-800">Trigger event only</p>
-                <p className="mt-1 text-[10px] leading-4 text-slate-500">Small, practical, privacy-conscious.</p>
-              </div>
-              <div className="rounded-xl border border-slate-200 bg-slate-50 p-3">
-                <p className="text-[10px] font-semibold text-slate-800">Event window</p>
-                <p className="mt-1 text-[10px] leading-4 text-slate-500">Keep useful context when the study truly needs it.</p>
-              </div>
-            </div>
-          </div>
-        </div>
-      ),
-    },
-    {
-      id: "ios",
-      icon: Smartphone,
-      eyebrow: "Apple ecosystem",
-      title: "Native iPhone app with Apple Health context.",
-      description:
-        "The next major mobile step is a native iPhone experience so participants and self users are not limited to Android.",
-      points: [
-        "Native iPhone workspace shell aligned with Self, Research and Clinical.",
-        "Apple Health / HealthKit access for steps, sleep, heart rate and workouts.",
-        "Clear path to iPhone research participation and clinician-connected follow-up.",
-      ],
-      chips: ["iPhone app", "Apple Health", "HealthKit", "TestFlight beta"],
-      statA: "iPhone participant support",
-      statB: "Apple Health integration",
-      accent: "from-slate-300/30 via-slate-100 to-white",
-      panelTint: "border-slate-300 bg-slate-100/85 text-slate-900",
-      illustration: (
-        <div className="space-y-3">
-          <div className="rounded-[28px] border border-slate-200 bg-white p-4 shadow-sm">
-            <div className="flex flex-wrap items-center gap-2">
-              <span className="inline-flex items-center gap-2 rounded-full border border-slate-200 bg-slate-50 px-3 py-1.5 text-[10px] font-semibold text-slate-700">
-                <svg viewBox="0 0 24 24" className="h-3.5 w-3.5 fill-current" aria-hidden="true">
-                  <path d="M16.37 12.61c.02 2.43 2.13 3.24 2.15 3.25-.02.06-.34 1.18-1.12 2.34-.67 1-1.36 2-2.46 2.02-1.08.02-1.43-.64-2.67-.64-1.24 0-1.62.62-2.65.66-1.06.04-1.88-1.06-2.55-2.06-1.37-1.98-2.42-5.59-1.01-8.05.7-1.22 1.95-2 3.31-2.02 1.03-.02 2 .7 2.67.7.67 0 1.92-.87 3.24-.74.55.02 2.08.22 3.06 1.65-.08.05-1.82 1.06-1.8 2.89Zm-2.19-6.86c.56-.68.95-1.63.85-2.57-.81.03-1.79.54-2.37 1.22-.52.6-.98 1.57-.86 2.49.9.07 1.82-.46 2.38-1.14Z" />
-                </svg>
-                Apple support coming up
-              </span>
-              <span className="inline-flex items-center gap-2 rounded-full border border-cyan-200 bg-cyan-50 px-3 py-1.5 text-[10px] font-semibold text-cyan-800">
-                <HeartPulse className="h-3.5 w-3.5" />
-                Apple Health / HealthKit
-              </span>
-            </div>
-
-            <div className="mt-4 rounded-[26px] border border-slate-200 bg-[radial-gradient(circle_at_top_left,rgba(207,250,254,.9),rgba(255,255,255,1)_55%)] p-4">
-              <div className="flex items-start justify-between gap-4">
-                <div>
-                  <div className="flex items-center gap-2">
-                    <svg viewBox="0 0 24 24" className="h-4 w-4 fill-slate-900" aria-hidden="true">
-                      <path d="M16.37 12.61c.02 2.43 2.13 3.24 2.15 3.25-.02.06-.34 1.18-1.12 2.34-.67 1-1.36 2-2.46 2.02-1.08.02-1.43-.64-2.67-.64-1.24 0-1.62.62-2.65.66-1.06.04-1.88-1.06-2.55-2.06-1.37-1.98-2.42-5.59-1.01-8.05.7-1.22 1.95-2 3.31-2.02 1.03-.02 2 .7 2.67.7.67 0 1.92-.87 3.24-.74.55.02 2.08.22 3.06 1.65-.08.05-1.82 1.06-1.8 2.89Zm-2.19-6.86c.56-.68.95-1.63.85-2.57-.81.03-1.79.54-2.37 1.22-.52.6-.98 1.57-.86 2.49.9.07 1.82-.46 2.38-1.14Z" />
-                    </svg>
-                    <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-500">iPhone app</p>
-                  </div>
-                  <p className="mt-2 text-lg font-semibold text-slate-950">PsyLattice on iPhone</p>
-                  <p className="mt-1 text-xs leading-5 text-slate-500">A clean native shell for Self, Research and Clinical—designed for Apple Health-enabled real-world follow-up.</p>
-                </div>
-                <span className="rounded-full border border-slate-200 bg-white px-2.5 py-1 text-[9px] font-semibold text-slate-600">Soon</span>
-              </div>
-
-              <div className="mt-4 grid gap-3 sm:grid-cols-3">
-                <div className="rounded-2xl border border-slate-200 bg-white p-3 shadow-sm">
-                  <HeartPulse className="h-4 w-4 text-cyan-700" />
-                  <p className="mt-2 text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-500">Health</p>
-                  <p className="mt-1 text-xs font-semibold text-slate-900">Heart rate + sleep</p>
-                </div>
-                <div className="rounded-2xl border border-slate-200 bg-white p-3 shadow-sm">
-                  <Activity className="h-4 w-4 text-cyan-700" />
-                  <p className="mt-2 text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-500">Activity</p>
-                  <p className="mt-1 text-xs font-semibold text-slate-900">Steps, workouts, movement</p>
-                </div>
-                <div className="rounded-2xl border border-slate-200 bg-slate-950 p-3 text-white shadow-sm">
-                  <Smartphone className="h-4 w-4 text-cyan-300" />
-                  <p className="mt-2 text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-400">Use case</p>
-                  <p className="mt-1 text-xs font-semibold">Cross-platform participant support</p>
-                </div>
-              </div>
-            </div>
-          </div>
-          <div className="rounded-2xl border border-slate-200 bg-white p-3 shadow-sm">
-            <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-500">Distribution path</p>
-            <p className="mt-2 text-xs font-semibold text-slate-900">Build now, test free on your own iPhone, then move to TestFlight when ready.</p>
-          </div>
-        </div>
-      ),
-    },
-    {
-      id: "wear-os",
-      icon: Watch,
-      eyebrow: "Wrist-based experiences",
-      title: "Wear OS and Apple Watch companion experiences.",
-      description:
-        "Short prompts and contextual study interactions can eventually extend from the phone to the wrist, making PsyLattice even more real-world.",
-      points: [
-        "Quick responses, reminders and micro-interactions on the wrist.",
-        "Useful for ambulatory and longitudinal research with less disruption.",
-        "Complements—not replaces—the phone-based PsyLattice experience.",
-      ],
-      chips: ["Wear OS", "Apple Watch", "Micro-prompts", "Real-world research"],
-      statA: "Wrist prompts",
-      statB: "Companion workflows",
-      accent: "from-cyan-400/20 via-white to-cyan-100",
-      panelTint: "border-cyan-200 bg-cyan-50/90 text-cyan-900",
-      illustration: (
-        <div className="space-y-3">
-          <div className="grid gap-3 sm:grid-cols-2">
-            <div className="rounded-[28px] border border-slate-200 bg-white p-4 shadow-sm">
-              <div className="flex items-center justify-between gap-3">
-                <span className="inline-flex items-center gap-2 rounded-full border border-slate-200 bg-slate-50 px-3 py-1.5 text-[10px] font-semibold text-slate-700">
-                  <Watch className="h-3.5 w-3.5" />
-                  Wear OS
-                </span>
-                <span className="text-[9px] font-semibold uppercase tracking-[0.14em] text-slate-400">Google ecosystem</span>
-              </div>
-              <div className="mt-4 rounded-[24px] border border-slate-200 bg-[linear-gradient(180deg,#f8fbfb_0%,#ffffff_100%)] p-4">
-                <div className="flex items-center gap-2 text-slate-700">
-                  <div className="flex h-9 w-9 items-center justify-center rounded-full bg-slate-950 text-white shadow-sm">
-                    <Watch className="h-4 w-4" />
-                  </div>
-                  <div>
-                    <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-500">Wrist companion</p>
-                    <p className="text-sm font-semibold text-slate-900">Quick micro-prompts on Wear OS</p>
-                  </div>
-                </div>
-                <div className="mt-4 rounded-2xl bg-slate-950 p-4 text-white shadow-sm">
-                  <div className="flex items-center justify-between">
-                    <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-cyan-300">Prompt</p>
-                    <span className="rounded-full bg-white/10 px-2 py-1 text-[8px] font-semibold text-slate-200">2 sec response</span>
-                  </div>
-                  <p className="mt-2 text-sm font-semibold">Stress check-in</p>
-                  <div className="mt-3 grid grid-cols-5 gap-1.5">
-                    {[1,2,3,4,5].map((n) => (
-                      <div key={n} className={`rounded-lg py-2 text-center text-[10px] font-semibold ${n === 3 ? "bg-cyan-400 text-slate-950" : "bg-white/10 text-slate-200"}`}>
-                        {n}
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              </div>
-            </div>
-            <div className="rounded-[28px] border border-slate-200 bg-white p-4 shadow-sm">
-              <div className="flex items-center justify-between gap-3">
-                <span className="inline-flex items-center gap-2 rounded-full border border-slate-200 bg-slate-50 px-3 py-1.5 text-[10px] font-semibold text-slate-700">
-                  <svg viewBox="0 0 24 24" className="h-3.5 w-3.5 fill-current" aria-hidden="true">
-                    <path d="M16.37 12.61c.02 2.43 2.13 3.24 2.15 3.25-.02.06-.34 1.18-1.12 2.34-.67 1-1.36 2-2.46 2.02-1.08.02-1.43-.64-2.67-.64-1.24 0-1.62.62-2.65.66-1.06.04-1.88-1.06-2.55-2.06-1.37-1.98-2.42-5.59-1.01-8.05.7-1.22 1.95-2 3.31-2.02 1.03-.02 2 .7 2.67.7.67 0 1.92-.87 3.24-.74.55.02 2.08.22 3.06 1.65-.08.05-1.82 1.06-1.8 2.89Zm-2.19-6.86c.56-.68.95-1.63.85-2.57-.81.03-1.79.54-2.37 1.22-.52.6-.98 1.57-.86 2.49.9.07 1.82-.46 2.38-1.14Z" />
-                  </svg>
-                  Apple Watch
-                </span>
-                <span className="text-[9px] font-semibold uppercase tracking-[0.14em] text-slate-400">Apple ecosystem</span>
-              </div>
-              <div className="mt-4 rounded-[24px] border border-slate-200 bg-[linear-gradient(180deg,#f8fbfb_0%,#ffffff_100%)] p-4">
-                <div className="flex items-center gap-2 text-slate-700">
-                  <div className="flex h-9 w-9 items-center justify-center rounded-full bg-slate-950 text-white shadow-sm">
-                    <svg viewBox="0 0 24 24" className="h-4 w-4 fill-current" aria-hidden="true">
-                      <path d="M16.37 12.61c.02 2.43 2.13 3.24 2.15 3.25-.02.06-.34 1.18-1.12 2.34-.67 1-1.36 2-2.46 2.02-1.08.02-1.43-.64-2.67-.64-1.24 0-1.62.62-2.65.66-1.06.04-1.88-1.06-2.55-2.06-1.37-1.98-2.42-5.59-1.01-8.05.7-1.22 1.95-2 3.31-2.02 1.03-.02 2 .7 2.67.7.67 0 1.92-.87 3.24-.74.55.02 2.08.22 3.06 1.65-.08.05-1.82 1.06-1.8 2.89Zm-2.19-6.86c.56-.68.95-1.63.85-2.57-.81.03-1.79.54-2.37 1.22-.52.6-.98 1.57-.86 2.49.9.07 1.82-.46 2.38-1.14Z" />
-                    </svg>
-                  </div>
-                  <div>
-                    <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-500">Apple support</p>
-                    <p className="text-sm font-semibold text-slate-900">Fast prompt handoff from Apple Watch</p>
-                  </div>
-                </div>
-                <div className="mt-4 rounded-2xl border border-cyan-100 bg-cyan-50 p-4 shadow-sm">
-                  <div className="flex items-center justify-between">
-                    <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-cyan-800">Prompt ready</p>
-                    <BellRing className="h-4 w-4 text-cyan-700" />
-                  </div>
-                  <p className="mt-2 text-sm font-semibold text-cyan-950">Respond on the wrist, continue on iPhone when needed.</p>
-                  <div className="mt-3 flex flex-wrap gap-2">
-                    <span className="rounded-full border border-cyan-200 bg-white px-2.5 py-1 text-[9px] font-semibold text-cyan-800">Quick answer</span>
-                    <span className="rounded-full border border-cyan-200 bg-white px-2.5 py-1 text-[9px] font-semibold text-cyan-800">Reminder</span>
-                    <span className="rounded-full border border-cyan-200 bg-white px-2.5 py-1 text-[9px] font-semibold text-cyan-800">Continue on phone</span>
-                  </div>
-                </div>
-              </div>
-            </div>
-          </div>
-          <div className="rounded-2xl border border-slate-200 bg-white p-3 shadow-sm">
-            <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-500">Why this matters</p>
-            <p className="mt-2 text-xs text-slate-600">For students and early-career researchers, a wrist companion can make repeated real-world participation far easier without requiring a large custom hardware budget.</p>
-          </div>
-        </div>
-      ),
-    },
-  ] as const;
-
-  const [activeId, setActiveId] = useState<(typeof upcoming)[number]["id"]>("cognitive");
-  const active = upcoming.find((item) => item.id === activeId) ?? upcoming[0];
-
-  return (
-    <div className="relative mx-auto w-full max-w-[1180px]">
-      <div className={`pointer-events-none absolute inset-x-12 top-10 h-[340px] rounded-[56px] bg-gradient-to-br ${active.accent} blur-3xl opacity-80`} />
-      <div className="relative overflow-hidden rounded-[34px] border border-slate-200/90 bg-white/92 p-5 shadow-[0_4px_10px_rgba(15,23,42,.04),0_30px_76px_rgba(15,23,42,.11)] backdrop-blur-xl sm:p-6 lg:p-7">
-        <div className="grid gap-8 lg:grid-cols-[.9fr_1.1fr] lg:items-start">
-          <div>
-            <div className="inline-flex items-center gap-2 rounded-full border border-cyan-200 bg-white px-3.5 py-2 text-[11px] font-semibold text-cyan-800 shadow-[0_2px_5px_rgba(15,23,42,.035),0_10px_24px_rgba(8,145,178,.09)]">
-              <Sparkles className="h-3.5 w-3.5" />
-              Coming next for PsyLattice Research
-            </div>
-            <h3 className="mt-5 text-3xl font-semibold tracking-[-0.04em] text-slate-950 sm:text-4xl">
-              Build the platform students and young researchers wish already existed.
-            </h3>
-            <p className="mt-4 max-w-2xl text-base leading-7 text-slate-600">
-              PsyLattice is expanding beyond questionnaires and EMA into an integrated research environment: cognitive experiments, broader device-aware workflows and companion apps that keep serious research accessible instead of institution-only.
-            </p>
-
-            <div className="mt-6 grid gap-3">
-              {upcoming.map((item) => {
-                const Icon = item.icon;
-                const selected = item.id === activeId;
-                return (
-                  <button
-                    key={item.id}
-                    type="button"
-                    onClick={() => setActiveId(item.id)}
-                    className={`w-full rounded-[24px] border p-4 text-left transition duration-200 ${
-                      selected
-                        ? "border-cyan-300 bg-white shadow-[0_16px_44px_-30px_rgba(8,145,178,.35)]"
-                        : "border-slate-200 bg-white/80 hover:border-cyan-200 hover:bg-white"
-                    }`}
-                  >
-                    <div className="flex items-start gap-3">
-                      <div className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl ${selected ? "bg-cyan-100 text-cyan-900" : "bg-slate-100 text-slate-600"}`}>
-                        <Icon className="h-5 w-5" />
-                      </div>
-                      <div>
-                        <p className={`text-[10px] font-semibold uppercase tracking-[0.14em] ${selected ? "text-cyan-900" : "text-slate-500"}`}>
-                          {item.eyebrow}
-                        </p>
-                        <p className="mt-1 text-sm font-semibold text-slate-900">{item.title}</p>
-                        <p className="mt-1.5 text-xs leading-5 text-slate-500">{item.description}</p>
-                      </div>
-                    </div>
-                  </button>
-                );
-              })}
-            </div>
-          </div>
-
-          <div>
-            <div className="rounded-[28px] border border-slate-200/90 bg-[#f8fbfb] p-4 shadow-[0_2px_5px_rgba(15,23,42,.03),0_14px_30px_rgba(15,23,42,.06)] sm:p-5 lg:p-6">
-              <div className="flex flex-wrap items-start justify-between gap-3">
-                <div>
-                  <p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-slate-500">{active.eyebrow}</p>
-                  <h4 className="mt-2 text-2xl font-semibold tracking-[-0.03em] text-slate-950">{active.title}</h4>
-                </div>
-                <div className={`rounded-full border px-3 py-1.5 text-[10px] font-semibold ${active.panelTint}`}>
-                  Planned feature set
-                </div>
-              </div>
-
-              <div className="mt-5">{active.illustration}</div>
-
-              <div className="mt-5 grid gap-3 sm:grid-cols-2">
-                <div className="rounded-[22px] border border-slate-200/90 bg-white p-4 shadow-[0_2px_5px_rgba(15,23,42,.035),0_12px_28px_rgba(15,23,42,.07)]">
-                  <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-500">Launch value</p>
-                  <p className="mt-2 text-sm font-semibold text-slate-900">{active.statA}</p>
-                </div>
-                <div className="rounded-[22px] border border-slate-200/90 bg-white p-4 shadow-[0_2px_5px_rgba(15,23,42,.035),0_12px_28px_rgba(15,23,42,.07)]">
-                  <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-500">Research payoff</p>
-                  <p className="mt-2 text-sm font-semibold text-slate-900">{active.statB}</p>
-                </div>
-              </div>
-
-              <div className="mt-5 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
-                <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-500">Why it matters</p>
-                <ul className="mt-3 space-y-2.5">
-                  {active.points.map((point) => (
-                    <li key={point} className="flex items-start gap-2.5 text-sm leading-6 text-slate-600">
-                      <Check className="mt-1 h-4 w-4 shrink-0 text-cyan-700" />
-                      <span>{point}</span>
-                    </li>
-                  ))}
-                </ul>
-                <div className="mt-4 flex flex-wrap gap-2">
-                  {active.chips.map((chip) => (
-                    <span key={chip} className="rounded-full border border-slate-200 bg-slate-50 px-3 py-1.5 text-[10px] font-semibold text-slate-600">
-                      {chip}
-                    </span>
-                  ))}
-                </div>
-              </div>
-            </div>
-          </div>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-function HeroWorkspaceStage({
-  activeWorkspace,
-  onChange,
-}: {
-  activeWorkspace: WorkspaceId;
-  onChange: (workspace: WorkspaceId) => void;
-}) {
-  const active =
-    workspaces.find((workspace) => workspace.id === activeWorkspace) ??
-    workspaces[0];
-  const [rotationPaused, setRotationPaused] = useState(false);
-
-  useEffect(() => {
-    if (rotationPaused) return;
-
-    const timer = window.setTimeout(() => {
-      const currentIndex = workspaces.findIndex(
-        (workspace) => workspace.id === activeWorkspace
-      );
-      const nextWorkspace =
-        workspaces[(currentIndex + 1) % workspaces.length];
-      onChange(nextWorkspace.id);
-    }, 6500);
-
-    return () => window.clearTimeout(timer);
-  }, [activeWorkspace, onChange, rotationPaused]);
-
-  return (
-    <div
-      className="relative mx-auto w-full max-w-[555px]"
-      onMouseEnter={() => setRotationPaused(true)}
-      onMouseLeave={() => setRotationPaused(false)}
-      onFocusCapture={() => setRotationPaused(true)}
-      onBlurCapture={(event) => {
-        if (!event.currentTarget.contains(event.relatedTarget as Node | null)) {
-          setRotationPaused(false);
-        }
-      }}
-    >
-      <div className="pointer-events-none absolute -inset-7 rounded-[46px] bg-gradient-to-br from-cyan-100/70 via-white to-sky-100/40 blur-2xl" />
-
-      <div className="relative overflow-hidden rounded-[32px] border border-slate-200 bg-white shadow-[0_34px_100px_-44px_rgba(15,23,42,0.36)]">
-        {/* browser chrome */}
-        <div className="flex items-center justify-between border-b border-slate-200 bg-gradient-to-b from-slate-100 to-slate-50 px-4 py-3.5">
-          <div className="flex items-center gap-3">
-            <div className="flex gap-1.5" aria-hidden="true">
-              <span className="h-2.5 w-2.5 rounded-full bg-red-400" />
-              <span className="h-2.5 w-2.5 rounded-full bg-cyan-300" />
-              <span className="h-2.5 w-2.5 rounded-full bg-cyan-400" />
-            </div>
-            <div className="hidden w-52 rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-[10px] font-medium text-slate-400 sm:block">
-              psylattice.com
-            </div>
-          </div>
-
-          <span className="rounded-full border border-cyan-100 bg-cyan-50 px-2.5 py-1 text-[9px] font-semibold uppercase tracking-[0.13em] text-cyan-800">
-            Live workspace preview
-          </span>
-        </div>
-
-        {/* app header */}
-        <div className="flex flex-col gap-4 border-b border-slate-200 bg-white px-5 py-4 sm:flex-row sm:items-center sm:justify-between">
-          <div className="flex items-center gap-3">
-            <PsyLatticeLogo size={34} />
-            <div className="hidden h-7 w-px bg-slate-200 sm:block" />
-            <div>
-              
-            </div>
-          </div>
-
-          <div className="w-fit">
-            <div className="inline-flex rounded-xl border border-slate-200 bg-slate-50 p-1">
-              {workspaces.map((workspace) => {
-                const Icon = workspace.icon;
-                const selected = workspace.id === activeWorkspace;
-
-                return (
-                  <button
-                    key={workspace.id}
-                    type="button"
-                    onClick={() => onChange(workspace.id)}
-                    className={`flex items-center gap-1.5 rounded-lg px-3 py-2 text-[9px] font-semibold transition ${
-                      selected
-                        ? "bg-slate-950 text-white shadow-sm"
-                        : "text-slate-500 hover:bg-white hover:text-slate-800"
-                    }`}
-                  >
-                    <Icon className="h-3.5 w-3.5" />
-                    {workspace.navLabel}
-                  </button>
-                );
-              })}
-            </div>
-            <div className="mt-1.5 h-[2px] overflow-hidden rounded-full bg-slate-100">
-              {!rotationPaused && (
-                <div
-                  key={`cycle-${activeWorkspace}`}
-                  className="hero-cycle-progress h-full rounded-full bg-cyan-700"
-                />
-              )}
-            </div>
-          </div>
-        </div>
-
-        <div
-          key={activeWorkspace}
-          className="hero-panel-in grid min-h-[405px] grid-cols-[120px_minmax(0,1fr)] sm:grid-cols-[150px_minmax(0,1fr)]"
-        >
-          {/* sidebar */}
-          <aside className="border-r border-slate-200 bg-white p-3 sm:p-4">
-            <div className="mb-4 rounded-xl bg-cyan-50/70 px-3 py-2.5">
-              <p className="text-[8px] font-semibold uppercase tracking-[0.15em] text-cyan-800">
-                {active.label}
-              </p>
-              <p className="mt-1 text-[10px] font-semibold text-slate-800">
-                {active.title.replace("PsyLattice ", "")}
-              </p>
-            </div>
-
-            <p className="px-2 text-[8px] font-semibold uppercase tracking-[0.15em] text-slate-400">
-              Workspace
-            </p>
-
-            <div className="mt-2 space-y-1">
-              {active.features.slice(0, 5).map((feature, index) => {
-                const Icon = feature.icon;
-                return (
-                  <div
-                    key={feature.id}
-                    className={`flex items-center gap-2 rounded-xl px-2.5 py-2.5 ${
-                      index === 0
-                        ? "bg-cyan-50 text-cyan-900"
-                        : "text-slate-400"
-                    }`}
-                  >
-                    <Icon className="h-3.5 w-3.5 shrink-0" />
-                    <span className="truncate text-[8px] font-semibold">
-                      {feature.title}
-                    </span>
-                  </div>
-                );
-              })}
-            </div>
-
-            <div className="mt-5 rounded-xl border border-slate-200 bg-slate-50 p-3">
-              <p className="text-[8px] font-semibold uppercase tracking-[0.14em] text-slate-400">
-                Context
-              </p>
-              <p className="mt-1 text-[9px] leading-4 text-slate-500">
-                {active.shortDescription}
-              </p>
-            </div>
-          </aside>
-
-          {/* workspace content */}
-          <div className="min-w-0 bg-[#f7f9f9]">
-            <div className="flex h-14 items-center justify-between border-b border-slate-200 bg-white px-4 sm:px-5">
-              <div>
-                <p className="text-[10px] font-semibold text-slate-800">
-                  {active.title}
-                </p>
-                <p className="mt-0.5 text-[8px] text-slate-400">
-                  PsyLattice workspace
-                </p>
-              </div>
-
-              <div className="flex items-center gap-2">
-                <span className="rounded-full border border-cyan-100 bg-cyan-50 px-2.5 py-1 text-[8px] font-semibold text-cyan-800">
-                  Active
-                </span>
-                <div className="flex h-8 w-8 items-center justify-center rounded-full bg-slate-100 text-[8px] font-bold text-slate-500">
-                  PD
-                </div>
-              </div>
-            </div>
-
-            <div className="p-4 sm:p-5">
-              {activeWorkspace === "self" && <HeroSelfPreview />}
-              {activeWorkspace === "research" && <HeroResearchPreview />}
-              {activeWorkspace === "clinical" && <HeroClinicalPreview />}
-            </div>
-          </div>
-        </div>
-
-        <div className="flex flex-col gap-3 border-t border-slate-200 bg-white px-5 py-4 sm:flex-row sm:items-center sm:justify-between">
-          <div>
-            <p className="text-[9px] font-semibold uppercase tracking-[0.14em] text-cyan-800">
-              {active.label}
-            </p>
-            <p className="mt-1 text-[10px] text-slate-500">
-              {active.description}
-            </p>
-          </div>
-
-          <button
-            type="button"
-            onClick={() =>
-              document
-                .getElementById("platform")
-                ?.scrollIntoView({ behavior: "smooth" })
-            }
-            className="inline-flex shrink-0 items-center gap-2 text-[10px] font-semibold text-slate-800 transition hover:text-cyan-800"
-          >
-            Explore features
-            <ArrowRight className="h-3.5 w-3.5" />
-          </button>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-function HeroSelfPreview() {
-  return (
-    <div className="space-y-4">
-      <div>
-        <p className="text-[9px] font-semibold uppercase tracking-[0.16em] text-cyan-800">
-          Your overview
-        </p>
-        <h3 className="mt-1.5 text-xl font-semibold tracking-[-0.025em] text-slate-950">
-          Good morning.
-        </h3>
-        <p className="mt-1 text-[10px] leading-5 text-slate-500">
-          A calm snapshot of today’s personal psychological tools.
-        </p>
-      </div>
-
-      <div className="grid gap-3 sm:grid-cols-3">
-        {[
-          ["2 / 3", "Check-ins", "completed today"],
-          ["Day 8", "Current plan", "stress regulation"],
-          ["3", "Assessments", "completed"],
-        ].map(([value, label, detail]) => (
-          <div
-            key={label}
-            className="rounded-2xl border border-slate-200 bg-white p-4"
-          >
-            <p className="text-[8px] text-slate-400">{label}</p>
-            <p className="mt-2 text-lg font-semibold text-slate-900">
-              {value}
-            </p>
-            <p className="mt-1 text-[8px] text-slate-400">{detail}</p>
-          </div>
-        ))}
-      </div>
-
-      <div className="grid gap-3 sm:grid-cols-[1.15fr_.85fr]">
-        <div className="rounded-2xl border border-slate-200 bg-white p-4">
-          <div className="flex items-center justify-between">
-            <div>
-              <p className="text-[8px] uppercase tracking-[0.13em] text-slate-400">
-                Latest self-assessment
-              </p>
-              <p className="mt-1 text-[11px] font-semibold text-slate-800">
-                Perceived Stress
-              </p>
-            </div>
-            <span className="rounded-full bg-cyan-50 px-2.5 py-1 text-[8px] font-semibold text-cyan-800">
-              Moderate range
-            </span>
-          </div>
-          <div className="mt-4 h-2 rounded-full bg-slate-100">
-            <div className="h-full w-[58%] rounded-full bg-cyan-700" />
-          </div>
-        </div>
-
-        <div className="rounded-2xl bg-slate-950 p-4 text-white">
-          <div className="flex items-center gap-2">
-            <Sparkles className="h-3.5 w-3.5 text-cyan-300" />
-            <p className="text-[8px] font-semibold uppercase tracking-[0.13em] text-cyan-300">
-              Luna AI
-            </p>
-          </div>
-          <p className="mt-3 text-[9px] leading-5 text-slate-300">
-            Not sure what to assess? Explore suitable self-checks without
-            automated diagnosis.
-          </p>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-function HeroResearchPreview() {
-  return (
-    <div className="space-y-4">
-      <div className="flex flex-wrap items-start justify-between gap-3">
-        <div>
-          <p className="text-[9px] font-semibold uppercase tracking-[0.16em] text-cyan-800">
-            Active study
-          </p>
-          <h3 className="mt-1.5 text-lg font-semibold tracking-[-0.025em] text-slate-950">
-            Daily Stress in University Students
-          </h3>
-          <p className="mt-1 text-[10px] text-slate-500">
-            14-day ambulatory protocol
-          </p>
-        </div>
-        <span className="rounded-full bg-cyan-50 px-2.5 py-1 text-[8px] font-semibold text-cyan-700">
-          Live
-        </span>
-      </div>
-
-      <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
-        {[
-          ["93", "Participants"],
-          ["81%", "Compliance"],
-          ["2,846", "Responses"],
-          ["7", "Data flags"],
-        ].map(([value, label]) => (
-          <div
-            key={label}
-            className="rounded-2xl border border-slate-200 bg-white p-3.5"
-          >
-            <p className="text-base font-semibold text-slate-900">{value}</p>
-            <p className="mt-1 text-[8px] text-slate-400">{label}</p>
-          </div>
-        ))}
-      </div>
-
-      <div className="rounded-2xl border border-slate-200 bg-white p-4">
-        <p className="text-[9px] font-semibold text-slate-700">
-          Study workflow
-        </p>
-        <div className="mt-4 grid grid-cols-4 gap-2">
-          {["Measures", "EMA", "Participants", "Export"].map(
-            (label, index) => (
-              <div key={label}>
-                <div className="flex items-center">
-                  <span
-                    className={`flex h-7 w-7 items-center justify-center rounded-full text-[9px] font-semibold ${
-                      index < 3
-                        ? "bg-cyan-800 text-white"
-                        : "bg-slate-100 text-slate-400"
-                    }`}
-                  >
-                    {index < 3 ? <Check className="h-3 w-3" /> : index + 1}
-                  </span>
-                  {index < 3 && (
-                    <span className="ml-1 hidden h-px flex-1 bg-cyan-200 sm:block" />
-                  )}
-                </div>
-                <p className="mt-2 text-[8px] text-slate-400">{label}</p>
-              </div>
-            )
-          )}
-        </div>
-      </div>
-
-      <div className="rounded-xl border border-cyan-100 bg-cyan-50/60 px-4 py-3">
-        <div className="flex items-center gap-2">
-          <FileDown className="h-3.5 w-3.5 text-cyan-800" />
-          <p className="text-[9px] font-semibold text-cyan-900">
-            CSV · XLSX · analysis-ready exports
-          </p>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-function HeroClinicalPreview() {
-  return (
-    <div className="space-y-4">
-      <div>
-        <p className="text-[9px] font-semibold uppercase tracking-[0.16em] text-cyan-800">
-          Connected clients
-        </p>
-        <h3 className="mt-1.5 text-xl font-semibold tracking-[-0.025em] text-slate-950">
-          Professional workspace
-        </h3>
-        <p className="mt-1 text-[10px] leading-5 text-slate-500">
-          Authorised assessments, monitoring, notes and follow-up in one context.
-        </p>
-      </div>
-
-      <div className="grid gap-3 sm:grid-cols-2">
-        {[
-          ["AS", "A. Sharma", "Monitoring + assessments shared", "Today"],
-          ["RK", "R. Kapoor", "Assessment history shared", "Yesterday"],
-        ].map(([initials, name, shared, updated]) => (
-          <button
-            key={name}
-            type="button"
-            className="rounded-2xl border border-slate-200 bg-white p-4 text-left transition hover:border-cyan-200"
-          >
-            <div className="flex items-center gap-3">
-              <div className="flex h-9 w-9 items-center justify-center rounded-full bg-cyan-50 text-[9px] font-semibold text-cyan-800">
-                {initials}
-              </div>
-              <div className="min-w-0 flex-1">
-                <p className="text-[10px] font-semibold text-slate-800">
-                  {name}
-                </p>
-                <p className="mt-1 truncate text-[8px] text-slate-400">
-                  {shared}
-                </p>
-              </div>
-              <span className="text-[7px] text-slate-300">{updated}</span>
-            </div>
-          </button>
-        ))}
-      </div>
-
-      <div className="grid gap-3 sm:grid-cols-[1fr_.9fr]">
-        <div className="rounded-2xl border border-slate-200 bg-white p-4">
-          <div className="flex items-center gap-2">
-            <BarChart3 className="h-3.5 w-3.5 text-cyan-800" />
-            <p className="text-[9px] font-semibold text-slate-700">
-              Shared monitoring
-            </p>
-          </div>
-          <div className="mt-4 flex h-20 items-end gap-2">
-            {[44, 57, 51, 68, 60, 73, 64].map((height, index) => (
-              <span
-                key={index}
-                className="flex-1 rounded-t bg-cyan-700/65"
-                style={{ height: `${height}%` }}
-              />
-            ))}
-          </div>
-        </div>
-
-        <div className="rounded-2xl border border-slate-200 bg-white p-4">
-          <div className="flex items-center gap-2">
-            <CalendarDays className="h-3.5 w-3.5 text-cyan-800" />
-            <p className="text-[9px] font-semibold text-slate-700">
-              Next appointment
-            </p>
-          </div>
-          <p className="mt-4 text-lg font-semibold text-slate-900">
-            25 Aug
-          </p>
-          <p className="mt-1 text-[8px] text-slate-400">
-            10:00 · 50 minutes
-          </p>
-          <div className="mt-4 flex items-center gap-2 text-[8px] font-semibold text-cyan-800">
-            <MessageSquare className="h-3 w-3" />
-            Secure follow-up available
-          </div>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-function ExplorerCard({
+function TourCard({
   children,
   className = "",
   highlight = false,
 }: {
-  children: ReactNode;
+  children?: ReactNode;
   className?: string;
   highlight?: boolean;
 }) {
@@ -1624,7 +1245,11 @@ function ExplorerCard({
   );
 }
 
-function ExplorerMiniStat({ label, value, helper }: { label: string; value: string; helper?: string }) {
+// Older Self/Clinical demo branches still reference DemoCard.
+// Keep it as an alias to the current card implementation so those routes do not crash.
+const DemoCard = TourCard;
+
+function MiniStat({ label, value, helper }: { label: string; value: string; helper?: string }) {
   return (
     <div className="rounded-xl border border-slate-200 bg-white p-3">
       <p className="text-[9px] font-semibold uppercase tracking-[0.12em] text-slate-400">
@@ -1636,2949 +1261,4232 @@ function ExplorerMiniStat({ label, value, helper }: { label: string; value: stri
   );
 }
 
-function ExplorerScreenTitle({
-  eyebrow,
-  title,
-  action,
-  onAction,
-  secondary,
-  onSecondary,
-}: {
-  eyebrow: string;
-  title: string;
-  action?: string;
-  onAction?: () => void;
-  secondary?: string;
-  onSecondary?: () => void;
-}) {
+function ScreenTitle({ eyebrow, title, action }: { eyebrow: string; title: string; action?: string }) {
   return (
-    <div className="mb-5 flex flex-wrap items-start justify-between gap-3">
+    <div className="mb-4 flex items-start justify-between gap-3">
       <div>
-        <p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-cyan-800">{eyebrow}</p>
-        <h3 className="mt-1 text-xl font-semibold tracking-tight text-slate-950">{title}</h3>
+        <p className="text-[9px] font-semibold uppercase tracking-[0.16em] text-cyan-800">{eyebrow}</p>
+        <h3 className="mt-1 text-lg font-semibold tracking-tight text-slate-950">{title}</h3>
       </div>
-      <div className="flex items-center gap-2">
-        {secondary && (
-          <button
-            type="button"
-            onClick={onSecondary}
-            className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-[10px] font-semibold text-slate-600 shadow-sm transition hover:bg-slate-50"
-          >
-            {secondary}
-          </button>
-        )}
-        {action && (
-          <button
-            type="button"
-            onClick={onAction}
-            className="rounded-xl bg-slate-950 px-3.5 py-2 text-[10px] font-semibold text-white shadow-sm transition hover:bg-slate-800"
-          >
-            {action}
-          </button>
-        )}
-      </div>
+      {action && (
+        <button
+          type="button"
+          className="rounded-lg bg-slate-950 px-3 py-2 text-[10px] font-semibold text-white shadow-sm transition hover:bg-slate-800"
+        >
+          {action}
+        </button>
+      )}
     </div>
   );
 }
 
-function ExplorerNotice({ text }: { text: string }) {
-  return (
-    <div className="mb-4 flex items-center justify-between rounded-xl border border-cyan-100 bg-cyan-50 px-3 py-2.5 text-[10px] text-cyan-900">
-      <span>{text}</span>
-      
-    </div>
-  );
-}
-
-function ExplorerToggle({ enabled, onToggle }: { enabled: boolean; onToggle: () => void }) {
-  return (
-    <button
-      type="button"
-      onClick={onToggle}
-      className={`h-5 w-9 rounded-full p-0.5 transition ${enabled ? "bg-cyan-600" : "bg-slate-200"}`}
-      aria-pressed={enabled}
-    >
-      <div className={`h-4 w-4 rounded-full bg-white shadow-sm transition ${enabled ? "translate-x-4" : "translate-x-0"}`} />
-    </button>
-  );
-}
-
-function ExplorerSelfCore({ slideId }: { slideId: string }) {
-  const [notice, setNotice] = useState("");
-  const [aiInput, setAiInput] = useState("");
-  const [aiMessages, setAiMessages] = useState([
-    { side: "ai", text: "What would you like to understand better today?" },
-    { side: "user", text: "I keep getting tense before group presentations." },
-    { side: "ai", text: "We can unpack what happens before, during and after those moments, then decide what may be worth monitoring." },
-  ]);
-  const [assessmentStarted, setAssessmentStarted] = useState<string | null>(null);
-  const [checkins, setCheckins] = useState({ morning: true, evening: false });
-  const [routines, setRoutines] = useState({ grounding: true, winddown: false, rehearsal: true });
-  const [progressRange, setProgressRange] = useState<"7d" | "30d" | "90d">("30d");
-  const [wearables, setWearables] = useState({ apple: true, fitbit: false, garmin: false, health: false });
-  const [selectedDay, setSelectedDay] = useState(17);
+function SelfDemo({ slideId }: { slideId: string }) {
   const [message, setMessage] = useState("");
-  const [messages, setMessages] = useState([
-    { side: "clinician", text: "How did the presentation go yesterday?" },
-    { side: "self", text: "Better than expected. I used the grounding routine before it started." },
-  ]);
-  const [sharing, setSharing] = useState({ assessments: true, monitoring: false, progress: true, wearables: false, regulation: true });
-
-  function sendAi() {
-    const text = aiInput.trim();
-    if (!text) return;
-    setAiMessages((current) => [...current, { side: "user", text }, { side: "ai", text: "That makes sense. We can explore what happens before, during and after those moments, then decide what may be useful to monitor." }]);
-    setAiInput("");
-  }
+  const [sent, setSent] = useState(false);
+  const [sharing, setSharing] = useState({ assessments: true, monitoring: false, progress: true });
 
   if (slideId === "dashboard") {
     return (
       <div>
-        <ExplorerScreenTitle eyebrow="Personal workspace" title="Good afternoon, Priya" action="Start check-in" onAction={() => { setCheckins((c) => ({ ...c, evening: true })); setNotice("Evening reflection marked complete."); }} secondary="Refresh" onSecondary={() => setNotice("Dashboard refreshed.")} />
-        {notice && <ExplorerNotice text={notice} />}
-        <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
-          <ExplorerMiniStat label="Today" value={`${Number(checkins.morning) + Number(checkins.evening)} / 2`} helper="scheduled check-ins" />
-          <ExplorerMiniStat label="Assessments" value="3" helper="last updated 4d ago" />
-          <ExplorerMiniStat label="Clinician" value="Connected" helper="Dr. Mehta" />
+        <ScreenTitle eyebrow="Personal workspace" title="Good afternoon, Priya" />
+        <div className="grid grid-cols-3 gap-3">
+          <MiniStat label="Today" value="2 check-ins" helper="1 completed" />
+          <MiniStat label="Assessments" value="3" helper="last updated 4d ago" />
+          <MiniStat label="Clinician" value="Connected" helper="Dr. Mehta" />
         </div>
-        <div className="mt-3 grid gap-3 lg:grid-cols-[1.18fr_.82fr]">
-          <ExplorerCard className="p-4" highlight>
-            <div className="flex items-center justify-between"><p className="text-xs font-semibold text-slate-900">Today</p><span className="text-[9px] text-slate-400">Wednesday · 19 Aug</span></div>
+        <div className="mt-3 grid grid-cols-[1.15fr_.85fr] gap-3">
+          <DemoCard className="p-4" highlight>
+            <p className="text-xs font-semibold text-slate-900">Today</p>
             <div className="mt-3 space-y-2">
-              {[{key:"morning",label:"Mood check-in",time:"08:00"},{key:"evening",label:"Evening reflection",time:"20:00"}].map((item) => {
-                const done = checkins[item.key as keyof typeof checkins];
-                return <button key={item.key} type="button" onClick={() => setCheckins((c) => ({...c,[item.key]:!done}))} className="flex w-full items-center justify-between rounded-xl bg-slate-50 px-3 py-3 text-left transition hover:bg-slate-100">
-                  <div><p className="text-[11px] font-medium text-slate-800">{item.label}</p><p className="text-[9px] text-slate-400">{item.time}</p></div>
-                  <span className={`rounded-full px-2 py-1 text-[9px] font-semibold ${done ? "bg-cyan-50 text-cyan-700" : "bg-cyan-50 text-cyan-700"}`}>{done ? "Done" : "Open"}</span>
-                </button>;
-              })}
+              {[
+                ["Mood check-in", "08:00", true],
+                ["Evening reflection", "20:00", false],
+              ].map(([label, time, done]) => (
+                <div key={String(label)} className="flex items-center justify-between rounded-xl bg-slate-50 px-3 py-2.5">
+                  <div>
+                    <p className="text-[11px] font-medium text-slate-800">{String(label)}</p>
+                    <p className="text-[9px] text-slate-400">{String(time)}</p>
+                  </div>
+                  <span className={`rounded-full px-2 py-1 text-[9px] font-semibold ${done ? "bg-cyan-50 text-cyan-800" : "bg-cyan-50 text-cyan-700"}`}>
+                    {done ? "Done" : "Due later"}
+                  </span>
+                </div>
+              ))}
             </div>
-          </ExplorerCard>
-          <div className="space-y-3">
-            <ExplorerCard className="p-4">
-              <p className="text-xs font-semibold text-slate-900">Your clinician</p>
-              <button type="button" onClick={() => setNotice("Clinician profile opened.")} className="mt-3 flex w-full items-center gap-3 rounded-xl bg-cyan-50 p-3 text-left transition hover:bg-cyan-100/70">
-                <div className="flex h-9 w-9 items-center justify-center rounded-full bg-white text-cyan-800 shadow-sm"><Stethoscope className="h-4 w-4" /></div>
-                <div><p className="text-[11px] font-semibold text-slate-800">Dr. A. Mehta</p><p className="text-[9px] text-slate-500">Connected clinician</p></div>
-              </button>
-            </ExplorerCard>
-            <ExplorerCard className="p-4"><p className="text-xs font-semibold text-slate-900">Quick actions</p><div className="mt-3 grid grid-cols-2 gap-2">{["Assessment","Message","Progress","Privacy"].map((x)=><button key={x} onClick={()=>setNotice(`${x} opened.`)} className="rounded-xl border border-slate-200 px-3 py-2 text-[9px] font-semibold text-slate-600 hover:bg-slate-50">{x}</button>)}</div></ExplorerCard>
-          </div>
+          </DemoCard>
+          <DemoCard className="p-4">
+            <p className="text-xs font-semibold text-slate-900">Your clinician</p>
+            <div className="mt-3 flex items-center gap-3 rounded-xl bg-cyan-50 p-3">
+              <div className="flex h-9 w-9 items-center justify-center rounded-full bg-white text-cyan-800 shadow-sm">
+                <Stethoscope className="h-4 w-4" />
+              </div>
+              <div>
+                <p className="text-[11px] font-semibold text-slate-800">Dr. A. Mehta</p>
+                <p className="text-[9px] text-slate-500">Connected clinician</p>
+              </div>
+            </div>
+          </DemoCard>
         </div>
       </div>
     );
   }
 
   if (slideId === "ai") {
-    return <div><ExplorerScreenTitle eyebrow="AI Guide" title="Luna" secondary="New conversation" onSecondary={()=>{setAiMessages([{side:"ai",text:"What would you like to understand better today?"}]);setNotice("Started a fresh conversation.");}} />{notice&&<ExplorerNotice text={notice}/>}<ExplorerCard className="overflow-hidden" highlight>
-      <div className="border-b border-slate-200 bg-slate-50 px-4 py-3"><p className="text-[10px] font-medium text-slate-500">Private reflection space · not shared with clinicians</p></div>
-      <div className="max-h-[360px] space-y-3 overflow-y-auto p-4">{aiMessages.map((m,i)=><div key={i} className={`${m.side==="user"?"ml-auto rounded-tr-md bg-cyan-700 text-white":"rounded-tl-md bg-slate-100 text-slate-700"} max-w-[82%] rounded-2xl px-3 py-2.5 text-[11px] leading-5`}>{m.text}</div>)}</div>
-      <div className="border-t border-slate-200 p-3"><div className="flex gap-2"><input value={aiInput} onChange={e=>setAiInput(e.target.value)} onKeyDown={e=>{if(e.key==="Enter")sendAi()}} className="flex-1 rounded-xl border border-slate-200 px-3 py-2.5 text-[10px] outline-none focus:border-cyan-400" placeholder="Ask Luna something..."/><button onClick={sendAi} className="rounded-xl bg-slate-950 px-4 text-[10px] font-semibold text-white">Send</button></div></div>
-    </ExplorerCard></div>;
+    return (
+      <div>
+        <ScreenTitle eyebrow="AI Guide" title="Explore a pattern" />
+        <DemoCard className="overflow-hidden" highlight>
+          <div className="border-b border-slate-200 bg-slate-50 px-4 py-3">
+            <p className="text-[10px] font-medium text-slate-500">Private reflection space</p>
+          </div>
+          <div className="space-y-3 p-4">
+            <div className="max-w-[78%] rounded-2xl rounded-tl-md bg-slate-100 px-3 py-2.5 text-[11px] leading-5 text-slate-700">
+              What would you like to understand better today?
+            </div>
+            <div className="ml-auto max-w-[78%] rounded-2xl rounded-tr-md bg-cyan-700 px-3 py-2.5 text-[11px] leading-5 text-white">
+              I keep getting tense before group presentations.
+            </div>
+            <div className="max-w-[84%] rounded-2xl rounded-tl-md bg-slate-100 px-3 py-2.5 text-[11px] leading-5 text-slate-700">
+              We can unpack what happens before, during and after those moments, then decide what may be worth monitoring.
+            </div>
+          </div>
+          <div className="border-t border-slate-200 p-3">
+            <div className="flex gap-2">
+              <input className="flex-1 rounded-xl border border-slate-200 px-3 py-2 text-[10px] outline-none" placeholder="Ask Luna something..." />
+              <button className="rounded-xl bg-slate-950 px-3 text-[10px] font-semibold text-white">Send</button>
+            </div>
+          </div>
+        </DemoCard>
+      </div>
+    );
   }
 
   if (slideId === "assessments") {
-    const measures=["Perceived Stress Scale","General Self-Efficacy Scale","WHO-5 Well-Being","Sleep Quality Check"];
-    return <div><ExplorerScreenTitle eyebrow="Self-assessments" title="Assessment library" action="Browse all" onAction={()=>setNotice("Assessment library opened.")}/>{notice&&<ExplorerNotice text={notice}/>}<div className="grid gap-3 sm:grid-cols-2">{measures.map((name,index)=><ExplorerCard key={name} className="p-4" highlight={assessmentStarted===name||index===0}><div className="flex items-start justify-between"><div><p className="text-xs font-semibold text-slate-900">{name}</p><p className="mt-1 text-[10px] leading-4 text-slate-500">Short structured assessment for personal reflection.</p></div><span className="rounded-full bg-slate-100 px-2 py-1 text-[8px] font-semibold text-slate-500">{[10,10,5,8][index]} items</span></div><button onClick={()=>{setAssessmentStarted(name);setNotice(`${name} started.`)}} className="mt-3 rounded-lg border border-slate-200 px-2.5 py-1.5 text-[9px] font-semibold text-slate-600 hover:bg-slate-50">{assessmentStarted===name?"Continue":"Start"}</button></ExplorerCard>)}</div></div>;
+    return (
+      <div>
+        <ScreenTitle eyebrow="Self-assessments" title="Choose a measure" action="Browse library" />
+        <div className="grid grid-cols-2 gap-3">
+          {["Perceived Stress Scale", "General Self-Efficacy Scale", "WHO-5 Well-Being", "Sleep Quality Check"].map((name, index) => (
+            <DemoCard key={name} className="p-4" highlight={index === 0}>
+              <p className="text-xs font-semibold text-slate-900">{name}</p>
+              <p className="mt-1 text-[10px] leading-4 text-slate-500">Short structured assessment for personal reflection.</p>
+              <button className="mt-3 rounded-lg border border-slate-200 px-2.5 py-1.5 text-[9px] font-semibold text-slate-600">Start</button>
+            </DemoCard>
+          ))}
+        </div>
+      </div>
+    );
   }
 
   if (slideId === "monitoring") {
-    return <div><ExplorerScreenTitle eyebrow="Daily monitoring" title="This week" action="New check-in" onAction={()=>{setCheckins(c=>({...c,evening:!c.evening}));setNotice("Check-in opened.")}} secondary="Customise" onSecondary={()=>setNotice("Monitoring schedule editor opened.")}/>{notice&&<ExplorerNotice text={notice}/>}<ExplorerCard className="p-4" highlight><div className="flex h-40 items-end gap-2">{[46,70,54,82,65,76,61].map((height,index)=><button key={index} onClick={()=>setNotice(`${["Mon","Tue","Wed","Thu","Fri","Sat","Sun"][index]}: ${height/10} average mood.`)} className="group flex flex-1 flex-col items-center justify-end"><div className="w-full max-w-8 rounded-t-lg bg-cyan-200 transition group-hover:bg-cyan-300" style={{height:`${height}px`}}/><span className="mt-2 text-[8px] text-slate-400">{["M","T","W","T","F","S","S"][index]}</span></button>)}</div><div className="mt-3 grid grid-cols-3 gap-2"><ExplorerMiniStat label="Check-ins" value="11"/><ExplorerMiniStat label="Completed" value="91%"/><ExplorerMiniStat label="Next" value="20:00"/></div></ExplorerCard></div>;
+    return (
+      <div>
+        <ScreenTitle eyebrow="Daily monitoring" title="This week" action="New check-in" />
+        <DemoCard className="p-4" highlight>
+          <div className="flex h-36 items-end gap-2">
+            {[46, 70, 54, 82, 65, 76, 61].map((height, index) => (
+              <div key={index} className="flex-1 text-center">
+                <div className="mx-auto w-full max-w-8 rounded-t-lg bg-cyan-200" style={{ height: `${height}px` }} />
+                <span className="mt-2 block text-[8px] text-slate-400">{["M", "T", "W", "T", "F", "S", "S"][index]}</span>
+              </div>
+            ))}
+          </div>
+          <div className="mt-3 grid grid-cols-3 gap-2">
+            <MiniStat label="Check-ins" value="11" />
+            <MiniStat label="Completed" value="91%" />
+            <MiniStat label="Next" value="20:00" />
+          </div>
+        </DemoCard>
+      </div>
+    );
   }
 
   if (slideId === "regulation") {
-    const list=[{key:"grounding",title:"2-minute grounding",meta:"5 of 7 days"},{key:"winddown",title:"Evening wind-down",meta:"4 of 7 days"},{key:"rehearsal",title:"Presentation rehearsal",meta:"2 of 3 sessions"}] as const;
-    return <div><ExplorerScreenTitle eyebrow="Self-regulation" title="Current routines" action="Add routine" onAction={()=>setNotice("Routine builder opened.")}/>{notice&&<ExplorerNotice text={notice}/>}<div className="space-y-3">{list.map((item,index)=>{const done=routines[item.key];return <ExplorerCard key={item.key} className="p-4" highlight={index===0}><div className="flex items-center justify-between gap-3"><button onClick={()=>setRoutines(c=>({...c,[item.key]:!done}))} className="flex items-center gap-3 text-left"><span className={`flex h-7 w-7 items-center justify-center rounded-full ${done?"bg-cyan-100 text-cyan-700":"bg-slate-100 text-slate-400"}`}>{done?<Check className="h-3.5 w-3.5"/>:index+1}</span><div><p className="text-xs font-semibold text-slate-900">{item.title}</p><p className="mt-1 text-[10px] text-slate-500">{item.meta}</p></div></button><ExplorerToggle enabled={done} onToggle={()=>setRoutines(c=>({...c,[item.key]:!done}))}/></div></ExplorerCard>})}</div></div>;
+    return (
+      <div>
+        <ScreenTitle eyebrow="Self-regulation" title="Current routines" action="Add routine" />
+        <div className="space-y-3">
+          {[
+            ["2-minute grounding", "5 of 7 days", 72],
+            ["Evening wind-down", "4 of 7 days", 58],
+            ["Presentation rehearsal", "2 of 3 sessions", 66],
+          ].map(([title, meta, value], index) => (
+            <DemoCard key={String(title)} className="p-4" highlight={index === 0}>
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-xs font-semibold text-slate-900">{String(title)}</p>
+                  <p className="mt-1 text-[10px] text-slate-500">{String(meta)}</p>
+                </div>
+                <span className="text-[10px] font-semibold text-cyan-700">{String(value)}%</span>
+              </div>
+              <div className="mt-3 h-2 overflow-hidden rounded-full bg-slate-100">
+                <div className="h-full rounded-full bg-cyan-600" style={{ width: `${Number(value)}%` }} />
+              </div>
+            </DemoCard>
+          ))}
+        </div>
+      </div>
+    );
   }
 
   if (slideId === "progress") {
-    const heights=progressRange==="7d"?[58,64,61,70,73,79,82]:progressRange==="30d"?[48,52,49,61,65,72,76,82]:[41,45,52,55,63,69,77,84];
-    return <div><ExplorerScreenTitle eyebrow="Progress" title="Your trends"/><div className="mb-3 flex gap-2">{(["7d","30d","90d"] as const).map(r=><button key={r} onClick={()=>setProgressRange(r)} className={`rounded-lg px-3 py-1.5 text-[9px] font-semibold ${progressRange===r?"bg-slate-950 text-white":"border border-slate-200 bg-white text-slate-500"}`}>{r}</button>)}</div><ExplorerCard className="p-4" highlight><div className="flex h-36 items-end gap-2 rounded-xl bg-slate-50 p-4">{heights.map((h,i)=><div key={i} className="flex-1 rounded-t-md bg-cyan-300" style={{height:`${h}px`}}/>)}</div><div className="mt-3 grid grid-cols-3 gap-2"><ExplorerMiniStat label="Well-being" value="+12%"/><ExplorerMiniStat label="Routine" value="76%"/><ExplorerMiniStat label="Check-ins" value="23"/></div></ExplorerCard></div>;
+    return (
+      <div>
+        <ScreenTitle eyebrow="Progress" title="Your trends" />
+        <DemoCard className="p-4" highlight>
+          <div className="flex items-end gap-2 rounded-xl bg-slate-50 p-4">
+            {[48, 52, 49, 61, 65, 72, 76, 82].map((height, index) => (
+              <div key={index} className="flex-1 rounded-t-md bg-cyan-300" style={{ height: `${height}px` }} />
+            ))}
+          </div>
+          <div className="mt-3 grid grid-cols-3 gap-2">
+            <MiniStat label="Well-being" value="+12%" />
+            <MiniStat label="Routine" value="76%" />
+            <MiniStat label="Check-ins" value="23" />
+          </div>
+        </DemoCard>
+      </div>
+    );
   }
 
   if (slideId === "wearables") {
-    const devices=[['apple','Apple Health'],['fitbit','Fitbit'],['garmin','Garmin'],['health','Google Health Connect']] as const;
-    return <div><ExplorerScreenTitle eyebrow="Wearables" title="Connected sources"/><div className="grid gap-3 sm:grid-cols-2">{devices.map(([key,name],index)=>{const enabled=wearables[key];return <ExplorerCard key={key} className="p-4" highlight={index===0}><div className="flex items-center justify-between gap-3"><div><p className="text-xs font-semibold text-slate-900">{name}</p><p className="mt-1 text-[10px] text-slate-500">{enabled?"Connected · syncing":"Not connected"}</p></div><ExplorerToggle enabled={enabled} onToggle={()=>setWearables(c=>({...c,[key]:!enabled}))}/></div></ExplorerCard>})}</div></div>;
+    return (
+      <div>
+        <ScreenTitle eyebrow="Wearables" title="Connected sources" />
+        <div className="grid grid-cols-2 gap-3">
+          {["Apple Health", "Fitbit", "Garmin", "Google Health Connect"].map((name, index) => (
+            <DemoCard key={name} className="p-4" highlight={index === 0}>
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-xs font-semibold text-slate-900">{name}</p>
+                  <p className="mt-1 text-[10px] text-slate-500">{index === 0 ? "Connected" : "Not connected"}</p>
+                </div>
+                <div className={`h-5 w-9 rounded-full p-0.5 ${index === 0 ? "bg-cyan-600" : "bg-slate-200"}`}>
+                  <div className={`h-4 w-4 rounded-full bg-white shadow-sm transition ${index === 0 ? "translate-x-4" : "translate-x-0"}`} />
+                </div>
+              </div>
+            </DemoCard>
+          ))}
+        </div>
+      </div>
+    );
   }
 
   if (slideId === "appointments") {
-    return <div><ExplorerScreenTitle eyebrow="Appointments" title="August 2026" action="Request appointment" onAction={()=>setNotice(`Request prepared for ${selectedDay} August.`)}/>{notice&&<ExplorerNotice text={notice}/>}<div className="grid gap-3 lg:grid-cols-[1.2fr_.8fr]"><ExplorerCard className="p-4" highlight><div className="grid grid-cols-7 gap-1 text-center text-[9px] text-slate-400">{["M","T","W","T","F","S","S"].map((day,index)=><span key={`${day}-${index}`}>{day}</span>)}{Array.from({length:31}).map((_,index)=><button key={index} onClick={()=>setSelectedDay(index+1)} className={`rounded-lg py-2 text-[9px] transition ${selectedDay===index+1?"bg-cyan-600 font-semibold text-white":"bg-slate-50 text-slate-600 hover:bg-slate-100"}`}>{index+1}</button>)}</div></ExplorerCard><ExplorerCard className="p-4"><p className="text-xs font-semibold text-slate-900">{selectedDay} August</p><div className="mt-3 rounded-xl bg-cyan-50 p-3"><p className="text-[11px] font-semibold text-slate-800">Available request</p><p className="mt-1 text-[9px] text-slate-500">10:00–10:50 AM</p><button onClick={()=>setNotice(`10:00 slot selected for ${selectedDay} August.`)} className="mt-3 rounded-lg bg-white px-2.5 py-1.5 text-[9px] font-semibold text-cyan-700 shadow-sm">Choose</button></div></ExplorerCard></div></div>;
+    return (
+      <div>
+        <ScreenTitle eyebrow="Appointments" title="August 2026" action="Request appointment" />
+        <div className="grid grid-cols-[1.2fr_.8fr] gap-3">
+          <DemoCard className="p-4" highlight>
+            <div className="grid grid-cols-7 gap-1 text-center text-[9px] text-slate-400">
+              {["M", "T", "W", "T", "F", "S", "S"].map((day, index) => <span key={`${day}-${index}`}>{day}</span>)}
+              {Array.from({ length: 28 }).map((_, index) => (
+                <button key={index} className={`rounded-lg py-2 text-[9px] ${index === 16 ? "bg-cyan-600 font-semibold text-white" : "bg-slate-50 text-slate-600"}`}>
+                  {index + 1}
+                </button>
+              ))}
+            </div>
+          </DemoCard>
+          <DemoCard className="p-4">
+            <p className="text-xs font-semibold text-slate-900">Monday, 17 August</p>
+            <div className="mt-3 rounded-xl bg-cyan-50 p-3">
+              <p className="text-[11px] font-semibold text-slate-800">Therapy / session</p>
+              <p className="mt-1 text-[9px] text-slate-500">10:00–10:50 AM</p>
+              <span className="mt-2 inline-flex rounded-full bg-white px-2 py-1 text-[8px] font-semibold text-cyan-700">Scheduled</span>
+            </div>
+          </DemoCard>
+        </div>
+      </div>
+    );
   }
 
   if (slideId === "messages") {
-    function send(){const text=message.trim();if(!text)return;setMessages(c=>[...c,{side:"self",text}]);setMessage("");}
-    return <div><ExplorerScreenTitle eyebrow="Messages" title="Dr. A. Mehta"/><ExplorerCard className="overflow-hidden" highlight><div className="max-h-[360px] space-y-3 overflow-y-auto p-4">{messages.map((m,i)=><div key={i} className={`${m.side==="self"?"ml-auto rounded-tr-md bg-cyan-700 text-white":"rounded-tl-md bg-slate-100 text-slate-700"} max-w-[72%] rounded-2xl px-3 py-2.5 text-[10px] leading-4`}>{m.text}</div>)}</div><div className="flex gap-2 border-t border-slate-200 p-3"><input value={message} onChange={e=>setMessage(e.target.value)} onKeyDown={e=>{if(e.key==="Enter")send()}} className="flex-1 rounded-xl border border-slate-200 px-3 py-2 text-[10px] outline-none focus:border-cyan-400" placeholder="Write a message..."/><button onClick={send} className="rounded-xl bg-slate-950 px-3 text-[10px] font-semibold text-white"><Send className="h-3.5 w-3.5"/></button></div></ExplorerCard></div>;
+    return (
+      <div>
+        <ScreenTitle eyebrow="Messages" title="Dr. A. Mehta" />
+        <DemoCard className="overflow-hidden" highlight>
+          <div className="space-y-3 p-4">
+            <div className="max-w-[70%] rounded-2xl rounded-tl-md bg-slate-100 px-3 py-2.5 text-[10px] leading-4 text-slate-700">
+              How did the presentation go yesterday?
+            </div>
+            <div className="ml-auto max-w-[70%] rounded-2xl rounded-tr-md bg-cyan-700 px-3 py-2.5 text-[10px] leading-4 text-white">
+              Better than expected. I used the grounding routine before it started.
+            </div>
+          </div>
+          <div className="flex gap-2 border-t border-slate-200 p-3">
+            <input value={message} onChange={(event) => setMessage(event.target.value)} className="flex-1 rounded-xl border border-slate-200 px-3 py-2 text-[10px] outline-none" placeholder={sent ? "Message sent" : "Write a message..."} />
+            <button onClick={() => { setSent(true); setMessage(""); }} className="rounded-xl bg-slate-950 px-3 text-[10px] font-semibold text-white">Send</button>
+          </div>
+        </DemoCard>
+      </div>
+    );
   }
 
-  const perms=[['assessments','Assessments'],['monitoring','Daily monitoring'],['progress','Progress'],['wearables','Wearables'],['regulation','Self-regulation']] as const;
-  return <div><ExplorerScreenTitle eyebrow="Privacy & Sharing" title="What your clinician can see" secondary="Reset" onSecondary={()=>setSharing({assessments:true,monitoring:false,progress:true,wearables:false,regulation:true})}/><ExplorerCard className="p-4" highlight><div className="space-y-2.5">{perms.map(([key,label])=>{const enabled=sharing[key];return <div key={key} className="flex w-full items-center justify-between rounded-xl border border-slate-200 px-3 py-3"><button onClick={()=>setSharing(c=>({...c,[key]:!enabled}))} className="text-left"><p className="text-[11px] font-semibold text-slate-800">{label}</p><p className="mt-0.5 text-[9px] text-slate-400">Separate permission · {enabled?"shared":"private"}</p></button><ExplorerToggle enabled={enabled} onToggle={()=>setSharing(c=>({...c,[key]:!enabled}))}/></div>})}</div></ExplorerCard></div>;
-}
-
-function ExplorerResearchCore({ slideId }: { slideId: string }) {
-  const [notice, setNotice] = useState("");
-  const [query, setQuery] = useState("");
-  const [selectedStep, setSelectedStep] = useState("Measures");
-  const [studyFilter, setStudyFilter] = useState<"All" | "Active" | "Draft">("All");
-  const [selectedStudy, setSelectedStudy] = useState("Sleep & Attention");
-  const [builderMeasures, setBuilderMeasures] = useState({ pss: true, image: true, rt: false });
-  const [builderTitle, setBuilderTitle] = useState("Sleep & Attention");
-  const [questionnaireCategory, setQuestionnaireCategory] = useState("All");
-  const [selectedQuestionnaire, setSelectedQuestionnaire] = useState("General Self-Efficacy Scale");
-  const [customItem, setCustomItem] = useState("Image choice");
-  const [customOption, setCustomOption] = useState("A");
-  const [scheduleEnabled, setScheduleEnabled] = useState({ morning: true, afternoon: true, evening: true });
-  const [selectedParticipant, setSelectedParticipant] = useState("PL-1042");
-  const [followupActive, setFollowupActive] = useState({ baseline: true, day7: true, day30: false });
-  const [dataTab, setDataTab] = useState<"Overview" | "Responses" | "Uploads">("Overview");
-  const [exportDataset, setExportDataset] = useState("Analysis wide");
-  const [exportFormat, setExportFormat] = useState("XLSX");
-  const [includeCodebook, setIncludeCodebook] = useState(true);
-
-  const studies=[
-    {name:"Sleep & Attention",status:"Active",people:42,progress:74},
-    {name:"Social Cognition Pilot",status:"Active",people:31,progress:65},
-    {name:"EMA Mood Study",status:"Draft",people:0,progress:46},
-    {name:"Hazard Awareness",status:"Active",people:55,progress:82},
-  ].filter(s=>studyFilter==="All"||s.status===studyFilter);
-
-  if (slideId === "studies") {
-    return <div><ExplorerScreenTitle eyebrow="Research workspace" title="Studies" action="New study" onAction={()=>setNotice("A new draft study was created.")} secondary="Refresh" onSecondary={()=>setNotice("Study list refreshed.")}/>{notice&&<ExplorerNotice text={notice}/>}<div className="grid grid-cols-1 gap-3 sm:grid-cols-3"><ExplorerMiniStat label="Active studies" value="4" helper="2 collecting today"/><ExplorerMiniStat label="Participants" value="128" helper="across live studies"/><ExplorerMiniStat label="Due today" value="7" helper="follow-ups + EMA"/></div><div className="my-3 flex flex-wrap gap-2">{(["All","Active","Draft"] as const).map(f=><button key={f} onClick={()=>setStudyFilter(f)} className={`rounded-lg px-3 py-1.5 text-[9px] font-semibold ${studyFilter===f?"bg-slate-950 text-white":"border border-slate-200 bg-white text-slate-500"}`}>{f}</button>)}</div><div className="grid gap-3 sm:grid-cols-2">{studies.map((study,index)=><button key={study.name} onClick={()=>setSelectedStudy(study.name)} className="text-left"><ExplorerCard className="p-4" highlight={selectedStudy===study.name}><div className="flex items-start justify-between gap-3"><div><p className="text-xs font-semibold text-slate-900">{study.name}</p><p className="mt-1 text-[9px] text-slate-400">{study.people} participants · updated {index+1}h ago</p></div><span className={`rounded-full px-2 py-1 text-[8px] font-semibold ${study.status==="Active"?"bg-cyan-50 text-cyan-700":"bg-cyan-50 text-cyan-700"}`}>{study.status}</span></div><div className="mt-3 h-1.5 overflow-hidden rounded-full bg-slate-100"><div className="h-full rounded-full bg-cyan-600" style={{width:`${study.progress}%`}}/></div></ExplorerCard></button>)}</div></div>;
-  }
-
-  if (slideId === "study-builder") {
-    const steps=["Study info","Consent","Measures","Ambulatory","Follow-ups","Launch"];
-    const measureRows=[['pss','Perceived Stress Scale'],['image','Custom Image Choice'],['rt','Reaction-time task']] as const;
-    return <div><ExplorerScreenTitle eyebrow="Study Builder" title={builderTitle} action="Save draft" onAction={()=>setNotice("Draft saved.")} secondary="Preview participant flow" onSecondary={()=>setNotice("Participant preview opened.")}/>{notice&&<ExplorerNotice text={notice}/>}<div className="grid gap-3 lg:grid-cols-[.7fr_1.3fr]"><ExplorerCard className="p-3"><div className="space-y-1.5">{steps.map((step,index)=><button key={step} onClick={()=>setSelectedStep(step)} className={`flex w-full items-center justify-between rounded-xl px-3 py-2.5 text-left text-[10px] font-semibold ${selectedStep===step?"bg-cyan-50 text-cyan-800":"text-slate-600 hover:bg-slate-50"}`}><span>{index+1}. {step}</span><ChevronRight className="h-3 w-3"/></button>)}</div></ExplorerCard><ExplorerCard className="p-4" highlight><p className="text-[10px] font-semibold uppercase tracking-[0.12em] text-cyan-800">{selectedStep}</p><h4 className="mt-1 text-sm font-semibold text-slate-900">Configure {selectedStep.toLowerCase()}</h4>{selectedStep==="Study info"?<div className="mt-4 space-y-3"><label className="block text-[9px] font-semibold text-slate-500">Study title<input value={builderTitle} onChange={e=>setBuilderTitle(e.target.value)} className="mt-1 w-full rounded-xl border border-slate-200 px-3 py-2.5 text-[10px] outline-none focus:border-cyan-400"/></label><label className="block text-[9px] font-semibold text-slate-500">Short description<textarea className="mt-1 h-24 w-full resize-none rounded-xl border border-slate-200 p-3 text-[10px] outline-none" defaultValue="Study attention, sleep and daily cognitive performance."/></label></div>:selectedStep==="Measures"?<div className="mt-4 space-y-2">{measureRows.map(([key,name])=>{const enabled=builderMeasures[key];return <div key={key} className="flex items-center justify-between rounded-xl border border-slate-200 px-3 py-3"><div><p className="text-[10px] font-medium text-slate-700">{name}</p><p className="mt-0.5 text-[8px] text-slate-400">Baseline measure</p></div><ExplorerToggle enabled={enabled} onToggle={()=>setBuilderMeasures(c=>({...c,[key]:!enabled}))}/></div>})}<button onClick={()=>setNotice("Measure picker opened.")} className="flex w-full items-center justify-center gap-2 rounded-xl border border-dashed border-slate-300 py-2.5 text-[9px] font-semibold text-slate-500"><Plus className="h-3 w-3"/> Add measure</button></div>:<div className="mt-4 space-y-3"><div className="rounded-xl border border-slate-200 bg-slate-50 p-4 text-[10px] text-slate-600">Interactive {selectedStep.toLowerCase()} settings would appear here. Try the controls below.</div><div className="flex gap-2"><button onClick={()=>setNotice(`${selectedStep} settings updated.`)} className="rounded-lg bg-slate-950 px-3 py-2 text-[9px] font-semibold text-white">Configure</button><button onClick={()=>setNotice(`${selectedStep} preview opened.`)} className="rounded-lg border border-slate-200 px-3 py-2 text-[9px] font-semibold text-slate-600">Preview</button></div></div>}</ExplorerCard></div></div>;
-  }
-
-  if (slideId === "questionnaires") {
-    const qs=[{name:"General Self-Efficacy Scale",cat:"Self-efficacy",items:10},{name:"WHO-5 Well-Being",cat:"Well-being",items:5},{name:"Perceived Stress Scale",cat:"Stress",items:10},{name:"UCLA Loneliness Scale",cat:"Social",items:20}].filter(item=>(questionnaireCategory==="All"||item.cat===questionnaireCategory)&&item.name.toLowerCase().includes(query.toLowerCase()));
-    return <div><ExplorerScreenTitle eyebrow="Questionnaire Library" title="Measures" action="New custom questionnaire" onAction={()=>setNotice("Custom questionnaire builder opened.")}/>{notice&&<ExplorerNotice text={notice}/>}<div className="mb-3 flex flex-wrap gap-2"><div className="flex min-w-[220px] flex-1 items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2.5"><Search className="h-3.5 w-3.5 text-slate-400"/><input value={query} onChange={e=>setQuery(e.target.value)} className="flex-1 text-[10px] outline-none" placeholder="Search questionnaires..."/></div>{["All","Self-efficacy","Well-being","Stress","Social"].map(c=><button key={c} onClick={()=>setQuestionnaireCategory(c)} className={`rounded-xl px-3 py-2 text-[9px] font-semibold ${questionnaireCategory===c?"bg-cyan-50 text-cyan-800":"border border-slate-200 bg-white text-slate-500"}`}>{c}</button>)}</div><div className="grid gap-3 sm:grid-cols-2">{qs.map((q,index)=><ExplorerCard key={q.name} className="p-4" highlight={selectedQuestionnaire===q.name||index===0}><button onClick={()=>setSelectedQuestionnaire(q.name)} className="w-full text-left"><div className="flex justify-between gap-3"><div><p className="text-xs font-semibold text-slate-900">{q.name}</p><p className="mt-1 text-[9px] text-slate-500">{q.cat} · {q.items} items · resources available</p></div><MoreHorizontal className="h-4 w-4 text-slate-300"/></div></button><div className="mt-3 flex gap-2"><button onClick={()=>{setSelectedQuestionnaire(q.name);setNotice(`${q.name} detail opened.`)}} className="rounded-lg border border-slate-200 px-2 py-1.5 text-[8px] font-semibold text-slate-600">Open</button><button onClick={()=>setNotice(`${q.name} added to Sleep & Attention.`)} className="rounded-lg bg-cyan-700 px-2 py-1.5 text-[8px] font-semibold text-white">Use in study</button></div></ExplorerCard>)}</div></div>;
-  }
-
-  if (slideId === "custom-questionnaires") {
-    const types=["Intro text","Single choice","Multiple choice","Image choice","Slider","Free text","Matrix"];
-    return <div><ExplorerScreenTitle eyebrow="Custom Questionnaire" title="Image preference task" action="Preview" onAction={()=>setNotice("Participant preview opened.")} secondary="Save" onSecondary={()=>setNotice("Custom questionnaire saved.")}/>{notice&&<ExplorerNotice text={notice}/>}<ExplorerCard className="p-4" highlight><div className="grid gap-3 lg:grid-cols-[.72fr_1.28fr]"><div><p className="mb-2 text-[9px] font-semibold uppercase tracking-[0.12em] text-slate-400">Items</p><div className="space-y-2">{types.map(item=><button key={item} onClick={()=>setCustomItem(item)} className={`flex w-full items-center justify-between rounded-xl border px-3 py-2.5 text-left text-[10px] font-medium ${customItem===item?"border-cyan-300 bg-cyan-50 text-cyan-800":"border-slate-200 bg-white text-slate-600 hover:bg-slate-50"}`}><span>{item}</span><ChevronRight className="h-3 w-3"/></button>)}</div></div><div className="rounded-xl border border-slate-200 bg-slate-50 p-4"><div className="flex items-center justify-between"><div><p className="text-[9px] font-semibold uppercase tracking-[.12em] text-cyan-800">Live preview</p><p className="mt-1 text-[11px] font-semibold text-slate-800">{customItem}</p></div><span className="rounded-full bg-white px-2 py-1 text-[8px] text-slate-500">Required</span></div>{customItem==="Image choice"?<><p className="mt-4 text-[10px] font-semibold text-slate-800">Which image do you prefer?</p><div className="mt-3 grid grid-cols-2 gap-2">{['A','B'].map(opt=><button key={opt} onClick={()=>setCustomOption(opt)} className={`rounded-xl border bg-white p-3 text-left ${customOption===opt?"border-cyan-400 ring-2 ring-cyan-100":"border-slate-200"}`}><div className={`h-24 rounded-lg ${opt==='A'?"bg-gradient-to-br from-cyan-100 to-slate-100":"bg-gradient-to-br from-cyan-100 to-slate-100"}`}/><p className="mt-2 text-[9px] font-medium text-slate-600">Option {opt}</p></button>)}</div></>:<div className="mt-4 space-y-3"><input className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-[10px]" defaultValue="Edit the item prompt here..."/><div className="h-24 rounded-xl border border-dashed border-slate-300 bg-white"/></div>}</div></div></ExplorerCard></div>;
-  }
-
-  if (slideId === "ambulatory") {
-    const rows=[['morning','09:00','Morning'],['afternoon','14:00','Afternoon'],['evening','20:00','Evening']] as const;
-    return <div><ExplorerScreenTitle eyebrow="Ambulatory Assessment" title="Daily emotion protocol" action="Add check-in" onAction={()=>setNotice("A new schedule editor opened.")} secondary="Preview day" onSecondary={()=>setNotice("Participant day preview opened.")}/>{notice&&<ExplorerNotice text={notice}/>}<div className="grid gap-3 lg:grid-cols-[1.05fr_.95fr]"><ExplorerCard className="p-4" highlight><div className="flex items-center justify-between"><p className="text-xs font-semibold text-slate-900">Schedules</p><span className="text-[9px] text-slate-400">3 configured</span></div><div className="mt-3 space-y-2">{rows.map(([key,time,label])=>{const enabled=scheduleEnabled[key];return <div key={key} className="flex items-center justify-between rounded-xl border border-slate-200 bg-slate-50 px-3 py-3"><div><p className="text-[10px] font-semibold text-slate-700">{time} · {label}</p><p className="mt-0.5 text-[8px] text-slate-400">Fixed time · email reminder</p></div><ExplorerToggle enabled={enabled} onToggle={()=>setScheduleEnabled(c=>({...c,[key]:!enabled}))}/></div>})}</div></ExplorerCard><ExplorerCard className="p-4"><p className="text-xs font-semibold text-slate-900">Questionnaire flow</p><div className="mt-3 space-y-2">{["Mood rating","Stress slider","Current context","If stress ≥ 7 → follow-up"].map((item,index)=><button key={item} onClick={()=>setNotice(`${item} selected in the protocol.`)} className="flex w-full items-center gap-3 rounded-xl border border-slate-200 px-3 py-2.5 text-left text-[10px] text-slate-600 hover:bg-slate-50"><span className="flex h-5 w-5 items-center justify-center rounded-full bg-cyan-50 text-[8px] font-semibold text-cyan-700">{index+1}</span>{item}</button>)}</div></ExplorerCard></div></div>;
-  }
-
-  if (slideId === "participants") {
-    const rows=[["PL-1042","Active","Complete","Due","2h ago"],["PL-1043","Active","Complete","Complete","1d ago"],["PL-1044","Invited","Pending","—","3d ago"],["PL-1045","Active","Complete","Due","5h ago"]];
-    const selected=rows.find(r=>r[0]===selectedParticipant)!;
-    return <div><ExplorerScreenTitle eyebrow="Participants" title="Study participants" action="Create participant link" onAction={()=>setNotice("A TEST participant link was generated.")} secondary="Refresh" onSecondary={()=>setNotice("Participant table refreshed.")}/>{notice&&<ExplorerNotice text={notice}/>}<div className="grid gap-3 lg:grid-cols-[1.35fr_.65fr]"><ExplorerCard className="overflow-hidden" highlight><div className="grid grid-cols-5 bg-slate-50 px-4 py-2.5 text-[8px] font-semibold uppercase tracking-[0.12em] text-slate-400"><span>ID</span><span>Status</span><span>Baseline</span><span>Follow-up</span><span>Last activity</span></div>{rows.map(row=><button key={row[0]} onClick={()=>setSelectedParticipant(row[0])} className={`grid w-full grid-cols-5 border-t border-slate-200 px-4 py-3 text-left text-[9px] ${selectedParticipant===row[0]?"bg-cyan-50 text-cyan-900":"text-slate-600 hover:bg-slate-50"}`}>{row.map((cell, cellIndex)=><span key={`${row[0]}-${cellIndex}-${cell}`}>{cell}</span>)}</button>)}</ExplorerCard><ExplorerCard className="p-4"><p className="text-xs font-semibold text-slate-900">{selected[0]}</p><p className="mt-1 text-[9px] text-slate-400">Participant detail</p><div className="mt-3 space-y-2"><ExplorerMiniStat label="Status" value={selected[1]}/><button onClick={()=>setNotice("Participant response summary opened.")} className="w-full rounded-xl border border-slate-200 px-3 py-2 text-[9px] font-semibold text-slate-600">View responses</button><button onClick={()=>setNotice("Uploaded file preview opened.")} className="flex w-full items-center justify-center gap-2 rounded-xl border border-slate-200 px-3 py-2 text-[9px] font-semibold text-slate-600"><Eye className="h-3 w-3"/> View uploaded file</button></div></ExplorerCard></div></div>;
-  }
-
-  if (slideId === "followups") {
-    const waves=[['baseline','Baseline','Complete','128 participants'],['day7','Day 7','Sending','93 invited'],['day30','Day 30','Scheduled','Starts 18 Sep']] as const;
-    return <div><ExplorerScreenTitle eyebrow="Follow-up Manager" title="Longitudinal waves" action="Add wave" onAction={()=>setNotice("Follow-up wave editor opened.")} secondary="Send due invitations" onSecondary={()=>setNotice("Due invitations queued.")}/>{notice&&<ExplorerNotice text={notice}/>}<div className="space-y-3">{waves.map(([key,name,status,helper],index)=>{const active=followupActive[key];return <ExplorerCard key={key} className="p-4" highlight={index===1}><div className="flex flex-wrap items-center justify-between gap-3"><div><p className="text-xs font-semibold text-slate-900">{name}</p><p className="mt-1 text-[9px] text-slate-400">{helper}</p></div><div className="flex items-center gap-3"><span className="rounded-full bg-slate-100 px-2 py-1 text-[8px] font-semibold text-slate-500">{status}</span><ExplorerToggle enabled={active} onToggle={()=>setFollowupActive(c=>({...c,[key]:!active}))}/><button onClick={()=>setNotice(`${name} settings opened.`)} className="rounded-lg border border-slate-200 px-2 py-1.5 text-[8px] font-semibold text-slate-600">Manage</button></div></div></ExplorerCard>})}</div></div>;
-  }
-
-  if (slideId === "data") {
-    return <div><ExplorerScreenTitle eyebrow="Research Data" title="Sleep & Attention" action="Refresh data" onAction={()=>setNotice("Data bundle refreshed.")}/>{notice&&<ExplorerNotice text={notice}/>}<div className="mb-3 flex gap-2">{(["Overview","Responses","Uploads"] as const).map(tab=><button key={tab} onClick={()=>setDataTab(tab)} className={`rounded-xl px-3 py-2 text-[9px] font-semibold ${dataTab===tab?"bg-slate-950 text-white":"border border-slate-200 bg-white text-slate-500"}`}>{tab}</button>)}</div>{dataTab==="Overview"?<div className="grid gap-3 sm:grid-cols-3"><ExplorerMiniStat label="Participants" value="128" helper="112 completed baseline"/><ExplorerMiniStat label="Responses" value="1,842" helper="questionnaire items"/><ExplorerMiniStat label="Uploads" value="37" helper="participant files"/></div>:dataTab==="Uploads"?<ExplorerCard className="overflow-hidden" highlight><div className="grid grid-cols-4 bg-slate-50 px-4 py-2.5 text-[8px] font-semibold text-slate-400"><span>Participant</span><span>File</span><span>Type</span><span>Action</span></div>{[["PL-1042","drawing.png","PNG"],["PL-1043","voice-note.m4a","Audio"],["PL-1045","task-photo.jpg","JPG"]].map(r=><div key={r[1]} className="grid grid-cols-4 border-t border-slate-200 px-4 py-3 text-[9px] text-slate-600"><span>{r[0]}</span><span>{r[1]}</span><span>{r[2]}</span><button onClick={()=>setNotice(`${r[1]} opened.`)} className="text-left font-semibold text-cyan-700">View</button></div>)}</ExplorerCard>:<ExplorerCard className="overflow-hidden" highlight><div className="grid grid-cols-4 bg-slate-50 px-4 py-2.5 text-[8px] font-semibold text-slate-400"><span>Participant</span><span>Measure</span><span>Phase</span><span>Complete</span></div>{[["PL-1042","PSS-10","Baseline","Yes"],["PL-1043","WHO-5","Day 7","Yes"],["PL-1044","Image task","Baseline","Pending"]].map(r=><button key={r.join('-')} onClick={()=>setNotice(`${r[0]} ${r[1]} response opened.`)} className="grid w-full grid-cols-4 border-t border-slate-200 px-4 py-3 text-left text-[9px] text-slate-600 hover:bg-slate-50">{r.map((c, cellIndex)=><span key={`${r[0]}-${cellIndex}-${c}`}>{c}</span>)}</button>)}</ExplorerCard>}</div>;
-  }
-
-  return <div><ExplorerScreenTitle eyebrow="Export Data" title="Prepare analysis dataset" action="Export now" onAction={()=>setNotice(`${exportFormat} export prepared for ${exportDataset}.`)} secondary="Reset" onSecondary={()=>{setExportDataset("Analysis wide");setExportFormat("XLSX");setIncludeCodebook(true)}}/>{notice&&<ExplorerNotice text={notice}/>}<div className="grid gap-3 lg:grid-cols-[.9fr_1.1fr]"><ExplorerCard className="p-4" highlight><p className="text-xs font-semibold text-slate-900">Dataset</p><div className="mt-3 space-y-2">{["Analysis wide","Participant summary","Questionnaire responses","Ambulatory responses"].map(x=><button key={x} onClick={()=>setExportDataset(x)} className={`w-full rounded-xl border px-3 py-2.5 text-left text-[10px] font-medium ${exportDataset===x?"border-cyan-300 bg-cyan-50 text-cyan-800":"border-slate-200 text-slate-600"}`}>{x}</button>)}</div><p className="mt-4 text-xs font-semibold text-slate-900">Format</p><div className="mt-2 flex gap-2">{["XLSX","CSV","JSON"].map(x=><button key={x} onClick={()=>setExportFormat(x)} className={`rounded-lg px-3 py-2 text-[9px] font-semibold ${exportFormat===x?"bg-slate-950 text-white":"border border-slate-200 text-slate-500"}`}>{x}</button>)}</div><div className="mt-4 flex items-center justify-between rounded-xl bg-slate-50 px-3 py-3"><div><p className="text-[10px] font-semibold text-slate-700">Include codebook</p><p className="text-[8px] text-slate-400">Recommended for analysis handoff</p></div><ExplorerToggle enabled={includeCodebook} onToggle={()=>setIncludeCodebook(v=>!v)}/></div></ExplorerCard><ExplorerCard className="p-4"><div className="flex items-center justify-between"><p className="text-xs font-semibold text-slate-900">Export preview</p><span className="rounded-full bg-cyan-50 px-2 py-1 text-[8px] font-semibold text-cyan-700">{exportFormat}</span></div><div className="mt-3 rounded-xl bg-slate-950 p-3 font-mono text-[8px] leading-4 text-cyan-100">participant_id, phase, PSS_1, PSS_2, image_choice<br/>PL-1042, baseline, 2, 3, option_a<br/>PL-1043, baseline, 4, 2, option_b</div><button onClick={()=>setNotice(`${exportFormat} download prepared.`)} className="mt-3 flex items-center gap-2 rounded-lg bg-cyan-700 px-3 py-2 text-[9px] font-semibold text-white"><FileDown className="h-3 w-3"/> Export {exportFormat}</button></ExplorerCard></div></div>;
-}
-
-function ExplorerClinicalCore({ slideId }: { slideId: string }) {
-  const [notice, setNotice] = useState("");
-  const [query, setQuery] = useState("");
-  const [selectedClient, setSelectedClient] = useState("Aarav S.");
-  const [assigned, setAssigned] = useState<string[]>(["Perceived Stress Scale"]);
-  const [monitorRange, setMonitorRange] = useState<"7d" | "30d">("7d");
-  const [progressMetric, setProgressMetric] = useState<"Well-being" | "Stress">("Well-being");
-  const [pathwayDone, setPathwayDone] = useState([true, true, false, false]);
-
-  // Professional Notes state — mirrors ClinicalNotesWorkspace locally.
-  const clinicalEditorRef = useRef<HTMLDivElement | null>(null);
-  const [clinicalFolders, setClinicalFolders] = useState([
-    { id: "sessions", name: "Sessions" },
-    { id: "formulation", name: "Formulation" },
-    { id: "reviews", name: "Reviews" },
-  ]);
-  const [clinicalNotes, setClinicalNotes] = useState([
-    {
-      id: "note-1",
-      title: "Presentation anxiety · follow-up",
-      content:
-        "<p>Client reported improved confidence after using the grounding routine before the presentation.</p><p>Reviewed anticipatory thoughts and agreed to repeat the routine before the next high-pressure task.</p>",
-      text:
-        "Client reported improved confidence after using the grounding routine before the presentation. Reviewed anticipatory thoughts and agreed to repeat the routine before the next high-pressure task.",
-      folderId: "sessions",
-      type: "session",
-      pinned: true,
-      updated: "Today, 14:20",
-      session: "2026-08-19T10:30",
-    },
-    {
-      id: "note-2",
-      title: "Working formulation",
-      content:
-        "<p>Current formulation emphasises performance-related threat appraisal, avoidance and post-event rumination.</p>",
-      text:
-        "Current formulation emphasises performance-related threat appraisal, avoidance and post-event rumination.",
-      folderId: "formulation",
-      type: "formulation",
-      pinned: false,
-      updated: "18 Aug",
-      session: "2026-08-18T16:00",
-    },
-    {
-      id: "note-3",
-      title: "Four-week review",
-      content:
-        "<p>Monitoring adherence remains high. Sleep regularity has improved and self-rated stress has reduced across the last two weeks.</p>",
-      text:
-        "Monitoring adherence remains high. Sleep regularity has improved and self-rated stress has reduced across the last two weeks.",
-      folderId: "reviews",
-      type: "review",
-      pinned: false,
-      updated: "14 Aug",
-      session: "2026-08-14T09:00",
-    },
-    {
-      id: "note-4",
-      title: "Initial session",
-      content:
-        "<p>Established goals for monitoring and discussed privacy boundaries inside PsyLattice.</p>",
-      text:
-        "Established goals for monitoring and discussed privacy boundaries inside PsyLattice.",
-      folderId: null,
-      type: "session",
-      pinned: false,
-      updated: "04 Aug",
-      session: "2026-08-04T11:00",
-    },
-  ].map((note) => ({ ...note, folderId: note.folderId ?? null })));
-  const [clinicalSelectedFolder, setClinicalSelectedFolder] = useState("all");
-  const [clinicalSelectedNoteId, setClinicalSelectedNoteId] = useState("note-1");
-  const [clinicalNoteSearch, setClinicalNoteSearch] = useState("");
-  const [clinicalNewFolderName, setClinicalNewFolderName] = useState("");
-  const [clinicalNoteTitle, setClinicalNoteTitle] = useState("Presentation anxiety · follow-up");
-  const [clinicalNoteFolderId, setClinicalNoteFolderId] = useState<string | null>("sessions");
-  const [clinicalNoteType, setClinicalNoteType] = useState("session");
-  const [clinicalSessionAt, setClinicalSessionAt] = useState("2026-08-19T10:30");
-  const [clinicalPinned, setClinicalPinned] = useState(true);
-  const [clinicalEditorHtml, setClinicalEditorHtml] = useState(
-    "<p>Client reported improved confidence after using the grounding routine before the presentation.</p><p>Reviewed anticipatory thoughts and agreed to repeat the routine before the next high-pressure task.</p>"
+  return (
+    <div>
+      <ScreenTitle eyebrow="Privacy & Sharing" title="What your clinician can see" />
+      <DemoCard className="p-4" highlight>
+        <div className="space-y-2.5">
+          {([
+            ["assessments", "Assessments"],
+            ["monitoring", "Daily monitoring"],
+            ["progress", "Progress"],
+          ] as const).map(([key, label]) => {
+            const enabled = sharing[key];
+            return (
+              <button
+                key={key}
+                type="button"
+                onClick={() => setSharing((current) => ({ ...current, [key]: !current[key] }))}
+                className="flex w-full items-center justify-between rounded-xl border border-slate-200 px-3 py-3 text-left"
+              >
+                <div>
+                  <p className="text-[11px] font-semibold text-slate-800">{label}</p>
+                  <p className="mt-0.5 text-[9px] text-slate-400">Separate permission</p>
+                </div>
+                <div className={`h-5 w-9 rounded-full p-0.5 ${enabled ? "bg-cyan-600" : "bg-slate-200"}`}>
+                  <div className={`h-4 w-4 rounded-full bg-white shadow-sm transition ${enabled ? "translate-x-4" : "translate-x-0"}`} />
+                </div>
+              </button>
+            );
+          })}
+        </div>
+      </DemoCard>
+    </div>
   );
-  const [clinicalNoteDirty, setClinicalNoteDirty] = useState(false);
-
-  const [selectedAppointment, setSelectedAppointment] = useState("10:30 Maya R.");
-
-  // Secure Messages state — mirrors PsyLatticeMessagesWorkspace locally.
-  const [messageThreadPanelOpen, setMessageThreadPanelOpen] = useState(true);
-  const [messageEmailAlerts, setMessageEmailAlerts] = useState(true);
-  const [selectedMessageThreadId, setSelectedMessageThreadId] = useState("aarav");
-  const [messageDraft, setMessageDraft] = useState("");
-  const [messageThreads, setMessageThreads] = useState([
-    {
-      id: "aarav",
-      peer: "Aarav S.",
-      unread: 2,
-      last: "I completed the evening monitoring yesterday.",
-      time: "14:12",
-    },
-    {
-      id: "maya",
-      peer: "Maya R.",
-      unread: 0,
-      last: "Thank you, Friday works for me.",
-      time: "11:03",
-    },
-    {
-      id: "nisha",
-      peer: "Nisha K.",
-      unread: 1,
-      last: "Could we review the questionnaire next session?",
-      time: "Yesterday",
-    },
-  ]);
-  const [threadMessages, setThreadMessages] = useState<Record<string, Array<{
-    id: string;
-    body: string;
-    isMine: boolean;
-    time: string;
-    read?: boolean;
-  }>>>({
-    aarav: [
-      { id: "a1", body: "Hi, I wanted to let you know that I used the grounding routine before the presentation.", isMine: false, time: "10:24" },
-      { id: "a2", body: "That sounds useful. How did it feel compared with the previous presentation?", isMine: true, time: "10:31", read: true },
-      { id: "a3", body: "Much better. I was still nervous, but I did not avoid it.", isMine: false, time: "10:36" },
-      { id: "a4", body: "I completed the evening monitoring yesterday.", isMine: false, time: "14:12" },
-    ],
-    maya: [
-      { id: "m1", body: "Would Friday at 10:30 still work for our appointment?", isMine: true, time: "09:48", read: true },
-      { id: "m2", body: "Thank you, Friday works for me.", isMine: false, time: "11:03" },
-    ],
-    nisha: [
-      { id: "n1", body: "Could we review the questionnaire next session?", isMine: false, time: "Yesterday" },
-    ],
-  });
-
-  const [reception, setReception] = useState({ calendar:true, reschedule:true, assessments:false, notes:false, monitoring:false });
-
-  const clients=["Aarav S.","Maya R.","Nisha K.","Rohan D."].filter(n=>n.toLowerCase().includes(query.toLowerCase()));
-
-  const filteredClinicalNotes = clinicalNotes.filter((note) => {
-    const inFolder =
-      clinicalSelectedFolder === "all" ||
-      (clinicalSelectedFolder === "unfiled" && !note.folderId) ||
-      note.folderId === clinicalSelectedFolder;
-    const q = clinicalNoteSearch.trim().toLowerCase();
-    return (
-      inFolder &&
-      (!q ||
-        note.title.toLowerCase().includes(q) ||
-        note.text.toLowerCase().includes(q))
-    );
-  });
-
-  function openClinicalNote(noteId: string) {
-    const next = clinicalNotes.find((note) => note.id === noteId);
-    if (!next) return;
-    setClinicalSelectedNoteId(next.id);
-    setClinicalNoteTitle(next.title);
-    setClinicalNoteFolderId(next.folderId);
-    setClinicalNoteType(next.type);
-    setClinicalSessionAt(next.session);
-    setClinicalPinned(next.pinned);
-    setClinicalEditorHtml(next.content);
-    setClinicalNoteDirty(false);
-  }
-
-  function createClinicalNote() {
-    const id = `note-${Date.now()}`;
-    const note = {
-      id,
-      title: "Untitled note",
-      content: "",
-      text: "",
-      folderId:
-        clinicalSelectedFolder !== "all" &&
-        clinicalSelectedFolder !== "unfiled"
-          ? clinicalSelectedFolder
-          : null,
-      type: "session",
-      pinned: false,
-      updated: "Just now",
-      session: "2026-08-19T15:00",
-    };
-    setClinicalNotes((current) => [note, ...current]);
-    setClinicalSelectedNoteId(id);
-    setClinicalNoteTitle(note.title);
-    setClinicalNoteFolderId(note.folderId);
-    setClinicalNoteType(note.type);
-    setClinicalSessionAt(note.session);
-    setClinicalPinned(false);
-    setClinicalEditorHtml("");
-    setClinicalNoteDirty(true);
-  }
-
-  function saveClinicalNote() {
-    const textValue =
-      clinicalEditorRef.current?.innerText?.trim() ||
-      clinicalEditorHtml.replace(/<[^>]*>/g, " ").replace(/\s+/g, " ").trim();
-    const htmlValue =
-      clinicalEditorRef.current?.innerHTML ?? clinicalEditorHtml;
-
-    setClinicalNotes((current) =>
-      current.map((item) =>
-        item.id === clinicalSelectedNoteId
-          ? {
-              ...item,
-              title: clinicalNoteTitle || "Untitled note",
-              content: htmlValue,
-              text: textValue,
-              folderId: clinicalNoteFolderId,
-              type: clinicalNoteType,
-              session: clinicalSessionAt,
-              pinned: clinicalPinned,
-              updated: "Just now",
-            }
-          : item
-      )
-    );
-    setClinicalEditorHtml(htmlValue);
-    setClinicalNoteDirty(false);
-    setNotice("Professional note saved.");
-  }
-
-  function deleteClinicalNote() {
-    const remaining = clinicalNotes.filter(
-      (item) => item.id !== clinicalSelectedNoteId
-    );
-    setClinicalNotes(remaining);
-    if (remaining[0]) {
-      openClinicalNote(remaining[0].id);
-    }
-    setNotice("Professional note deleted.");
-  }
-
-  function createClinicalFolder() {
-    const name = clinicalNewFolderName.trim();
-    if (!name) return;
-    const id = `folder-${Date.now()}`;
-    setClinicalFolders((current) => [...current, { id, name }]);
-    setClinicalSelectedFolder(id);
-    setClinicalNewFolderName("");
-  }
-
-  function clinicalExec(command: string, value?: string) {
-    clinicalEditorRef.current?.focus();
-    try {
-      document.execCommand(command, false, value);
-      setClinicalNoteDirty(true);
-    } catch {
-      setNotice(`${command} formatting applied.`);
-    }
-  }
-
-  function messageInitials(name: string) {
-    return name
-      .split(/\s+/)
-      .filter(Boolean)
-      .slice(0, 2)
-      .map((part) => part[0])
-      .join("")
-      .toUpperCase();
-  }
-
-  function sendClinicalMessage() {
-    const body = messageDraft.trim();
-    if (!body) return;
-    const id = `msg-${Date.now()}`;
-    setThreadMessages((current) => ({
-      ...current,
-      [selectedMessageThreadId]: [
-        ...(current[selectedMessageThreadId] || []),
-        { id, body, isMine: true, time: "Now", read: false },
-      ],
-    }));
-    setMessageThreads((current) =>
-      current.map((thread) =>
-        thread.id === selectedMessageThreadId
-          ? { ...thread, last: body, time: "Now", unread: 0 }
-          : thread
-      )
-    );
-    setMessageDraft("");
-  }
+}
 
 
-  if (slideId === "clients") {
-    return <div><ExplorerScreenTitle eyebrow="Clinical workspace" title="Clients" action="Invite client" onAction={()=>setNotice("Client invitation form opened.")} secondary="Refresh" onSecondary={()=>setNotice("Client list refreshed.")}/>{notice&&<ExplorerNotice text={notice}/>}<div className="grid grid-cols-1 gap-3 sm:grid-cols-3"><ExplorerMiniStat label="Connected" value="18"/><ExplorerMiniStat label="Needs review" value="4"/><ExplorerMiniStat label="Today" value="6 appts"/></div><div className="my-3 flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2.5"><Search className="h-3.5 w-3.5 text-slate-400"/><input value={query} onChange={e=>setQuery(e.target.value)} className="flex-1 text-[10px] outline-none" placeholder="Search clients..."/><Filter className="h-3.5 w-3.5 text-slate-400"/></div><div className="grid gap-3 sm:grid-cols-2">{clients.map((name,index)=><button key={name} onClick={()=>setSelectedClient(name)} className="text-left"><ExplorerCard className="p-4" highlight={selectedClient===name}><div className="flex items-center justify-between gap-3"><div className="flex items-center gap-3"><div className="flex h-9 w-9 items-center justify-center rounded-full bg-cyan-50 text-cyan-800"><Users className="h-4 w-4"/></div><div><p className="text-xs font-semibold text-slate-900">{name}</p><p className="mt-1 text-[9px] text-slate-400">Connected · updated {index+1}h ago</p></div></div><ChevronRight className="h-4 w-4 text-slate-300"/></div></ExplorerCard></button>)}</div></div>;
-  }
+function ResearchPill({ children, active = false, dark = false, className = "" }: { children?: ReactNode; active?: boolean; dark?: boolean; className?: string }) {
+  return <span className={`inline-flex items-center justify-center whitespace-nowrap rounded-full border px-2.5 py-1 text-[7px] font-semibold shadow-sm ${dark ? "border-slate-950 bg-slate-950 text-white" : active ? "border-cyan-300 bg-cyan-50 text-cyan-900" : "border-slate-200 bg-white text-slate-500"} ${className}`}>{children}</span>;
+}
+function ResearchInput({ children, className = "" }: { children?: ReactNode; className?: string }) {
+  return <div className={`min-h-[32px] rounded-xl border border-slate-200 bg-white px-3 py-2 text-[8px] text-slate-700 shadow-[0_3px_9px_rgba(15,23,42,0.05)] ${className}`}>{children}</div>;
+}
+function ResearchSection({ children, className = "", id }: { children?: ReactNode; className?: string; id?: string }) {
+  return <section id={id} className={`rounded-[18px] border border-slate-200 bg-white shadow-[0_8px_24px_rgba(15,23,42,0.055)] ${className}`}>{children}</section>;
+}
+function ResearchMetric({ label, value, helper }: { label: string; value: string; helper?: string }) {
+  return <ResearchSection className="p-4"><p className="text-[7px] font-semibold uppercase tracking-[0.15em] text-slate-400"><span className="mr-1 text-cyan-500">●</span>{label}</p><p className="mt-2 text-[19px] font-semibold tracking-tight text-slate-950">{value}</p>{helper && <p className="mt-1 text-[7px] leading-3 text-slate-400">{helper}</p>}</ResearchSection>;
+}
 
-  if (slideId === "client-overview") {
-    return <div><ExplorerScreenTitle eyebrow="Client overview" title={selectedClient} action="Message" onAction={()=>setNotice("Secure message composer opened.")} secondary="Appointment" onSecondary={()=>setNotice("Appointment request opened.")}/>{notice&&<ExplorerNotice text={notice}/>}<div className="grid grid-cols-1 gap-3 sm:grid-cols-3"><ExplorerMiniStat label="Assessments" value="4"/><ExplorerMiniStat label="Monitoring" value="Active"/><ExplorerMiniStat label="Next appt" value="Fri 10:00"/></div><div className="mt-3 grid gap-3 lg:grid-cols-[1.2fr_.8fr]"><ExplorerCard className="p-4" highlight><p className="text-xs font-semibold text-slate-900">Recent shared activity</p><div className="mt-3 space-y-2">{["Mood check-in completed","PSS-10 shared","Progress permission updated"].map(item=><button key={item} onClick={()=>setNotice(`${item} detail opened.`)} className="w-full rounded-xl bg-slate-50 px-3 py-2.5 text-left text-[10px] text-slate-600 hover:bg-slate-100">{item}</button>)}</div></ExplorerCard><ExplorerCard className="p-4"><p className="text-xs font-semibold text-slate-900">Client permissions</p><div className="mt-3 space-y-2 text-[9px] text-slate-500"><p>✓ Assessments</p><p>✓ Monitoring</p><p>✓ Progress</p><p className="text-slate-300">– AI Guide</p></div><button onClick={()=>setNotice("Permission detail opened.")} className="mt-3 rounded-lg border border-slate-200 px-2.5 py-1.5 text-[8px] font-semibold text-slate-600">View permissions</button></ExplorerCard></div></div>;
-  }
+function TourInfoCloud({
+  title,
+  body,
+  side = "right",
+}: {
+  title: string;
+  body: string;
+  side?: "left" | "right" | "top" | "bottom";
+}) {
+  const connector = side === "left"
+    ? "right-[-42px] top-1/2 h-px w-10"
+    : side === "top"
+      ? "bottom-[-36px] left-1/2 h-9 w-px"
+      : side === "bottom"
+        ? "top-[-36px] left-1/2 h-9 w-px"
+        : "left-[-42px] top-1/2 h-px w-10";
+  const dot = side === "left"
+    ? "-right-[47px] top-[calc(50%-4px)]"
+    : side === "top"
+      ? "-bottom-[42px] left-[calc(50%-4px)]"
+      : side === "bottom"
+        ? "-top-[42px] left-[calc(50%-4px)]"
+        : "-left-[47px] top-[calc(50%-4px)]";
 
-  if (slideId === "assessments") {
-    const measures=["Perceived Stress Scale","WHO-5 Well-Being","General Self-Efficacy Scale","Sleep Quality Check"];
-    return <div><ExplorerScreenTitle eyebrow="Assessments" title={selectedClient} action="Assign measure" onAction={()=>setNotice("Measure picker opened.")}/>{notice&&<ExplorerNotice text={notice}/>}<div className="space-y-3">{measures.map((name,index)=>{const isAssigned=assigned.includes(name);return <ExplorerCard key={name} className="p-4" highlight={index===0}><div className="flex flex-wrap items-center justify-between gap-3"><div><p className="text-xs font-semibold text-slate-900">{name}</p><p className="mt-1 text-[9px] text-slate-400">{isAssigned?"Assigned · completed 1 week ago":"Available to assign"}</p></div><div className="flex gap-2"><button onClick={()=>setNotice(`${name} result opened.`)} className="rounded-lg border border-slate-200 px-2.5 py-1.5 text-[8px] font-semibold text-slate-600">Review</button><button onClick={()=>setAssigned(c=>isAssigned?c.filter(x=>x!==name):[...c,name])} className={`rounded-lg px-2.5 py-1.5 text-[8px] font-semibold ${isAssigned?"bg-cyan-50 text-cyan-700":"bg-slate-950 text-white"}`}>{isAssigned?"Assigned":"Assign"}</button></div></div></ExplorerCard>})}</div></div>;
-  }
+  return (
+    <div className="psylattice-card-in pointer-events-none relative w-[285px] rounded-[18px] border border-cyan-300/55 bg-[#1f3b4d]/[0.98] px-4 py-4 text-white shadow-[0_18px_46px_rgba(15,23,42,.26),0_0_0_3px_rgba(255,255,255,.76)] backdrop-blur-xl">
+      <span className={`absolute bg-cyan-300 ${connector}`} />
+      <span className={`absolute h-2.5 w-2.5 rounded-full border-2 border-[#1f3b4d] bg-cyan-300 shadow-[0_0_0_2px_rgba(255,255,255,.82)] ${dot}`} />
+      <div className="flex items-start gap-3">
+        <span className="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-xl border border-cyan-300/25 bg-cyan-300/10 text-cyan-200">
+          <Sparkles className="h-4 w-4" />
+        </span>
+        <div className="min-w-0">
+          <p className="text-[9px] font-bold uppercase tracking-[0.14em] text-cyan-200">
+            Feature highlight
+          </p>
+          <p className="mt-1.5 text-[12px] font-semibold leading-[16px] text-white">
+            {title}
+          </p>
+          <p className="mt-1.5 text-[9.5px] leading-[15px] text-slate-200">
+            {body}
+          </p>
+        </div>
+      </div>
+    </div>
+  );
+}
 
-  if (slideId === "monitoring") {
-    const values=monitorRange==="7d"?[42,68,55,80,61,73,66]:[35,48,52,60,55,72,64,70,78,68,72,75];
-    return <div><ExplorerScreenTitle eyebrow="Monitoring" title="Shared daily data" action="Propose protocol" onAction={()=>setNotice("Protocol proposal builder opened.")} secondary="Request sharing" onSecondary={()=>setNotice("Sharing request opened.")}/>{notice&&<ExplorerNotice text={notice}/>}<div className="mb-3 flex gap-2">{(["7d","30d"] as const).map(r=><button key={r} onClick={()=>setMonitorRange(r)} className={`rounded-lg px-3 py-1.5 text-[9px] font-semibold ${monitorRange===r?"bg-slate-950 text-white":"border border-slate-200 bg-white text-slate-500"}`}>{r}</button>)}</div><ExplorerCard className="p-4" highlight><div className="flex h-40 items-end gap-2 rounded-xl bg-slate-50 p-4">{values.map((height,index)=><button key={index} onClick={()=>setNotice(`Check-in ${index+1}: stress ${(height/15).toFixed(1)}.`)} className="flex-1 rounded-t-md bg-cyan-300 transition hover:bg-cyan-400" style={{height:`${height}px`}}/>)}</div><div className="mt-3 grid grid-cols-3 gap-2"><ExplorerMiniStat label="Check-ins" value="19"/><ExplorerMiniStat label="Completion" value="95%"/><ExplorerMiniStat label="Stress avg" value="4.1"/></div></ExplorerCard></div>;
-  }
 
-  if (slideId === "progress") {
-    const isWell=progressMetric==="Well-being"; const vals=isWell?[48,50,57,61,66,71]:[82,75,70,64,58,52];
-    return <div><ExplorerScreenTitle eyebrow="Progress" title="Longitudinal view"/><div className="mb-3 flex gap-2">{(["Well-being","Stress"] as const).map(x=><button key={x} onClick={()=>setProgressMetric(x)} className={`rounded-xl px-3 py-2 text-[9px] font-semibold ${progressMetric===x?"bg-slate-950 text-white":"border border-slate-200 bg-white text-slate-500"}`}>{x}</button>)}</div><ExplorerCard className="p-4" highlight><div className="flex items-center justify-between"><p className="text-xs font-semibold text-slate-900">{progressMetric}</p><span className={`text-[10px] font-semibold ${isWell?"text-cyan-700":"text-cyan-700"}`}>{isWell?"Improving":"Decreasing"}</span></div><div className="mt-4 flex h-36 items-end gap-2 rounded-xl bg-slate-50 p-4">{vals.map((h,i)=><div key={i} className={`flex-1 rounded-t-md ${isWell?"bg-cyan-200":"bg-cyan-200"}`} style={{height:`${h}px`}}/>)}</div></ExplorerCard></div>;
-  }
+function StudyBuilderSidePanels() {
+  const components = [
+    ["Consent", true],
+    ["Participant demographics", true],
+    ["Baseline / questionnaires", true],
+    ["Cognitive tasks", false],
+    ["Ambulatory / EMA / ESM", false],
+    ["Follow-up assessments", false],
+    ["Wearables", false],
+    ["Passive / device context", false],
+    ["Participant uploads", false],
+  ] as const;
 
-  if (slideId === "care-pathway") {
-    const items=["Stabilise sleep routine","Practice pre-presentation grounding","Review monitoring data","Reassess after 4 weeks"];
-    return <div><ExplorerScreenTitle eyebrow="Care Pathway" title="Current plan" action="Add step" onAction={()=>setNotice("Care-pathway step editor opened.")}/>{notice&&<ExplorerNotice text={notice}/>}<div className="space-y-3">{items.map((item,index)=>{const done=pathwayDone[index];return <ExplorerCard key={item} className="p-4" highlight={index===1}><button onClick={()=>setPathwayDone(c=>c.map((x,i)=>i===index?!x:x))} className="flex w-full items-center gap-3 text-left"><div className={`flex h-7 w-7 items-center justify-center rounded-full text-[9px] font-semibold ${done?"bg-cyan-700 text-white":"bg-slate-100 text-slate-500"}`}>{done?<Check className="h-3.5 w-3.5"/>:index+1}</div><div className="flex-1"><p className="text-[10px] font-medium text-slate-700">{item}</p><p className="mt-0.5 text-[8px] text-slate-400">{done?"Completed":"Planned"}</p></div></button></ExplorerCard>})}</div></div>;
-  }
+  return (
+    <div className="space-y-3">
+      <ResearchSection>
+        <div className="border-b border-slate-100 px-4 py-4">
+          <p className="text-[10px] font-semibold text-slate-900">Study components</p>
+        </div>
+        <div className="space-y-3 p-4">
+          {components.map(([label, included]) => (
+            <div key={label} className="flex items-center justify-between gap-3">
+              <span className="text-[8px] font-medium text-slate-700">{label}</span>
+              <ResearchPill active={included}>{included ? "Included" : "Off"}</ResearchPill>
+            </div>
+          ))}
+        </div>
+      </ResearchSection>
 
-  if (slideId === "notes") {
-    const selectedNote =
-      clinicalNotes.find((item) => item.id === clinicalSelectedNoteId) || null;
-    const editorWordCount =
-      (clinicalEditorRef.current?.innerText || clinicalEditorHtml.replace(/<[^>]*>/g, " "))
-        .trim()
-        .split(/\s+/)
-        .filter(Boolean).length;
+      <ResearchSection>
+        <div className="border-b border-slate-100 px-4 py-3">
+          <p className="text-[10px] font-semibold text-slate-900">Builder safeguards</p>
+        </div>
+        <div className="space-y-3 p-4 text-[7px] leading-4 text-slate-500">
+          <p>
+            Consent content must match the approved ethics protocol; PsyLattice does not decide whether a consent waiver or optional component is ethically sufficient.
+          </p>
+          <p>
+            Demographic fields can include direct identifiers, but collect names, email addresses or similarly identifying data only when the approved protocol and data-management plan require them.
+          </p>
+          <p>
+            Ambulatory scheduling is optional and should only be enabled when it belongs to the research design.
+          </p>
+          <p>
+            Published questionnaire, consent and cognitive-task versions are pinned for historical reproducibility; later library edits do not silently alter an existing study. Study flow order is saved separately from the content of each element.
+          </p>
+        </div>
+      </ResearchSection>
+    </div>
+  );
+}
 
-    return (
-      <div className="space-y-5">
-        {notice && <ExplorerNotice text={notice} />}
+function StudyBuilderStepNav({ active }: { active: number }) {
+  const steps = [
+    "1. Overview",
+    "2. Study components",
+    "3. Study flow",
+    "4. Consent",
+    "5. Demographics",
+    "6. Baseline measures",
+    "7. Recruitment",
+    "8. Review",
+  ];
 
-        <ExplorerCard className="overflow-hidden">
-          <div className="border-b border-slate-100 px-5 py-4">
-            <h2 className="font-semibold text-slate-950">
-              {selectedClient} · Professional Notes
-            </h2>
-            <p className="mt-1 text-sm leading-6 text-slate-500">
-              Private clinician-authored documentation for the selected client.
-              Organise notes into folders and edit them with the rich-text workspace below.
-            </p>
+  return (
+    <ResearchSection>
+      <div className="border-b border-slate-100 px-5 py-4">
+        <p className="text-[11px] font-semibold text-slate-900">Study creation</p>
+        <p className="mt-1 text-[7px] text-slate-500">
+          The workflow changes automatically according to the components you select.
+        </p>
+      </div>
+      <div className="flex flex-wrap gap-2 px-5 py-4">
+        {steps.map((label, index) => (
+          <ResearchPill key={label} active={index === active}>
+            {label}
+          </ResearchPill>
+        ))}
+      </div>
+    </ResearchSection>
+  );
+}
+
+function StudyBuilderFooter({ step, continueDisabled = false }: { step: number; continueDisabled?: boolean }) {
+  return (
+    <div className="mt-4 flex items-center justify-between border-t border-slate-100 pt-4">
+      <div className="flex gap-2">
+        <button
+          className={`rounded-full border border-slate-200 bg-white px-4 py-2.5 text-[8px] font-semibold shadow-sm ${step === 0 ? "text-slate-300" : "text-slate-700"}`}
+        >
+          Back
+        </button>
+        <button
+          className={`rounded-full border border-slate-200 bg-white px-4 py-2.5 text-[8px] font-semibold shadow-sm ${continueDisabled ? "text-slate-300" : "text-slate-800"}`}
+        >
+          Continue
+        </button>
+      </div>
+      <button className="rounded-xl bg-slate-950 px-4 py-2.5 text-[8px] font-semibold text-white shadow-sm">
+        Save draft
+      </button>
+    </div>
+  );
+}
+
+function CognitiveLabTourDemo({ step }: { step: number }) {
+  const focusClass = (index: number) =>
+    step === index
+      ? "relative z-10 rounded-[20px] ring-2 ring-cyan-300/90 ring-offset-2 ring-offset-[#edf3f4] shadow-[0_14px_35px_rgba(8,145,178,.14)] transition-all duration-300"
+      : "relative transition-all duration-300";
+
+  const labTabs = ["Overview", "Learn", "Task Templates", "My Cognitive Tasks", "Batteries", "Pilot Sessions"];
+  const topHero = (
+    <ResearchSection className="p-5">
+      <div className="flex items-start justify-between gap-6">
+        <div className="max-w-[620px]">
+          <div className="flex flex-wrap items-center gap-2">
+            <ResearchPill active>Cognitive Lab · 2M</ResearchPill>
+            <ResearchPill>Tasks + Batteries + Preview + Study execution</ResearchPill>
           </div>
+          <h2 className="mt-3 max-w-[560px] text-[21px] font-semibold leading-[1.05] tracking-[-0.03em] text-slate-950">
+            Build reusable cognitive tasks and batteries, then place them inside complete PsyLattice studies.
+          </h2>
+          <p className="mt-3 max-w-[650px] text-[8px] leading-4 text-slate-500">
+            Cognitive Lab owns reusable task definitions, version history and cognitive batteries. Study Builder owns when and where they run in the participant flow. Participant Runner executes them, and Research Data owns the resulting trial-level dataset.
+          </p>
+        </div>
+        <div className="grid w-[330px] grid-cols-3 gap-3">
+          {[["19","Starter templates"],["22","My tasks"],[step === 0 ? "5" : "3","Active pilot links"]].map(([value,label], index)=>(
+            <ResearchSection key={label} className="min-h-[126px] p-4">
+              <p className="text-[8px] font-semibold text-cyan-700">{index===0 ? "▥" : index===1 ? "♙" : "↗"}</p>
+              <p className="mt-3 text-[17px] font-semibold text-slate-950">{value}</p>
+              <p className="mt-1 text-[7px] text-slate-400">{label}</p>
+            </ResearchSection>
+          ))}
+        </div>
+      </div>
+    </ResearchSection>
+  );
 
-          <div className="grid gap-3 p-5 md:grid-cols-3">
-            <div className="rounded-xl border border-slate-200 bg-slate-50/60 p-4">
-              <p className="text-xs font-semibold uppercase tracking-[0.14em] text-slate-400">
-                Client
-              </p>
-              <p className="mt-2 text-sm font-semibold text-slate-800">
-                {selectedClient}
-              </p>
-            </div>
+  const tabBar = (active: string) => (
+    <ResearchSection className="px-2 py-1.5">
+      <div className="flex items-center gap-1">
+        {labTabs.map((tab) => (
+          <span key={tab} className={`rounded-full px-3 py-2 text-[7.5px] font-semibold ${tab === active ? "border border-cyan-300 bg-cyan-50 text-cyan-900 shadow-sm" : "text-slate-500"}`}>
+            {tab === "Overview" ? "◌" : tab === "Learn" ? "▣" : tab === "Task Templates" ? "⌁" : tab === "My Cognitive Tasks" ? "♙" : tab === "Batteries" ? "⬢" : "⌁"} &nbsp;{tab}
+          </span>
+        ))}
+      </div>
+    </ResearchSection>
+  );
 
-            <div className="rounded-xl border border-slate-200 bg-slate-50/60 p-4">
-              <p className="text-xs font-semibold uppercase tracking-[0.14em] text-slate-400">
-                Record type
-              </p>
-              <p className="mt-2 text-sm font-semibold text-slate-800">
-                Private professional notes
-              </p>
-            </div>
-
-            <div className="rounded-xl border border-cyan-100 bg-cyan-50/60 p-4">
-              <p className="text-xs font-semibold uppercase tracking-[0.14em] text-cyan-700">
-                Sharing
-              </p>
-              <p className="mt-2 text-sm font-semibold text-cyan-950">
-                Not shared with client
-              </p>
-            </div>
-          </div>
-        </ExplorerCard>
-
-        <div className="grid min-h-[720px] overflow-hidden rounded-3xl border border-slate-200 bg-white shadow-sm xl:grid-cols-[230px_300px_minmax(0,1fr)]">
-          {/* FOLDERS */}
-          <aside className="border-b border-slate-200 bg-slate-50/70 p-4 xl:border-b-0 xl:border-r">
-            <div className="flex items-center justify-between gap-3">
-              <div>
-                <p className="text-sm font-semibold text-slate-900">Folders</p>
-                <p className="mt-1 text-[11px] text-slate-400">{selectedClient}</p>
+  if (step === 0) {
+    return (
+      <div className="space-y-4 pb-6">
+        <ResearchSection className="p-5">
+          <div className="flex gap-2"><ResearchPill active>Researcher workspace</ResearchPill><ResearchPill>Live workspace data</ResearchPill></div>
+          <h2 className="mt-3 text-[18px] font-semibold tracking-tight text-slate-950">Cognitive Lab</h2>
+          <p className="mt-1 max-w-[680px] text-[8px] text-slate-500">Create reusable cognitive task definitions, start from PsyLattice templates, and prepare versioned tasks for experiments and longitudinal research.</p>
+        </ResearchSection>
+        <div id="cognitive-overview" className={focusClass(0)}>
+          {topHero}
+          <div className="mt-3">{tabBar("Overview")}</div>
+          <div className="mt-3 grid grid-cols-[1.15fr_.85fr] gap-3">
+            <ResearchSection className="p-4">
+              <p className="text-[7px] font-semibold uppercase tracking-[0.16em] text-cyan-700">Workflow foundation</p>
+              <p className="mt-1 text-[9px] font-semibold text-slate-800">One task, reusable across many studies.</p>
+              <div className="mt-3 flex gap-2"><ResearchPill active>▣ Learn how it works</ResearchPill><ResearchPill dark>Browse templates →</ResearchPill></div>
+              <div className="mt-3 grid grid-cols-4 gap-2">
+                {[["01","Cognitive Lab","Create or clone a reusable task definition."],["02","Version","Freeze the exact task configuration used in research."],["03","Study Builder","Choose when the task is administered."],["04","Research Data","Keep trial-level results aligned with the study."]].map(([n,t,b])=>(
+                  <div key={n} className="rounded-xl border border-slate-200 bg-white p-3 shadow-sm"><p className="text-[7px] font-semibold text-cyan-700">{n}</p><p className="mt-2 text-[7.5px] font-semibold text-slate-800">{t}</p><p className="mt-1 text-[6.2px] leading-3 text-slate-400">{b}</p></div>
+                ))}
               </div>
+              <div className="mt-3 rounded-xl border border-cyan-200 bg-cyan-50/60 p-3"><p className="text-[7px] font-semibold text-slate-700">✣ What Cognitive Lab does now</p><p className="mt-1 text-[6.5px] leading-3 text-slate-500">The task templates, personal Cognitive Task Library, visual Task Builder, calibrated Preview runner and Pilot Sessions work together. Publish a tested version when it is ready to be selected inside Study Builder.</p></div>
+            </ResearchSection>
+            <ResearchSection className="p-4">
+              <p className="text-[7px] font-semibold uppercase tracking-[0.16em] text-slate-400">Quick start</p>
+              <p className="mt-1 text-[9px] font-semibold text-slate-800">Start from a task family or create your own.</p>
+              <div className="mt-3 space-y-2">
+                {["Adaptive Card Sorting Task (WCST-style)","AX Continuous Performance Task","Balloon Analogue Risk Task (BART)"].map((name,i)=><div key={name} className="flex items-center justify-between rounded-xl border border-slate-200 bg-white px-3 py-2.5 shadow-sm"><div><p className="text-[7px] font-semibold text-slate-700">◌ &nbsp;{name}</p><p className="mt-0.5 text-[6px] text-slate-400">{i===0?"Set shifting":i===1?"Context processing":"Decision Making"}</p></div><span className="text-slate-300">→</span></div>)}
+              </div>
+              <button className="mt-3 w-full rounded-lg border border-slate-200 bg-white py-2 text-[7px] font-semibold text-slate-600">＋ Create blank cognitive task</button>
+            </ResearchSection>
+          </div>
+          <div className="absolute right-5 top-[220px] z-30"><TourInfoCloud title={cognitiveTourSteps[0].calloutTitle} body={cognitiveTourSteps[0].calloutBody} side="right" /></div>
+        </div>
+      </div>
+    );
+  }
 
-              <button
-                type="button"
-                onClick={() =>
-                  document.getElementById("clinical-note-folder")?.focus()
-                }
-                className="flex h-8 w-8 items-center justify-center rounded-lg border border-slate-200 bg-white text-lg text-slate-600"
-                title="New folder"
-              >
-                +
-              </button>
+  if (step === 1) {
+    return (
+      <div className="space-y-3 pb-6">
+        {tabBar("Learn")}
+        <div id="cognitive-learn" className={focusClass(1)}>
+          <ResearchSection className="overflow-hidden">
+            <div className="grid grid-cols-[270px_1fr]">
+              <div className="border-r border-slate-200 p-4">
+                <div className="flex h-8 w-8 items-center justify-center rounded-xl border border-cyan-200 bg-cyan-50 text-cyan-700">▣</div>
+                <p className="mt-3 text-[7px] font-semibold uppercase tracking-[0.16em] text-cyan-700">Cognitive Lab guides</p>
+                <p className="mt-1 text-[11px] font-semibold text-slate-900">Learn by seeing how the task works.</p>
+                <p className="mt-2 text-[7px] leading-3.5 text-slate-500">Short visual explanations, illustrated configurations and complete task examples — built directly into PsyLattice.</p>
+                <div className="mt-3 flex flex-wrap gap-1"><ResearchPill active>No screenshots</ResearchPill><ResearchPill active>Visual examples</ResearchPill><ResearchPill active>Research workflow</ResearchPill></div>
+              </div>
+              <div className="grid grid-cols-3 gap-2 p-3">
+                {[["How Cognitive Lab works","See the complete path from template to research data.","2 min"],["Understand the Task Builder","Blocks, trials, steps and the trial table — visually.","3 min"],["Set up participant responses","Keys, buttons, correct answers and reaction time.","3 min"],["Example: build a Stroop task","A complete example you can copy and adapt.","5 min"],["Preview and pilot your task","Test timing and usability before study deployment.","2 min"]].map(([t,b,time],i)=><div key={t} className={`rounded-xl border p-3 ${i===0?"border-cyan-300 bg-cyan-50/30":"border-slate-200 bg-white"}`}><div className="flex justify-between"><span className="text-cyan-700">◌</span><span className="text-[6px] text-slate-400">{time}</span></div><p className="mt-3 text-[7px] font-semibold text-slate-800">{t}</p><p className="mt-1 text-[6.2px] leading-3 text-slate-400">{b}</p></div>)}
+              </div>
             </div>
+          </ResearchSection>
+          <ResearchSection className="mt-3 p-4">
+            <div className="flex items-center justify-between border-b border-slate-100 pb-3"><div><p className="text-[6.5px] font-semibold uppercase tracking-[0.13em] text-slate-400">Currently viewing</p><p className="text-[7px] font-semibold text-slate-700">How Cognitive Lab works</p></div><ResearchPill>♙ Cognitive Lab manual · Phase 1</ResearchPill></div>
+            <p className="mt-4 text-[7px] font-semibold uppercase tracking-[0.14em] text-cyan-700">Visual guide · Start here</p>
+            <p className="mt-1 text-[13px] font-semibold text-slate-900">Cognitive Lab in one picture</p>
+            <p className="mt-2 text-[7px] leading-3.5 text-slate-500">You do not build a whole study here. Cognitive Lab creates reusable task definitions. You test them here, then later place a locked version inside a PsyLattice study.</p>
+            <div className="mt-3 grid grid-cols-5 gap-2 rounded-xl border border-slate-200 bg-slate-50/50 p-3">
+              {[['1','Template','Pick a task family'],['2','Build','Edit the exact task'],['3','Preview','Run it yourself'],['4','Pilot','Test with others'],['5','Study','Deploy the locked version']].map(([n,t,b])=><div key={n} className="rounded-lg bg-white p-3 shadow-sm"><span className="flex h-6 w-6 items-center justify-center rounded-full bg-cyan-50 text-[6px] font-bold text-cyan-700">{n}</span><p className="mt-3 text-[7px] font-semibold text-slate-700">{t}</p><p className="mt-1 text-[6px] text-slate-400">{b}</p></div>)}
+            </div>
+            <div className="mt-3 grid grid-cols-3 gap-3">{[["Choose a task family","Start from Stroop, Flanker, Go/No-Go, N-back, reaction time or a blank task."],["Build the exact trial","Arrange fixation, stimulus, participant response and the pause before the next trial."],["Test before deployment","Preview it yourself, then create a pilot link. The final study should use a version you have already checked."]].map(([t,b],i)=><div key={t} className="rounded-xl border border-slate-200 bg-white p-3"><p className="text-[7px] font-semibold text-slate-800">{i+1} &nbsp;{t}</p><p className="mt-1 text-[6.2px] leading-3 text-slate-400">{b}</p></div>)}</div>
+          </ResearchSection>
+          <div className="absolute right-5 top-[110px] z-30"><TourInfoCloud title={cognitiveTourSteps[1].calloutTitle} body={cognitiveTourSteps[1].calloutBody} side="right" /></div>
+        </div>
+      </div>
+    );
+  }
 
-            <div className="mt-4 space-y-1">
-              <button
-                type="button"
-                onClick={() => setClinicalSelectedFolder("all")}
-                className={`flex w-full items-center justify-between rounded-xl px-3 py-2.5 text-left text-sm ${
-                  clinicalSelectedFolder === "all"
-                    ? "bg-cyan-50 font-semibold text-cyan-950"
-                    : "text-slate-600 hover:bg-white"
-                }`}
-              >
-                <span>All notes</span>
-                <span className="text-xs text-slate-400">{clinicalNotes.length}</span>
-              </button>
+  const taskCards = [
+    ["Simple Reaction Time","RESPONSE SPEED","Basic response latency to a single predictable target.",["Mean reaction time","Median reaction time","Omissions"],"3–5 min","Simple","Attention","Ready to customise"],
+    ["Choice Reaction Time","CHOICE SPEED","Response selection speed when different stimuli require different responses.",["Correct RT","Accuracy","Choice errors"],"4–6 min","Simple","Attention","Ready to customise"],
+    ["Psychomotor Vigilance Task","VIGILANCE","Sustained vigilance through responses to an unpredictable visual target.",["Median RT","Mean RT","Lapses","False starts"],"4–8 min","Simple","Attention","Ready to customise"],
+    ["Go / No-Go Task","RESPONSE INHIBITION","Response execution to frequent Go stimuli and withholding to infrequent No-Go stimuli.",["Go RT","Go accuracy","Commission errors","Omission errors"],"5–8 min","Simple","Inhibitory Control","Ready to customise"],
+    ["Stop-Signal Task","ACTION CANCELLATION","The latency of action cancellation after a stop signal, alongside Go performance and adaptive stop-signal delay.",["SSRT","Mean SSD","Stop success","Go RT"],"7–10 min","Intermediate","Inhibitory Control","Runner ready"],
+    ["Sustained Attention to Response Task","SUSTAINED ATTENTION","Sustained attention and failures to withhold a habitual response to a rare target.",["Commission errors","Omission errors","Go RT","RT variability"],"5–8 min","Simple","Attention","Ready to customise"],
+    ["Corsi Block-Tapping Task","VISUOSPATIAL SPAN","Visuospatial short-term memory span in Forward mode and spatial sequence manipulation/working-memory performance when Backward mode is enabled.",["Forward span","Backward span","Product score","Sequence accuracy"],"3–8 min","Intermediate","Working Memory","Runner ready"],
+    ["Adaptive Card Sorting Task (WCST-style)","SET SHIFTING","Rule discovery, feedback-based set shifting and persistence with a previously reinforced sorting rule after an unannounced rule change.",["Categories completed","Perseverative errors","Nonperseverative errors","Failure to maintain set"],"8–20 min","Advanced","General","Runner ready"],
+    ["Balloon Analogue Risk Task (BART)","DECISION MAKING","Behavioral risk taking under uncertainty through repeated pump-versus-collect decisions.",["Adjusted mean pumps","Mean pumps across balloons","Explosion rate","Exploded balloons"],"6–15 min","Intermediate","Decision Making","Runner ready"],
+  ] as const;
 
-              <button
-                type="button"
-                onClick={() => setClinicalSelectedFolder("unfiled")}
-                className={`flex w-full items-center justify-between rounded-xl px-3 py-2.5 text-left text-sm ${
-                  clinicalSelectedFolder === "unfiled"
-                    ? "bg-cyan-50 font-semibold text-cyan-950"
-                    : "text-slate-600 hover:bg-white"
-                }`}
-              >
-                <span>Unfiled</span>
-                <span className="text-xs text-slate-400">
-                  {clinicalNotes.filter((note) => !note.folderId).length}
+  const TaskLibrary = ({ withDrawer = false }: { withDrawer?: boolean }) => (
+    <div className="relative min-h-[820px] space-y-3">
+      <ResearchSection className="p-4">
+        <div className="flex items-start justify-between gap-4">
+          <div><div className="flex items-center gap-2"><p className="text-[8px] font-semibold uppercase tracking-[0.16em] text-cyan-700">Cognitive Task Library</p><ResearchPill>19 templates</ResearchPill></div><p className="mt-2 text-[10px] font-semibold text-slate-900">Start from a real paradigm, then make the protocol yours.</p><p className="mt-1 max-w-[660px] text-[7px] leading-3 text-slate-500">Every Ready to customise task below contains an actual starter timeline and trial table that can be cloned into your Task Builder. Use Details to understand the paradigm before editing it.</p></div>
+          <div className="mt-7 flex gap-2"><ResearchInput className="w-[210px] text-slate-400">⌕ Search task, construct or output</ResearchInput><ResearchInput className="w-[100px]">All domains ⌄</ResearchInput></div>
+        </div>
+        <div className="mt-3 flex gap-2 border-t border-slate-100 pt-3"><span className="mr-1 text-[6.5px] font-semibold uppercase tracking-[0.14em] text-slate-400">Quick filters</span>{["All","Attention","Control & inhibition","Working memory","Perception"].map((f,i)=><ResearchPill key={f} active={i===0}>{f}</ResearchPill>)}</div>
+      </ResearchSection>
+      <div className="grid grid-cols-3 gap-3">
+        {taskCards.map(([name,construct,description,outputs,duration,level,domain,status], index)=><ResearchSection key={name} className="p-3"><div className="flex justify-between"><div className="flex h-8 w-8 items-center justify-center rounded-xl bg-cyan-50 text-cyan-700">◌</div><ResearchPill active>{status}</ResearchPill></div><p className="mt-3 text-[6.5px] font-semibold uppercase tracking-[0.14em] text-slate-400">{construct}</p><p className="mt-1 text-[8px] font-semibold text-slate-900">{name}</p><p className="mt-1 min-h-[30px] text-[6.2px] leading-3 text-slate-500">{description}</p><div className="mt-2 flex flex-wrap gap-1"><ResearchPill>{duration}</ResearchPill><ResearchPill>{level}</ResearchPill><ResearchPill>{domain}</ResearchPill></div><div className="mt-2 rounded-xl border border-slate-200 bg-slate-50/60 p-2"><p className="text-[6px] font-semibold uppercase tracking-[0.12em] text-slate-400">Typical outputs</p><div className="mt-1 flex flex-wrap gap-1">{outputs.map((o)=><span key={o} className="rounded-full bg-white px-2 py-1 text-[5.6px] font-semibold text-slate-500">{o}</span>)}</div></div><div className="mt-2 flex flex-wrap gap-1">{["Desktop","Laptop",...(index<4||index===6?["Tablet","Phone"]:[])].map(d=><span key={d} className="rounded-full border border-slate-200 px-1.5 py-0.5 text-[5.5px] text-slate-400">▣ {d}</span>)}</div><div className="mt-2 grid grid-cols-[1fr_90px] gap-2"><span className="rounded-full border border-slate-200 py-1.5 text-center text-[6px] font-semibold text-slate-600">Details</span><span className="rounded-full bg-slate-950 py-1.5 text-center text-[6px] font-semibold text-white">＋ Use template</span></div></ResearchSection>)}
+      </div>
+      {withDrawer && <><div className="absolute inset-0 z-20 rounded-[18px] bg-slate-900/25 backdrop-blur-[1px]"/><div className="absolute right-[-12px] top-[-12px] z-30 h-[780px] w-[360px] overflow-hidden rounded-l-[22px] border border-slate-200 bg-[#f6fafb] shadow-[-18px_0_48px_rgba(15,23,42,.18)]"><div className="flex items-center justify-between border-b border-slate-200 bg-white px-4 py-3"><div><p className="text-[6.5px] font-semibold uppercase tracking-[0.14em] text-cyan-700">▱ Visuospatial span</p><p className="text-[8px] font-semibold text-slate-700">Task details</p></div><span className="flex h-7 w-7 items-center justify-center rounded-full border border-slate-200 text-slate-400">×</span></div><div className="space-y-3 overflow-auto p-4"><ResearchSection className="p-3"><div className="flex gap-1"><ResearchPill active>Runner ready</ResearchPill><ResearchPill>3–8 min</ResearchPill><ResearchPill>Intermediate</ResearchPill></div><p className="mt-3 text-[10px] font-semibold">Corsi Block-Tapping Task</p><p className="mt-2 text-[6.7px] leading-3.5 text-slate-500">A digital spatial-span task in which blocks illuminate sequentially and participants reproduce the spatial sequence by clicking or tapping the blocks.</p><div className="mt-3 border-t border-slate-100 pt-3"><p className="text-[6px] font-semibold uppercase tracking-[0.12em] text-slate-400">What it measures</p><p className="mt-2 text-[6.5px] leading-3 text-slate-600">Visuospatial short-term memory span in Forward mode and spatial sequence manipulation/working-memory performance when Backward mode is enabled.</p></div></ResearchSection><ResearchSection className="p-3"><p className="text-[6px] font-semibold uppercase tracking-[0.12em] text-slate-400">Typical trial flow</p><div className="mt-2 flex flex-wrap items-center gap-1">{["9-block board","Blocks illuminate sequentially","Recall prompt","Tap/click sequence","Adaptive span progression"].map((x,i)=><span key={x} className="flex items-center gap-1"><ResearchPill active>{x}</ResearchPill>{i<4&&<span className="text-slate-300">→</span>}</span>)}</div><p className="mt-2 text-[6px] leading-3 text-slate-500">3 practice sequences + adaptive Forward span from 2 to 9; Backward or combined administration can be enabled in Corsi setup.</p></ResearchSection><div className="grid grid-cols-2 gap-2"><ResearchSection className="p-3"><p className="text-[6px] font-semibold uppercase tracking-[0.12em] text-slate-400">Typical outputs</p>{["Forward span","Backward span","Product score","Sequence accuracy","First-tap latency"].map(x=><p key={x} className="mt-2 text-[6px] font-semibold text-slate-600">{x}</p>)}</ResearchSection><ResearchSection className="p-3"><p className="text-[6px] font-semibold uppercase tracking-[0.12em] text-slate-400">Device guidance</p><p className="mt-2 text-[6px] leading-3 text-slate-500">Touch tablet or desktop/laptop. Phone is technically supported, but researchers should keep display/device conditions consistent when spatial geometry matters.</p><div className="mt-2 flex flex-wrap gap-1">{["Desktop","Laptop","Tablet","Phone"].map(x=><ResearchPill key={x}>{x}</ResearchPill>)}</div></ResearchSection></div><ResearchSection className="p-3"><p className="text-[6px] font-semibold uppercase tracking-[0.12em] text-slate-400">What you can customise</p><div className="mt-2 flex flex-wrap gap-1">{["Forward / backward / both","Starting span","Maximum span","Trials per span","Pass criterion","Practice trials","Highlight duration","Inter-onset interval"].map(x=><ResearchPill key={x}>{x}</ResearchPill>)}</div></ResearchSection></div><div className="absolute bottom-0 left-0 right-0 border-t border-slate-200 bg-white p-3"><button className="w-full rounded-full bg-slate-950 py-2.5 text-[7px] font-semibold text-white">＋ Add to My Cognitive Tasks</button></div></div></>}
+    </div>
+  );
+
+  if (step === 2 || step === 3) {
+    return <div id={step===2?"cognitive-templates":"cognitive-details"} className={focusClass(step)}><TaskLibrary withDrawer={step===3}/><div className={`absolute z-40 ${step===2?"right-5 top-[160px]":"left-5 top-[165px]"}`}><TourInfoCloud title={cognitiveTourSteps[step].calloutTitle} body={cognitiveTourSteps[step].calloutBody} side={step===2?"right":"left"}/></div></div>;
+  }
+
+  if (step === 4) {
+    const tasks = ["Stroop Task","Corsi Block-Tapping Task","Mental Rotation Task","Mental Rotation Task","Balloon Analogue Risk Task (BART)","Corsi Block-Tapping Task","Adaptive Card Sorting Task (WCST-style)","Corsi Block-Tapping Task"];
+    return <div className="space-y-3 pb-6"><div>{topHero}</div><div>{tabBar("My Cognitive Tasks")}</div><div id="cognitive-my-tasks" className={focusClass(4)}><div className="grid grid-cols-[1.1fr_.9fr] gap-3"><ResearchSection className="p-4"><div className="flex items-center justify-between"><div><p className="text-[7px] font-semibold uppercase tracking-[0.14em] text-cyan-700">My cognitive tasks</p><p className="mt-1 text-[9px] font-semibold text-slate-800">Your personal library of reusable cognitive tasks.</p></div><ResearchPill dark>＋ Create task</ResearchPill></div><div className="mt-3 space-y-2">{tasks.map((name,i)=><div key={`${name}-${i}`} className={`rounded-xl border px-3 py-2.5 ${i===7?"border-cyan-300 bg-cyan-50/30":"border-slate-200 bg-white"}`}><div className="flex items-center justify-between"><div><p className="text-[7px] font-semibold text-slate-800">{name} <span className="ml-1 rounded-full bg-slate-100 px-2 py-1 text-[5.5px] text-slate-500">Draft v1</span></p><p className="mt-1 text-[6px] text-slate-400">{name.includes('Corsi')?'Working Memory':name.includes('Stroop')?'Inhibitory Control':name.includes('Mental')?'Perception':'General'} · Updated {i<2?'05 Sep 2026':i<4?'31 Aug 2026':'30 Aug 2026'}</p></div><ResearchPill>Draft only</ResearchPill></div></div>)}</div></ResearchSection><ResearchSection className="p-4"><p className="text-[7px] font-semibold uppercase tracking-[0.14em] text-slate-400">Selected task</p><p className="mt-2 text-[9px] font-semibold text-slate-800">Corsi Block-Tapping Task</p><p className="mt-1 text-[6.5px] leading-3 text-slate-500">A digital spatial-span task in which blocks illuminate sequentially and participants reproduce the spatial sequence by clicking or tapping the blocks.</p><div className="mt-4 grid grid-cols-3 gap-2">{[["Working version","Draft v1","Draft"],["Study-ready version","Not published yet","Study Builder uses only frozen published versions"],["Source","PsyLattice","template"]].map(([l,v,h])=><div key={l} className="rounded-xl border border-slate-200 bg-white p-3"><p className="text-[6px] font-semibold uppercase tracking-[0.12em] text-slate-400">{l}</p><p className="mt-2 text-[7px] font-semibold text-slate-800">{v}</p><p className="mt-1 text-[5.7px] leading-3 text-slate-400">{h}</p></div>)}</div><div className="mt-3 rounded-xl border border-cyan-200 bg-cyan-50/50 p-3"><p className="text-[7px] font-semibold text-slate-700">Personal Cognitive Task Library</p><p className="mt-1 text-[6px] leading-3 text-slate-500">Preview and pilot your working draft. When it is ready, publish that exact version for studies. Published versions stay frozen so later edits cannot silently change an existing protocol.</p></div><div className="mt-3 grid grid-cols-2 gap-2"><ResearchPill className="py-2">Open Task Builder →</ResearchPill><span className="rounded-lg bg-slate-950 px-3 py-2 text-center text-[6.5px] font-semibold text-white">✓ Mark ready for studies</span></div></ResearchSection></div><div className="absolute right-5 top-20 z-30"><TourInfoCloud title={cognitiveTourSteps[4].calloutTitle} body={cognitiveTourSteps[4].calloutBody} side="right"/></div></div></div>;
+  }
+
+  const BuilderShell = ({ mode }: { mode: "corsi" | "stroop-timeline" | "stroop-add" | "stroop-table" | "stroop-random" | "stroop-score" }) => {
+    const corsi = mode === "corsi";
+    const table = mode === "stroop-table";
+    const random = mode === "stroop-random";
+    const score = mode === "stroop-score";
+    const addMenu = mode === "stroop-add";
+    const title = corsi ? "Corsi Block-Tapping Task" : "Stroop Task";
+    return <ResearchSection className="overflow-hidden">
+      <div className="flex items-center justify-between border-b border-slate-200 px-4 py-3"><div className="flex items-center gap-2"><span className="flex h-8 w-8 items-center justify-center rounded-full border border-slate-200 text-slate-400">←</span><div><div className="flex items-center gap-2"><ResearchPill active>Cognitive Task Builder</ResearchPill><ResearchPill active>Draft v1 · draft</ResearchPill></div><p className="mt-1 text-[14px] font-semibold text-slate-900">{title}</p><p className="mt-1 text-[6.5px] text-slate-400">Build the task definition here, save it, then run an isolated browser Preview with reaction-time capture and timing diagnostics.</p></div></div><div className="flex gap-2"><ResearchPill active>▣ Preview task</ResearchPill><ResearchPill dark>▣ Save draft</ResearchPill></div></div>
+      <div className="grid grid-cols-[180px_1fr_225px]">
+        <aside className="border-r border-slate-200 bg-white p-3"><div className="flex items-center justify-between"><div><p className="text-[6px] font-semibold uppercase tracking-[0.14em] text-slate-400">Structure</p><p className="mt-1 text-[8px] font-semibold text-slate-700">{corsi?'Corsi flow':'Blocks'}</p></div>{!corsi&&<ResearchPill>＋ Add block⌄</ResearchPill>}</div>{corsi?<><div className="mt-3 rounded-xl border border-cyan-200 bg-cyan-50/40 p-3 text-[6px] leading-3 text-slate-500">Practice → adaptive span → complete. This sequence is fixed so the dedicated spatial runtime stays reproducible; customise the protocol in Corsi setup.</div><div className="mt-3 space-y-2">{[["01","Corsi practice","Dedicated Spatial Practice"],["02","Adaptive Corsi span","Adaptive Spatial Span"],["03","Complete","Completion Screen"]].map(([n,t,b],i)=><div key={n} className={`rounded-xl border p-3 ${i===0?'border-cyan-300 bg-cyan-50/30':'border-slate-200 bg-white'}`}><div className="flex gap-2"><span className={`flex h-6 w-6 items-center justify-center rounded-full text-[6px] font-bold ${i===0?'bg-cyan-700 text-white':'bg-slate-100 text-slate-500'}`}>{n}</span><div><p className="text-[7px] font-semibold text-slate-700">{t}</p><p className="mt-1 text-[5.7px] text-slate-400">{b}</p></div></div></div>)}</div></>:<><div className="mt-3 space-y-2">{[["01","Instructions","Instructions · 0 Steps · 0 Rows"],["02","Practice","Practice · 4 Steps · 4 Rows"],["03","Experimental","Experimental · 4 Steps · 8 Rows"]].map(([n,t,b],i)=><div key={n} className={`rounded-xl border p-3 ${(table||random||score) ? i===1?'border-cyan-300 bg-cyan-50/30':'border-slate-200 bg-white' : i===0?'border-cyan-300 bg-cyan-50/30':'border-slate-200 bg-white'}`}><div className="flex gap-2"><span className={`flex h-6 w-6 items-center justify-center rounded-full text-[6px] font-bold ${((table||random||score)&&i===1)||(!(table||random||score)&&i===0)?'bg-cyan-700 text-white':'bg-slate-100 text-slate-500'}`}>{n}</span><div><p className="text-[7px] font-semibold text-slate-700">{t}</p><p className="mt-1 text-[5.7px] text-slate-400">{b}</p></div></div></div>)}</div><div className="mt-2 flex gap-1">{['↑','↓','▣','🗑'].map(x=><ResearchPill key={x}>{x}</ResearchPill>)}</div></>}</aside>
+        <main className="min-w-0 bg-white p-4">{corsi?<><div className="flex rounded-xl border border-slate-200 p-1"><ResearchPill active>▣ Corsi setup</ResearchPill><ResearchPill>⌁ Scoring & devices</ResearchPill></div><div className="mt-3 grid grid-cols-2 gap-3"><div className="rounded-[16px] border border-cyan-300 bg-cyan-50/20 p-4"><p className="text-[6.5px] font-semibold uppercase tracking-[0.14em] text-cyan-700">Dedicated spatial paradigm</p><p className="mt-1 text-[12px] font-semibold text-slate-900">Corsi Block-Tapping</p><p className="mt-2 text-[6.5px] leading-3 text-slate-500">Blocks illuminate one at a time. After the sequence ends, the participant reproduces it by clicking or tapping the same blocks. PsyLattice adapts the sequence length and scores the exact spatial order automatically.</p><ResearchPill active className="mt-3">Spatial runtime</ResearchPill><div className="mt-3 grid grid-cols-4 gap-2">{[["Mode","Forward"],["Start span","2"],["Max span","9"],["Max experimental trials","≤ 16"]].map(([l,v])=><div key={l} className="rounded-xl border border-slate-200 bg-white p-3"><p className="text-[5.5px] font-semibold uppercase tracking-[0.12em] text-slate-400">{l}</p><p className="mt-2 text-[9px] font-semibold text-slate-900">{v}</p></div>)}</div></div><div className="rounded-[16px] border border-slate-200 bg-slate-50/60 p-4"><div className="flex justify-between"><div><p className="text-[6.5px] font-semibold uppercase tracking-[0.14em] text-slate-400">Board preview</p><p className="mt-1 text-[9px] font-semibold text-slate-800">9-block digital layout</p></div><ResearchPill>Touch + mouse</ResearchPill></div><div className="relative mt-3 h-[190px] rounded-xl border border-slate-200 bg-white">{[[15,12],[50,5],[76,15],[27,37],[62,32],[84,47],[10,72],[48,72],[73,80]].map(([x,y],i)=><span key={i} className={`absolute flex h-8 w-10 items-center justify-center rounded-lg border bg-white text-[6px] shadow-sm ${i===4?'border-cyan-300 bg-cyan-50 text-cyan-700':'border-slate-200 text-slate-400'}`} style={{left:`${x}%`,top:`${y}%`}}>{i+1}</span>)}</div><p className="mt-2 text-[5.7px] leading-3 text-slate-400">Block numbers are shown only in this researcher preview. Participants see unnumbered blocks.</p></div></div><ResearchSection className="mt-3 p-4"><p className="text-[6.5px] font-semibold uppercase tracking-[0.14em] text-slate-400">Span progression</p><p className="mt-1 text-[9px] font-semibold text-slate-800">Adaptive sequence length</p><p className="mt-1 text-[6px] text-slate-400">The default advances after at least one correct sequence out of two at a span, and stops that mode when the criterion is missed.</p><div className="mt-3 grid grid-cols-3 gap-3">{[["Response mode","Forward only"],["Starting span","2"],["Maximum span","9"],["Trials per span","2"],["Correct trials required to advance","1"],["Practice trials per mode","3"]].map(([l,v])=><div key={l}><p className="mb-1 text-[5.7px] text-slate-400">{l}</p><ResearchInput>{v}</ResearchInput></div>)}</div></ResearchSection></>:<>{/* Stroop generic builder */}<div className="flex rounded-xl border border-slate-200 p-1">{['Trial timeline','Trial table','Randomisation','Scoring & devices'].map(tab=><span key={tab} className={`rounded-full px-3 py-2 text-[7px] font-semibold ${(table&&tab==='Trial table')||(random&&tab==='Randomisation')||(score&&tab==='Scoring & devices')||(!table&&!random&&!score&&tab==='Trial timeline')?'border border-cyan-300 bg-cyan-50 text-cyan-900':'text-slate-500'}`}>{tab}</span>)}</div>{table?<><p className="mt-4 text-[6.5px] font-semibold uppercase tracking-[0.13em] text-cyan-700">Practice</p><div className="flex items-center justify-between"><div><p className="mt-1 text-[12px] font-semibold">Trial table</p><p className="mt-1 text-[6px] text-slate-400">Variables can be referenced by timeline components such as stimulus or correct.</p></div><div className="flex gap-2"><ResearchPill>▧ Import CSV</ResearchPill><ResearchPill dark>＋ Add row</ResearchPill></div></div><div className="mt-3 flex items-center gap-2 rounded-xl border border-slate-200 p-3"><ResearchInput className="flex-1 text-slate-400">e.g. word, colour, correct</ResearchInput><ResearchPill>Add variable</ResearchPill>{['word','colour','correct'].map(x=><ResearchPill key={x}>{x} ×</ResearchPill>)}</div><div className="mt-3 overflow-hidden rounded-xl border border-slate-200"><div className="grid grid-cols-[28px_1fr_1fr_1fr_1fr_60px_40px] bg-slate-50 px-2 py-2 text-[5.5px] font-semibold uppercase text-slate-400"><span>#</span><span>Condition</span><span>word</span><span>colour</span><span>correct</span><span>Weight</span><span>Use</span></div>{[['congruent','RED','red','r'],['congruent','GREEN','green','g'],['incongruent','RED','green','g'],['incongruent','GREEN','red','r']].map((r,i)=><div key={i} className="grid grid-cols-[28px_1fr_1fr_1fr_1fr_60px_40px] items-center gap-1 border-t border-slate-100 px-2 py-2"><span className="text-[6px] text-slate-400">{i+1}</span>{r.map(x=><ResearchInput key={x} className="min-h-[28px] py-1.5">{x}</ResearchInput>)}<ResearchInput className="min-h-[28px] py-1.5">1</ResearchInput><span className="text-center text-cyan-700">☑</span></div>)}</div></>:random?<><p className="mt-4 text-[6.5px] font-semibold uppercase tracking-[0.13em] text-cyan-700">Task-level controls</p><p className="mt-1 text-[12px] font-semibold">Randomisation</p><p className="mt-1 text-[6px] text-slate-400">These settings are saved with the task and executed by the browser Preview runner.</p><div className="mt-4 grid grid-cols-2 gap-3">{[["Trial order","Random"],["Sampling","Without replacement"],["Max same condition consecutively","3"],["Seed mode","Automatic per participant"]].map(([l,v])=><div key={l}><p className="mb-1 text-[5.8px] font-medium text-slate-500">{l}</p><ResearchInput>{v} &nbsp;⌄</ResearchInput></div>)}</div><div className="mt-3 flex items-center justify-between rounded-xl border border-slate-200 px-3 py-3"><span className="text-[6.5px] text-slate-600">Balance condition counts where possible</span><span className="h-5 w-9 rounded-full bg-cyan-600 p-1"><span className="block ml-auto h-3 w-3 rounded-full bg-white"/></span></div><div className="mt-2 flex items-center justify-between rounded-xl border border-slate-200 px-3 py-3"><span className="text-[6.5px] text-slate-600">Balance response mappings where possible</span><span className="h-5 w-9 rounded-full bg-slate-200 p-1"><span className="block h-3 w-3 rounded-full bg-white"/></span></div></>:score?<><p className="mt-4 text-[6.5px] font-semibold uppercase tracking-[0.13em] text-cyan-700">Outputs & compatibility</p><p className="mt-1 text-[12px] font-semibold">Scoring, timing and devices</p><p className="mt-1 text-[6px] text-slate-400">Define what Preview retains, the timing diagnostics it collects, and which participant devices the protocol permits.</p><div className="mt-4 grid grid-cols-2 gap-3"><div><p className="mb-1 text-[5.8px] text-slate-500">Metric keys</p><ResearchInput>congruent_rt, incongruent_rt, accuracy, interference</ResearchInput></div><div><p className="mb-1 text-[5.8px] text-slate-500">Precision target</p><ResearchInput>Millisecond &nbsp;⌄</ResearchInput></div></div><div className="mt-3 grid grid-cols-2 gap-2">{['Retain raw trial-level results','Calculate summary outputs','Collect timing diagnostics'].map(x=><div key={x} className="flex items-center justify-between rounded-xl border border-slate-200 px-3 py-3"><span className="text-[6.5px] text-slate-600">{x}</span><span className="h-5 w-9 rounded-full bg-cyan-600 p-1"><span className="block ml-auto h-3 w-3 rounded-full bg-white"/></span></div>)}</div><div className="mt-3 rounded-xl border border-slate-200 bg-slate-50/60 p-3"><p className="text-[7px] font-semibold text-slate-700">Allowed participant devices</p><div className="mt-2 grid grid-cols-3 gap-2">{['Desktop / laptop','Tablet','Phone'].map(x=><div key={x} className="flex items-center justify-between rounded-xl bg-white px-3 py-2"><span className="text-[6px] text-slate-600">{x}</span><span className="h-5 w-9 rounded-full bg-cyan-600 p-1"><span className="block ml-auto h-3 w-3 rounded-full bg-white"/></span></div>)}</div></div></>:<><div className="mt-4 flex items-center justify-between"><div><p className="text-[6.5px] font-semibold uppercase tracking-[0.13em] text-cyan-700">Instructions</p><p className="mt-1 text-[12px] font-semibold">Trial timeline</p><p className="mt-1 text-[6px] text-slate-400">Components run in order for each trial row in this block.</p></div><div className="flex gap-2"><ResearchPill active>✣ Quick trial</ResearchPill><ResearchPill dark>＋ Add step⌄</ResearchPill></div></div><div className="relative mt-3 flex h-[150px] items-center justify-center rounded-xl border border-dashed border-slate-300 bg-slate-50/40"><div className="text-center"><p className="text-cyan-600">✣</p><p className="mt-2 text-[8px] font-semibold text-slate-700">Start with a complete trial</p><p className="mt-1 text-[6px] text-slate-400">PsyLattice can add the common Fixation → Stimulus → Response → ITI structure for you.</p><ResearchPill dark className="mt-3">Add standard trial</ResearchPill></div>{addMenu&&<div className="absolute right-0 top-[-8px] w-[235px] rounded-xl border border-slate-200 bg-white p-3 shadow-[0_18px_42px_rgba(15,23,42,.18)]"><p className="text-[6px] font-semibold uppercase tracking-[0.14em] text-slate-400">Choose a timeline step</p><div className="mt-2 grid grid-cols-2 gap-1">{['Fixation','Text','Image','Audio','Video','Shape','Response','ITI','HTML'].map(x=><span key={x} className="rounded-lg bg-slate-50 px-2 py-2 text-[6px] text-slate-600">◌ &nbsp;{x}</span>)}</div></div>}</div></>}</>}</main>
+        <aside className="border-l border-slate-200 bg-[#f8fafb] p-3"><p className="text-[7px] font-semibold text-slate-700">☷ Settings</p>{[['Block name',corsi?'Corsi practice':(table||random||score)?'Practice':'Instructions'],['Block key',corsi?'practice':(table||random||score)?'practice':'instructions'],['Block type',corsi?'Practice':(table||random||score)?'Practice':'Instructions'],['Repeat count','1']].map(([l,v])=><div key={l} className="mt-3"><p className="mb-1 text-[5.8px] text-slate-500">{l}</p><ResearchInput>{v}{l==='Block type'?' ⌄':''}</ResearchInput></div>)}<div className="mt-3 rounded-xl border border-cyan-300 bg-cyan-50/40 p-3"><p className="text-[6px] font-semibold uppercase tracking-[0.13em] text-cyan-800">Practice criteria</p>{[['Minimum accuracy','0.8'],['If criterion is not met','Repeat practice'],['Maximum attempts','3']].map(([l,v])=><div key={l} className="mt-3"><p className="mb-1 text-[5.5px] text-slate-500">{l}</p><ResearchInput>{v}</ResearchInput></div>)}</div><ResearchInput className="mt-3 text-center font-semibold">Task-level settings</ResearchInput><p className="mt-3 text-[5.8px] font-medium text-slate-500">Participant instructions</p><div className="mt-1 min-h-[90px] rounded-xl border border-slate-200 bg-white p-3 text-[6.2px] leading-3 text-slate-600">{corsi?'Watch the blocks carefully as they illuminate one at a time. When the sequence is finished, reproduce it by clicking or tapping the blocks.':'Respond to the configured colour dimension while ignoring the word meaning.'}</div></aside>
+      </div>
+    </ResearchSection>;
+  };
+
+  if (step === 5) return <div id="cognitive-corsi-builder" className={focusClass(5)}><BuilderShell mode="corsi"/><div className="absolute right-[245px] top-[110px] z-30"><TourInfoCloud title={cognitiveTourSteps[5].calloutTitle} body={cognitiveTourSteps[5].calloutBody} side="right"/></div></div>;
+
+  if (step === 6 || step === 7) {
+    const running = step === 7;
+    return <div id={running?"cognitive-preview-run":"cognitive-preview-preflight"} className={focusClass(step)}><div className="relative min-h-[700px] overflow-hidden rounded-[20px] bg-slate-900/65 p-5"><ResearchSection className="mx-auto min-h-[650px] max-w-[1120px] overflow-hidden"><div className="flex items-center justify-between border-b border-slate-200 bg-white px-4 py-3"><div className="flex items-center gap-2"><span className="flex h-7 w-7 items-center justify-center rounded-full border border-slate-200 text-slate-400">←</span><div><div className="flex items-center gap-2"><ResearchPill active>Browser Preview · Cognitive 2J Fix2</ResearchPill><span className="text-[6px] text-slate-400">Draft v1</span></div><p className="mt-1 text-[7px] font-semibold text-slate-700">Corsi Block-Tapping Task</p></div></div>{running?<div className="w-[190px]"><div className="flex justify-between text-[6px] text-slate-400"><span>Corsi practice · forward</span><span>1/19</span></div><div className="mt-1 h-1.5 rounded-full bg-slate-100"><div className="h-full w-[6%] rounded-full bg-cyan-500"/></div></div>:<span className="flex h-7 w-7 items-center justify-center rounded-lg border border-slate-200 text-slate-400">×</span>}</div>{!running?<div className="grid grid-cols-[1.2fr_.8fr] gap-6 p-10"><div><ResearchPill dark>◔ Timing preflight</ResearchPill><h3 className="mt-4 max-w-[480px] text-[26px] font-semibold leading-[1.05] tracking-[-0.03em] text-slate-950">Preview the exact saved task definition.</h3><p className="mt-4 max-w-[500px] text-[8px] leading-4 text-slate-500">PsyLattice will execute the saved blocks and trial rows in your browser, record responses with performance.now(), and store this run separately as Preview data.</p><div className="mt-6 rounded-xl border border-violet-200 bg-violet-50/50 p-4 text-[6.5px] leading-3.5 text-violet-700"><strong>Timing note:</strong> browser measurements can be high resolution, but operating-system scheduling, display hardware, browser load and input devices still affect observed timing. Preview diagnostics should be inspected before using a task in research.</div><div className="mt-[210px] flex gap-2"><ResearchPill>⛶ Enter fullscreen</ResearchPill><ResearchPill dark>▷ Start preview</ResearchPill></div></div><ResearchSection className="p-4"><p className="text-[7px] font-semibold uppercase tracking-[0.14em] text-slate-400">Environment</p><div className="mt-3 space-y-2">{['High-resolution timing API','Animation-frame API','Tab is visible','desktop · allowed by task','0/0 media assets preloaded','Refresh sampling stable · 100% consistent frames'].map(x=><div key={x} className="rounded-lg border border-cyan-200 bg-cyan-50/40 px-3 py-2 text-[6.5px] text-slate-600">✓ &nbsp;{x}</div>)}</div><div className="mt-3 rounded-xl border border-slate-200 p-3"><p className="text-[6px] font-semibold uppercase tracking-[0.12em] text-slate-400">Display calibration</p><p className="mt-2 text-[6px] leading-3 text-slate-500">PsyLattice detects this display automatically and converts visual durations to whole frames.</p><ResearchPill className="mt-2">↻ Recalibrate</ResearchPill><div className="mt-3 grid grid-cols-2 gap-2"><div className="rounded-lg bg-slate-50 p-3"><p className="text-[5.5px] text-slate-400">Detected</p><p className="mt-1 text-[11px] font-semibold">58.8 Hz</p><p className="text-[5.5px] text-slate-400">17 ms / frame</p></div><div className="rounded-lg bg-slate-50 p-3"><p className="text-[5.5px] text-slate-400">Used for timing</p><p className="mt-1 text-[11px] font-semibold">58.8 Hz</p><p className="text-[5.5px] text-slate-400">17.007 ms / frame</p></div></div><div className="mt-2 grid grid-cols-2 gap-2"><ResearchPill active>Automatic</ResearchPill><ResearchPill>Manual override</ResearchPill></div></div></ResearchSection></div>:<div className="flex min-h-[575px] flex-col items-center justify-center p-10"><div className="flex gap-2"><ResearchPill>Forward Corsi</ResearchPill><ResearchPill active>0/3 taps</ResearchPill></div><p className="mt-3 text-[8px] font-semibold text-slate-600">Tap the blocks in the same order</p><div className="relative mt-4 h-[330px] w-[520px] rounded-[22px] border border-slate-200 bg-white shadow-sm">{[[11,14],[41,7],[73,18],[25,41],[58,38],[82,55],[7,75],[40,76],[70,87]].map(([x,y],i)=><span key={i} className={`absolute h-14 w-[76px] rounded-[14px] border shadow-sm ${i===7?'border-cyan-400 bg-cyan-400/80 shadow-cyan-300/40':'border-slate-200 bg-white'}`} style={{left:`${x}%`,top:`${y}%`}} />)}</div><p className="mt-4 text-[6px] text-slate-400">Tap or click the blocks to reproduce the sequence.</p></div>}</ResearchSection></div><div className="absolute right-5 bottom-5 z-30"><TourInfoCloud title={cognitiveTourSteps[step].calloutTitle} body={cognitiveTourSteps[step].calloutBody} side="right"/></div></div>;
+  }
+
+  const modeForStep: Record<number, "stroop-timeline" | "stroop-add" | "stroop-table" | "stroop-random" | "stroop-score"> = {8:"stroop-timeline",9:"stroop-add",10:"stroop-table",11:"stroop-random",12:"stroop-score"};
+  return <div id={cognitiveTourSteps[step].targetId} className={focusClass(step)}><BuilderShell mode={modeForStep[step]}/><div className={`absolute z-30 ${step===9?'left-[470px] top-[120px]':'right-[245px] top-[110px]'}`}><TourInfoCloud title={cognitiveTourSteps[step].calloutTitle} body={cognitiveTourSteps[step].calloutBody} side={step===9?'top':'right'}/></div></div>;
+}
+
+
+
+function ThesisBuilderTourDemo({ step }: { step: number }) {
+  const current = thesisTourSteps[Math.max(0, Math.min(thesisTourSteps.length - 1, step))];
+  const focusClass = (targetStep: number) =>
+    step === targetStep
+      ? "relative z-10 rounded-[20px] ring-2 ring-cyan-300/90 ring-offset-2 ring-offset-[#edf3f4] shadow-[0_14px_35px_rgba(8,145,178,.14)] transition-all duration-300"
+      : "relative transition-all duration-300";
+
+  const docs = [
+    ["thesis work", "this is a test Lorem ipsum dolor sit amet, consectetur…", "Free form", "5 Sep 2026 at 1:57 AM"],
+    ["Untitled paper", "Empty document", "Free form", "5 Sep 2026 at 1:53 AM"],
+  ];
+
+  const presetOpen = step === 2;
+  const formatGuideOpen = step === 3;
+  const aiOpen = step === 4;
+  const fullScreen = step === 5;
+  const resultsFocus = step === 6;
+
+  const EditorToolbar = ({ compact = false }: { compact?: boolean }) => (
+    <>
+      <div className={`flex items-center gap-1.5 border-b border-slate-200 bg-white ${compact ? "px-3 py-2" : "px-3 py-2"}`}>
+        <span className="rounded-lg border border-slate-200 px-2 py-1.5 text-[6.5px] text-slate-500">⇧ Import</span>
+        <span className="rounded-lg border border-slate-200 px-2 py-1.5 text-[6.5px] text-slate-500">⇩ Export</span>
+        <span id="thesis-presets" className={`relative rounded-lg border px-3 py-1.5 text-[6.5px] font-semibold ${presetOpen || formatGuideOpen ? "border-cyan-300 bg-cyan-50 text-slate-800" : "border-cyan-300 bg-cyan-50 text-slate-700"}`}>
+          ✣ {formatGuideOpen ? "APA 7 · Professional paper" : "Free form · Design it yourself"}⌄
+          {presetOpen && (
+            <div className="absolute left-0 top-[34px] z-50 w-[250px] rounded-xl bg-slate-700 p-2 text-left text-white shadow-[0_18px_45px_rgba(15,23,42,.28)]">
+              {[
+                "Free form · Design it yourself",
+                "APA 7 · Student paper",
+                "✓ APA 7 · Professional paper",
+                "MLA 9 · Research paper",
+                "Chicago / Turabian · Academic paper",
+                "IEEE · Conference manuscript",
+                "Custom / institution-specific",
+              ].map((item) => (
+                <div key={item} className="rounded-lg px-3 py-2 text-[7px] font-semibold hover:bg-white/10">{item}</div>
+              ))}
+            </div>
+          )}
+        </span>
+        <span className="rounded-lg border border-slate-200 px-2 py-1.5 text-[6.5px] text-slate-500">▱ Margins</span>
+        <span className="rounded-lg border border-slate-200 px-3 py-1.5 text-[6.5px] text-slate-500">Times New Roman⌄</span>
+        <span className="rounded-lg border border-slate-200 px-2 py-1.5 text-[6.5px] text-slate-500">12 pt⌄</span>
+        <span className="rounded-lg border border-slate-200 px-2 py-1.5 text-[6.5px] text-slate-500">Normal⌄</span>
+        <span className="rounded-lg border border-slate-200 px-2 py-1.5 text-[6.5px] text-slate-500">B</span>
+        <span className="rounded-lg border border-slate-200 px-2 py-1.5 text-[6.5px] text-slate-500 italic">I</span>
+      </div>
+      <div className="flex flex-wrap items-center gap-1 border-b border-slate-200 bg-white px-3 py-2">
+        {["U", "S", "T", "●", "✎", "≡", "☰", "☷", "•", "1.", "≪", "≫", "2.0⌄", "🔗", "Unlink", "▦", "▧", "⌘", "¶", "↶", "↷", "Clear"].map((tool, index) => (
+          <span key={`${tool}-${index}`} className="rounded-md border border-slate-200 bg-white px-2 py-1 text-[6px] text-slate-500">{tool}</span>
+        ))}
+      </div>
+    </>
+  );
+
+  const Paper = ({ showResults = true }: { showResults?: boolean }) => (
+    <div className="mx-auto min-h-[610px] max-w-[690px] bg-white px-10 py-8 font-serif text-[8.5px] leading-[1.2] text-black shadow-sm">
+      <p>
+        Curabitur pretium tiddlywinks tincidunt lacus. Nulla gravida orci a odio. Nullam varius, turpis et commodo pharetra, est eros bibendum elit, nec luctus magna felis sollicitudin mauris. Integer in mauris eu nibh euismod gravida.
+      </p>
+      <p className="mt-5">
+        Donec euismod enim et nisi imperdiet elementum. Suspendisse potenti. Vivamus ac urna. Vivamus at eros. Pellentesque habitant morbi tristique senectus et netus et malesuada fames ac turpis egestas. Vestibulum ante ipsum primis in faucibus orci luctus et ultrices posuere cubilia Curae.
+      </p>
+      {showResults && (
+        <div id="thesis-results" className={resultsFocus ? "mt-4 rounded-lg ring-2 ring-cyan-300 ring-offset-2" : "mt-4"}>
+          <p className="italic">Table</p>
+          <p className="mt-1 italic">Descriptive statistics</p>
+          <p className="mt-1 text-[7px]">Analysis dataset — one row per participant</p>
+          <table className="mt-2 w-full border-collapse text-[7px]">
+            <thead>
+              <tr className="border-y border-black">
+                {["Variable", "N", "Missing", "Mean", "Median", "SD", "Min", "Max", "Q1", "Q3"].map((h) => <th key={h} className="px-1 py-1 text-left font-semibold">{h}</th>)}
+              </tr>
+            </thead>
+            <tbody>
+              <tr><td className="px-1 py-1">baseline · General Self-Efficacy Scale · Total</td><td>2</td><td>0</td><td>25</td><td>25</td><td>2.8284</td><td>23</td><td>27</td><td>24</td><td>26</td></tr>
+              <tr><td className="px-1 py-1">Stroop Task — accuracy</td><td>1</td><td>1</td><td>0.9375</td><td>0.9375</td><td>—</td><td>0.9375</td><td>0.9375</td><td>0.9375</td><td>0.9375</td></tr>
+              <tr className="border-b border-black"><td className="px-1 py-1">Stroop Task — mean RT (ms)</td><td>1</td><td>1</td><td>657.125</td><td>657.125</td><td>—</td><td>657.125</td><td>657.125</td><td>657.125</td><td>657.125</td></tr>
+            </tbody>
+          </table>
+          <p className="mt-2 text-[6.5px] italic">Note. Sample standard deviation and variance use n − 1. Mean confidence intervals use the Student t distribution.</p>
+        </div>
+      )}
+      <p className="mt-5">
+        Curabitur pretium tincidunt lacus. Nulla gravida orci a odio. Nullam varius, turpis et commodo pharetra, est eros bibendum elit, nec luctus magna felis sollicitudin mauris.
+      </p>
+    </div>
+  );
+
+  const WritingAIPanel = () => (
+    <div id="thesis-writing-ai" className="absolute bottom-4 right-4 z-40 w-[320px] overflow-hidden rounded-[18px] border border-slate-200 bg-white shadow-[0_22px_60px_rgba(15,23,42,.25)]">
+      <div className="flex items-center justify-between bg-slate-950 px-4 py-3 text-white">
+        <div className="flex items-center gap-2"><Sparkles className="h-4 w-4 text-cyan-300"/><div><p className="text-[8px] font-semibold">PsyLattice Writing AI</p><p className="text-[6px] text-slate-400">Document access off</p></div></div>
+        <span className="text-slate-400">↗ &nbsp; ×</span>
+      </div>
+      <div className="border-b border-cyan-100 bg-cyan-50/60 px-4 py-3 text-[6.5px] leading-3 text-cyan-900">
+        <strong>Realtime review: Off.</strong> Document access is off, so questions are sent without the paper.
+      </div>
+      <div className="p-4">
+        <div className="rounded-xl bg-slate-50 p-3 text-[6.5px] leading-3 text-slate-500">
+          Ask for help with clarity, academic tone, section organisation, argument structure, wording, or how to improve a paragraph. Turn on <strong>Use current paper</strong> only when you want the assistant to read it.
+        </div>
+        <div className="mt-3 rounded-xl border border-cyan-200 bg-cyan-50/40 p-3">
+          <p className="text-[6.5px] font-semibold text-cyan-900">To restructure the thesis</p>
+          <p className="mt-1 text-[6px] leading-3 text-slate-500">1. Select APA / MLA / IEEE / institution preset → 2. Allow current-paper access → 3. Ask AI to restructure to that format → 4. Review the proposed section changes.</p>
+        </div>
+      </div>
+      <div className="border-t border-slate-100 p-3">
+        <div className="flex items-center justify-between rounded-xl border border-slate-200 px-3 py-2"><span className="text-[6.5px] text-slate-600">Allow AI to read current paper</span><ResearchPill>Off</ResearchPill></div>
+        <div className="mt-2 flex gap-2"><ResearchInput className="flex-1 text-slate-400">Ask the Writing AI…</ResearchInput><span className="flex h-8 w-8 items-center justify-center rounded-xl bg-slate-400 text-white">➤</span></div>
+      </div>
+    </div>
+  );
+
+  if (fullScreen) {
+    return (
+      <div id="thesis-fullscreen" className={focusClass(5)}>
+        <div className="relative min-h-[690px] overflow-hidden rounded-[20px] bg-[#e6ecee]">
+          <div className="border-b border-cyan-200 bg-cyan-50/70 px-4 py-2 text-[6.5px] font-semibold text-cyan-800">APA 7 Professional page formatting applied.</div>
+          <div className="flex h-11 items-center gap-2 border-b border-slate-200 bg-white px-3">
+            <ResearchPill>› Files</ResearchPill>
+            <div className="flex-1 rounded-xl border border-slate-100 bg-white px-3 py-2 text-[8px] font-semibold text-slate-700">thesis work</div>
+            <ResearchPill>new new folder⌄</ResearchPill><ResearchPill>☆ Pin</ResearchPill><ResearchPill>↶</ResearchPill><ResearchPill active>↗</ResearchPill><ResearchPill dark>▣ Saved</ResearchPill><ResearchPill>⌫</ResearchPill>
+          </div>
+          <EditorToolbar compact />
+          <div className="relative h-[560px] overflow-hidden bg-[#e6ecee] px-10 py-5"><Paper /><div className="absolute bottom-4 left-1/2 -translate-x-1/2 rounded-full bg-slate-950 px-4 py-2 text-[7px] font-semibold text-white">− &nbsp;&nbsp; 110% &nbsp;&nbsp; +</div></div>
+          <div className="absolute right-6 top-[100px] z-40"><TourInfoCloud title={current.calloutTitle} body={current.calloutBody} side="right"/></div>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="relative min-h-[690px] space-y-3 pb-6">
+      <ResearchSection className="p-5">
+        <div className="flex gap-2"><ResearchPill active>Researcher workspace</ResearchPill><ResearchPill>Live workspace data</ResearchPill></div>
+        <h2 className="mt-3 text-[18px] font-semibold tracking-tight text-slate-950">Thesis Builder</h2>
+        <p className="mt-1 max-w-[620px] text-[8px] leading-4 text-slate-500">Build and organise thesis and paper drafts in nested visual folders, write in a paged academic editor, apply format presets, and use consent-gated AI writing support.</p>
+      </ResearchSection>
+
+      <div className="relative overflow-hidden rounded-[18px] border border-slate-200 bg-white shadow-sm">
+        {formatGuideOpen && <div className="pointer-events-none absolute inset-0 z-30 bg-slate-700/25" />}
+        <div className="grid min-h-[590px] grid-cols-[170px_190px_1fr]">
+          <aside id="thesis-files" className={`${focusClass(0)} border-r border-slate-200 bg-[#fbfdfe] p-3`}>
+            <div className="flex items-start justify-between"><div><p className="text-[7px] font-semibold uppercase tracking-[0.14em] text-cyan-700">Research files</p><p className="mt-1 text-[6.5px] text-slate-400">Folders can contain folders.</p></div><div className="flex gap-1"><ResearchPill>▣</ResearchPill><ResearchPill>‹</ResearchPill></div></div>
+            <div className="mt-4 space-y-2 text-[7px] text-slate-600">
+              <div className="flex justify-between"><span>▰ All documents</span><span>6</span></div><div className="flex justify-between"><span>□ Unfiled</span><span>1</span></div><div className="flex justify-between"><span>⌄ 📁 thesis name</span><span>0</span></div><div className="rounded-lg bg-cyan-50 px-3 py-2">&nbsp;&nbsp;└ 📁 new new folder <span className="float-right">2</span></div><div className="flex justify-between"><span>⌄ 📁 now file</span><span>1</span></div><div className="px-3">└ 📁 now now <span className="float-right">2</span></div>
+            </div>
+            <div className="mt-7 rounded-xl border border-cyan-200 bg-cyan-50/60 p-3"><p className="text-[7px] font-semibold text-cyan-900">Private research workspace</p><p className="mt-1 text-[6px] leading-3 text-slate-500">Documents are researcher-owned. The AI assistant does not automatically read them.</p></div>
+          </aside>
+
+          <aside className="border-r border-slate-200 bg-[#f8fafb] p-2.5">
+            <div className="flex gap-2"><ResearchInput className="flex-1 text-slate-400">⌕ Search documents…</ResearchInput><span className="flex h-8 w-8 items-center justify-center rounded-lg bg-slate-950 text-[8px] text-white">＋</span></div>
+            <div className="mt-3 space-y-2">{docs.map(([title,body,template,date],i)=><div key={title} className={`rounded-xl border p-3 shadow-sm ${i===0?"border-cyan-300 bg-cyan-50/60":"border-slate-200 bg-white"}`}><p className="text-[7.5px] font-semibold text-slate-700">▧ {title}</p><p className="mt-1 text-[6px] leading-3 text-slate-400">{body}</p><ResearchPill className="mt-2">{template}</ResearchPill><p className="mt-2 text-[6px] text-slate-400">{date}</p></div>)}</div>
+          </aside>
+
+          <section id="thesis-editor" className={`${focusClass(1)} min-w-0 bg-[#f4f7f8]`}>
+            <div className="flex h-11 items-center gap-2 border-b border-slate-200 bg-white px-3"><div className="flex-1 rounded-lg border border-slate-100 px-3 py-2 text-[8px] font-semibold text-slate-700">thesis work</div><ResearchPill>new new folder⌄</ResearchPill><ResearchPill>☆ Pin</ResearchPill><ResearchPill>↶</ResearchPill><ResearchPill>▣</ResearchPill><ResearchPill>↗</ResearchPill><ResearchPill dark>▣ Saved</ResearchPill><ResearchPill>⌫</ResearchPill></div>
+            <EditorToolbar />
+            <div className="relative h-[450px] overflow-hidden bg-[#e6ecee] px-7 py-3"><Paper /><span className="absolute bottom-3 right-3 rounded-full bg-slate-950 px-3 py-2 text-[7px] font-semibold text-white shadow-lg">✣ Writing AI</span></div>
+          </section>
+        </div>
+
+        {step === 0 && <div className="absolute left-[180px] top-[90px] z-40"><TourInfoCloud title={current.calloutTitle} body={current.calloutBody} side="left"/></div>}
+        {step === 1 && <div className="absolute right-5 top-[300px] z-40"><TourInfoCloud title={current.calloutTitle} body={current.calloutBody} side="right"/></div>}
+        {step === 2 && <div className="absolute right-5 top-[105px] z-50"><TourInfoCloud title={current.calloutTitle} body={current.calloutBody} side="right"/></div>}
+        {step === 6 && <div className="absolute right-5 bottom-5 z-40"><TourInfoCloud title={current.calloutTitle} body={current.calloutBody} side="right"/></div>}
+
+        {formatGuideOpen && (
+          <div id="thesis-format-guide" className="absolute right-0 top-0 z-40 h-full w-[345px] bg-white p-4 shadow-[-16px_0_40px_rgba(15,23,42,.14)]">
+            <div className="rounded-xl bg-slate-50 p-4"><p className="text-[8px] font-semibold text-slate-800">Formatting</p><div className="mt-3 space-y-2 text-[6.5px] leading-3 text-slate-600"><p>• 1-inch margins and double spacing are used throughout.</p><p>• Use a consistent legible APA-permitted font; this preset uses 12-point Times New Roman.</p><p>• Left-align body text and use a 0.5-inch first-line paragraph indent.</p><p>• Professional manuscripts normally include a title page, abstract where appropriate, page numbers, and may require a running head.</p></div></div>
+            <div className="mt-3 rounded-xl border border-slate-200 p-4"><p className="text-[8px] font-semibold text-slate-800">Typical structure</p><div className="mt-3 grid grid-cols-[20px_1fr] gap-y-2 text-[6.5px] text-slate-600">{["Title page","Abstract","Keywords","Introduction","Method","Results","Discussion","References","Tables / figures as required"].map((x,i)=><Fragment key={x}><span className="flex h-4 w-4 items-center justify-center rounded-full bg-slate-100 text-[5.5px]">{i+1}</span><span>{x}</span></Fragment>)}</div></div>
+            <div className="mt-3 rounded-xl border border-cyan-200 bg-cyan-50/50 p-4"><p className="text-[8px] font-semibold text-cyan-900">PsyLattice preset boundary</p><p className="mt-2 text-[6.5px] leading-3 text-slate-500">Formatting presets are a drafting aid. A journal, university, department, supervisor or conference can impose additional or different requirements.</p><p className="mt-2 text-[6.5px] font-semibold text-cyan-800">Custom / institution-specific presets can represent those local rules.</p></div>
+            <div className="absolute bottom-5 left-[-305px]"><TourInfoCloud title={current.calloutTitle} body={current.calloutBody} side="left"/></div>
+          </div>
+        )}
+
+        {aiOpen && <><WritingAIPanel/><div className="absolute right-[340px] top-[255px] z-50"><TourInfoCloud title={current.calloutTitle} body={current.calloutBody} side="left"/></div></>}
+      </div>
+    </div>
+  );
+}
+
+
+function AmbulatoryTourDemo({ step }: { step: number }) {
+  const current = ambulatoryTourSteps[Math.max(0, Math.min(ambulatoryTourSteps.length - 1, step))];
+  const focusClass = (targetStep: number) =>
+    step === targetStep
+      ? "relative z-10 rounded-[20px] ring-2 ring-cyan-300/90 ring-offset-2 ring-offset-[#edf3f4] shadow-[0_14px_35px_rgba(8,145,178,.14)] transition-all duration-300"
+      : "relative transition-all duration-300";
+
+  const triggerMenuOpen = step === 1;
+  const sensorMode = step >= 4;
+
+  return (
+    <div className="min-h-[1120px] space-y-4 pb-8">
+      <ResearchSection id="ambulatory-protocol" className={`${focusClass(0)} p-5`}>
+        <div className="flex gap-2"><ResearchPill active>Researcher workspace</ResearchPill><ResearchPill>Live workspace data</ResearchPill></div>
+        <h2 className="mt-3 text-[19px] font-semibold tracking-tight text-slate-950">Ambulatory Assessment</h2>
+        <p className="mt-1 text-[8px] text-slate-500">Design repeated real-world EMA and ESM assessment protocols.</p>
+        <div className="mt-4 flex items-center justify-between"><ResearchPill>← Back to Study Builder</ResearchPill><span className="text-[6.5px] text-slate-500">Editing ambulatory protocol for <strong>Untitled research study</strong></span></div>
+        <div className="mt-4 rounded-[16px] border border-slate-200 bg-white shadow-sm">
+          <div className="border-b border-slate-100 px-4 py-3"><p className="text-[9px] font-semibold text-slate-900">Ambulatory Assessment</p><p className="mt-1 text-[6.5px] text-slate-500">The Research workspace uses the same nested, conditional ambulatory engine as Clinical.</p></div>
+          <div className="p-4">
+            <div className="grid grid-cols-[1fr_170px] gap-3"><div><p className="mb-1 text-[6px] text-slate-400">Study</p><ResearchInput>Untitled research study⌄</ResearchInput></div><div><p className="mb-1 text-[6px] text-slate-400">Duration (days)</p><ResearchInput>14</ResearchInput></div></div>
+            <p className="mb-1 mt-3 text-[6px] text-slate-400">Protocol name</p><ResearchInput>Ambulatory protocol</ResearchInput>
+            <div className="mt-3 grid grid-cols-2 gap-2"><div className="rounded-xl border border-slate-200 p-3"><p className="text-[7px] font-semibold text-slate-700">☑ Enable study email reminders</p><p className="mt-1 text-[6px] leading-3 text-slate-400">Time-contingent schedules can create reminder emails after the participant supplies an email address and explicitly enables reminders.</p></div><div className="rounded-xl border border-slate-200 p-3"><p className="text-[7px] font-semibold text-slate-700">□ Allow participant feedback summaries</p><p className="mt-1 text-[6px] leading-3 text-slate-400">Off by default. Study participants normally see adherence and progress, not psychological score feedback.</p></div></div>
+          </div>
+        </div>
+        {step === 0 && <div className="absolute right-5 top-[160px] z-30"><TourInfoCloud title={current.calloutTitle} body={current.calloutBody} side="right"/></div>}
+      </ResearchSection>
+
+      <div className="rounded-xl border border-cyan-200 bg-cyan-50/60 px-4 py-3"><p className="text-[8px] font-semibold text-cyan-900">Unified PsyLattice Ambulatory Builder</p><p className="mt-1 text-[6.5px] leading-3 text-slate-500">The same protocol engine is used for Research and Clinical workspaces. It supports time-, participant-, event- and Health Connect sensor-contingent sampling while keeping Research records pseudonymous and Clinical records client-controlled.</p></div>
+
+      <ResearchSection id="ambulatory-trigger-types" className={`${focusClass(1)} border-l-[3px] ${sensorMode ? "border-l-slate-950 bg-cyan-50/20" : "border-l-cyan-500"} p-4`}>
+        <div className="flex items-center justify-between"><div className="flex items-center gap-2"><ResearchPill dark={sensorMode} active={!sensorMode}>{sensorMode ? "● SENSOR CONTINGENT" : "● TIME CONTINGENT"}</ResearchPill><span className="text-[6px] text-slate-400">{sensorMode ? "Sensor · Health Connect" : "Fixed · 09:00"}</span></div><button className="rounded-lg border border-rose-200 px-3 py-2 text-[7px] font-semibold text-rose-500">Remove check-in</button></div>
+        <div className="mt-4 grid grid-cols-[1fr_200px] gap-3"><div><p className="mb-1 text-[6px] text-slate-400">Check-in / event title</p><ResearchInput>Morning</ResearchInput></div><div className="relative"><p className="mb-1 text-[6px] text-slate-400">Trigger</p><ResearchInput>{sensorMode ? "Sensor / Health Connect event" : "Fixed time"} ⌄</ResearchInput>{triggerMenuOpen && <div className="absolute right-0 top-[48px] z-40 w-[220px] rounded-xl bg-slate-700 p-1.5 text-white shadow-[0_18px_45px_rgba(15,23,42,.30)]">{["✓ Fixed time","Random within window","Interval contingent","Event contingent","Participant/client initiated","Sensor / Health Connect event"].map((x)=><div key={x} className={`rounded-md px-3 py-2 text-[7px] ${x.startsWith('✓')?'bg-blue-500':'hover:bg-white/10'}`}>{x}</div>)}</div>}</div></div>
+        {step === 1 && <div className="absolute left-[260px] top-[105px] z-30"><TourInfoCloud title={current.calloutTitle} body={current.calloutBody} side="left"/></div>}
+      </ResearchSection>
+
+      {!sensorMode && (
+        <>
+          <ResearchSection id="ambulatory-time-checkin" className={`${focusClass(2)} border-l-[3px] border-l-cyan-500 p-4`}>
+            <div className="grid grid-cols-2 gap-3"><div><p className="mb-1 text-[6px] text-slate-400">Check-in time</p><ResearchInput>09:00 AM</ResearchInput></div><div><p className="mb-1 text-[6px] text-slate-400">Response window (minutes)</p><ResearchInput>60</ResearchInput></div></div>
+            <div className="mt-3 rounded-xl border border-slate-200 p-3"><p className="text-[7px] font-semibold text-slate-700">☑ Send an email reminder</p><p className="mt-1 text-[6px] leading-3 text-slate-400">PsyLattice emails this reminder when the time-contingent check-in becomes available. Event-contingent check-ins are not emailed on a clock schedule.</p><div className="mt-3 grid grid-cols-2 gap-3"><div><p className="mb-1 text-[6px] text-slate-400">Email subject</p><ResearchInput>Morning check-in</ResearchInput></div><div><p className="mb-1 text-[6px] text-slate-400">Email message</p><ResearchInput>Your PsyLattice check-in is ready.</ResearchInput></div></div></div>
+            {step === 2 && <div className="absolute right-5 top-[55px] z-30"><TourInfoCloud title={current.calloutTitle} body={current.calloutBody} side="right"/></div>}
+          </ResearchSection>
+
+          <div id="ambulatory-response-blocks" className={focusClass(3)}>
+            <ResearchSection className="border-l-[3px] border-l-cyan-500 p-4">
+              <div className="flex items-center justify-between"><div className="flex gap-2"><ResearchPill active>SLIDER / RATING</ResearchPill><ResearchPill>Slider / rating⌄</ResearchPill><span className="text-[6px] text-slate-400">Block 1</span></div><button className="rounded-lg border border-rose-200 px-3 py-2 text-[7px] text-rose-500">Remove</button></div>
+              <p className="mt-4 text-[6px] text-slate-400">Prompt / title</p><ResearchInput className="mt-1">How stressed do you feel right now?</ResearchInput>
+              <div className="mt-3 grid grid-cols-5 gap-2">{[["Minimum","0"],["Maximum","10"],["Step","1"],["Low label","Not at all"],["High label","Extremely"]].map(([l,v])=><div key={l}><p className="mb-1 text-[6px] text-slate-400">{l}</p><ResearchInput>{v}</ResearchInput></div>)}</div>
+              <p className="mt-3 text-[6.5px] text-slate-500">☑ Required when shown</p>
+              <div className="mt-3 flex items-center justify-between rounded-xl border border-dashed border-cyan-300 bg-cyan-50/20 p-3"><div><p className="text-[7px] font-semibold text-slate-700">Conditional follow-up blocks</p><p className="mt-1 text-[6px] text-slate-400">Add a complete new block inside this response. It appears only when the response rule you choose is met.</p></div><ResearchPill active>+ Add conditional block</ResearchPill></div>
+            </ResearchSection>
+            <ResearchSection className="mt-3 border-l-[3px] border-l-slate-950 p-4"><div className="flex items-center justify-between"><div className="flex gap-2"><ResearchPill dark>YES / NO</ResearchPill><ResearchPill>Yes / No⌄</ResearchPill><span className="text-[6px] text-slate-400">Block 2</span></div><button className="rounded-lg border border-rose-200 px-3 py-2 text-[7px] text-rose-500">Remove</button></div><p className="mt-4 text-[6px] text-slate-400">Prompt / title</p><ResearchInput className="mt-1">Did anything important happen since the previous check-in?</ResearchInput></ResearchSection>
+            {step === 3 && <div className="absolute right-5 top-[145px] z-30"><TourInfoCloud title={current.calloutTitle} body={current.calloutBody} side="right"/></div>}
+          </div>
+        </>
+      )}
+
+      {sensorMode && (
+        <>
+          <div id="ambulatory-android-support" className={focusClass(4)}>
+            <ResearchSection className="border-l-[3px] border-l-slate-950 bg-cyan-50/25 p-4">
+              <div className="rounded-xl border border-cyan-200 bg-cyan-50/70 p-4"><p className="text-[9px] font-semibold text-slate-800">Health Connect sensor trigger</p><p className="mt-2 text-[6.5px] leading-3.5 text-slate-500">The Android companion evaluates permitted Health Connect data on the participant&apos;s device. PsyLattice records a sensor event and opens this ambulatory assessment only when the configured rule matches.</p><div className="mt-3 rounded-xl bg-white p-3"><p className="text-[7px] font-semibold text-slate-700">Android phase 1</p><p className="mt-1 text-[6px] leading-3 text-slate-500">Supported first: heart rate, steps, sleep duration and exercise-session events from Health Connect. The participant grants each Health Connect permission on their Android device.</p></div></div>
+            </ResearchSection>
+            {step === 4 && <div className="absolute right-5 top-[70px] z-30"><TourInfoCloud title={current.calloutTitle} body={current.calloutBody} side="right"/></div>}
+          </div>
+
+          <div id="ambulatory-sensor-rule" className={focusClass(5)}>
+            <ResearchSection className="border-l-[3px] border-l-slate-950 bg-cyan-50/25 p-4">
+              <div className="grid grid-cols-3 gap-3"><div><p className="mb-1 text-[6px] text-slate-400">Data</p><ResearchInput>Heart rate⌄</ResearchInput></div><div><p className="mb-1 text-[6px] text-slate-400">Condition</p><ResearchInput>At least⌄</ResearchInput></div><div><p className="mb-1 text-[6px] text-slate-400">Threshold</p><ResearchInput>0</ResearchInput></div></div>
+              <div className="mt-3 grid grid-cols-4 gap-3"><div><p className="mb-1 text-[6px] text-slate-400">Active from</p><ResearchInput>08:00 AM</ResearchInput></div><div><p className="mb-1 text-[6px] text-slate-400">Active until</p><ResearchInput>10:00 AM</ResearchInput></div><div><p className="mb-1 text-[6px] text-slate-400">Maximum prompts / day</p><ResearchInput>3</ResearchInput></div><div><p className="mb-1 text-[6px] text-slate-400">Cooldown (minutes)</p><ResearchInput>90</ResearchInput></div></div>
+              <div className="mt-3 grid grid-cols-2 gap-3"><div><p className="mb-1 text-[6px] text-slate-400">Store sensor data</p><ResearchInput>Trigger event only⌄</ResearchInput></div><div><p className="mb-1 text-[6px] text-slate-400">What the participant sees about the trigger</p><ResearchInput>Neutral — do not reveal sensor reason⌄</ResearchInput></div></div>
+            </ResearchSection>
+            {step === 5 && <div className="absolute left-[220px] top-[125px] z-30"><TourInfoCloud title={current.calloutTitle} body={current.calloutBody} side="left"/></div>}
+          </div>
+
+          <div id="ambulatory-trigger-action" className={focusClass(6)}>
+            <ResearchSection className="border-l-[3px] border-l-slate-950 bg-cyan-50/25 p-4">
+              <div className="rounded-xl border border-slate-200 bg-white p-4"><p className="text-[9px] font-semibold text-slate-800">Trigger action</p><p className="mt-1 text-[6.5px] leading-3 text-slate-500">When the Android companion confirms the sensor rule, it creates a PsyLattice prompt and shows this assessment notification.</p><div className="mt-3 grid grid-cols-2 gap-3"><div><p className="mb-1 text-[6px] text-slate-400">Notification title</p><ResearchInput>Morning check-in</ResearchInput></div><div><p className="mb-1 text-[6px] text-slate-400">Notification message</p><ResearchInput>Your PsyLattice check-in is ready.</ResearchInput></div></div></div>
+              <div className="mt-3 rounded-xl border border-cyan-200 bg-cyan-50/60 p-4"><p className="text-[8px] font-semibold text-cyan-900">What the Android companion actually does</p><div className="mt-2 grid grid-cols-4 gap-2">{[["1","Permission","Participant grants Health Connect access on Android."],["2","Evaluate","Companion evaluates the configured permitted-data rule."],["3","Trigger","A matching event creates the PsyLattice ambulatory prompt."],["4","Respond","Participant opens the notification and completes the assessment."]].map(([n,t,b])=><div key={n} className="rounded-xl border border-white bg-white p-3"><span className="flex h-5 w-5 items-center justify-center rounded-full bg-slate-950 text-[6px] font-semibold text-white">{n}</span><p className="mt-2 text-[7px] font-semibold text-slate-700">{t}</p><p className="mt-1 text-[5.8px] leading-3 text-slate-400">{b}</p></div>)}</div></div>
+            </ResearchSection>
+            {step === 6 && <div className="absolute right-5 top-[80px] z-30"><TourInfoCloud title={current.calloutTitle} body={current.calloutBody} side="right"/></div>}
+          </div>
+        </>
+      )}
+    </div>
+  );
+}
+
+
+function AnalysisLabTourDemo({ step }: { step: number }) {
+  const current = analysisTourSteps[Math.max(0, Math.min(analysisTourSteps.length - 1, step))];
+  const fullScreen = step === 1;
+
+  if (fullScreen) {
+    return (
+      <div id="analysis-fullscreen" className="relative min-h-[720px] overflow-hidden rounded-[22px] bg-[#f8fafb] text-slate-900 ring-2 ring-cyan-300/90 ring-offset-2 ring-offset-[#edf3f4]">
+        <div className="flex h-11 items-center gap-2 border-b border-slate-200 bg-white px-3">
+          <div className="flex min-w-[150px] items-center gap-2">
+            <div className="flex h-7 w-7 items-center justify-center rounded-full border border-cyan-100 bg-cyan-50 text-cyan-700">
+              <BarChart3 className="h-3.5 w-3.5" />
+            </div>
+            <div>
+              <div className="flex items-center gap-1.5">
+                <p className="text-[9px] font-semibold text-slate-900">Analysis Lab</p>
+                <span className="rounded-full border border-cyan-200 px-1.5 py-0.5 text-[5.5px] font-semibold uppercase tracking-[0.08em] text-cyan-700">
+                  Deterministic
                 </span>
-              </button>
+              </div>
+              <p className="text-[6.5px] text-slate-400">research analysis- data</p>
+            </div>
+          </div>
 
-              {clinicalFolders.map((folder) => (
-                <div
-                  key={folder.id}
-                  className={`group flex items-center rounded-xl ${
-                    clinicalSelectedFolder === folder.id
-                      ? "bg-cyan-50"
-                      : "hover:bg-white"
-                  }`}
-                >
-                  <button
-                    type="button"
-                    onClick={() => setClinicalSelectedFolder(folder.id)}
-                    className={`min-w-0 flex-1 px-3 py-2.5 text-left text-sm ${
-                      clinicalSelectedFolder === folder.id
-                        ? "font-semibold text-cyan-950"
-                        : "text-slate-600"
-                    }`}
-                  >
-                    <span className="block truncate">{folder.name}</span>
-                  </button>
-                  <span className="mr-3 text-[10px] text-slate-400">
-                    {clinicalNotes.filter((note) => note.folderId === folder.id).length}
-                  </span>
+          <ResearchInput className="flex-1">research analysis- data⌄</ResearchInput>
+          <ResearchInput className="flex-[1.55]">
+            Recommended · Analysis dataset — one row per participant⌄
+          </ResearchInput>
+          <ResearchPill active>☑ TEST data</ResearchPill>
+          <ResearchPill dark>◉ Data</ResearchPill>
+          <ResearchPill>CSV</ResearchPill>
+          <ResearchPill>Exit</ResearchPill>
+        </div>
+
+        <div className="flex h-8 items-center gap-2 border-b border-slate-200 bg-white px-4">
+          <ResearchPill active>Participant level</ResearchPill>
+          <ResearchPill>Recommended</ResearchPill>
+          <span className="text-[6px] text-slate-500">
+            Questionnaires, demographics and cognitive summaries together in one row per participant.
+          </span>
+          <span className="ml-auto text-[5.5px] text-slate-400">
+            Pseudonymous · direct identifiers hidden · 2 rows · 21 vars · 5 usable · 88% complete
+          </span>
+        </div>
+
+        <div className="flex h-10 items-center border-b border-slate-200 bg-white px-4">
+          <div className="min-w-[250px]">
+            <p className="text-[8px] font-semibold text-slate-800">Prepare data</p>
+            <p className="mt-0.5 text-[5.8px] text-slate-400">Already one row per participant — no conversion needed.</p>
+          </div>
+          <div className="mx-auto flex rounded-xl bg-[#102033] p-1 text-[7px] font-semibold text-white shadow-sm">
+            {["Explore", "Compare", "Model", "Scales", "Design"].map((tab) => (
+              <span key={tab} className={`rounded-lg px-4 py-1.5 ${tab === "Explore" ? "bg-white text-slate-900 ring-2 ring-cyan-300" : "text-slate-300"}`}>
+                {tab}
+              </span>
+            ))}
+          </div>
+          <span className="min-w-[150px] text-right text-[6px] text-slate-500">Participant view⌄</span>
+        </div>
+
+        <div className="grid min-h-[610px] grid-cols-[165px_290px_1fr]">
+          <aside className="border-r border-slate-200 bg-white p-3">
+            <div className="flex items-center justify-between">
+              <p className="text-[7px] font-semibold uppercase tracking-[0.12em] text-slate-400">Explore analyses</p>
+              <ResearchPill>5</ResearchPill>
+            </div>
+            <p className="mt-1 text-[6.5px] text-slate-500">Choose a statistical workflow.</p>
+
+            <div className="mt-3 space-y-2">
+              {[
+                ["Descriptives", "Summaries, distributions and frequencies", false],
+                ["Diagnostics", "Normality, outliers and variance checks", false],
+                ["Visualisations", "Scatter, distributions, means and interaction plots", false],
+                ["Correlations", "Pearson and Spearman associations", true],
+                ["Categorical", "Contingency tables, χ², Fisher and effect sizes", false],
+              ].map(([title, helper, selected]) => (
+                <div key={String(title)} className={`rounded-xl border p-3 ${selected ? "border-slate-950 bg-slate-950 text-white" : "border-slate-200 bg-white text-slate-700"}`}>
+                  <div className="flex items-center justify-between">
+                    <p className="text-[7.5px] font-semibold">{String(title)}</p>
+                    <ChevronRight className="h-3 w-3" />
+                  </div>
+                  <p className={`mt-1 text-[6px] leading-3 ${selected ? "text-slate-300" : "text-slate-400"}`}>{String(helper)}</p>
                 </div>
               ))}
             </div>
 
-            <div className="mt-5 border-t border-slate-200 pt-4">
-              <input
-                id="clinical-note-folder"
-                value={clinicalNewFolderName}
-                onChange={(event) => setClinicalNewFolderName(event.target.value)}
-                onKeyDown={(event) => {
-                  if (event.key === "Enter") createClinicalFolder();
-                }}
-                placeholder="New folder name"
-                className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs outline-none focus:border-cyan-700"
-              />
-
-              <button
-                type="button"
-                disabled={!clinicalNewFolderName.trim()}
-                onClick={createClinicalFolder}
-                className="mt-2 w-full rounded-xl bg-slate-950 px-3 py-2 text-xs font-semibold text-white disabled:opacity-40"
-              >
-                Create folder
-              </button>
-            </div>
-
-            <div className="mt-6 rounded-xl border border-cyan-100 bg-cyan-50/60 p-3">
-              <p className="text-[11px] font-semibold text-cyan-950">
-                Private clinician record
-              </p>
-              <p className="mt-1 text-[10px] leading-4 text-cyan-900/70">
-                Professional Notes are clinician-authored and are not exposed through the client sharing controls.
+            <div className="mt-4 rounded-xl border border-cyan-200 bg-cyan-50/70 p-3">
+              <p className="text-[7.5px] font-semibold text-slate-800">✣ Analysis V1</p>
+              <p className="mt-1 text-[6px] leading-3 text-slate-500">
+                Statistics are computed locally from the selected dataset. AI explains verified results; it does not calculate them.
               </p>
             </div>
           </aside>
 
-          {/* NOTE LIST */}
-          <section className="border-b border-slate-200 p-4 xl:border-b-0 xl:border-r">
-            <div className="flex items-center gap-2">
-              <input
-                value={clinicalNoteSearch}
-                onChange={(event) => setClinicalNoteSearch(event.target.value)}
-                placeholder="Search notes..."
-                className="min-w-0 flex-1 rounded-xl border border-slate-200 px-3 py-2.5 text-xs outline-none focus:border-cyan-700"
-              />
+          <aside className="border-r border-slate-200 bg-white p-3">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-[9px] font-semibold text-slate-800">Variables</p>
+                <p className="mt-1 text-[6px] text-slate-400">Add variables to the analysis set.</p>
+              </div>
+              <ResearchPill>Clear</ResearchPill>
+            </div>
+            <ResearchInput className="mt-3 text-slate-400">⌕ Search variables...</ResearchInput>
 
-              <button
-                type="button"
-                onClick={createClinicalNote}
-                className="shrink-0 rounded-xl bg-cyan-800 px-3 py-2.5 text-xs font-semibold text-white"
-              >
-                + Note
+            <div className="mt-4 space-y-2 opacity-55">
+              {["Export participant identifier", "Test participation flag", "Participant study status"].map((name, index) => (
+                <div key={name} className="rounded-xl border border-slate-200 p-3">
+                  <p className="text-[7px] font-semibold text-slate-600">{name}</p>
+                  <ResearchPill className="mt-2">{index === 1 ? "Binary" : index === 2 ? "Nominal" : "Text"}</ResearchPill>
+                </div>
+              ))}
+            </div>
+
+            <div className="mt-4 border-t border-slate-100 pt-4">
+              <p className="text-[7px] font-semibold text-slate-700">Analysis variables</p>
+              <p className="mt-1 text-[6px] text-slate-400">3 selected</p>
+              <div className="mt-2 space-y-2">
+                {[
+                  "baseline · General Self-Efficacy Scale · Total",
+                  "Stroop Task — accuracy",
+                  "Stroop Task — mean RT (ms)",
+                ].map((name) => (
+                  <div key={name} className="rounded-xl border border-slate-200 bg-white p-3">
+                    <div className="flex items-start gap-2">
+                      <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-lg bg-slate-950 text-[6px] text-white">#</span>
+                      <p className="text-[6.5px] font-semibold leading-3 text-slate-700">{name}</p>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            <div className="mt-4 border-t border-slate-100 pt-4">
+              <p className="text-[7px] font-semibold text-slate-700">Statistics</p>
+              <p className="mt-1 text-[6px] text-slate-400">Choose what appears in the output table.</p>
+              <div className="mt-3 grid grid-cols-2 gap-2">
+                <ResearchPill active>Pearson</ResearchPill>
+                <ResearchPill>Spearman</ResearchPill>
+              </div>
+              <p className="mt-3 text-[6px] text-slate-500">☑ Show two-sided p-values</p>
+              <p className="mt-2 text-[6px] text-slate-500">☑ Show pairwise valid N</p>
+            </div>
+          </aside>
+
+          <main className="bg-[#f8fafb] p-4">
+            <div className="flex items-start justify-between">
+              <div>
+                <div className="flex items-center gap-2">
+                  <p className="text-[6.5px] font-semibold uppercase tracking-[0.12em] text-slate-400">Results</p>
+                  <ResearchPill>Live</ResearchPill>
+                </div>
+                <h3 className="mt-2 text-[16px] font-semibold text-slate-950">Correlation analysis</h3>
+                <p className="mt-1 text-[6.5px] text-slate-500">Pearson matrix with pairwise valid observations.</p>
+              </div>
+              <div className="flex gap-2">
+                <ResearchPill active>Save record</ResearchPill>
+                <ResearchPill>Records</ResearchPill>
+                <ResearchPill>Copy formatted table</ResearchPill>
+              </div>
+            </div>
+
+            <div className="mt-4 grid grid-cols-4 gap-3">
+              <ResearchMetric label="Method" value="Pearson" helper="Current estimator" />
+              <ResearchMetric label="Variables" value="3" helper="Numeric / ordinal" />
+              <ResearchMetric label="Pairs" value="3" helper="Unique associations" />
+              <ResearchMetric label="Strongest |r|" value="—" helper="No valid pair" />
+            </div>
+
+            <ResearchSection className="mt-4 overflow-hidden">
+              <div className="flex items-center justify-between border-b border-slate-100 px-4 py-3">
+                <div>
+                  <p className="text-[8px] font-semibold text-slate-800">Correlation matrix</p>
+                  <p className="mt-1 text-[5.8px] text-slate-400">Pairwise-complete observations · Pearson product-moment correlation.</p>
+                </div>
+                <ResearchPill active>3 variables</ResearchPill>
+              </div>
+              <div className="grid grid-cols-[1.25fr_.9fr_.9fr_.9fr] text-[6px]">
+                <div className="bg-slate-50 p-3 font-semibold uppercase text-slate-400">Variable</div>
+                <div className="bg-slate-50 p-3 text-slate-400">General Self-Efficacy</div>
+                <div className="bg-slate-50 p-3 text-slate-400">Stroop accuracy</div>
+                <div className="bg-slate-50 p-3 text-slate-400">Stroop mean RT</div>
+                {[
+                  ["General Self-Efficacy Scale · Total", "1", "—", "—"],
+                  ["Stroop Task — accuracy", "—", "1", "—"],
+                  ["Stroop Task — mean RT (ms)", "—", "—", "1"],
+                ].flatMap((row, rowIndex) =>
+                  row.map((cell, cellIndex) => (
+                    <div key={`${rowIndex}-${cellIndex}`} className={`border-t border-slate-100 p-3 ${cellIndex === 0 ? "font-semibold text-slate-700" : "text-slate-500"}`}>
+                      {cell}
+                      {cellIndex > 0 && cell !== "1" && <p className="mt-1 text-[5px] text-slate-300">p=— · N=1</p>}
+                    </div>
+                  ))
+                )}
+              </div>
+            </ResearchSection>
+          </main>
+        </div>
+
+        <button className="absolute bottom-4 right-4 rounded-full bg-slate-950 px-4 py-2 text-[7px] font-semibold text-white shadow-lg">
+          ✣ Analysis AI
+        </button>
+        <div className="absolute right-5 top-[120px] z-40">
+          <TourInfoCloud title={current.calloutTitle} body={current.calloutBody} side="right" />
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div id="analysis-environment" className="relative min-h-[960px] space-y-4 pb-8">
+      <ResearchSection className="overflow-hidden bg-[linear-gradient(110deg,#ffffff_0%,#f8fdfe_63%,#f6efff_100%)] p-5">
+        <div className="flex items-start justify-between gap-6">
+          <div className="max-w-[690px]">
+            <div className="flex items-center gap-2">
+              <ResearchPill active>Analysis Lab · V1</ResearchPill>
+              <ResearchPill>Statistics calculated deterministically</ResearchPill>
+            </div>
+            <h2 className="mt-4 text-[25px] font-semibold tracking-[-0.035em] text-slate-950">
+              Turn collected data into research-ready results.
+            </h2>
+            <p className="mt-3 text-[8px] leading-4 text-slate-500">
+              Choose a PsyLattice study and analysis frame, select variables, and build reproducible statistical outputs without leaving the Research workspace.
+            </p>
+          </div>
+          <div className="grid w-[330px] grid-cols-3 gap-2">
+            <ResearchMetric label="Rows" value="2" helper="Current frame" />
+            <ResearchMetric label="Participants" value="2" helper="Live + TEST" />
+            <ResearchMetric label="Variables" value="20" helper="7 numeric hints" />
+          </div>
+        </div>
+      </ResearchSection>
+
+      <ResearchSection className="p-4">
+        <div className="grid grid-cols-[.85fr_1.25fr_auto] items-end gap-3">
+          <div>
+            <p className="mb-1 text-[6px] font-semibold uppercase tracking-[0.1em] text-slate-400">Study</p>
+            <ResearchInput>research analysis- data⌄</ResearchInput>
+          </div>
+          <div>
+            <p className="mb-1 text-[6px] font-semibold uppercase tracking-[0.1em] text-slate-400">Analysis dataset</p>
+            <ResearchInput>Recommended · Analysis dataset — one row per participant⌄</ResearchInput>
+          </div>
+          <ResearchPill active className="px-4 py-2">☑ Include TEST data</ResearchPill>
+        </div>
+        <div className="mt-3 flex items-center gap-2 rounded-xl bg-slate-50 px-3 py-2">
+          <ResearchPill active>Participant level</ResearchPill>
+          <ResearchPill>Recommended starting frame</ResearchPill>
+          <span className="text-[6px] text-slate-500">Questionnaires, demographics and cognitive summaries together in one row per participant.</span>
+          <span className="ml-auto text-right text-[5.5px] font-semibold text-slate-500">
+            Identity mode<br />Pseudonymous · direct identifiers hidden
+          </span>
+        </div>
+      </ResearchSection>
+
+      <div className="flex justify-end">
+        <ResearchPill active className="px-4 py-2">✣ PsyLattice Auto⌄</ResearchPill>
+      </div>
+
+      <ResearchSection className="relative overflow-hidden ring-2 ring-cyan-300/90 ring-offset-2 ring-offset-[#edf3f4]">
+        <div className="flex items-center justify-between border-b border-slate-100 bg-[linear-gradient(90deg,#ffffff,#f6fdff,#faf5ff)] px-4 py-3">
+          <div className="flex items-center gap-2">
+            <div className="flex h-8 w-8 items-center justify-center rounded-full border border-cyan-100 bg-cyan-50 text-cyan-700">
+              <BarChart3 className="h-4 w-4" />
+            </div>
+            <div>
+              <div className="flex items-center gap-2">
+                <p className="text-[9px] font-semibold text-slate-800">Analysis canvas</p>
+                <ResearchPill active>Deterministic</ResearchPill>
+              </div>
+              <p className="mt-0.5 text-[5.8px] text-slate-400">research analysis- data · Analysis dataset — one row per participant</p>
+            </div>
+          </div>
+          <div className="flex items-center gap-1.5">
+            <ResearchPill dark>◉ PsyLattice data</ResearchPill>
+            <ResearchPill>External CSV</ResearchPill>
+            <ResearchPill>Analyses ‹</ResearchPill>
+            <ResearchPill>Variables ‹</ResearchPill>
+            <ResearchPill active>⛶ Full screen</ResearchPill>
+          </div>
+        </div>
+
+        <div className="grid grid-cols-4 gap-2 border-b border-slate-100 bg-white p-3">
+          <ResearchMetric label="Rows" value="2" />
+          <ResearchMetric label="Variables" value="21" />
+          <ResearchMetric label="Usable" value="18" />
+          <ResearchMetric label="Completeness" value="88%" />
+        </div>
+
+        <div className="flex items-center justify-between border-b border-slate-100 bg-white px-4 py-2">
+          <div>
+            <p className="text-[7px] font-semibold text-slate-800">Prepare data</p>
+            <p className="text-[5.5px] text-slate-400">Already one row per participant — no conversion needed.</p>
+          </div>
+          <div className="flex rounded-xl bg-[#102033] p-1 text-[6.5px] font-semibold text-white">
+            {["Explore", "Compare", "Model", "Scales", "Design"].map((tab) => (
+              <span key={tab} className={`rounded-lg px-4 py-1.5 ${tab === "Explore" ? "bg-white text-slate-900 ring-2 ring-cyan-300" : "text-slate-300"}`}>{tab}</span>
+            ))}
+          </div>
+          <ResearchPill>Participant view⌄</ResearchPill>
+        </div>
+
+        <div className="grid min-h-[430px] grid-cols-[160px_280px_1fr]">
+          <aside className="border-r border-slate-200 bg-white p-3">
+            <p className="text-[7px] font-semibold uppercase tracking-[0.12em] text-slate-400">Explore analyses</p>
+            <p className="mt-1 text-[6px] text-slate-500">Choose a statistical workflow.</p>
+            <div className="mt-3 rounded-xl bg-slate-950 p-3 text-white">
+              <p className="text-[7.5px] font-semibold">Descriptives</p>
+              <p className="mt-1 text-[6px] leading-3 text-slate-300">Summaries, distributions and frequencies</p>
+            </div>
+            <div className="mt-2 space-y-2">
+              {["Diagnostics", "Visualisations", "Correlations", "Categorical"].map((name) => (
+                <div key={name} className="rounded-xl border border-slate-200 p-3">
+                  <p className="text-[7px] font-semibold text-slate-700">{name}</p>
+                </div>
+              ))}
+            </div>
+          </aside>
+
+          <aside className="border-r border-slate-200 bg-white p-3">
+            <div className="flex items-center justify-between">
+              <p className="text-[9px] font-semibold text-slate-800">Variables</p>
+              <ResearchPill>Clear</ResearchPill>
+            </div>
+            <p className="mt-1 text-[6px] text-slate-400">Add variables to the analysis set.</p>
+            <ResearchInput className="mt-3 text-slate-400">⌕ Search variables...</ResearchInput>
+            <div className="mt-3 space-y-2">
+              {[
+                "Export participant identifier",
+                "Test participation flag",
+                "Participant study status",
+                "General Self-Efficacy Scale · Total",
+                "Stroop Task — accuracy",
+              ].map((name, index) => (
+                <div key={name} className={`rounded-xl border p-3 ${index < 3 ? "border-slate-100 opacity-45" : "border-cyan-100 bg-cyan-50/20"}`}>
+                  <p className="text-[6.5px] font-semibold text-slate-700">{name}</p>
+                </div>
+              ))}
+            </div>
+          </aside>
+
+          <main className="bg-[#f8fafb] p-4">
+            <div className="flex items-start justify-between">
+              <div>
+                <div className="flex items-center gap-2">
+                  <p className="text-[6px] font-semibold uppercase tracking-[0.12em] text-slate-400">Results</p>
+                  <ResearchPill>Live</ResearchPill>
+                </div>
+                <h3 className="mt-2 text-[15px] font-semibold text-slate-950">Descriptive analysis</h3>
+                <p className="mt-1 text-[6px] text-slate-500">Output updates immediately when variables or statistics change.</p>
+              </div>
+              <div className="flex gap-2">
+                <ResearchPill active>Save record</ResearchPill>
+                <ResearchPill>Records</ResearchPill>
+                <ResearchPill>Copy formatted table</ResearchPill>
+              </div>
+            </div>
+            <div className="mt-4 grid grid-cols-4 gap-2">
+              <ResearchMetric label="Rows analysed" value="2" helper="Current analysis frame" />
+              <ResearchMetric label="Variables" value="3" helper="Selected for output" />
+              <ResearchMetric label="Numeric" value="3" helper="Scale / ordinal" />
+              <ResearchMetric label="Categorical" value="0" helper="Frequency-ready" />
+            </div>
+            <ResearchSection className="mt-4 p-4">
+              <p className="text-[8px] font-semibold text-slate-800">Descriptive statistics</p>
+              <div className="mt-3 grid grid-cols-6 border-y border-slate-200 py-2 text-[5.8px] font-semibold text-slate-500">
+                {["Variable", "N", "Mean", "Median", "SD", "Missing"].map((x) => <span key={x}>{x}</span>)}
+              </div>
+              <div className="grid grid-cols-6 py-3 text-[6px] text-slate-600">
+                <span>General Self-Efficacy</span><span>2</span><span>25</span><span>25</span><span>2.83</span><span>0</span>
+              </div>
+            </ResearchSection>
+          </main>
+        </div>
+
+        <button className="absolute bottom-4 right-4 rounded-full bg-slate-950 px-4 py-2 text-[7px] font-semibold text-white shadow-lg">
+          ✣ Analysis AI
+        </button>
+      </ResearchSection>
+
+      <div className="absolute right-5 top-[390px] z-40">
+        <TourInfoCloud title={current.calloutTitle} body={current.calloutBody} side="right" />
+      </div>
+    </div>
+  );
+}
+
+function ResearchDemo({ slideId, dashboardStep = 0, studiesStep = 0, studyBuilderStep = 0, questionnaireStep = 0, cognitiveStep = 0, thesisStep = 0, ambulatoryStep = 0, participantsStep = 0, participantLinksStep = 0, dataDashboardStep = 0, dataExplorerStep = 0, analysisStep = 0, exportStep = 0 }: { slideId: string; dashboardStep?: number; studiesStep?: number; studyBuilderStep?: number; questionnaireStep?: number; cognitiveStep?: number; thesisStep?: number; ambulatoryStep?: number; participantsStep?: number; participantLinksStep?: number; dataDashboardStep?: number; dataExplorerStep?: number; analysisStep?: number; exportStep?: number }) {
+  const [query, setQuery] = useState("");
+  const [selectedStep, setSelectedStep] = useState("Measures");
+  const [selectedTask, setSelectedTask] = useState("Simple Reaction Time");
+  const [selectedAnalysis, setSelectedAnalysis] = useState("Descriptives");
+  const [selectedThesisSection, setSelectedThesisSection] = useState("thesis work");
+
+
+  // High-fidelity Research screens based on the live PsyLattice UI.
+  if (slideId === "dashboard") {
+    const focusClass = (step: number) =>
+      dashboardStep === step
+        ? "relative z-10 rounded-[20px] ring-2 ring-cyan-300/90 ring-offset-2 ring-offset-[#edf3f4] shadow-[0_14px_35px_rgba(8,145,178,.14)] transition-all duration-300"
+        : "relative transition-all duration-300";
+
+    const studies = [
+      ["Untitled research study", "Cross-sectional survey · 0 live participants", "Draft"],
+      ["Untitled research study", "Cross-sectional survey · 0 live participants", "Draft"],
+      ["test study- 2", "Cross-sectional survey · 1 live participant", "Active"],
+      ["new study", "Cross-sectional survey · 4 live participants", "Active"],
+      ["research analysis- data", "Cross-sectional survey · 2 live participants", "Active"],
+    ];
+
+    return (
+      <div className="min-h-[980px] space-y-4 pb-6">
+        <ResearchSection className="p-5">
+          <div className="flex gap-2"><ResearchPill active>Researcher workspace</ResearchPill><ResearchPill>Live workspace data</ResearchPill></div>
+          <h2 className="mt-3 text-[19px] font-semibold tracking-tight text-slate-950">Research overview</h2>
+          <p className="mt-1 text-[8px] text-slate-500">Manage your studies, recruitment, ambulatory protocols and research data.</p>
+        </ResearchSection>
+
+        <div id="dashboard-overview-metrics" className={focusClass(0)}>
+          <div className="grid grid-cols-4 gap-3">
+            <ResearchMetric label="Active studies" value="3" helper="6 active live recruitment links" />
+            <ResearchMetric label="Live participants" value="7" helper="Excludes test participants and withdrawals" />
+            <ResearchMetric label="Completed" value="6" helper="86% of live participants" />
+            <ResearchMetric label="Test participants" value="1" helper="Kept separate from live research" />
+          </div>
+          {dashboardStep === 0 && <div className="absolute right-3 top-[calc(100%+10px)] z-30"><TourInfoCloud title={dashboardTourSteps[0].calloutTitle} body={dashboardTourSteps[0].calloutBody} side="bottom" /></div>}
+        </div>
+
+        <div className="grid grid-cols-[1.25fr_.9fr] gap-3 pt-1">
+          <div id="dashboard-recent-studies" className={focusClass(1)}>
+            <ResearchSection className="overflow-hidden">
+              <div className="border-b border-slate-100 px-4 py-4"><p className="text-[10px] font-semibold text-slate-900">Your studies</p><p className="mt-1 text-[6.5px] text-slate-400">Your most recently updated studies from Supabase.</p></div>
+              <div className="px-4">
+                {studies.map(([name, helper, status], index) => <div key={`${name}-${index}`} className="flex items-center justify-between border-b border-slate-100 py-3 last:border-0"><div><p className="text-[8.5px] font-semibold text-slate-800">{name}</p><p className="mt-1 text-[6.5px] text-slate-400">{helper}</p><p className="mt-1 text-[6px] text-slate-400">Demographics · Baseline</p></div><ResearchPill active={status === "Active"}>{status}</ResearchPill></div>)}
+                <button className="pb-3 text-[7px] font-semibold text-slate-800">View all studies &nbsp; →</button>
+              </div>
+            </ResearchSection>
+            {dashboardStep === 1 && <div className="absolute right-4 top-16 z-30"><TourInfoCloud title={dashboardTourSteps[1].calloutTitle} body={dashboardTourSteps[1].calloutBody} side="right" /></div>}
+          </div>
+
+          <div id="dashboard-workspace-status" className={focusClass(2)}>
+            <ResearchSection className="h-full min-h-[330px]">
+              <div className="border-b border-slate-100 px-4 py-4"><p className="text-[10px] font-semibold text-slate-900">Research workspace status</p></div>
+              <div className="space-y-5 p-4">
+                {[["Draft studies","Saved studies that have not been activated.","3",true],["Studies without live recruitment","Active or review-ready studies without an active live link.","0",false],["Test participants","Test records remain identifiable and separate from live data.","1",false]].map(([title,helper,value,purple]) => <div key={String(title)} className="flex items-start justify-between gap-3"><div><p className="text-[8px] font-semibold text-slate-700">{String(title)}</p><p className="mt-1 text-[6px] leading-3 text-slate-400">{String(helper)}</p></div><span className={`rounded-full border px-2.5 py-1 text-[7px] font-bold shadow-sm ${purple ? "border-violet-200 bg-violet-50 text-violet-700" : "border-cyan-200 bg-cyan-50 text-cyan-700"}`}>{String(value)}</span></div>)}
+              </div>
+            </ResearchSection>
+            {dashboardStep === 2 && <div className="absolute left-4 top-16 z-30"><TourInfoCloud title={dashboardTourSteps[2].calloutTitle} body={dashboardTourSteps[2].calloutBody} side="left" /></div>}
+          </div>
+        </div>
+
+        <div id="dashboard-quick-actions" className={focusClass(3)}>
+          <ResearchSection>
+            <div className="border-b border-slate-100 px-4 py-4"><p className="text-[10px] font-semibold text-slate-900">Quick actions</p><p className="mt-1 text-[6.5px] text-slate-400">Continue your most common research workflows.</p></div>
+            <div className="grid grid-cols-4 gap-3 p-4">
+              {[["Create study","Build a new survey or longitudinal protocol."],["Find questionnaire","Browse approved and licensed measures."],["Create participant link","Create a TEST or live recruitment link."],["View participants","Inspect real participant and test records."]].map(([title,helper]) => <div key={title} className="rounded-xl border border-slate-200 bg-white p-3 shadow-sm"><p className="text-[8.5px] font-semibold text-slate-800">{title}</p><p className="mt-2 text-[6.5px] leading-3 text-slate-500">{helper}</p></div>)}
+            </div>
+          </ResearchSection>
+          {dashboardStep === 3 && <div className="absolute right-4 top-12 z-30"><TourInfoCloud title={dashboardTourSteps[3].calloutTitle} body={dashboardTourSteps[3].calloutBody} side="right" /></div>}
+        </div>
+
+        <div id="dashboard-latest-study" className={focusClass(4)}>
+          <ResearchSection>
+            <div className="border-b border-slate-100 px-4 py-4"><p className="text-[10px] font-semibold text-slate-900">Latest study</p><p className="mt-1 text-[6.5px] text-slate-400">A live summary of your most recently updated study.</p></div>
+            <div className="grid grid-cols-[.9fr_1.1fr] gap-5 p-4">
+              <div><div className="flex items-center gap-2"><ResearchPill>Draft</ResearchPill><span className="text-[6px] text-slate-400">Updated 2/9/2026</span></div><p className="mt-3 text-[13px] font-semibold text-slate-900">Untitled research study</p><p className="mt-2 text-[7px] text-slate-500">Cross-sectional survey</p><p className="mt-2 text-[6px] text-slate-400">Demographics · Baseline</p><button className="mt-4 text-[7px] font-semibold text-cyan-800">Open studies &nbsp; →</button></div>
+              <div><p className="text-[6.5px] font-semibold uppercase tracking-[0.12em] text-slate-400">Recruitment</p><p className="mt-1 text-[20px] font-semibold text-slate-950">0 / 100</p><p className="mt-1 text-[6.5px] text-slate-400">0% of recruitment target</p><div className="mt-3 flex items-center justify-between text-[6px] text-slate-400"><span>Participant target</span><span>0 / 100</span></div><div className="mt-1 h-1.5 rounded-full bg-slate-100" /><div className="mt-4 grid grid-cols-2 gap-3"><ResearchMetric label="Live links" value="0" helper="Active recruitment" /><ResearchMetric label="Participants" value="0" helper="Live, non-withdrawn" /></div></div>
+            </div>
+          </ResearchSection>
+          {dashboardStep === 4 && <div className="absolute right-4 top-20 z-30"><TourInfoCloud title={dashboardTourSteps[4].calloutTitle} body={dashboardTourSteps[4].calloutBody} side="right" /></div>}
+        </div>
+      </div>
+    );
+  }
+
+  if (slideId === "studies") {
+    const focusClass = (step: number) =>
+      studiesStep === step
+        ? "relative z-10 rounded-[20px] ring-2 ring-cyan-300/90 ring-offset-2 ring-offset-[#edf3f4] shadow-[0_14px_35px_rgba(8,145,178,.14)] transition-all duration-300"
+        : "relative transition-all duration-300";
+
+    const studies = [
+      ["Untitled research study", "Cross-sectional survey", "0 / 100", "Draft", "2/9/2026"],
+      ["Untitled research study", "Cross-sectional survey", "0 / 100", "Draft", "30/8/2026"],
+      ["test study- 2", "Cross-sectional survey", "1 / 100", "Active", "29/8/2026"],
+      ["new study", "Cross-sectional survey", "4 / 100", "Active", "26/8/2026"],
+      ["research analysis- data", "Cross-sectional survey", "2 / 100", "Active", "25/8/2026"],
+      ["cognitive task study", "Cross-sectional survey", "0 / 100", "Draft", "25/8/2026"],
+    ];
+
+    return (
+      <div className="min-h-[1080px] space-y-4 pb-8">
+        <ResearchSection className="p-5">
+          <div className="flex gap-2">
+            <ResearchPill active>Researcher workspace</ResearchPill>
+            <ResearchPill>Live workspace data</ResearchPill>
+          </div>
+          <h2 className="mt-3 text-[19px] font-semibold tracking-tight text-slate-950">Studies</h2>
+          <p className="mt-1 text-[8px] text-slate-500">
+            Create, organise and monitor your active and completed research projects.
+          </p>
+        </ResearchSection>
+
+        <div id="studies-library" className={focusClass(0)}>
+          <div className="mb-3 flex items-center justify-between gap-3">
+            <div className="flex flex-wrap gap-2">
+              {["All", "Draft", "Review", "Active", "Completed", "Archived"].map((label, index) => (
+                <ResearchPill key={label} active={index === 0}>{label}</ResearchPill>
+              ))}
+            </div>
+            <div className="flex items-center gap-2">
+              <ResearchInput className="w-[190px] text-slate-400">Search your studies...</ResearchInput>
+              <button className="rounded-full bg-slate-950 px-4 py-2.5 text-[8px] font-semibold text-white shadow-[0_8px_18px_rgba(15,23,42,.16)]">
+                + New study
               </button>
             </div>
+          </div>
 
-            <div className="mt-4 max-h-[650px] space-y-2 overflow-y-auto pr-1">
-              {filteredClinicalNotes.length === 0 ? (
-                <div className="rounded-xl bg-slate-50 p-5 text-center">
-                  <p className="text-sm font-semibold text-slate-700">
-                    No notes here yet
-                  </p>
-                  <p className="mt-1 text-xs leading-5 text-slate-400">
-                    Create a note or choose another folder.
+          <ResearchSection className="overflow-hidden">
+            <div className="border-b border-slate-100 px-5 py-4">
+              <p className="text-[11px] font-semibold text-slate-900">Your studies</p>
+              <p className="mt-1 text-[7px] text-slate-400">
+                Saved directly from your PsyLattice Study Builder.
+              </p>
+            </div>
+
+            {studies.map(([name, type, participants, status, updated], index) => (
+              <div
+                key={`${name}-${index}`}
+                className={`grid grid-cols-[1fr_110px_125px_55px] items-center gap-4 border-b border-slate-100 px-5 py-4 last:border-0 ${index === 0 ? "bg-cyan-50/30" : ""}`}
+              >
+                <div>
+                  <p className="text-[10px] font-semibold text-slate-900">{name}</p>
+                  <p className="mt-1 text-[8px] font-medium text-slate-500">{type}</p>
+                  <p className="mt-1 text-[7px] text-slate-400">
+                    Consent · Demographics · Baseline questionnaires
                   </p>
                 </div>
-              ) : (
-                filteredClinicalNotes.map((noteItem) => {
-                  const folder = clinicalFolders.find(
-                    (candidate) => candidate.id === noteItem.folderId
-                  );
+                <div>
+                  <p className="text-[7px] text-slate-400">Participants</p>
+                  <p className="mt-1 text-[9px] font-semibold text-slate-800">{participants}</p>
+                  <p className="text-[6.5px] text-slate-400">{index === 5 ? "1 test" : "0 test"}</p>
+                </div>
+                <div>
+                  <ResearchInput className="py-1.5">{status} ⌄</ResearchInput>
+                  <p className="mt-1 text-[6.5px] text-slate-400">Updated {updated}</p>
+                </div>
+                <button className="text-[8px] font-semibold text-cyan-800">
+                  {index === 0 ? "Opened" : "Open"}
+                </button>
+              </div>
+            ))}
+          </ResearchSection>
 
-                  return (
-                    <button
-                      key={noteItem.id}
-                      type="button"
-                      onClick={() => openClinicalNote(noteItem.id)}
-                      className={`w-full rounded-xl border p-3 text-left transition ${
-                        noteItem.id === clinicalSelectedNoteId
-                          ? "border-cyan-300 bg-cyan-50"
-                          : "border-slate-200 bg-white hover:bg-slate-50"
-                      }`}
-                    >
-                      <div className="flex items-start justify-between gap-2">
-                        <p className="line-clamp-2 text-sm font-semibold text-slate-800">
-                          {noteItem.title}
-                        </p>
-                        {noteItem.pinned && (
-                          <span title="Pinned" className="text-xs text-cyan-500">
-                            ★
-                          </span>
-                        )}
-                      </div>
-
-                      <p className="mt-1 line-clamp-2 text-[11px] leading-4 text-slate-400">
-                        {noteItem.text || "Empty note"}
-                      </p>
-
-                      <div className="mt-3 flex flex-wrap items-center gap-1.5">
-                        <span className="rounded-full bg-slate-100 px-2 py-1 text-[9px] font-medium text-slate-500">
-                          {noteItem.type === "session"
-                            ? "Session note"
-                            : noteItem.type === "formulation"
-                              ? "Formulation"
-                              : "Review"}
-                        </span>
-                        {folder && (
-                          <span className="rounded-full bg-cyan-50 px-2 py-1 text-[9px] font-medium text-cyan-700">
-                            {folder.name}
-                          </span>
-                        )}
-                      </div>
-
-                      <p className="mt-2 text-[9px] text-slate-400">
-                        Updated {noteItem.updated}
-                      </p>
-                    </button>
-                  );
-                })
-              )}
+          {studiesStep === 0 && (
+            <div className="absolute right-5 top-[84px] z-30">
+              <TourInfoCloud
+                title={studiesTourSteps[0].calloutTitle}
+                body={studiesTourSteps[0].calloutBody}
+                side="right"
+              />
             </div>
-          </section>
+          )}
+        </div>
 
-          {/* EDITOR */}
-          <main className="min-w-0">
-            {!selectedNote ? (
-              <div className="flex min-h-[720px] items-center justify-center p-8">
-                <div className="max-w-sm text-center">
-                  <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-2xl bg-cyan-50 text-lg font-semibold text-cyan-800">
-                    N
+        <div id="studies-management" className={focusClass(1)}>
+          <ResearchSection className="overflow-hidden">
+            <div className="border-b border-slate-100 px-5 py-4">
+              <p className="text-[11px] font-semibold text-slate-900">Untitled research study</p>
+              <p className="mt-1 text-[7px] text-slate-400">Study overview from your saved configuration.</p>
+            </div>
+
+            <div className="grid grid-cols-[1.05fr_.85fr] gap-5 p-5">
+              <div>
+                <div className="flex items-center gap-2">
+                  <ResearchPill>Draft</ResearchPill>
+                  <span className="text-[6.5px] text-slate-400">Created 2/9/2026</span>
+                </div>
+                <p className="mt-4 text-[9px] font-semibold text-slate-800">Cross-sectional survey</p>
+                <p className="mt-2 text-[8px] text-slate-500">
+                  No participant-facing description has been saved yet.
+                </p>
+
+                <p className="mt-5 text-[7px] font-semibold uppercase tracking-[0.14em] text-slate-400">
+                  Components
+                </p>
+                <div className="mt-2 flex flex-wrap gap-2">
+                  <ResearchPill>Consent</ResearchPill>
+                  <ResearchPill>Demographics</ResearchPill>
+                  <ResearchPill>Baseline questionnaires</ResearchPill>
+                </div>
+
+                <div className="mt-5 rounded-xl border border-amber-200 bg-amber-50/65 px-3.5 py-3">
+                  <div className="flex items-start gap-2.5">
+                    <ShieldCheck className="mt-0.5 h-4 w-4 shrink-0 text-amber-700" />
+                    <div>
+                      <p className="text-[8px] font-semibold text-amber-900">Protect a live protocol</p>
+                      <p className="mt-1 text-[7px] leading-3.5 text-amber-800/80">
+                        Draft studies are the safest to edit. Once a live participant link is active or data collection has started, structural changes should be restricted so participants are not exposed to different versions of the same protocol.
+                      </p>
+                    </div>
                   </div>
-                  <p className="mt-4 text-lg font-semibold text-slate-900">
-                    Start a professional note
+                </div>
+              </div>
+
+              <div className="space-y-3">
+                <ResearchMetric label="Live participants" value="0" helper="Target 100" />
+                <ResearchMetric label="Questionnaires" value="0" helper="Baseline + follow-up selections" />
+                <ResearchMetric label="Live links" value="0" helper="0 test links" />
+              </div>
+            </div>
+
+            <div className="mx-5 border-t border-slate-100 py-4">
+              <div className="flex items-center justify-between gap-4 rounded-xl border border-slate-200 bg-slate-50/55 px-3.5 py-3">
+                <div>
+                  <p className="text-[8px] font-semibold text-slate-700">Study status</p>
+                  <p className="mt-1 max-w-[690px] text-[6.5px] leading-3.5 text-slate-500">
+                    Active studies accept live participants. Paused, completed and archived studies stop new live participation while preserving the study record.
                   </p>
-                  <button
-                    type="button"
-                    onClick={createClinicalNote}
-                    className="mt-5 rounded-full bg-slate-950 px-5 py-3 text-sm font-semibold text-white"
+                </div>
+                <ResearchInput className="w-[150px] py-1.5">Draft ⌄</ResearchInput>
+              </div>
+
+              <div className="mt-3 flex items-center justify-between gap-3">
+                <div className="flex flex-wrap gap-2">
+                  <button className="rounded-full bg-cyan-800 px-4 py-2.5 text-[8px] font-semibold text-white">
+                    Edit study
+                  </button>
+                  <button className="rounded-full border border-slate-200 bg-white px-4 py-2.5 text-[8px] font-semibold text-slate-700 shadow-sm">
+                    View participants
+                  </button>
+                  <button className="rounded-full bg-slate-950 px-4 py-2.5 text-[8px] font-semibold text-white">
+                    Participant links
+                  </button>
+                </div>
+                <button className="rounded-xl border border-rose-200 bg-white px-4 py-2.5 text-[8px] font-semibold text-rose-500">
+                  Delete study
+                </button>
+              </div>
+            </div>
+          </ResearchSection>
+
+          {studiesStep === 1 && (
+            <div className="absolute right-7 bottom-16 z-30">
+              <TourInfoCloud
+                title={studiesTourSteps[1].calloutTitle}
+                body={studiesTourSteps[1].calloutBody}
+                side="right"
+              />
+            </div>
+          )}
+        </div>
+      </div>
+    );
+  }
+
+  if (slideId === "study-builder") {
+    const step = Math.max(0, Math.min(studyBuilderTourSteps.length - 1, studyBuilderStep));
+    const tourStep = studyBuilderTourSteps[step];
+    const focusClass =
+      "relative z-10 rounded-[20px] ring-2 ring-cyan-300/90 ring-offset-2 ring-offset-[#edf3f4] shadow-[0_14px_35px_rgba(8,145,178,.14)] transition-all duration-300";
+
+    const callout = (
+      <div className="absolute -right-[302px] top-12 z-40">
+        <TourInfoCloud
+          title={tourStep.calloutTitle}
+          body={tourStep.calloutBody}
+          side="right"
+        />
+      </div>
+    );
+
+    let mainContent: ReactNode;
+
+    if (step === 0) {
+      mainContent = (
+        <div id="study-builder-overview" className={focusClass}>
+          <ResearchSection>
+            <div className="border-b border-slate-100 px-5 py-4">
+              <p className="text-[11px] font-semibold text-slate-900">Overview</p>
+              <p className="mt-1 text-[7px] text-slate-500">Study Builder · Step 1 of 8</p>
+            </div>
+            <div className="p-5">
+              <p className="mb-1 text-[7px] font-medium text-slate-600">Study title</p>
+              <ResearchInput>Untitled research study</ResearchInput>
+
+              <p className="mb-1 mt-4 text-[7px] font-medium text-slate-600">Participant-facing description</p>
+              <div className="min-h-[88px] rounded-xl border border-slate-200 bg-white px-3 py-3 text-[8px] text-slate-400 shadow-[0_3px_9px_rgba(15,23,42,0.05)]">
+                Explain what participants will be asked to do.
+              </div>
+
+              <div className="mt-4 grid grid-cols-2 gap-3">
+                <div>
+                  <p className="mb-1 text-[7px] font-medium text-slate-600">Study design</p>
+                  <ResearchInput>Cross-sectional survey &nbsp;⌄</ResearchInput>
+                </div>
+                <div>
+                  <p className="mb-1 text-[7px] font-medium text-slate-600">Target sample size</p>
+                  <ResearchInput>100</ResearchInput>
+                </div>
+              </div>
+
+              <StudyBuilderFooter step={0} />
+            </div>
+          </ResearchSection>
+          {callout}
+        </div>
+      );
+    } else if (step === 1) {
+      const comps = [
+        ["Consent", "PsyLattice consent, external consent, or documented alternative.", true],
+        ["Participant demographics", "Preset or custom demographic fields, including optional open-response fields.", true],
+        ["Baseline / questionnaires", "One or more library or custom research instruments.", true],
+        ["Cognitive tasks", "Reusable tasks from your personal Cognitive Task Library, pinned to a frozen study-ready version.", false],
+        ["Ambulatory / EMA / ESM", "Repeated real-world assessments. Completely optional.", false],
+        ["Follow-up assessments", "Post-study or later follow-up measurement points.", false],
+        ["Wearables", "Optional device-derived data with appropriate consent.", false],
+        ["Passive / device context", "Future context or sensing integrations where approved.", false],
+        ["Participant uploads", "Files, images, audio or other participant-provided material.", false],
+      ] as const;
+
+      mainContent = (
+        <div id="study-builder-components" className={focusClass}>
+          <ResearchSection>
+            <div className="border-b border-slate-100 px-5 py-4">
+              <p className="text-[11px] font-semibold text-slate-900">Study components</p>
+              <p className="mt-1 text-[7px] text-slate-500">Study Builder · Step 2 of 8</p>
+            </div>
+            <div className="p-5">
+              <p className="mb-4 text-[8px] leading-4 text-slate-500">
+                Select the kinds of elements that belong to this protocol. You can add multiple questionnaires and cognitive tasks, then arrange their participant order in Study flow.
+              </p>
+              <div className="grid grid-cols-2 gap-3">
+                {comps.map(([title, description, included]) => (
+                  <div
+                    key={title}
+                    className={`rounded-[15px] border p-4 ${included ? "border-cyan-300 bg-cyan-50/25" : "border-slate-200 bg-white"}`}
                   >
-                    Create first note
+                    <div className="flex items-start justify-between gap-3">
+                      <p className="text-[10px] font-semibold text-slate-900">{title}</p>
+                      <ResearchPill active={included}>{included ? "Included" : "Not included"}</ResearchPill>
+                    </div>
+                    <p className="mt-2 text-[7px] leading-4 text-slate-500">{description}</p>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </ResearchSection>
+          {callout}
+        </div>
+      );
+    } else if (step === 2) {
+      mainContent = (
+        <div id="study-builder-flow" className={focusClass}>
+          <ResearchSection>
+            <div className="border-b border-slate-100 px-5 py-4">
+              <p className="text-[11px] font-semibold text-slate-900">Study flow</p>
+              <p className="mt-1 text-[7px] text-slate-500">Study Builder · Step 3 of 8</p>
+            </div>
+            <div className="p-5">
+              <div className="rounded-xl border border-cyan-200 bg-cyan-50/55 p-4">
+                <p className="text-[9px] font-semibold text-slate-800">Participant study flow</p>
+                <p className="mt-2 text-[7px] leading-4 text-slate-500">
+                  Reposition questionnaires, demographics and cognitive tasks into the exact order participants should encounter them. The same questionnaire or cognitive task may be added more than once when your design requires repeated administration.
+                </p>
+              </div>
+
+              <div className="mt-4 rounded-xl border border-cyan-200 bg-cyan-50/40 p-4">
+                <div className="flex items-center justify-between gap-3">
+                  <div>
+                    <p className="text-[9px] font-semibold text-slate-800">1. Consent</p>
+                    <p className="mt-1 text-[6.5px] text-slate-400">Locked before research data collection.</p>
+                  </div>
+                  <ResearchPill active>Locked first</ResearchPill>
+                </div>
+              </div>
+
+              <div className="mt-3 flex items-center justify-between rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
+                <div className="flex items-center gap-3">
+                  <span className="flex h-7 w-7 items-center justify-center rounded-full bg-slate-950 text-[8px] font-bold text-white">2</span>
+                  <div>
+                    <p className="text-[9px] font-semibold text-slate-800">Participant demographics</p>
+                    <p className="mt-1 text-[6.5px] text-slate-400">3 configured fields</p>
+                  </div>
+                  <ResearchPill>Demographics</ResearchPill>
+                </div>
+                <div className="flex items-center gap-2">
+                  <ResearchPill>↑</ResearchPill>
+                  <ResearchPill>↓</ResearchPill>
+                  <button className="rounded-lg border border-rose-200 bg-white px-3 py-2 text-[7px] font-semibold text-rose-500">
+                    Remove
                   </button>
                 </div>
               </div>
-            ) : (
-              <div className="flex min-h-[720px] flex-col">
-                <div className="border-b border-slate-200 p-4">
-                  <div className="flex flex-col justify-between gap-3 lg:flex-row lg:items-start">
-                    <div className="min-w-0 flex-1">
-                      <input
-                        value={clinicalNoteTitle}
-                        onChange={(event) => {
-                          setClinicalNoteTitle(event.target.value);
-                          setClinicalNoteDirty(true);
-                        }}
-                        placeholder="Note title"
-                        className="w-full border-0 bg-transparent text-xl font-semibold text-slate-950 outline-none"
-                      />
 
-                      <div className="mt-3 flex flex-wrap items-center gap-2">
-                        <select
-                          value={clinicalNoteFolderId || ""}
-                          onChange={(event) => {
-                            setClinicalNoteFolderId(event.target.value || null);
-                            setClinicalNoteDirty(true);
-                          }}
-                          className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-[11px] text-slate-600"
-                        >
-                          <option value="">Unfiled</option>
-                          {clinicalFolders.map((folder) => (
-                            <option key={folder.id} value={folder.id}>
-                              {folder.name}
-                            </option>
-                          ))}
-                        </select>
+              <div className="mt-3 grid grid-cols-2 gap-3">
+                <button className="rounded-xl border border-slate-200 bg-white px-4 py-3 text-[8px] font-semibold text-slate-700 shadow-sm">
+                  + Add questionnaire
+                </button>
+                <button className="rounded-xl border border-slate-200 bg-white px-4 py-3 text-[8px] font-semibold text-slate-700 shadow-sm">
+                  + Add cognitive task
+                </button>
+              </div>
 
-                        <select
-                          value={clinicalNoteType}
-                          onChange={(event) => {
-                            setClinicalNoteType(event.target.value);
-                            setClinicalNoteDirty(true);
-                          }}
-                          className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-[11px] text-slate-600"
-                        >
-                          <option value="session">Session note</option>
-                          <option value="formulation">Formulation</option>
-                          <option value="review">Review</option>
-                        </select>
+              <StudyBuilderFooter step={2} />
+            </div>
+          </ResearchSection>
+          {callout}
+        </div>
+      );
+    } else if (step === 3) {
+      mainContent = (
+        <div id="study-builder-consent" className={focusClass}>
+          <ResearchSection>
+            <div className="border-b border-slate-100 px-5 py-4">
+              <p className="text-[11px] font-semibold text-slate-900">Consent</p>
+              <p className="mt-1 text-[7px] text-slate-500">Study Builder · Step 4 of 8</p>
+            </div>
+            <div className="p-5">
+              <p className="mb-2 text-[7px] font-medium text-slate-600">Consent method</p>
+              <div className="grid grid-cols-3 gap-3">
+                {[
+                  ["Build in PsyLattice", true],
+                  ["Consent obtained externally", false],
+                  ["No digital consent in PsyLattice", false],
+                ].map(([label, active]) => (
+                  <button
+                    key={String(label)}
+                    className={`min-h-[58px] rounded-xl border px-3 py-3 text-left text-[8px] font-semibold ${active ? "border-cyan-500 bg-cyan-50 text-cyan-900" : "border-slate-200 bg-white text-slate-700 shadow-sm"}`}
+                  >
+                    {String(label)}
+                  </button>
+                ))}
+              </div>
 
-                        <label className="flex items-center gap-2 rounded-lg border border-slate-200 bg-white px-3 py-2 text-[11px] text-slate-500">
-                          Session
-                          <input
-                            type="datetime-local"
-                            value={clinicalSessionAt}
-                            onChange={(event) => {
-                              setClinicalSessionAt(event.target.value);
-                              setClinicalNoteDirty(true);
-                            }}
-                            className="bg-transparent outline-none"
-                          />
-                        </label>
+              <p className="mb-1 mt-4 text-[7px] font-medium text-slate-600">Participant information</p>
+              <div className="min-h-[92px] rounded-xl border border-slate-200 bg-white px-3 py-3 text-[8px] leading-4 text-slate-400 shadow-sm">
+                Paste or write the approved participant information shown before consent items.
+              </div>
+
+              <div className="mt-4">
+                <p className="text-[7px] font-medium text-slate-600">Consent questions</p>
+                <p className="mt-1 text-[6.5px] text-slate-400">
+                  Add as many required or optional consent/comprehension items as the approved protocol needs.
+                </p>
+                <button className="mt-2 rounded-full bg-slate-950 px-4 py-2 text-[7px] font-semibold text-white">
+                  + Add consent question
+                </button>
+              </div>
+
+              {[
+                ["Consent item 1", "I confirm that I have read the participant information.", "Acknowledgment checkbox"],
+                ["Consent item 2", "I voluntarily agree to participate in this study.", "Yes / No"],
+              ].map(([title, prompt, response]) => (
+                <div key={title} className="mt-3 rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
+                  <div className="flex items-center justify-between gap-3">
+                    <p className="text-[8px] font-semibold text-slate-800">{title}</p>
+                    <div className="flex gap-1">
+                      <ResearchPill>↑</ResearchPill>
+                      <ResearchPill>↓</ResearchPill>
+                      <button className="rounded-lg border border-rose-200 px-2.5 py-1.5 text-[6.5px] font-semibold text-rose-500">Remove</button>
+                    </div>
+                  </div>
+                  <div className="mt-3 min-h-[54px] rounded-xl border border-slate-200 px-3 py-3 text-[7.5px] text-slate-700">
+                    {prompt}
+                  </div>
+                  <div className="mt-3 grid grid-cols-[1fr_1fr] gap-3">
+                    <div>
+                      <p className="mb-1 text-[6.5px] text-slate-400">Response type</p>
+                      <ResearchInput>{response} &nbsp;⌄</ResearchInput>
+                    </div>
+                    <div className="flex items-end">
+                      <div className="w-full rounded-xl border border-slate-200 px-3 py-2.5 text-[7px] text-slate-600">
+                        ☑ &nbsp; Required to proceed
                       </div>
                     </div>
+                  </div>
+                </div>
+              ))}
 
-                    <div className="flex shrink-0 flex-wrap items-center gap-2">
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setClinicalPinned((current) => !current);
-                          setClinicalNoteDirty(true);
-                        }}
-                        className={`rounded-xl border px-3 py-2 text-xs font-semibold ${
-                          clinicalPinned
-                            ? "border-cyan-200 bg-cyan-50 text-cyan-700"
-                            : "border-slate-200 text-slate-500"
-                        }`}
-                      >
-                        {clinicalPinned ? "★ Pinned" : "☆ Pin"}
-                      </button>
+              <StudyBuilderFooter step={3} />
+            </div>
+          </ResearchSection>
+          {callout}
+        </div>
+      );
+    } else if (step === 4) {
+      mainContent = (
+        <div id="study-builder-demographics" className={focusClass}>
+          <ResearchSection>
+            <div className="border-b border-slate-100 px-5 py-4">
+              <p className="text-[11px] font-semibold text-slate-900">Demographics</p>
+              <p className="mt-1 text-[7px] text-slate-500">Study Builder · Step 5 of 8</p>
+            </div>
+            <div className="p-5">
+              <div className="rounded-xl border border-cyan-200 bg-cyan-50/55 p-4">
+                <p className="text-[8px] font-semibold text-slate-800">Participant demographics</p>
+                <p className="mt-2 text-[7px] leading-4 text-slate-500">
+                  Add standard demographic fields or create your own questions. Every field is optional unless you mark it required. Prefer pseudonymous data where possible; directly identifying fields such as a full name should only be collected when the approved protocol genuinely requires them.
+                </p>
+              </div>
 
-                      <button
-                        type="button"
-                        onClick={saveClinicalNote}
-                        disabled={!clinicalNoteDirty}
-                        className="rounded-xl bg-slate-950 px-4 py-2 text-xs font-semibold text-white disabled:opacity-40"
-                      >
-                        {clinicalNoteDirty ? "Save" : "Saved"}
-                      </button>
+              <p className="mt-4 text-[7px] font-medium text-slate-600">Quick-add common fields</p>
+              <div className="mt-2 flex flex-wrap gap-2">
+                {[
+                  "Name", "Initials", "Age", "Gender", "Highest educational qualification",
+                  "Occupation", "Employment status", "Student status", "Country of residence",
+                  "Nationality", "Primary language", "Relationship / marital status",
+                ].map((item) => (
+                  <ResearchPill key={item}>+ {item}</ResearchPill>
+                ))}
+              </div>
+              <button className="mt-2 rounded-full bg-slate-950 px-4 py-2 text-[7px] font-semibold text-white">
+                + Custom question
+              </button>
 
-                      <button
-                        type="button"
-                        onClick={deleteClinicalNote}
-                        className="rounded-xl border border-red-200 px-3 py-2 text-xs font-semibold text-red-600"
-                      >
-                        Delete
+              <div className="mt-4 rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
+                <div className="flex items-center justify-between">
+                  <p className="text-[8px] font-semibold text-slate-800">Demographic field 1</p>
+                  <div className="flex gap-1">
+                    <ResearchPill>↑</ResearchPill>
+                    <ResearchPill>↓</ResearchPill>
+                    <button className="rounded-lg border border-rose-200 px-2.5 py-1.5 text-[6.5px] font-semibold text-rose-500">Remove</button>
+                  </div>
+                </div>
+
+                <div className="mt-3 grid grid-cols-2 gap-3">
+                  <div>
+                    <p className="mb-1 text-[6.5px] text-slate-400">Question / field label</p>
+                    <ResearchInput>Age</ResearchInput>
+                  </div>
+                  <div>
+                    <p className="mb-1 text-[6.5px] text-slate-400">Response type</p>
+                    <ResearchInput>Number &nbsp;⌄</ResearchInput>
+                  </div>
+                </div>
+
+                <p className="mb-1 mt-3 text-[6.5px] text-slate-400">Participant guidance / description</p>
+                <div className="min-h-[54px] rounded-xl border border-slate-200 px-3 py-3 text-[7.5px] text-slate-700">
+                  Age in completed years.
+                </div>
+
+                <div className="mt-3 grid grid-cols-2 gap-3">
+                  <div>
+                    <p className="mb-1 text-[6.5px] text-slate-400">Minimum value</p>
+                    <ResearchInput> </ResearchInput>
+                  </div>
+                  <div>
+                    <p className="mb-1 text-[6.5px] text-slate-400">Maximum value</p>
+                    <ResearchInput> </ResearchInput>
+                  </div>
+                </div>
+
+                <div className="mt-3 grid grid-cols-2 gap-3">
+                  <div className="rounded-xl border border-slate-200 p-3">
+                    <p className="text-[7px] font-semibold text-slate-700">□ &nbsp; Required</p>
+                    <p className="mt-1 text-[6.5px] leading-3 text-slate-500">Participant must answer before continuing.</p>
+                  </div>
+                  <div className="rounded-xl border border-slate-200 p-3">
+                    <p className="text-[7px] font-semibold text-slate-700">□ &nbsp; Directly identifying field</p>
+                    <p className="mt-1 text-[6.5px] leading-3 text-slate-500">Mark names, email addresses, or similar direct identifiers so they can be treated separately in exports and privacy controls.</p>
+                  </div>
+                </div>
+              </div>
+
+              <StudyBuilderFooter step={4} />
+            </div>
+          </ResearchSection>
+          {callout}
+        </div>
+      );
+    } else if (step === 5) {
+      const measures = [
+        {
+          title: "50-item IPIP representation of Goldberg's Big-Five factor markers (IPIP Big-Five 50)",
+          meta: "Personality · 50 items · ~8 min",
+          description: "A 50-item public-domain IPIP inventory measuring Extraversion, Agreeableness, Conscientiousness, Emotional Stability, and Openness.",
+          version: "Current version: Official 50-item sample",
+        },
+        {
+          title: "Depression Anxiety Stress Scales – 21 (DASS-21)",
+          meta: "Depression, Anxiety & Stress · 21 items · ~5 min",
+          description: "The 21-item short version of the DASS, with seven items each for Depression, Anxiety and Stress.",
+          version: "Current version: DASS-21",
+        },
+        {
+          title: "General Self-Efficacy Scale (GSE)",
+          meta: "Self-efficacy · 10 items · ~4 min",
+          description: "A 10-item self-report measure of general perceived self-efficacy.",
+          version: "Current version: GSE",
+        },
+      ];
+
+      mainContent = (
+        <div id="study-builder-baseline" className={focusClass}>
+          <ResearchSection>
+            <div className="border-b border-slate-100 px-5 py-4">
+              <p className="text-[11px] font-semibold text-slate-900">Baseline measures</p>
+              <p className="mt-1 text-[7px] text-slate-500">Study Builder · Step 6 of 8</p>
+            </div>
+            <div className="p-5">
+              <div className="rounded-xl border border-cyan-200 bg-cyan-50/55 p-4">
+                <p className="text-[8px] font-semibold text-slate-800">Select questionnaires for this study</p>
+                <p className="mt-2 text-[7px] leading-4 text-slate-500">
+                  Choose directly from the PsyLattice Questionnaire Library or from questionnaires you created yourself. PsyLattice pins the current questionnaire version to this study so later edits do not silently change a deployed protocol.
+                </p>
+              </div>
+
+              <div className="mt-4 border-b border-slate-100 pb-4">
+                <p className="text-[7px] font-medium text-slate-600">Selected measures</p>
+                <p className="mt-1 text-[6.5px] text-slate-400">No questionnaires selected yet.</p>
+              </div>
+
+              <p className="mt-4 text-[7px] font-medium text-slate-600">Browse available questionnaires</p>
+              <div className="mt-2 grid grid-cols-[1fr_auto] items-center gap-2">
+                <ResearchInput className="text-slate-400">Search name, acronym, construct or category...</ResearchInput>
+                <span className="text-[6.5px] text-slate-400">5 available</span>
+              </div>
+
+              <div className="mt-3 space-y-2">
+                {measures.map((measure) => (
+                  <div key={measure.title} className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
+                    <div className="flex items-start justify-between gap-4">
+                      <div className="min-w-0">
+                        <p className="text-[8px] font-semibold leading-3 text-slate-800">{measure.title}</p>
+                        <ResearchPill className="mt-2">Library</ResearchPill>
+                        <p className="mt-2 text-[6.5px] text-slate-400">{measure.meta}</p>
+                        <p className="mt-1 text-[6.5px] leading-3 text-slate-500">{measure.description}</p>
+                        <p className="mt-1 text-[6px] text-slate-400">{measure.version}</p>
+                      </div>
+                      <button className="mt-8 shrink-0 rounded-lg bg-slate-950 px-3 py-2 text-[7px] font-semibold text-white">
+                        + Add to study
                       </button>
                     </div>
                   </div>
+                ))}
+              </div>
+            </div>
+          </ResearchSection>
+          {callout}
+        </div>
+      );
+    } else if (step === 6) {
+      mainContent = (
+        <div id="study-builder-recruitment" className={focusClass}>
+          <ResearchSection>
+            <div className="border-b border-slate-100 px-5 py-4">
+              <p className="text-[11px] font-semibold text-slate-900">Recruitment</p>
+              <p className="mt-1 text-[7px] text-slate-500">Study Builder · Step 7 of 8</p>
+            </div>
+            <div className="p-5">
+              <p className="text-[8px] leading-4 text-slate-500">
+                Save the study draft first, then use Participant Links to create TEST or live recruitment routes for this exact protocol.
+              </p>
 
-                  <div className="mt-3 flex flex-wrap items-center gap-x-3 gap-y-1 text-[10px] text-slate-400">
-                    <span>{clinicalSessionAt.replace("T", " ")}</span>
-                    <span>•</span>
-                    <span>{editorWordCount} words</span>
-                    <span>•</span>
-                    <span>{clinicalNoteDirty ? "Unsaved changes" : "Saved"}</span>
-                  </div>
-                </div>
-
-                {/* RICH TOOLBAR */}
-                <div className="sticky top-0 z-20 border-b border-slate-200 bg-white/95 px-4 py-3 backdrop-blur">
-                  <div className="flex flex-wrap items-center gap-2">
-                    <select
-                      defaultValue="Arial"
-                      onChange={(event) => clinicalExec("fontName", event.target.value)}
-                      className="h-8 rounded-lg border border-slate-200 bg-white px-2 text-xs text-slate-600"
-                    >
-                      {["Arial", "Georgia", "Times New Roman", "Verdana"].map((font) => (
-                        <option key={font} value={font}>{font}</option>
-                      ))}
-                    </select>
-
-                    <select
-                      defaultValue="3"
-                      onChange={(event) => clinicalExec("fontSize", event.target.value)}
-                      className="h-8 rounded-lg border border-slate-200 bg-white px-2 text-xs text-slate-600"
-                    >
-                      <option value="2">Small</option>
-                      <option value="3">Normal</option>
-                      <option value="4">Large</option>
-                    </select>
-
-                    <select
-                      defaultValue="p"
-                      onChange={(event) => clinicalExec("formatBlock", event.target.value)}
-                      className="h-8 rounded-lg border border-slate-200 bg-white px-2 text-xs text-slate-600"
-                    >
-                      <option value="p">Normal</option>
-                      <option value="h1">Heading 1</option>
-                      <option value="h2">Heading 2</option>
-                      <option value="h3">Heading 3</option>
-                      <option value="blockquote">Quote</option>
-                    </select>
-
-                    <span className="mx-1 h-6 w-px bg-slate-200" />
-
-                    {[
-                      ["B", "bold", "font-black"],
-                      ["I", "italic", "italic"],
-                      ["U", "underline", "underline"],
-                      ["S", "strikeThrough", "line-through"],
-                    ].map(([label, command, style]) => (
-                      <button
-                        key={command}
-                        type="button"
-                        onMouseDown={(event) => {
-                          event.preventDefault();
-                          clinicalExec(command);
-                        }}
-                        className={`flex h-8 min-w-8 items-center justify-center rounded-lg border border-slate-200 bg-white px-2 text-xs font-semibold text-slate-700 transition hover:bg-slate-50 ${style}`}
-                      >
-                        {label}
-                      </button>
-                    ))}
-
-                    <span className="mx-1 h-6 w-px bg-slate-200" />
-
-                    {[
-                      ["≡", "justifyLeft"],
-                      ["≣", "justifyCenter"],
-                      ["≡", "justifyRight"],
-                      ["• List", "insertUnorderedList"],
-                      ["1. List", "insertOrderedList"],
-                      ["←", "outdent"],
-                      ["→", "indent"],
-                    ].map(([label, command], index) => (
-                      <button
-                        key={`${command}-${index}`}
-                        type="button"
-                        onMouseDown={(event) => {
-                          event.preventDefault();
-                          clinicalExec(command);
-                        }}
-                        className="flex h-8 min-w-8 items-center justify-center rounded-lg border border-slate-200 bg-white px-2 text-xs font-semibold text-slate-700 transition hover:bg-slate-50"
-                      >
-                        {label}
-                      </button>
-                    ))}
-
-                    <button
-                      type="button"
-                      onClick={() => setNotice("Link tool opened.")}
-                      className="flex h-8 items-center justify-center rounded-lg border border-slate-200 bg-white px-2 text-xs font-semibold text-slate-700 hover:bg-slate-50"
-                    >
-                      Link
-                    </button>
-                  </div>
-                </div>
-
-                <div className="relative flex-1 bg-slate-50/40 p-4 sm:p-6">
-                  <div
-                    key={clinicalSelectedNoteId}
-                    ref={clinicalEditorRef}
-                    contentEditable
-                    suppressContentEditableWarning
-                    onInput={(event) => {
-                      setClinicalEditorHtml(event.currentTarget.innerHTML);
-                      setClinicalNoteDirty(true);
-                    }}
-                    dangerouslySetInnerHTML={{ __html: clinicalEditorHtml }}
-                    data-placeholder="Start writing your professional note..."
-                    className="mx-auto min-h-[560px] max-w-[900px] rounded-2xl border border-slate-200 bg-white px-8 py-9 text-[15px] leading-7 text-slate-800 shadow-sm outline-none focus:border-cyan-300 focus:ring-4 focus:ring-cyan-50"
-                  />
+              <div className="mt-4 rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
+                <p className="text-[7px] font-medium text-slate-600">Study draft ID</p>
+                <div className="mt-2 rounded-lg bg-slate-50 px-3 py-3 font-mono text-[7px] text-slate-700">
+                  Save this draft to create a study ID
                 </div>
               </div>
+
+              <StudyBuilderFooter step={6} />
+            </div>
+          </ResearchSection>
+          {callout}
+        </div>
+      );
+    } else {
+      mainContent = (
+        <div id="study-builder-review" className={focusClass}>
+          <ResearchSection>
+            <div className="border-b border-slate-100 px-5 py-4">
+              <p className="text-[11px] font-semibold text-slate-900">Review</p>
+              <p className="mt-1 text-[7px] text-slate-500">Study Builder · Step 8 of 8</p>
+            </div>
+            <div className="p-5">
+              <div className="rounded-xl border border-cyan-200 bg-cyan-50/60 p-4">
+                <p className="text-[9px] font-semibold text-slate-800">Builder review</p>
+                <p className="mt-2 text-[7px] leading-4 text-slate-500">
+                  This draft records the selected study components, configurable demographics, pinned questionnaire versions, pinned cognitive-task versions, consent, and any optional ambulatory protocol. Use a TEST participant link before live recruitment and verify the full participant experience against the approved protocol.
+                </p>
+              </div>
+
+              <button className="mt-4 rounded-full bg-slate-950 px-4 py-2.5 text-[8px] font-semibold text-white">
+                Save study draft
+              </button>
+
+              <StudyBuilderFooter step={7} continueDisabled />
+            </div>
+          </ResearchSection>
+          {callout}
+        </div>
+      );
+    }
+
+    return (
+      <div className="min-h-[980px] space-y-4 pb-6">
+        <ResearchSection className="p-5">
+          <div className="flex gap-2">
+            <ResearchPill active>Researcher workspace</ResearchPill>
+            <ResearchPill>Live workspace data</ResearchPill>
+          </div>
+          <h2 className="mt-3 text-[19px] font-semibold tracking-tight text-slate-950">Study Builder</h2>
+          <p className="mt-1 text-[8px] text-slate-500">
+            Build a complete study workflow from protocol design to participant deployment.
+          </p>
+        </ResearchSection>
+
+        <StudyBuilderStepNav active={step} />
+
+        <div className="grid grid-cols-[1.45fr_.85fr] gap-3">
+          {mainContent}
+          <StudyBuilderSidePanels />
+        </div>
+      </div>
+    );
+  }
+
+  if (slideId === "ambulatory") {
+    return <AmbulatoryTourDemo step={ambulatoryStep} />;
+  }
+
+  if (slideId === "participants") {
+    const rows = [["PL-2A464D39","active","Yes","1","0","25 Aug 2026"],["PL-E5324117","completed","Yes","1","1","25 Aug 2026"],["PL-AC102933","active","Yes","0","0","28 Aug 2026"],["PL-FA183002","invited","—","0","0","1 Sep 2026"]];
+    const current = participantsTourSteps[Math.min(participantsStep, participantsTourSteps.length - 1)];
+    const focus = "relative rounded-[20px] ring-2 ring-cyan-300/90 ring-offset-2 ring-offset-[#edf3f4] shadow-[0_14px_35px_rgba(8,145,178,.14)]";
+    return <div className="min-h-[860px] space-y-3 pb-6">
+      <ResearchSection className="p-5"><div className="flex gap-2"><ResearchPill active>Researcher workspace</ResearchPill><ResearchPill>Live workspace data</ResearchPill></div><h2 className="mt-3 text-[18px] font-semibold">Participants</h2><p className="mt-1 text-[8px] text-slate-500">Monitor enrolment, consent and completion across your study.</p></ResearchSection>
+      <div id="participants-controls" className={participantsStep===0?focus:"relative"}><ResearchSection className="p-4"><div className="grid grid-cols-[1fr_150px_180px] gap-2"><ResearchInput>research analysis- data ⌄</ResearchInput><ResearchInput className="text-slate-400">Search participant...</ResearchInput><div className="flex justify-end gap-2"><ResearchPill active>Active</ResearchPill><ResearchPill>Completed</ResearchPill></div></div></ResearchSection>{participantsStep===0&&<div className="absolute right-5 top-[64px] z-30"><TourInfoCloud title={current.calloutTitle} body={current.calloutBody} side="top"/></div>}</div>
+      <div id="participants-table" className={participantsStep===1?focus:"relative"}><ResearchSection className="overflow-hidden"><div className="grid grid-cols-[1.2fr_.75fr_.6fr_.8fr_.8fr_1fr] bg-slate-50 px-4 py-3 text-[6.5px] font-semibold uppercase tracking-[0.12em] text-slate-400"><span>Participant</span><span>Status</span><span>Consented</span><span>Questionnaires</span><span>Cognitive tasks</span><span>Enrolled</span></div>{rows.map(r=><div key={r[0]} className="grid grid-cols-[1.2fr_.75fr_.6fr_.8fr_.8fr_1fr] border-t border-slate-100 px-4 py-4 text-[7.5px] text-slate-600"><span className="font-semibold text-slate-800">{r[0]}</span><span><ResearchPill active={r[1]==="active"}>{r[1]}</ResearchPill></span><span>{r[2]}</span><span>{r[3]}</span><span>{r[4]}</span><span>{r[5]}</span></div>)}</ResearchSection>{participantsStep===1&&<div className="absolute right-5 top-16 z-30"><TourInfoCloud title={current.calloutTitle} body={current.calloutBody} side="right"/></div>}</div>
+    </div>;
+  }
+
+  if (slideId === "participant-links") {
+    const current = participantLinksTourSteps[Math.min(participantLinksStep, participantLinksTourSteps.length - 1)];
+    const focus = "relative rounded-[20px] ring-2 ring-cyan-300/90 ring-offset-2 ring-offset-[#edf3f4] shadow-[0_14px_35px_rgba(8,145,178,.14)]";
+    return <div className="min-h-[980px] space-y-3 pb-6">
+      <ResearchSection className="p-5"><div className="flex gap-2"><ResearchPill active>Researcher workspace</ResearchPill><ResearchPill>Live workspace data</ResearchPill></div><h2 className="mt-3 text-[18px] font-semibold">Participant Links</h2><p className="mt-1 text-[8px] text-slate-500">Create participant-specific recruitment channels and study links.</p></ResearchSection>
+      <div id="participant-links-create" className={participantLinksStep===0?focus:"relative"}><ResearchSection><div className="border-b border-slate-100 px-4 py-4"><p className="text-[10px] font-semibold">Participant links</p><p className="mt-1 text-[7px] text-slate-500">Create secure token-based participant routes for saved PsyLattice studies.</p></div><div className="p-4"><p className="mb-1 text-[7px] font-medium">Study</p><div className="grid grid-cols-[1fr_150px] gap-3"><ResearchInput>research analysis- data ⌄</ResearchInput><button className="rounded-full bg-slate-950 px-4 text-[7px] font-semibold text-white">+ Create participant link</button></div><div className="mt-2 flex gap-2"><ResearchPill active>Study active</ResearchPill><span className="text-[6.5px] text-slate-400">Target sample: 100</span></div></div></ResearchSection>{participantLinksStep===0&&<div className="absolute right-5 top-20 z-30"><TourInfoCloud title={current.calloutTitle} body={current.calloutBody} side="right"/></div>}</div>
+      <div id="participant-links-manage" className={participantLinksStep===1?focus:"relative"}><ResearchSection><div className="border-b border-slate-100 px-4 py-4"><p className="text-[10px] font-semibold">Recruitment links</p><p className="mt-1 text-[7px] text-slate-500">Each link uses a long random token. Participants never enter the Researcher workspace.</p></div>{[["active","Pause","2b7c7ef07f1db4df8204c8e49df13abab890aab787866961"],["paused","Activate","a397d5c7ca0e2d4046bfb59b19a16713373bb220bbd87621"]].map(([status,action,token])=><div key={token} className="flex items-start justify-between gap-4 border-b border-slate-100 px-4 py-4 last:border-0"><div className="min-w-0"><div className="flex gap-2"><p className="text-[9px] font-semibold">Main study link</p><ResearchPill active>LIVE</ResearchPill><ResearchPill active={status==="active"}>{status}</ResearchPill></div><div className="mt-2 rounded-lg bg-slate-50 px-3 py-2 font-mono text-[6px] text-slate-500">https://psylattice.com/study/{token}</div><div className="mt-2 flex gap-4 text-[6px] text-slate-400"><span>Access: Open link</span><span>Participants: 1 / 100</span><span>Created 25/8/2026</span></div></div><div className="flex gap-2"><ResearchPill>Copy link</ResearchPill><ResearchPill>Open</ResearchPill><ResearchPill>{action}</ResearchPill></div></div>)}</ResearchSection>{participantLinksStep===1&&<div className="absolute right-5 top-28 z-30"><TourInfoCloud title={current.calloutTitle} body={current.calloutBody} side="right"/></div>}</div>
+      <div className="grid grid-cols-2 gap-3"><ResearchSection className="p-4"><p className="text-[9px] font-semibold">Participant flow</p><div className="mt-3 rounded-xl border border-slate-200 px-3 py-3 text-[7px]"><ResearchPill active>1</ResearchPill><span className="ml-2 font-medium">Study landing page</span></div></ResearchSection><ResearchSection className="p-4"><p className="text-[9px] font-semibold">Deployment safeguards</p><p className="mt-3 text-[7px] leading-4 text-slate-500">TEST links create records marked TEST. Live links require explicit deployment confirmation and should remain tied to a stable study protocol.</p></ResearchSection></div>
+    </div>;
+  }
+
+  if (slideId === "data-dashboard") {
+    const current = dataDashboardTourSteps[Math.min(dataDashboardStep, dataDashboardTourSteps.length - 1)];
+    const focus = "relative rounded-[20px] ring-2 ring-cyan-300/90 ring-offset-2 ring-offset-[#edf3f4] shadow-[0_14px_35px_rgba(8,145,178,.14)]";
+    return <div className="min-h-[900px] space-y-3 pb-6">
+      <ResearchSection className="p-5"><div className="flex gap-2"><ResearchPill active>Researcher workspace</ResearchPill><ResearchPill>Live workspace data</ResearchPill></div><h2 className="mt-3 text-[18px] font-semibold">Data Dashboard</h2><p className="mt-1 text-[8px] text-slate-500">Monitor incoming responses, completeness and data-quality signals.</p></ResearchSection>
+      <div className="flex items-end justify-between"><div className="w-[230px]"><p className="mb-1 text-[7px] font-medium">Study</p><ResearchInput>Untitled research study ⌄</ResearchInput></div><ResearchPill>draft</ResearchPill></div>
+      <div id="data-dashboard-metrics" className={dataDashboardStep===0?focus:"relative"}><div className="grid grid-cols-5 gap-3"><ResearchMetric label="Live participants" value="0" helper="0 test records excluded"/><ResearchMetric label="Item responses" value="0" helper="Stored live questionnaire responses"/><ResearchMetric label="Questionnaires completed" value="0" helper="Completed live measure sessions"/><ResearchMetric label="Cognitive task runs" value="0" helper="Completed live study administrations"/><ResearchMetric label="Direct identifier fields" value="0" helper="Excluded from exports by default"/></div>{dataDashboardStep===0&&<div className="absolute right-4 top-[92px] z-30"><TourInfoCloud title={current.calloutTitle} body={current.calloutBody} side="top"/></div>}</div>
+      <div id="data-dashboard-quality" className={dataDashboardStep===1?focus:"relative"}><div className="grid grid-cols-2 gap-3"><ResearchSection><div className="border-b border-slate-100 px-4 py-4"><p className="text-[9px] font-semibold">Data completeness</p><p className="mt-1 text-[6.5px] text-slate-400">Calculated from required study components and live participants.</p></div><div className="p-4"><div className="rounded-xl bg-slate-50 p-4"><p className="text-[8px] font-semibold">No live participant data yet</p><p className="mt-2 text-[7px] text-slate-400">TEST participants are deliberately excluded from the main completeness metrics.</p></div></div></ResearchSection><ResearchSection><div className="border-b border-slate-100 px-4 py-4"><p className="text-[9px] font-semibold">Data-quality checks</p><p className="mt-1 text-[6.5px] text-slate-400">Rule-based checks from the data currently stored in this study.</p></div><div className="space-y-3 p-4">{["Missing required baseline measures","Missing required demographic fields","Missing recorded consent","TEST participants","Direct identifier fields configured"].map(x=><div key={x} className="flex items-center justify-between"><span className="text-[7px] font-medium text-slate-600">{x}</span><ResearchPill active>0</ResearchPill></div>)}</div></ResearchSection></div>{dataDashboardStep===1&&<div className="absolute right-5 top-20 z-30"><TourInfoCloud title={current.calloutTitle} body={current.calloutBody} side="right"/></div>}</div>
+    </div>;
+  }
+
+  if (slideId === "data-explorer") {
+    const current = dataExplorerTourSteps[Math.min(dataExplorerStep, dataExplorerTourSteps.length - 1)];
+    const focus = "relative rounded-[20px] ring-2 ring-cyan-300/90 ring-offset-2 ring-offset-[#edf3f4] shadow-[0_14px_35px_rgba(8,145,178,.14)]";
+    return <div className="min-h-[1160px] space-y-3 pb-6">
+      <div id="data-explorer-controls" className={dataExplorerStep===0?focus:"relative"}><ResearchSection><div className="border-b border-slate-100 px-4 py-4"><p className="text-[10px] font-semibold">Data Explorer</p><p className="mt-1 text-[7px] text-slate-500">Inspect real participant, demographic, questionnaire, score, consent and secure participant-upload records for one study.</p></div><div className="p-4"><div className="grid grid-cols-2 gap-3"><div><p className="mb-1 text-[6.5px] text-slate-500">Study</p><ResearchInput>research analysis- data ⌄</ResearchInput></div><div><p className="mb-1 text-[6.5px] text-slate-500">Dataset</p><ResearchInput>Participant summary ⌄</ResearchInput></div></div><div className="mt-3 grid grid-cols-[1fr_auto_auto] gap-2"><ResearchInput className="text-slate-400">Search participant ID, variable, item or response...</ResearchInput><ResearchPill>□ Include TEST data</ResearchPill><ResearchPill>□ Show direct identifiers</ResearchPill></div><div className="mt-3 flex gap-2"><ResearchPill active>Participant summary</ResearchPill><ResearchPill>2 rows</ResearchPill><ResearchPill>Variables · 16</ResearchPill></div></div></ResearchSection>{dataExplorerStep===0&&<div className="absolute right-5 top-24 z-30"><TourInfoCloud title={current.calloutTitle} body={current.calloutBody} side="right"/></div>}</div>
+      <div id="data-explorer-table" className={dataExplorerStep===1?focus:"relative"}><ResearchSection className="overflow-hidden"><div className="border-b border-slate-100 px-4 py-4"><p className="text-[9px] font-semibold">Dataset</p><p className="mt-1 text-[6.5px] text-slate-400">The table below is generated from the selected study's stored data.</p></div><div className="overflow-hidden p-4"><div className="mb-3 flex justify-between"><span className="text-[6px] text-slate-400">Copy uses the rows currently shown in this preview after search and filters.</span><ResearchPill>Copy table</ResearchPill></div><table className="w-full table-fixed text-left text-[6px]"><thead className="bg-slate-50 text-slate-400"><tr>{["participant","is_test","status","enrolled_at","completed_at","consented","session_count","completed_questionnaires","completed_cognitive_tasks"].map(h=><th key={h} className="px-2 py-2 font-medium">{h}</th>)}</tr></thead><tbody className="text-slate-600"><tr><td className="px-2 py-3 font-semibold">PL-2A464D39</td><td>false</td><td>active</td><td>2026-08-25T11:40...</td><td>—</td><td>true</td><td>1</td><td>1</td><td>0</td></tr><tr className="border-t border-slate-100"><td className="px-2 py-3 font-semibold">PL-E5324117</td><td>false</td><td>completed</td><td>2026-08-25T11:26...</td><td>2026-08-25T11:27...</td><td>true</td><td>1</td><td>1</td><td>1</td></tr></tbody></table></div></ResearchSection>{dataExplorerStep===1&&<div className="absolute right-5 top-20 z-30"><TourInfoCloud title={current.calloutTitle} body={current.calloutBody} side="right"/></div>}</div>
+      <div id="data-explorer-cognitive" className={dataExplorerStep===2?focus:"relative"}><ResearchSection><div className="border-b border-slate-100 px-4 py-4"><p className="text-[9px] font-semibold">Cognitive task results</p><p className="mt-1 text-[6.5px] text-slate-400">Study-level descriptive performance calculated from stored participant trial data.</p></div><div className="p-4"><div className="flex items-start justify-between"><div><p className="text-[6.5px] font-semibold uppercase tracking-[0.13em] text-cyan-700">Administration 3</p><p className="mt-1 text-[11px] font-semibold">Stroop Task</p><p className="mt-1 text-[6px] text-slate-400">Version 1 · inhibitory control · Required</p></div><ResearchPill active>1 completed</ResearchPill></div><div className="mt-3 grid grid-cols-5 gap-2"><ResearchMetric label="Completion" value="1/2" helper="Live participants"/><ResearchMetric label="Accuracy" value="93.8%" helper="16 scorable trials"/><ResearchMetric label="Mean RT" value="657.1 ms" helper="16 RT observations"/><ResearchMetric label="Median RT" value="592.5 ms" helper="Across stored trials"/><ResearchMetric label="Omissions" value="0" helper="16 recorded trials"/></div></div></ResearchSection>{dataExplorerStep===2&&<div className="absolute right-5 top-20 z-30"><TourInfoCloud title={current.calloutTitle} body={current.calloutBody} side="right"/></div>}</div>
+    </div>;
+  }
+
+  if (slideId === "export") {
+    const current = exportTourSteps[Math.min(exportStep, exportTourSteps.length - 1)];
+    const sheets=[["README","DOC","19",false],["Manifest","DOC","39",false],["Participants","CLEAN","0",true],["Analysis_Wide","CLEAN","0",true],["Analysis_Compatible","CLEAN","0",true],["Data_Quality","CLEAN","0",true],["Quality_Flags","CLEAN","0",true],["Demographics","CLEAN","0",true]] as const;
+    const focus = "relative rounded-[20px] ring-2 ring-cyan-300/90 ring-offset-2 ring-offset-[#edf3f4] shadow-[0_14px_35px_rgba(8,145,178,.14)]";
+    return <div className="min-h-[1180px] pb-6"><ResearchSection className="overflow-visible"><div className="border-b border-slate-100 px-5 py-4"><p className="text-[10px] font-semibold">Visual Export Center</p><p className="mt-1 max-w-[780px] text-[7px] leading-3.5 text-slate-500">Choose the purpose of the export, preview the exact workbook before download, then export with a clear record of sample, privacy settings, sheets and row counts.</p></div><div className="p-4">
+      <div id="export-modes" className={exportStep===0?focus:"relative"}><div className="grid grid-cols-4 gap-3">{[["Everything together","Complete research archive","Clean analysis sheets + complete raw observations + documentation."],["Clean and practical","Thesis / analysis workbook","Analysis-ready participant, questionnaire, cognitive and ambulatory summaries."],["Statistics-ready","SPSS · jamovi · JASP","A compact one-row-per-participant analysis file with safe variable names."],["Lossless observations","Raw reproducibility archive","Raw questionnaire responses, cognitive trials/timing and ambulatory records."]].map(([label,title,desc],i)=><div key={title} className={`rounded-[14px] border p-4 ${i===0?"border-slate-950 bg-slate-950 text-white":"border-slate-200"}`}><p className={`text-[6.5px] font-semibold uppercase tracking-[0.13em] ${i===0?"text-cyan-300":"text-slate-400"}`}>{label}{i===0&&<span className="ml-2 rounded-full bg-white px-2 py-1 text-[5px] text-slate-900">RECOMMENDED</span>}</p><p className="mt-2 text-[9px] font-semibold">{title}</p><p className={`mt-2 text-[6.5px] leading-3.5 ${i===0?"text-slate-300":"text-slate-500"}`}>{desc}</p></div>)}</div>{exportStep===0&&<div className="absolute right-5 top-[120px] z-30"><TourInfoCloud title={current.calloutTitle} body={current.calloutBody} side="top"/></div>}</div>
+      <div className="mt-3 grid grid-cols-[.78fr_1.22fr] gap-3"><div className="space-y-3"><div id="export-summary" className={exportStep===1?focus:"relative"}><ResearchSection className="p-4"><div className="flex justify-between"><div><p className="text-[8px] font-semibold">What will be exported?</p><p className="mt-1 text-[6px] text-slate-400">This summary reflects the current controls and selected saved sample.</p></div><ResearchPill active>Live preview</ResearchPill></div><div className="mt-4 space-y-3">{[["Study","Untitled research study"],["Population","All eligible live participants"],["Participants","0"],["Identity","PsyLattice pseudonymous IDs"],["Direct identifiers","Excluded"],["TEST data","Excluded"]].map(([l,v])=><div key={l} className="flex justify-between border-b border-slate-100 pb-2 last:border-0"><span className="text-[6.5px] text-slate-400">{l}</span><span className="text-[6.5px] font-semibold text-slate-700">{v}</span></div>)}</div></ResearchSection>{exportStep===1&&<div className="absolute left-[calc(100%+18px)] top-10 z-30"><TourInfoCloud title={current.calloutTitle} body={current.calloutBody} side="right"/></div>}</div><div className="grid grid-cols-2 gap-2"><ResearchMetric label="Worksheets" value="41"/><ResearchMetric label="Data rows" value="0"/><ResearchMetric label="Clean sheets" value="20"/><ResearchMetric label="Raw sheets" value="16"/></div><button className="flex w-full items-center justify-between rounded-xl bg-slate-800 px-4 py-3 text-left text-white opacity-70"><span><span className="block text-[7px] font-semibold">Download Complete research archive</span><span className="mt-1 block text-[6px] text-slate-300">0 participants · 41 sheets · 0 data rows</span></span><span>↓</span></button></div>
+      <div id="export-workbook" className={exportStep===2?focus:"relative"}><ResearchSection className="p-4"><p className="text-[8px] font-semibold">Workbook preview</p><p className="mt-1 text-[6px] text-slate-400">These are the actual sheets that will be sent to the Excel generator.</p><div className="mt-3 flex gap-2"><ResearchPill active>20 clean</ResearchPill><ResearchPill>16 raw</ResearchPill><ResearchPill>5 docs</ResearchPill></div><div className="mt-3 space-y-2">{sheets.map(([sheet,type,rows,cyan])=><div key={sheet} className={`flex items-start justify-between rounded-xl border px-3 py-3 ${cyan?"border-cyan-300 bg-cyan-50/30":"border-violet-200 bg-violet-50/20"}`}><div><p className="text-[7.5px] font-semibold">{sheet}<span className="ml-2 text-[5.5px] text-slate-400">{type}</span></p><p className="mt-1 text-[5.8px] text-slate-400">{sheet==="README"?"Workbook interpretation, privacy and data-structure notes.":sheet==="Analysis_Wide"?"Primary analysis-ready sheet: one row per participant.":"Workbook sheet preview."}</p></div><div className="text-right"><p className="text-[8px] font-semibold">{rows}</p><p className="text-[5px] text-slate-400">rows</p></div></div>)}</div></ResearchSection>{exportStep===2&&<div className="absolute right-5 top-28 z-30"><TourInfoCloud title={current.calloutTitle} body={current.calloutBody} side="right"/></div>}</div></div>
+      </div></ResearchSection></div>;
+  }
+
+  if (slideId === "plans-billing") {
+    const plans=[{name:"FREE",price:"₹0",items:["✓ One study","✓ Basic participant capacity","✓ Small AI allowance","✓ PsyLattice Auto","✓ No custom media"]},{name:"STUDY PASS",price:"₹499 per study",items:["✓ One serious study","✓ 500 participants","✓ 200 AI credits","✓ Some model choice","✓ No custom media"]},{name:"PRO MONTHLY",price:"₹749 / month",popular:true,items:["✓ Multiple studies","✓ 700 participants","✓ 300 AI credits","✓ Full AI model switcher","✓ Custom media","✓ 2 GB media"]},{name:"PRO ANNUAL",price:"₹7,499 / year",items:["✓ Everything in Pro","✓ 700 participants","✓ 300 AI credits","✓ Full AI model switcher","✓ 5 GB media","✓ Approximately 17% cheaper than monthly"]}];
+    return <div className="space-y-3"><ResearchSection className="p-5"><div className="flex gap-2"><ResearchPill active>Researcher workspace</ResearchPill><ResearchPill>Live workspace data</ResearchPill></div><h2 className="mt-3 text-[18px] font-semibold">Plans & Billing</h2><p className="mt-1 text-[8px] text-slate-500">Review plans, AI allowance and presentation-only capacity options.</p></ResearchSection><ResearchSection className="p-4"><p className="text-[7px] font-semibold uppercase tracking-[0.14em] text-cyan-800">Plans & usage</p><div className="mt-3 flex gap-2"><div className="flex items-center gap-2 rounded-full border border-slate-200 px-3 py-2"><span className="text-[7px] font-semibold">AI budget</span><div className="h-1.5 w-14 overflow-hidden rounded-full bg-slate-100"><div className="h-full w-[62%] rounded-full bg-cyan-500"/></div><span className="text-[6.5px] text-slate-500">38% left</span></div><ResearchPill active>✣ PsyLattice Auto ⌄</ResearchPill></div></ResearchSection><div><h3 className="text-[13px] font-semibold">Plans & pricing</h3><p className="mt-1 text-[7px] text-slate-400">Choose the research capacity that fits your next study.</p></div><div className="grid grid-cols-4 gap-3">{plans.map(p=><ResearchSection key={p.name} className={`relative p-4 ${p.popular?"border-cyan-300 bg-cyan-50/20":""}`}>{p.popular&&<span className="absolute right-3 top-3 rounded-full bg-cyan-100 px-2 py-1 text-[5px] font-semibold text-cyan-700">POPULAR</span>}<p className="text-[7px] font-semibold">{p.name}</p><p className="mt-3 text-[15px] font-semibold">{p.price}</p><div className="mt-4 min-h-[112px] space-y-2">{p.items.map(x=><p key={x} className="text-[6.5px] text-slate-600">{x}</p>)}</div><button className="mt-4 w-full rounded-lg border border-slate-200 bg-white py-2 text-[7px] font-semibold">View options</button></ResearchSection>)}</div><div className="rounded-xl border border-cyan-200 bg-cyan-50/40 px-4 py-3"><p className="text-[7px] font-semibold">Custom media uploads</p><p className="mt-1 text-[6.5px] text-slate-500">Available only on Pro Monthly and Pro Annual for Questionnaire Builder, Ambulatory Assessments, Cognitive Lab and Thesis Builder.</p></div><ResearchSection className="p-4"><div className="flex gap-2"><ResearchPill dark>AI Add-ons</ResearchPill><ResearchPill>Participant Expansion</ResearchPill><ResearchPill>Media Storage</ResearchPill><ResearchPill>Notification Emails</ResearchPill><ResearchPill>Plans & Pricing</ResearchPill></div><div className="mt-3 grid grid-cols-3 gap-2">{["Starter Boost","Research Boost","Power Boost"].map(x=><div key={x} className="rounded-xl bg-slate-50 p-3"><p className="text-[7px] font-semibold">{x}</p><p className="mt-1 text-[6px] text-slate-400">Presentation option · Coming soon</p></div>)}</div></ResearchSection></div>;
+  }
+
+  if (slideId === "studies") {
+    return (
+      <div>
+        <ScreenTitle eyebrow="Research workspace" title="Studies" action="New study" />
+        <div className="grid grid-cols-3 gap-3">
+          <MiniStat label="Active" value="4" />
+          <MiniStat label="Participants" value="128" />
+          <MiniStat label="Due today" value="7" />
+        </div>
+        <div className="mt-3 grid grid-cols-2 gap-3">
+          {["Sleep & Attention", "Social Cognition Pilot", "EMA Mood Study", "Hazard Awareness"].map((name, index) => (
+            <DemoCard key={name} className="p-4" highlight={index === 0}>
+              <div className="flex items-start justify-between gap-3">
+                <div>
+                  <p className="text-xs font-semibold text-slate-900">{name}</p>
+                  <p className="mt-1 text-[9px] text-slate-400">Updated {index + 1}h ago</p>
+                </div>
+                <span className="rounded-full bg-cyan-50 px-2 py-1 text-[8px] font-semibold text-cyan-800">Active</span>
+              </div>
+              <div className="mt-3 h-1.5 overflow-hidden rounded-full bg-slate-100">
+                <div className="h-full rounded-full bg-cyan-600" style={{ width: `${74 - index * 9}%` }} />
+              </div>
+            </DemoCard>
+          ))}
+        </div>
+      </div>
+    );
+  }
+
+  if (slideId === "study-builder") {
+    const steps = ["Study info", "Consent", "Measures", "Follow-ups", "Launch"];
+    return (
+      <div>
+        <ScreenTitle eyebrow="Study Builder" title="Sleep & Attention" action="Save draft" />
+        <div className="grid grid-cols-[.72fr_1.28fr] gap-3">
+          <DemoCard className="p-3">
+            <div className="space-y-1.5">
+              {steps.map((step, index) => (
+                <button
+                  key={step}
+                  onClick={() => setSelectedStep(step)}
+                  className={`flex w-full items-center justify-between rounded-xl px-3 py-2.5 text-left text-[10px] font-semibold ${selectedStep === step ? "bg-cyan-50 text-cyan-800" : "text-slate-600 hover:bg-slate-50"}`}
+                >
+                  <span>{index + 1}. {step}</span>
+                  <ChevronRight className="h-3 w-3" />
+                </button>
+              ))}
+            </div>
+          </DemoCard>
+          <DemoCard className="p-4" highlight>
+            <p className="text-[10px] font-semibold uppercase tracking-[0.12em] text-cyan-800">{selectedStep}</p>
+            <h4 className="mt-1 text-sm font-semibold text-slate-900">Configure {selectedStep.toLowerCase()}</h4>
+            <div className="mt-4 space-y-2">
+              {selectedStep === "Measures" ? (
+                ["Perceived Stress Scale", "Custom Image Choice", "Corsi Block · Cognitive Lab"].map((name) => (
+                  <div key={name} className="flex items-center justify-between rounded-xl border border-slate-200 px-3 py-2.5">
+                    <span className="text-[10px] font-medium text-slate-700">{name}</span>
+                    <span className="rounded-full bg-slate-100 px-2 py-1 text-[8px] text-slate-500">Required</span>
+                  </div>
+                ))
+              ) : (
+                <>
+                  <div className="h-9 rounded-xl border border-slate-200 bg-slate-50" />
+                  <div className="h-20 rounded-xl border border-slate-200 bg-slate-50" />
+                  <button className="rounded-lg bg-slate-950 px-3 py-2 text-[9px] font-semibold text-white">Continue</button>
+                </>
+              )}
+            </div>
+          </DemoCard>
+        </div>
+      </div>
+    );
+  }
+
+  if (slideId === "questionnaires" || slideId === "custom-questionnaires") {
+    const focusClass = (step: number) =>
+      questionnaireStep === step
+        ? "relative z-10 rounded-[20px] ring-2 ring-cyan-300/90 ring-offset-2 ring-offset-[#edf3f4] shadow-[0_14px_35px_rgba(8,145,178,.14)] transition-all duration-300"
+        : "relative transition-all duration-300";
+
+    const catalogueMeasures = [
+      {
+        title: "50-item IPIP representation of Goldberg's Big-Five factor markers (IPIP Big-Five 50)",
+        category: "Personality",
+        rights: ["Public domain"],
+        description: "A 50-item public-domain IPIP inventory measuring Extraversion, Agreeableness, Conscientiousness, Emotional Stability, and Intellect/Imagination.",
+        tags: ["Extraversion", "Agreeableness", "Conscientiousness", "Emotional Stability"],
+        items: "50",
+        time: "~8 min",
+        languages: "1",
+      },
+      {
+        title: "Depression Anxiety Stress Scales – 21 (DASS-21)",
+        category: "Depression, Anxiety & Stress",
+        rights: ["Public domain", "Research only"],
+        description: "The 21-item short version of the DASS, with seven items each for Depression, Anxiety and Stress.",
+        tags: ["Depression", "Anxiety", "Stress"],
+        items: "21",
+        time: "~5 min",
+        languages: "1",
+      },
+      {
+        title: "General Self-Efficacy Scale (GSE)",
+        category: "Self-efficacy",
+        rights: ["Public domain"],
+        description: "A 10-item self-report measure of general perceived self-efficacy: confidence in one's ability to cope with difficult demands and challenging situations.",
+        tags: ["General self-efficacy", "Coping confidence"],
+        items: "10",
+        time: "~4 min",
+        languages: "1",
+      },
+      {
+        title: "Patient Health Questionnaire-9 (PHQ-9)",
+        category: "Depressive symptoms",
+        rights: ["Use permitted / terms apply"],
+        description: "A 9-item self-report questionnaire assessing the frequency of depressive symptoms over the previous two weeks.",
+        tags: ["Depressive symptoms"],
+        items: "9",
+        time: "~3 min",
+        languages: "1",
+      },
+      {
+        title: "Rosenberg Self-Esteem Scale (RSES)",
+        category: "Self-concept",
+        rights: ["Public domain"],
+        description: "A 10-item self-report measure of global self-esteem, reflecting an overall positive or negative evaluation of the self.",
+        tags: ["Self-esteem", "Self-concept"],
+        items: "10",
+        time: "~3 min",
+        languages: "1",
+      },
+    ];
+
+    if (questionnaireStep <= 2) {
+      return (
+        <div className="min-h-[1120px] space-y-4 pb-8">
+          <div id="questionnaire-library-overview" className={focusClass(0)}>
+            <ResearchSection className="p-5">
+              <div className="flex gap-2"><ResearchPill active>Researcher workspace</ResearchPill><ResearchPill>Live workspace data</ResearchPill></div>
+              <h2 className="mt-3 text-[18px] font-semibold tracking-tight text-slate-950">Questionnaire Library</h2>
+              <p className="mt-1 max-w-[760px] text-[8px] leading-4 text-slate-500">Search the research catalogue, review administration and scoring, open manuals and official resources, and verify questionnaire usage rights.</p>
+            </ResearchSection>
+
+            <div className="mt-4 grid grid-cols-4 gap-3">
+              <ResearchMetric label="Research measures" value="5" helper="Available in the researcher catalogue" />
+              <ResearchMetric label="Public domain" value="4" helper="Rights recorded as public domain" />
+              <ResearchMetric label="Research-only" value="1" helper="Not exposed in the Self workspace" />
+              <ResearchMetric label="Your questionnaires" value="0" helper="Owned by your PsyLattice account" />
+            </div>
+
+            <ResearchSection className="mt-4 overflow-hidden">
+              <div className="border-b border-slate-100 px-4 py-4">
+                <p className="text-[10px] font-semibold text-slate-900">Questionnaire library</p>
+                <p className="mt-1 text-[7px] leading-3.5 text-slate-500">Discover measures, review administration and scoring, inspect item content, open manuals and official resources, and verify usage rights before deployment.</p>
+              </div>
+              <div className="p-4">
+                <div className="grid grid-cols-[1fr_135px_145px] gap-2">
+                  <ResearchInput className="text-slate-400">Search name, acronym, construct, category or description...</ResearchInput>
+                  <ResearchInput>All categories &nbsp;⌄</ResearchInput>
+                  <ResearchInput>All licence statuses &nbsp;⌄</ResearchInput>
+                </div>
+                <p className="mt-3 text-[6.5px] font-medium text-slate-400">5 of 5 measures shown</p>
+              </div>
+            </ResearchSection>
+
+            {questionnaireStep === 0 && (
+              <div className="absolute right-4 top-[calc(100%+12px)] z-30">
+                <TourInfoCloud title={questionnaireTourSteps[0].calloutTitle} body={questionnaireTourSteps[0].calloutBody} side="bottom" />
+              </div>
             )}
+          </div>
+
+          <div id="questionnaire-library-measures" className={focusClass(1)}>
+            <div className="grid grid-cols-2 gap-3">
+              {catalogueMeasures.map((measure, index) => (
+                <ResearchSection key={measure.title} className="p-4">
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="flex flex-wrap gap-1.5">
+                      {measure.rights.map((right) => <ResearchPill key={right} active>{right}</ResearchPill>)}
+                    </div>
+                    <span className="text-[6.5px] font-medium text-slate-400">{measure.category}</span>
+                  </div>
+                  <p className="mt-4 text-[9px] font-semibold leading-3.5 text-slate-950">{measure.title}</p>
+                  <p className="mt-2 text-[7px] leading-3.5 text-slate-500">{measure.description}</p>
+                  <div className="mt-2 flex flex-wrap gap-1.5">{measure.tags.map((tag) => <span key={tag} className="rounded-full bg-slate-50 px-2 py-1 text-[6px] font-medium text-slate-500">{tag}</span>)}</div>
+                  <div className="mt-4 grid grid-cols-3 border-y border-slate-100 py-3">
+                    {[['Items',measure.items],['Time',measure.time],['Languages',measure.languages]].map(([label,value]) => <div key={label}><p className="text-[6px] font-semibold uppercase tracking-[0.12em] text-slate-400">{label}</p><p className="mt-1 text-[8px] font-semibold text-slate-800">{value}</p></div>)}
+                  </div>
+                  <div className="mt-3 flex gap-2">
+                    <button className="rounded-full bg-slate-950 px-3 py-2 text-[7px] font-semibold text-white">View research details</button>
+                    <button className="rounded-full border border-slate-200 bg-white px-3 py-2 text-[7px] font-semibold text-slate-600 shadow-sm">Licence source ↗</button>
+                  </div>
+                </ResearchSection>
+              ))}
+            </div>
+            {questionnaireStep === 1 && (
+              <div className="absolute right-4 top-20 z-30">
+                <TourInfoCloud title={questionnaireTourSteps[1].calloutTitle} body={questionnaireTourSteps[1].calloutBody} side="right" />
+              </div>
+            )}
+          </div>
+
+          <div id="questionnaire-library-create" className={focusClass(2)}>
+            <ResearchSection>
+              <div className="flex items-center justify-between gap-4 px-4 py-5">
+                <div>
+                  <p className="text-[9px] font-semibold text-slate-900">Create custom questionnaire</p>
+                  <p className="mt-3 max-w-[700px] text-[7px] leading-4 text-slate-500">Build an original measure for your research. Build blocks with their questions inside them, configure scoring and branching, then choose whether the questionnaire stays private or is published to the PsyLattice research catalogue.</p>
+                </div>
+                <button className="shrink-0 rounded-full bg-slate-950 px-4 py-2.5 text-[7px] font-semibold text-white">+ Create questionnaire</button>
+              </div>
+            </ResearchSection>
+            <div className="mt-3 rounded-xl border border-violet-200 bg-violet-50/50 px-4 py-3">
+              <p className="text-[7px] font-semibold text-violet-800">Questionnaire licensing safeguard</p>
+              <p className="mt-1 text-[6.5px] leading-3.5 text-violet-700">Finding a questionnaire online does not automatically grant rights to reproduce, digitally administer, modify, score or redistribute it. PsyLattice records the source and current usage status, but researchers should verify the applicable terms for their study, jurisdiction and mode of use before launch.</p>
+            </div>
+            {questionnaireStep === 2 && (
+              <div className="absolute right-4 top-6 z-30">
+                <TourInfoCloud title={questionnaireTourSteps[2].calloutTitle} body={questionnaireTourSteps[2].calloutBody} side="right" />
+              </div>
+            )}
+          </div>
+        </div>
+      );
+    }
+
+    return (
+      <div className="min-h-[1650px] space-y-4 pb-8">
+        <ResearchSection className="p-5">
+          <div className="flex gap-2"><ResearchPill active>Researcher workspace</ResearchPill><ResearchPill>Live workspace data</ResearchPill></div>
+          <h2 className="mt-3 text-[18px] font-semibold tracking-tight text-slate-950">Questionnaire Library</h2>
+          <p className="mt-1 max-w-[760px] text-[8px] leading-4 text-slate-500">Search the research catalogue, review administration and scoring, open manuals and official resources, and verify questionnaire usage rights.</p>
+        </ResearchSection>
+
+        <p className="px-1 text-[7px] font-semibold text-slate-500">← Back to questionnaire library</p>
+
+        <div id="questionnaire-builder-overview" className={focusClass(3)}>
+          <ResearchSection className="p-5">
+            <div className="flex flex-wrap gap-2"><ResearchPill active>Universal research builder</ResearchPill><ResearchPill>Research workspace only</ResearchPill><ResearchPill>50 configured item types</ResearchPill></div>
+            <h3 className="mt-4 text-[16px] font-semibold tracking-tight text-slate-950">Create research instrument</h3>
+            <p className="mt-2 text-[7px] leading-4 text-slate-500">Mix ratings, choices, Thurstone items, matrices, ranking, text, numbers, media, uploads and information blocks in the same instrument. Every item stores its own response, validation, scoring, display-logic and randomisation configuration.</p>
+          </ResearchSection>
+
+          <div className="mt-3 grid grid-cols-[1.25fr_.85fr] gap-3">
+            <ResearchSection>
+              <div className="border-b border-slate-100 px-4 py-4"><p className="text-[9px] font-semibold text-slate-900">Instrument overview</p><p className="mt-1 text-[6.5px] text-slate-400">Metadata shown to researchers in the library.</p></div>
+              <div className="grid grid-cols-2 gap-3 p-4">
+                <div><p className="mb-1 text-[6.5px] text-slate-500">Name</p><ResearchInput>e.g. Academic Coping Questionnaire</ResearchInput></div>
+                <div><p className="mb-1 text-[6.5px] text-slate-500">Acronym</p><ResearchInput>ACQ</ResearchInput></div>
+                <div><p className="mb-1 text-[6.5px] text-slate-500">Category</p><ResearchInput>Custom</ResearchInput></div>
+                <div><p className="mb-1 text-[6.5px] text-slate-500">Estimated time (minutes)</p><ResearchInput>5</ResearchInput></div>
+                <div className="col-span-2"><p className="mb-1 text-[6.5px] text-slate-500">Description</p><div className="h-16 rounded-xl border border-slate-200 bg-white shadow-sm" /></div>
+                <div><p className="mb-1 text-[6.5px] text-slate-500">Constructs — comma separated</p><ResearchInput>Stress, coping</ResearchInput></div>
+                <div><p className="mb-1 text-[6.5px] text-slate-500">Languages — comma separated</p><ResearchInput>English</ResearchInput></div>
+                <div><p className="mb-1 text-[6.5px] text-slate-500">Target population</p><ResearchInput /></div>
+                <div><p className="mb-1 text-[6.5px] text-slate-500">Recall period</p><ResearchInput>Past 7 days / Right now / General</ResearchInput></div>
+              </div>
+            </ResearchSection>
+
+            <div className="space-y-3">
+              <ResearchSection>
+                <div className="border-b border-slate-100 px-4 py-3"><p className="text-[9px] font-semibold text-slate-900">Builder summary</p></div>
+                <div className="grid grid-cols-2 gap-2 p-4">
+                  <ResearchMetric label="Items/content" value="1" helper="1 block(s)" />
+                  <ResearchMetric label="Response types" value="1" helper="Mixed formats supported" />
+                  <div className="col-span-2 rounded-xl bg-slate-50 p-3"><p className="text-[6px] font-semibold uppercase tracking-[0.12em] text-slate-400">Subscales</p><p className="mt-1 text-[7px] text-slate-600">No subscales assigned</p></div>
+                  <div className="col-span-2 rounded-xl border border-cyan-200 bg-cyan-50/40 p-3"><p className="text-[7px] font-semibold text-cyan-900">Extensible by design</p><p className="mt-1 text-[6.5px] leading-3.5 text-slate-500">The custom item type and JSONB configuration mean new research formats can be added later without redesigning the core database.</p></div>
+                </div>
+              </ResearchSection>
+              <ResearchSection className="p-4"><p className="text-[8px] font-semibold text-slate-800">Included capabilities</p><div className="mt-3 space-y-1.5 text-[6.5px] text-slate-500">{["Item-specific response formats","Blocks/pages and page breaks","Branching / display logic","Piping via {{item_key}}","Option and block randomisation","Subscales and reverse scoring","Weighted / Thurstone scoring metadata","Missing-data rules","Matrices, ranking, Q-sort and allocation","Text, numeric, date/time and uploads","Media/stimulus metadata","Custom/future item configuration"].map(x=><p key={x}>✓ &nbsp;{x}</p>)}</div></ResearchSection>
+            </div>
+          </div>
+          {questionnaireStep === 3 && <div className="absolute right-4 top-24 z-30"><TourInfoCloud title={questionnaireTourSteps[3].calloutTitle} body={questionnaireTourSteps[3].calloutBody} side="right" /></div>}
+        </div>
+
+        <div id="questionnaire-builder-administration" className={focusClass(4)}>
+          <div className="grid grid-cols-[1.25fr_.85fr] gap-3">
+            <ResearchSection>
+              <div className="border-b border-slate-100 px-4 py-4"><p className="text-[9px] font-semibold text-slate-900">Administration</p><p className="mt-1 text-[6.5px] text-slate-400">Participant and researcher-facing instructions.</p></div>
+              <div className="space-y-3 p-4">
+                <div><p className="mb-1 text-[6.5px] text-slate-500">Participant instructions</p><div className="h-20 rounded-xl border border-slate-200 bg-white shadow-sm" /></div>
+                <div><p className="mb-1 text-[6.5px] text-slate-500">Researcher instructions</p><div className="h-20 rounded-xl border border-slate-200 bg-white shadow-sm" /></div>
+              </div>
+            </ResearchSection>
+            <div className="space-y-3">
+              <ResearchSection>
+                <div className="border-b border-slate-100 px-4 py-3"><p className="text-[9px] font-semibold text-slate-900">Publication & ownership</p><p className="mt-1 text-[6px] text-slate-400">Keep the questionnaire private, publish it freely, or let other researchers request permission to use it.</p></div>
+                <div className="space-y-2 p-4">
+                  {[['Private · my library only','Only you can see and use the questionnaire. You can publish it later.',true],['Publish · free to use','All PsyLattice researchers can discover and use the questionnaire in their studies.',false],['Publish · permission required','Researchers can discover the questionnaire and publisher, but must request access before using its content.',false]].map(([title,body,selected])=><div key={String(title)} className={`rounded-xl border p-3 ${selected?'border-cyan-300 bg-cyan-50/40':'border-slate-200 bg-white'}`}><p className="text-[7px] font-semibold text-slate-700">{selected?'◉':'○'} &nbsp;{String(title)}</p><p className="mt-1 text-[6px] leading-3 text-slate-500">{String(body)}</p></div>)}
+                </div>
+              </ResearchSection>
+            </div>
+          </div>
+          {questionnaireStep === 4 && <div className="absolute right-4 top-16 z-30"><TourInfoCloud title={questionnaireTourSteps[4].calloutTitle} body={questionnaireTourSteps[4].calloutBody} side="right" /></div>}
+        </div>
+
+        <div id="questionnaire-builder-structure" className={focusClass(5)}>
+          <div className="grid grid-cols-[1.25fr_.85fr] gap-3">
+            <ResearchSection>
+              <div className="border-b border-slate-100 px-4 py-4"><p className="text-[9px] font-semibold text-slate-900">Questionnaire structure</p><p className="mt-1 text-[6.5px] text-slate-400">Build the questionnaire the way participants experience it: blocks contain their own questions and content.</p></div>
+              <div className="p-4">
+                <div className="rounded-[16px] border-l-[3px] border-slate-950 bg-white p-3 shadow-sm">
+                  <div className="flex items-center justify-between"><div className="flex items-center gap-2"><ResearchPill dark>BLOCK 1</ResearchPill><span className="text-[6px] text-slate-400">1 item</span></div><span className="text-[6.5px] text-rose-300">Remove block</span></div>
+                  <ResearchInput className="mt-3">Main questionnaire</ResearchInput>
+                  <div className="mt-2 h-12 rounded-xl border border-slate-200 bg-white px-3 py-2 text-[6.5px] text-slate-400">Optional instructions shown before the questions in this block</div>
+                  <ResearchInput className="mt-2">▸ Block settings</ResearchInput>
+
+                  <div className="mt-3 rounded-[14px] border border-cyan-300 bg-white p-3 shadow-sm">
+                    <div className="flex items-start justify-between"><div className="flex items-center gap-2"><span className="flex h-7 w-7 items-center justify-center rounded-full bg-cyan-50 text-[7px] font-bold text-cyan-800">1</span><div><p className="text-[7.5px] font-semibold text-slate-800">q1 &nbsp; <span className="rounded-full bg-cyan-50 px-2 py-1 text-[6px] text-cyan-800">Likert / agreement scale</span></p><p className="mt-1 text-[6px] text-slate-400">Ratings</p></div></div><div className="flex gap-1"><ResearchPill>↑</ResearchPill><ResearchPill>↓</ResearchPill><ResearchPill>Duplicate</ResearchPill><ResearchPill>Remove</ResearchPill></div></div>
+                    <div className="mt-3 grid grid-cols-[115px_1fr] gap-2"><div><p className="mb-1 text-[6px] text-slate-400">Item key</p><ResearchInput>q1</ResearchInput></div><div><p className="mb-1 text-[6px] text-slate-400">Response / content type</p><ResearchInput>Likert / agreement scale &nbsp;⌄</ResearchInput></div></div>
+                    <p className="mt-3 text-[6px] text-slate-400">Question / statement</p><div className="mt-1 h-14 rounded-xl border border-slate-200 bg-white" />
+                    <p className="mt-3 text-[6px] text-slate-400">Help text / secondary instructions</p><ResearchInput className="mt-1" />
+                    <div className="mt-3 grid grid-cols-3 gap-2"><ResearchInput>Subscale</ResearchInput><ResearchInput>☑ Required</ResearchInput><ResearchInput>□ Reversed scored</ResearchInput></div>
+                  </div>
+                </div>
+              </div>
+            </ResearchSection>
+            <div className="space-y-3">
+              <ResearchSection className="p-4"><p className="text-[8px] font-semibold text-slate-800">Rights confirmation</p><div className="mt-3 rounded-xl border border-violet-200 bg-violet-50/40 p-3"><p className="text-[6.5px] leading-3.5 text-violet-700">□ &nbsp; I confirm that I created this instrument content, or I have the permission/licence required to reproduce and digitally administer it.</p></div><p className="mt-2 text-[6px] leading-3 text-slate-400">PsyLattice records this confirmation but does not independently verify third-party rights.</p></ResearchSection>
+              <ResearchSection className="p-4"><p className="text-[8px] font-semibold text-slate-800">Save instrument</p><button className="mt-4 w-full rounded-full bg-slate-950 py-2.5 text-[7px] font-semibold text-white">Save privately</button><button className="mt-2 w-full rounded-full border border-slate-200 py-2 text-[7px] font-semibold text-slate-600">Cancel</button></ResearchSection>
+            </div>
+          </div>
+          {questionnaireStep === 5 && <div className="absolute right-4 top-24 z-30"><TourInfoCloud title={questionnaireTourSteps[5].calloutTitle} body={questionnaireTourSteps[5].calloutBody} side="right" /></div>}
+        </div>
+
+        <div id="questionnaire-builder-response-logic" className={focusClass(6)}>
+          <ResearchSection className="max-w-[760px] p-4">
+            <p className="text-[8px] font-semibold text-slate-800">Response options</p>
+            <p className="mt-1 text-[6px] text-slate-400">Participant label, numeric code/score and optional weight are stored separately.</p>
+            <div className="mt-3 space-y-2">
+              {[['Strongly disagree','1'],['Disagree','2'],['Neither agree nor disagree','3'],['Agree','4'],['Strongly agree','5']].map(([label,value])=><div key={label} className="grid grid-cols-[1fr_55px_55px_25px] gap-2 rounded-xl border border-slate-200 bg-white p-2 shadow-sm"><ResearchInput>{label}</ResearchInput><ResearchInput>{value}</ResearchInput><ResearchInput>1</ResearchInput><button className="rounded-lg border border-rose-200 text-[7px] text-rose-400">×</button></div>)}
+            </div>
+            <p className="mt-2 text-[6.5px] text-slate-500">□ Randomize option order</p>
+            <div className="mt-3 rounded-xl border border-slate-200 bg-white p-3"><p className="text-[7px] font-medium text-slate-700">Attach image / audio / video (optional)</p><p className="mt-1 text-[6px] text-slate-400">Stored privately. Participants receive only a temporary signed viewing URL.</p><button className="mt-2 rounded-lg bg-slate-950 px-3 py-2 text-[6.5px] font-semibold text-white">Upload media</button><ResearchInput className="mt-2">Or paste an https:// media URL</ResearchInput></div>
+            <div className="mt-3 rounded-xl border border-cyan-300 bg-cyan-50/20 p-3"><p className="text-[7px] font-semibold text-slate-700">Display logic / branching</p><p className="mt-1 text-[6px] leading-3 text-slate-500">Show this item only when earlier answers meet the conditions below. Choose the source question and response — no item-key typing is required.</p><ResearchPill className="mt-2">+ Condition</ResearchPill><div className="mt-2 rounded-lg bg-white/70 px-3 py-2 text-[6px] text-slate-400">Add an earlier answerable question before using branching here.</div></div>
+          </ResearchSection>
+          {questionnaireStep === 6 && <div className="absolute right-[150px] top-20 z-30"><TourInfoCloud title={questionnaireTourSteps[6].calloutTitle} body={questionnaireTourSteps[6].calloutBody} side="right" /></div>}
+        </div>
+
+        <div id="questionnaire-builder-scoring" className={focusClass(7)}>
+          <div className="grid grid-cols-[1.25fr_.85fr] gap-3">
+            <ResearchSection>
+              <div className="border-b border-slate-100 px-4 py-4"><p className="text-[9px] font-semibold text-slate-900">Scoring, missing data & randomisation</p><p className="mt-1 text-[6.5px] text-slate-400">Store the scoring plan without implying that a new measure has been validated.</p></div>
+              <div className="p-4"><div className="grid grid-cols-2 gap-2"><div><p className="mb-1 text-[6px] text-slate-400">Scoring method</p><ResearchInput>No automatic score &nbsp;⌄</ResearchInput></div><div><p className="mb-1 text-[6px] text-slate-400">Missing-data rule</p><ResearchInput>Do not score if required items are missing &nbsp;⌄</ResearchInput></div></div><ResearchInput className="mt-3">□ Allow questionnaire-level item randomisation (block settings can override/structure this).</ResearchInput><p className="mt-3 text-[6px] text-slate-400">Scoring / analysis notes</p><div className="mt-1 h-20 rounded-xl border border-slate-200 bg-white" /><p className="mt-2 text-[6px] leading-3 text-slate-400">PsyLattice stores researcher-defined scoring. It does not infer psychometric validity, norms, diagnostic meaning or calibrated IRT/Rasch parameters.</p></div>
+            </ResearchSection>
+            <div className="space-y-3">
+              <ResearchSection className="p-4"><p className="text-[8px] font-semibold text-slate-800">Rights confirmation</p><div className="mt-3 rounded-xl border border-violet-200 bg-violet-50/40 p-3"><p className="text-[6.5px] leading-3.5 text-violet-700">□ &nbsp; I confirm that I created this instrument content, or I have the permission/licence required to reproduce and digitally administer it.</p></div></ResearchSection>
+              <ResearchSection className="p-4"><p className="text-[8px] font-semibold text-slate-800">Save instrument</p><button className="mt-4 w-full rounded-full bg-slate-950 py-2.5 text-[7px] font-semibold text-white">Save privately</button><button className="mt-2 w-full rounded-full border border-slate-200 py-2 text-[7px] font-semibold text-slate-600">Cancel</button></ResearchSection>
+            </div>
+          </div>
+          {questionnaireStep === 7 && <div className="absolute right-4 top-14 z-30"><TourInfoCloud title={questionnaireTourSteps[7].calloutTitle} body={questionnaireTourSteps[7].calloutBody} side="right" /></div>}
+        </div>
+      </div>
+    );
+  }
+
+  if (slideId === "cognitive-lab") {
+    return <CognitiveLabTourDemo step={cognitiveStep} />;
+  }
+
+  if (slideId === "ambulatory") {
+    return (
+      <div>
+        <ScreenTitle eyebrow="Ambulatory Builder" title="Daily emotion protocol" action="Add check-in" />
+        <div className="grid grid-cols-[1fr_.9fr] gap-3">
+          <DemoCard className="p-4" highlight>
+            <p className="text-xs font-semibold text-slate-900">Schedule</p>
+            <div className="mt-3 space-y-2">
+              {["09:00 Morning", "14:00 Afternoon", "20:00 Evening"].map((time) => (
+                <div key={time} className="flex items-center justify-between rounded-xl bg-slate-50 px-3 py-2.5">
+                  <span className="text-[10px] font-medium text-slate-700">{time}</span>
+                  <span className="rounded-full bg-cyan-50 px-2 py-1 text-[8px] font-semibold text-cyan-700">Fixed time</span>
+                </div>
+              ))}
+            </div>
+          </DemoCard>
+          <DemoCard className="p-4">
+            <p className="text-xs font-semibold text-slate-900">Protocol</p>
+            <div className="mt-3 space-y-2">
+              {["Mood rating", "Stress slider", "Context question"].map((item, index) => (
+                <div key={item} className="rounded-xl border border-slate-200 px-3 py-2.5 text-[10px] text-slate-600">{index + 1}. {item}</div>
+              ))}
+            </div>
+          </DemoCard>
+        </div>
+      </div>
+    );
+  }
+
+  if (slideId === "wearable-data") {
+    return (
+      <div>
+        <ScreenTitle eyebrow="Wearables & Mobile Data" title="Add passive context to a study" action="Connect source" />
+        <div className="grid grid-cols-[1.05fr_.95fr] gap-3">
+          <DemoCard className="p-4" highlight>
+            <p className="text-xs font-semibold text-slate-900">Longitudinal streams</p>
+            <div className="mt-3 space-y-2">
+              {[
+                ["Sleep", "duration · timing · daily summary"],
+                ["Activity", "steps · exercise · movement"],
+                ["Heart-rate context", "supported summary variables"],
+                ["EMA / ESM", "active participant check-ins"],
+              ].map(([name, helper], index) => (
+                <div key={name} className="flex items-center justify-between rounded-xl border border-slate-200 bg-white px-3 py-2.5">
+                  <div>
+                    <p className="text-[10px] font-semibold text-slate-700">{name}</p>
+                    <p className="mt-0.5 text-[8px] text-slate-400">{helper}</p>
+                  </div>
+                  <span className={`rounded-full px-2 py-1 text-[8px] font-semibold ${index < 3 ? "bg-cyan-50 text-cyan-700" : "bg-slate-100 text-slate-600"}`}>{index < 3 ? "Passive" : "Active"}</span>
+                </div>
+              ))}
+            </div>
+          </DemoCard>
+
+          <DemoCard className="p-4">
+            <p className="text-xs font-semibold text-slate-900">Example research timeline</p>
+            <p className="mt-1 text-[9px] leading-4 text-slate-500">Sleep → morning Corsi → daily stress → evening mood</p>
+            <div className="mt-4 space-y-3">
+              {[
+                ["Night", "Wearable sleep summary"],
+                ["08:30", "Corsi Block task"],
+                ["14:00", "Stress EMA"],
+                ["20:00", "Mood check-in"],
+              ].map(([time, event], index) => (
+                <div key={time} className="flex gap-3">
+                  <div className="flex flex-col items-center">
+                    <span className={`h-3 w-3 rounded-full ${index === 1 ? "bg-cyan-600" : "bg-slate-300"}`} />
+                    {index < 3 && <span className="h-7 w-px bg-slate-200" />}
+                  </div>
+                  <div className="pb-1">
+                    <p className="text-[9px] font-semibold text-slate-700">{time}</p>
+                    <p className="text-[8px] text-slate-500">{event}</p>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </DemoCard>
+        </div>
+      </div>
+    );
+  }
+
+  if (slideId === "participants") {
+    return (
+      <div>
+        <ScreenTitle eyebrow="Participants" title="Study participants" action="Create participant link" />
+        <DemoCard className="overflow-hidden" highlight>
+          <div className="grid grid-cols-5 bg-slate-50 px-4 py-2.5 text-[8px] font-semibold uppercase tracking-[0.12em] text-slate-400">
+            <span>ID</span><span>Status</span><span>Baseline</span><span>Follow-up</span><span>Last activity</span>
+          </div>
+          {[
+            ["PL-1042", "Active", "Complete", "Due", "2h ago"],
+            ["PL-1043", "Active", "Complete", "Complete", "1d ago"],
+            ["PL-1044", "Invited", "Pending", "—", "3d ago"],
+          ].map((row) => (
+            <div key={row[0]} className="grid grid-cols-5 border-t border-slate-200 px-4 py-3 text-[9px] text-slate-600">
+              {row.map((cell) => <span key={cell}>{cell}</span>)}
+            </div>
+          ))}
+        </DemoCard>
+      </div>
+    );
+  }
+
+  if (slideId === "followups") {
+    return (
+      <div>
+        <ScreenTitle eyebrow="Follow-Up Manager" title="Longitudinal waves" action="Add wave" />
+        <div className="space-y-3">
+          {[
+            ["Baseline", "Complete", "128 participants"],
+            ["Day 7", "Sending", "93 invited"],
+            ["Day 30", "Scheduled", "Starts 18 Sep"],
+          ].map(([name, status, helper], index) => (
+            <DemoCard key={name} className="p-4" highlight={index === 1}>
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-xs font-semibold text-slate-900">{name}</p>
+                  <p className="mt-1 text-[9px] text-slate-400">{helper}</p>
+                </div>
+                <span className={`rounded-full px-2 py-1 text-[8px] font-semibold ${status === "Complete" ? "bg-cyan-50 text-cyan-800" : status === "Sending" ? "bg-cyan-50 text-cyan-700" : "bg-slate-100 text-slate-600"}`}>{status}</span>
+              </div>
+            </DemoCard>
+          ))}
+        </div>
+      </div>
+    );
+  }
+
+  if (slideId === "data") {
+    return (
+      <div>
+        <ScreenTitle eyebrow="Data Explorer" title="Research Data" />
+        <div className="grid grid-cols-3 gap-3">
+          <MiniStat label="Responses" value="1,842" />
+          <MiniStat label="Files" value="26" />
+          <MiniStat label="Complete" value="91%" />
+        </div>
+        <DemoCard className="mt-3 overflow-hidden" highlight>
+          <div className="grid grid-cols-4 bg-slate-50 px-4 py-2.5 text-[8px] font-semibold uppercase tracking-[0.12em] text-slate-400">
+            <span>Participant</span><span>Questionnaire</span><span>Answered</span><span>Status</span>
+          </div>
+          {[
+            ["PL-1042", "PSS-10", "10/10", "Complete"],
+            ["PL-1042", "Image Choice", "1/1", "Complete"],
+            ["PL-1043", "PSS-10", "8/10", "In progress"],
+          ].map((row) => (
+            <div key={row.join("-")} className="grid grid-cols-4 border-t border-slate-200 px-4 py-3 text-[9px] text-slate-600">
+              {row.map((cell) => <span key={cell}>{cell}</span>)}
+            </div>
+          ))}
+        </DemoCard>
+      </div>
+    );
+  }
+
+  if (slideId === "analysis-lab") {
+    return <AnalysisLabTourDemo step={analysisStep} />;
+  }
+
+  if (slideId === "thesis-builder") {
+    return <ThesisBuilderTourDemo step={thesisStep} />;
+  }
+
+  if (slideId === "research-ai") {
+    return (
+      <div>
+        <ScreenTitle eyebrow="Research dashboard" title="AI stays available across the workspace" />
+        <div className="grid grid-cols-3 gap-3">
+          <MiniStat label="Active studies" value="4" helper="research workspace" />
+          <MiniStat label="AI budget" value="38% left" helper="visible in the top bar" />
+          <MiniStat label="Current mode" value="PsyLattice Auto" helper="switch models from the header" />
+        </div>
+        <div className="mt-3 grid grid-cols-[1.15fr_.85fr] gap-3">
+          <DemoCard className="p-4" highlight>
+            <p className="text-xs font-semibold text-slate-900">Current research context</p>
+            <p className="mt-1 text-[9px] leading-4 text-slate-500">AI help can stay grounded in the part of PsyLattice you are actually using instead of starting from a blank chat.</p>
+            <div className="mt-3 grid grid-cols-2 gap-2">
+              {["Study design", "Cognitive tasks", "Analysis output", "Thesis writing"].map((item) => (
+                <div key={item} className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-[8px] font-semibold text-slate-600">✓ {item}</div>
+              ))}
+            </div>
+          </DemoCard>
+          <DemoCard className="p-4">
+            <p className="text-xs font-semibold text-slate-900">Why the switcher matters</p>
+            <p className="mt-2 text-[9px] leading-4 text-slate-500">Use Auto when you want PsyLattice to choose the most appropriate connected model, or select a model yourself when you have a preference.</p>
+            <p className="mt-3 text-[8px] font-semibold text-cyan-800">The highlighted control is in the real top navigation above.</p>
+          </DemoCard>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div>
+      <ScreenTitle eyebrow="Export & Reproducibility" title="Build an analysis-ready file" action="Generate export" />
+      <div className="grid grid-cols-[.9fr_1.1fr] gap-3">
+        <DemoCard className="p-4" highlight>
+          <p className="text-xs font-semibold text-slate-900">Dataset</p>
+          <div className="mt-3 space-y-2">
+            {["Analysis wide", "Questionnaire responses", "Participant summary", "Ambulatory responses"].map((item, index) => (
+              <label key={item} className="flex items-center gap-2 rounded-xl border border-slate-200 px-3 py-2.5 text-[10px] text-slate-600">
+                <input type="radio" name="dataset-demo" defaultChecked={index === 0} />
+                {item}
+              </label>
+            ))}
+          </div>
+        </DemoCard>
+        <DemoCard className="p-4">
+          <p className="text-xs font-semibold text-slate-900">Export preview</p>
+          <div className="mt-3 rounded-xl bg-slate-950 p-3 font-mono text-[8px] leading-4 text-cyan-100">
+            participant_id, phase, PSS_1, PSS_2, image_choice<br />
+            PL-1042, baseline, 2, 3, option_a<br />
+            PL-1043, baseline, 4, 2, option_b
+          </div>
+          <button className="mt-3 flex items-center gap-2 rounded-lg bg-cyan-700 px-3 py-2 text-[9px] font-semibold text-white">
+            <FileDown className="h-3 w-3" /> XLSX
+          </button>
+        </DemoCard>
+      </div>
+    </div>
+  );
+}
+
+function ClinicalDemo({ slideId }: { slideId: string }) {
+  const [note, setNote] = useState("");
+
+  if (slideId === "clients") {
+    return (
+      <div>
+        <ScreenTitle eyebrow="Clinical workspace" title="Clients" action="Invite client" />
+        <div className="grid grid-cols-3 gap-3">
+          <MiniStat label="Connected" value="18" />
+          <MiniStat label="Needs review" value="4" />
+          <MiniStat label="Today" value="6 appts" />
+        </div>
+        <div className="mt-3 grid grid-cols-2 gap-3">
+          {["Aarav S.", "Maya R.", "Nisha K.", "Rohan D."].map((name, index) => (
+            <DemoCard key={name} className="p-4" highlight={index === 0}>
+              <div className="flex items-center gap-3">
+                <div className="flex h-9 w-9 items-center justify-center rounded-full bg-cyan-50 text-cyan-800"><Users className="h-4 w-4" /></div>
+                <div>
+                  <p className="text-xs font-semibold text-slate-900">{name}</p>
+                  <p className="mt-1 text-[9px] text-slate-400">Connected · updated today</p>
+                </div>
+              </div>
+            </DemoCard>
+          ))}
+        </div>
+      </div>
+    );
+  }
+
+  if (slideId === "client-overview") {
+    return (
+      <div>
+        <ScreenTitle eyebrow="Client overview" title="Aarav S." />
+        <div className="grid grid-cols-3 gap-3">
+          <MiniStat label="Assessments" value="4" />
+          <MiniStat label="Monitoring" value="Active" />
+          <MiniStat label="Next appt" value="Fri 10:00" />
+        </div>
+        <div className="mt-3 grid grid-cols-[1.2fr_.8fr] gap-3">
+          <DemoCard className="p-4" highlight>
+            <p className="text-xs font-semibold text-slate-900">Recent shared activity</p>
+            <div className="mt-3 space-y-2">
+              {["Mood check-in completed", "PSS-10 shared", "Progress permission updated"].map((item) => (
+                <div key={item} className="rounded-xl bg-slate-50 px-3 py-2.5 text-[10px] text-slate-600">{item}</div>
+              ))}
+            </div>
+          </DemoCard>
+          <DemoCard className="p-4">
+            <p className="text-xs font-semibold text-slate-900">Access</p>
+            <div className="mt-3 space-y-2 text-[9px] text-slate-500">
+              <p>✓ Assessments</p><p>✓ Monitoring</p><p>✓ Progress</p><p className="text-slate-300">– AI Guide</p>
+            </div>
+          </DemoCard>
+        </div>
+      </div>
+    );
+  }
+
+  if (slideId === "assessments") {
+    return (
+      <div>
+        <ScreenTitle eyebrow="Assessments" title="Aarav S." action="Assign measure" />
+        <div className="space-y-3">
+          {["Perceived Stress Scale", "WHO-5 Well-Being", "General Self-Efficacy Scale"].map((name, index) => (
+            <DemoCard key={name} className="p-4" highlight={index === 0}>
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-xs font-semibold text-slate-900">{name}</p>
+                  <p className="mt-1 text-[9px] text-slate-400">Completed {index + 1} week ago</p>
+                </div>
+                <button className="rounded-lg border border-slate-200 px-2.5 py-1.5 text-[8px] font-semibold text-slate-600">Review</button>
+              </div>
+            </DemoCard>
+          ))}
+        </div>
+      </div>
+    );
+  }
+
+  if (slideId === "monitoring") {
+    return (
+      <div>
+        <ScreenTitle eyebrow="Monitoring" title="Shared daily data" action="Propose protocol" />
+        <DemoCard className="p-4" highlight>
+          <div className="flex h-36 items-end gap-2 rounded-xl bg-slate-50 p-4">
+            {[42, 68, 55, 80, 61, 73, 66].map((height, index) => <div key={index} className="flex-1 rounded-t-md bg-cyan-300" style={{ height: `${height}px` }} />)}
+          </div>
+          <div className="mt-3 grid grid-cols-3 gap-2">
+            <MiniStat label="Check-ins" value="19" />
+            <MiniStat label="Completion" value="95%" />
+            <MiniStat label="Stress avg" value="4.1" />
+          </div>
+        </DemoCard>
+      </div>
+    );
+  }
+
+  if (slideId === "progress") {
+    return (
+      <div>
+        <ScreenTitle eyebrow="Progress" title="Longitudinal view" />
+        <div className="grid grid-cols-2 gap-3">
+          <DemoCard className="p-4" highlight>
+            <p className="text-xs font-semibold text-slate-900">Well-being</p>
+            <div className="mt-4 flex h-28 items-end gap-2">{[48, 50, 57, 61, 66, 71].map((h, i) => <div key={i} className="flex-1 rounded-t-md bg-cyan-200" style={{ height: `${h}px` }} />)}</div>
+          </DemoCard>
+          <DemoCard className="p-4">
+            <p className="text-xs font-semibold text-slate-900">Stress</p>
+            <div className="mt-4 flex h-28 items-end gap-2">{[82, 75, 70, 64, 58, 52].map((h, i) => <div key={i} className="flex-1 rounded-t-md bg-cyan-200" style={{ height: `${h}px` }} />)}</div>
+          </DemoCard>
+        </div>
+      </div>
+    );
+  }
+
+  if (slideId === "care-pathway") {
+    return (
+      <div>
+        <ScreenTitle eyebrow="Care Pathway" title="Current plan" action="Add step" />
+        <div className="space-y-3">
+          {["Stabilise sleep routine", "Practice pre-presentation grounding", "Review monitoring data", "Reassess after 4 weeks"].map((item, index) => (
+            <DemoCard key={item} className="p-4" highlight={index === 1}>
+              <div className="flex items-center gap-3">
+                <div className={`flex h-7 w-7 items-center justify-center rounded-full text-[9px] font-semibold ${index < 2 ? "bg-cyan-700 text-white" : "bg-slate-100 text-slate-500"}`}>{index + 1}</div>
+                <p className="text-[10px] font-medium text-slate-700">{item}</p>
+              </div>
+            </DemoCard>
+          ))}
+        </div>
+      </div>
+    );
+  }
+
+  if (slideId === "notes") {
+    return (
+      <div>
+        <ScreenTitle eyebrow="Professional Notes" title="Session note" action="Save note" />
+        <DemoCard className="p-4" highlight>
+          <textarea value={note} onChange={(event) => setNote(event.target.value)} className="h-44 w-full resize-none rounded-xl border border-slate-200 bg-slate-50 p-3 text-[10px] leading-5 text-slate-700 outline-none" placeholder="Write a private professional note..." />
+          <div className="mt-3 flex items-center gap-2 text-[9px] text-slate-400"><Lock className="h-3 w-3" /> Private clinician-authored record</div>
+        </DemoCard>
+      </div>
+    );
+  }
+
+  if (slideId === "appointments") {
+    return (
+      <div>
+        <ScreenTitle eyebrow="Appointments" title="Today" action="New appointment" />
+        <div className="space-y-2">
+          {["09:00 Aarav S.", "10:30 Maya R.", "13:00 Nisha K.", "16:00 Rohan D."].map((item, index) => (
+            <DemoCard key={item} className="flex items-center justify-between p-4" highlight={index === 1}>
+              <span className="text-[10px] font-semibold text-slate-700">{item}</span>
+              <span className="rounded-full bg-slate-100 px-2 py-1 text-[8px] font-semibold text-slate-500">50 min</span>
+            </DemoCard>
+          ))}
+        </div>
+      </div>
+    );
+  }
+
+  if (slideId === "messages") {
+    return (
+      <div>
+        <ScreenTitle eyebrow="Secure Messages" title="Aarav S." />
+        <DemoCard className="p-4" highlight>
+          <div className="space-y-3">
+            <div className="max-w-[72%] rounded-2xl rounded-tl-md bg-slate-100 px-3 py-2.5 text-[10px] text-slate-700">I completed the evening monitoring yesterday.</div>
+            <div className="ml-auto max-w-[72%] rounded-2xl rounded-tr-md bg-cyan-700 px-3 py-2.5 text-[10px] text-white">Thanks. We can review the pattern during Friday's session.</div>
+          </div>
+          <div className="mt-4 flex gap-2 border-t border-slate-200 pt-3">
+            <input className="flex-1 rounded-xl border border-slate-200 px-3 py-2 text-[10px] outline-none" placeholder="Write a message..." />
+            <button className="rounded-xl bg-slate-950 px-3 text-[10px] font-semibold text-white">Send</button>
+          </div>
+        </DemoCard>
+      </div>
+    );
+  }
+
+  return (
+    <div>
+      <ScreenTitle eyebrow="Receptionist Access" title="Appointment-only permissions" />
+      <DemoCard className="p-4" highlight>
+        <div className="space-y-2">
+          {[
+            ["View appointment calendar", true],
+            ["Create / reschedule appointments", true],
+            ["View assessments", false],
+            ["View professional notes", false],
+            ["View client monitoring", false],
+          ].map(([label, allowed]) => (
+            <div key={String(label)} className="flex items-center justify-between rounded-xl border border-slate-200 px-3 py-2.5">
+              <span className="text-[10px] font-medium text-slate-700">{String(label)}</span>
+              <span className={`rounded-full px-2 py-1 text-[8px] font-semibold ${allowed ? "bg-cyan-50 text-cyan-800" : "bg-slate-100 text-slate-400"}`}>{allowed ? "Allowed" : "Blocked"}</span>
+            </div>
+          ))}
+        </div>
+      </DemoCard>
+    </div>
+  );
+}
+
+function MockWorkspace({
+  workspace,
+  config,
+  activeSlideId,
+  dashboardStep = 0,
+  studiesStep = 0,
+  studyBuilderStep = 0,
+  questionnaireStep = 0,
+  cognitiveStep = 0,
+  thesisStep = 0,
+  ambulatoryStep = 0,
+  participantsStep = 0,
+  participantLinksStep = 0,
+  dataDashboardStep = 0,
+  dataExplorerStep = 0,
+  analysisStep = 0,
+  exportStep = 0,
+  onNavigate,
+}: {
+  workspace: Workspace;
+  config: TourConfig;
+  activeSlideId: string;
+  dashboardStep?: number;
+  studiesStep?: number;
+  studyBuilderStep?: number;
+  questionnaireStep?: number;
+  cognitiveStep?: number;
+  thesisStep?: number;
+  ambulatoryStep?: number;
+  participantsStep?: number;
+  participantLinksStep?: number;
+  dataDashboardStep?: number;
+  dataExplorerStep?: number;
+  analysisStep?: number;
+  exportStep?: number;
+  onNavigate: (slideId: string) => void;
+}) {
+  const [modelChoice, setModelChoice] = useState("PsyLattice Auto");
+
+  if (workspace === "researcher") {
+    if (activeSlideId === "thesis-builder" && thesisStep === 5) {
+      return (
+        <div className="h-full min-h-[520px] overflow-auto rounded-[24px] border border-slate-200/90 bg-[#f7fafb] text-slate-950 shadow-[0_18px_48px_rgba(15,23,42,0.09)]">
+          <ResearchDemo slideId={activeSlideId} dashboardStep={dashboardStep} studiesStep={studiesStep} studyBuilderStep={studyBuilderStep} questionnaireStep={questionnaireStep} cognitiveStep={cognitiveStep} thesisStep={thesisStep} ambulatoryStep={ambulatoryStep} participantsStep={participantsStep} participantLinksStep={participantLinksStep} dataDashboardStep={dataDashboardStep} dataExplorerStep={dataExplorerStep} analysisStep={analysisStep} exportStep={exportStep} />
+        </div>
+      );
+    }
+
+    if (activeSlideId === "analysis-lab" && analysisStep === 1) {
+      return (
+        <div className="h-full min-h-[520px] overflow-auto rounded-[24px] border border-slate-200/90 bg-[#f7fafb] text-slate-950 shadow-[0_18px_48px_rgba(15,23,42,0.09),0_2px_10px_rgba(8,145,178,0.045)]">
+          <ResearchDemo slideId={activeSlideId} dashboardStep={dashboardStep} studiesStep={studiesStep} studyBuilderStep={studyBuilderStep} questionnaireStep={questionnaireStep} cognitiveStep={cognitiveStep} thesisStep={thesisStep} ambulatoryStep={ambulatoryStep} participantsStep={participantsStep} participantLinksStep={participantLinksStep} dataDashboardStep={dataDashboardStep} dataExplorerStep={dataExplorerStep} analysisStep={analysisStep} exportStep={exportStep} />
+        </div>
+      );
+    }
+
+    const researchNav = [
+      ["Dashboard", "dashboard"],
+      ["Studies", "studies"],
+      ["Study Builder", "study-builder"],
+      ["Questionnaire Library", "questionnaires"],
+      ["Cognitive Lab", "cognitive-lab"],
+      ["Thesis Builder", "thesis-builder"],
+      ["Ambulatory Assessment", "ambulatory"],
+      ["Follow-up Manager", "followups"],
+      ["Participants", "participants"],
+      ["Participant Links", "participant-links"],
+    ] as const;
+
+    const dataNav = [
+      ["Data Dashboard", "data-dashboard"],
+      ["Data Explorer", "data-explorer"],
+      ["Analysis Lab", "analysis-lab"],
+      ["Export Data", "export"],
+    ] as const;
+
+    const governanceNav = [
+      ["Ethics & Consent", "studies"],
+      ["Team & Permissions", "studies"],
+      ["Plans & Billing", "plans-billing"],
+    ] as const;
+
+    const activeLabelBySlide: Record<string, string> = {
+      dashboard: "Dashboard",
+      studies: "Studies",
+      "study-builder": "Study Builder",
+      questionnaires: "Questionnaire Library",
+      "custom-questionnaires": "Questionnaire Library",
+      "cognitive-lab": "Cognitive Lab",
+      ambulatory: "Ambulatory Assessment",
+      "wearable-data": "Ambulatory Assessment",
+      participants: "Participants",
+      "participant-links": "Participant Links",
+      followups: "Follow-up Manager",
+      "data-dashboard": "Data Dashboard",
+      "data-explorer": "Data Explorer",
+      "thesis-builder": "Thesis Builder",
+      export: "Export Data",
+      "plans-billing": "Plans & Billing",
+    };
+
+    const activeLabel = activeLabelBySlide[activeSlideId] ?? "";
+    const edgeToEdge = activeSlideId === "thesis-builder";
+
+    const iconForLabel = (label: string) => {
+      if (label === "Dashboard") return <LayoutDashboard className="h-3.5 w-3.5" />;
+      if (label === "Studies") return <BookOpen className="h-3.5 w-3.5" />;
+      if (label === "Study Builder") return <Workflow className="h-3.5 w-3.5" />;
+      if (label === "Questionnaire Library") return <BookOpen className="h-3.5 w-3.5" />;
+      if (label === "Cognitive Lab") return <Activity className="h-3.5 w-3.5" />;
+      if (label === "Thesis Builder") return <FileText className="h-3.5 w-3.5" />;
+      if (label === "Ambulatory Assessment") return <Activity className="h-3.5 w-3.5" />;
+      if (label === "Follow-up Manager") return <CalendarDays className="h-3.5 w-3.5" />;
+      if (label === "Participants") return <Users className="h-3.5 w-3.5" />;
+      if (label === "Participant Links") return <Workflow className="h-3.5 w-3.5" />;
+      if (label === "Data Dashboard") return <BarChart3 className="h-3.5 w-3.5" />;
+      if (label === "Data Explorer") return <Database className="h-3.5 w-3.5" />;
+      if (label === "Export Data") return <FileDown className="h-3.5 w-3.5" />;
+      if (label === "Ethics & Consent") return <ShieldCheck className="h-3.5 w-3.5" />;
+      if (label === "Team & Permissions") return <Users className="h-3.5 w-3.5" />;
+      if (label === "Plans & Billing") return <Settings2 className="h-3.5 w-3.5" />;
+      return <BarChart3 className="h-3.5 w-3.5" />;
+    };
+
+    const navButton = (label: string, slideId: string) => {
+      const active = activeLabel === label;
+      const showBadge = label === "Cognitive Lab" || label === "Analysis Lab";
+      return (
+        <button
+          key={`${label}-${slideId}`}
+          type="button"
+          onClick={() => onNavigate(slideId)}
+          className={`flex w-full items-center gap-2 rounded-full border px-3 py-2 text-left text-[9px] transition ${active ? "border-cyan-200 bg-white font-semibold text-cyan-900 shadow-[0_7px_18px_rgba(8,145,178,0.15),0_14px_28px_rgba(15,23,42,0.05)]" : "border-transparent font-medium text-slate-500 hover:bg-white hover:text-slate-800"}`}
+        >
+          <span className={active ? "text-cyan-700" : "text-slate-400"}>{iconForLabel(label)}</span>
+          <span className="min-w-0 flex-1 truncate">{label}</span>
+          {showBadge && (
+            <span className="flex shrink-0 items-center gap-1">
+              <span className="rounded-full border border-cyan-200 bg-cyan-50 px-1.5 py-0.5 text-[5.5px] font-semibold uppercase tracking-[0.08em] text-cyan-700">New</span>
+              <span className="rounded-full border border-cyan-200 bg-cyan-50 px-1.5 py-0.5 text-[5.5px] font-semibold uppercase tracking-[0.08em] text-cyan-700">Beta</span>
+            </span>
+          )}
+        </button>
+      );
+    };
+
+    return (
+      <div className="relative flex h-full min-h-[520px] flex-col overflow-hidden rounded-[24px] border border-slate-200/90 bg-[#edf3f4] text-slate-950 shadow-[0_18px_48px_rgba(15,23,42,0.09),0_2px_10px_rgba(8,145,178,0.045)]">
+        <header className="relative z-20 mx-2 mt-2 flex h-[60px] shrink-0 items-center justify-between rounded-[24px] border border-slate-200/80 bg-white px-5 shadow-[0_7px_20px_rgba(15,23,42,0.06)]">
+          <div className="flex items-center gap-3">
+            <PsyLatticeLogo size={34} />
+            <div>
+              <p className="text-[12px] font-semibold tracking-tight text-slate-900">PsyLattice</p>
+              <p className="mt-0.5 text-[7px] text-slate-400">Research workspace</p>
+            </div>
+          </div>
+
+          <div className="flex items-center gap-2">
+            <div className="flex items-center gap-2 rounded-full border border-slate-200 bg-white px-3 py-2 shadow-sm">
+              <span className="text-[7px] font-semibold text-slate-700">AI budget</span>
+              <div className="h-1.5 w-14 overflow-hidden rounded-full bg-slate-100">
+                <div className="h-full w-[62%] rounded-full bg-cyan-500" />
+              </div>
+              <span className="text-[7px] font-semibold text-slate-500">38% left</span>
+            </div>
+
+            <button
+              type="button"
+              onClick={() => onNavigate("research-ai")}
+              className={`flex items-center gap-2 rounded-full border bg-white px-3 py-2 text-[8px] font-semibold shadow-sm transition ${activeSlideId === "research-ai" ? "border-cyan-300 text-cyan-900 ring-2 ring-cyan-100" : "border-cyan-200 text-slate-700 hover:border-cyan-300"}`}
+            >
+              <Sparkles className="h-3 w-3 text-cyan-600" />
+              {modelChoice}
+              <span className="text-slate-400">⌄</span>
+            </button>
+
+            <span className="rounded-full border border-cyan-200 bg-cyan-50 px-3 py-2 text-[7px] font-semibold text-cyan-800">Researcher</span>
+            <span className="flex h-8 w-8 items-center justify-center rounded-full bg-slate-100 text-[8px] font-semibold text-slate-600">PD</span>
+            <span className="rounded-full border border-slate-200 bg-white px-3 py-2 text-[7px] font-semibold text-slate-600 shadow-sm">Sign out</span>
+          </div>
+
+          {activeSlideId === "research-ai" && (
+            <div className="absolute right-[195px] top-[50px] z-40 w-[250px] rounded-[18px] border border-cyan-200 bg-white p-2 shadow-[0_18px_45px_rgba(15,23,42,0.18)]">
+              <div className="px-2 py-1">
+                <p className="text-[7px] font-semibold uppercase tracking-[0.12em] text-cyan-700">AI model switcher</p>
+                <p className="mt-1 text-[6.5px] leading-3 text-slate-400">Choose a model without leaving the current research workspace.</p>
+              </div>
+              {[
+                ["PsyLattice Auto", "Recommended · routes automatically"],
+                ["PsyLattice AI", "Research-guided default"],
+                ["OpenAI GPT", "General reasoning & writing"],
+                ["Claude", "Long-form reading & drafting"],
+                ["Gemini", "Alternative connected model"],
+              ].map(([name, helper]) => (
+                <button
+                  key={name}
+                  type="button"
+                  onClick={() => setModelChoice(name)}
+                  className={`mt-1 flex w-full items-center justify-between rounded-xl border px-3 py-2 text-left ${modelChoice === name ? "border-cyan-200 bg-cyan-50" : "border-transparent hover:bg-slate-50"}`}
+                >
+                  <div>
+                    <p className="text-[7.5px] font-semibold text-slate-700">{name}</p>
+                    <p className="mt-0.5 text-[6px] text-slate-400">{helper}</p>
+                  </div>
+                  {modelChoice === name && <Check className="h-3 w-3 text-cyan-700" />}
+                </button>
+              ))}
+            </div>
+          )}
+        </header>
+
+        <div className="flex min-h-0 flex-1 gap-3 p-2 pt-3">
+          <aside className="w-[185px] shrink-0 overflow-y-auto rounded-[24px] border border-slate-200/80 bg-white px-3 py-4 shadow-[0_7px_20px_rgba(15,23,42,0.05)]">
+            <div className="flex justify-end">
+              <span className="flex h-7 w-7 items-center justify-center rounded-full border border-slate-200 bg-white text-[11px] text-slate-500 shadow-sm">‹</span>
+            </div>
+
+            <p className="mt-3 px-2 text-[7px] font-semibold uppercase tracking-[0.16em] text-slate-400">Research</p>
+            <div className="mt-2 space-y-1">
+              {researchNav.map(([label, slideId]) => navButton(label, slideId))}
+            </div>
+
+            <p className="mt-5 px-2 text-[7px] font-semibold uppercase tracking-[0.16em] text-slate-400">Data</p>
+            <div className="mt-2 space-y-1">
+              {dataNav.map(([label, slideId]) => navButton(label, slideId))}
+            </div>
+
+            <p className="mt-5 px-2 text-[7px] font-semibold uppercase tracking-[0.16em] text-slate-400">Governance</p>
+            <div className="mt-2 space-y-1">
+              {governanceNav.map(([label, slideId]) => navButton(label, slideId))}
+            </div>
+
+            <div className="mt-5 rounded-[17px] border border-cyan-200 bg-cyan-50/50 p-3">
+              <p className="text-[7px] font-semibold text-cyan-900">Research workspace</p>
+              <p className="mt-1 text-[6.5px] leading-3.5 text-slate-500">Saved studies, participant records and recruitment links shown here are loaded from your PsyLattice research database.</p>
+            </div>
+          </aside>
+
+          <main
+            data-tour-scroll={activeSlideId === "dashboard" || activeSlideId === "studies" || activeSlideId === "study-builder" || activeSlideId === "questionnaires" || activeSlideId === "cognitive-lab" || activeSlideId === "thesis-builder" || activeSlideId === "ambulatory" || activeSlideId === "participants" || activeSlideId === "participant-links" || activeSlideId === "data-dashboard" || activeSlideId === "data-explorer" || activeSlideId === "analysis-lab" || activeSlideId === "export" ? "true" : undefined}
+            className={`min-w-0 flex-1 overflow-auto scroll-smooth ${edgeToEdge ? "p-0" : "p-3"}`}
+          >
+            <ResearchDemo slideId={activeSlideId} dashboardStep={dashboardStep} studiesStep={studiesStep} studyBuilderStep={studyBuilderStep} questionnaireStep={questionnaireStep} cognitiveStep={cognitiveStep} thesisStep={thesisStep} ambulatoryStep={ambulatoryStep} participantsStep={participantsStep} participantLinksStep={participantLinksStep} dataDashboardStep={dataDashboardStep} dataExplorerStep={dataExplorerStep} analysisStep={analysisStep} exportStep={exportStep} />
           </main>
         </div>
       </div>
     );
   }
 
-  if (slideId === "appointments") {
-    const appts=["09:00 Aarav S.","10:30 Maya R.","13:00 Nisha K.","16:00 Rohan D."];
-    return <div><ExplorerScreenTitle eyebrow="Appointments" title="Today" action="New appointment" onAction={()=>setNotice("New appointment form opened.")} secondary="Calendar" onSecondary={()=>setNotice("Calendar view opened.")}/>{notice&&<ExplorerNotice text={notice}/>}<div className="space-y-2">{appts.map((item)=><button key={item} onClick={()=>setSelectedAppointment(item)} className="block w-full text-left"><ExplorerCard className="flex items-center justify-between p-4" highlight={selectedAppointment===item}><div><span className="text-[10px] font-semibold text-slate-700">{item}</span><p className="mt-1 text-[8px] text-slate-400">50 minute session · Milan time</p></div><div className="flex items-center gap-2"><span className="rounded-full bg-slate-100 px-2 py-1 text-[8px] font-semibold text-slate-500">Confirmed</span><ChevronRight className="h-3.5 w-3.5 text-slate-300"/></div></ExplorerCard></button>)}</div></div>;
-  }
-
-  if (slideId === "messages") {
-    const selectedThread =
-      messageThreads.find((thread) => thread.id === selectedMessageThreadId) ||
-      messageThreads[0];
-    const activeMessages = threadMessages[selectedThread?.id] || [];
-    const unreadTotal = messageThreads.reduce(
-      (sum, thread) => sum + thread.unread,
-      0
-    );
-
-    return (
-      <div className="space-y-5">
-        <section className="overflow-hidden rounded-3xl border border-slate-200 bg-white">
-          <div className="bg-gradient-to-r from-cyan-50/70 via-white to-white px-5 py-5">
-            <p className="text-xs font-semibold uppercase tracking-[0.15em] text-cyan-800">
-              Connected care
-            </p>
-            <h2 className="mt-2 text-xl font-semibold tracking-tight text-slate-950">
-              Client conversations
-            </h2>
-            <p className="mt-2 max-w-3xl text-sm leading-6 text-slate-500">
-              View all active client conversations in one secure inbox. Select a
-              client inside the messaging workspace instead of changing the
-              Clinical client-context selector.
-            </p>
-          </div>
-        </section>
-
-        <div className="overflow-hidden rounded-[28px] border border-slate-200 bg-white shadow-[0_24px_80px_-45px_rgba(15,23,42,0.35)]">
-          <div className="border-b border-slate-100 bg-gradient-to-r from-cyan-50/80 via-white to-slate-50/60 px-5 py-4">
-            <div className="flex flex-col justify-between gap-4 lg:flex-row lg:items-center">
-              <div className="flex min-w-0 items-center gap-3">
-                <div className="relative flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-slate-950 text-sm font-semibold text-white shadow-sm">
-                  ✦
-                  <span className="absolute -right-1 -top-1 h-3 w-3 rounded-full border-2 border-white bg-cyan-500" />
-                </div>
-
-                <div className="min-w-0">
-                  <div className="flex flex-wrap items-center gap-2">
-                    <h2 className="text-base font-semibold text-slate-950">
-                      Secure Messages
-                    </h2>
-                    <span className="rounded-full border border-cyan-100 bg-cyan-50 px-2.5 py-1 text-[10px] font-semibold text-cyan-700">
-                      Live
-                    </span>
-                    {unreadTotal > 0 && (
-                      <span className="rounded-full bg-cyan-800 px-2.5 py-1 text-[10px] font-semibold text-white">
-                        {unreadTotal} unread
-                      </span>
-                    )}
-                  </div>
-                  <p className="mt-1 text-xs leading-5 text-slate-500">
-                    Your secure client inbox for non-urgent clinical communication.
-                  </p>
-                </div>
-              </div>
-
-              <div className="flex flex-wrap items-center gap-2">
-                <button
-                  type="button"
-                  onClick={() => setMessageThreadPanelOpen((current) => !current)}
-                  className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-slate-600 transition hover:bg-slate-50"
-                >
-                  {messageThreadPanelOpen ? "⇤ Focus conversation" : "☰ Clients"}
-                </button>
-
-                <button
-                  type="button"
-                  onClick={() => setMessageEmailAlerts((current) => !current)}
-                  className={`rounded-xl border px-3 py-2 text-[10px] font-semibold transition ${
-                    messageEmailAlerts
-                      ? "border-cyan-200 bg-cyan-50 text-cyan-700 hover:bg-cyan-100"
-                      : "border-slate-200 bg-white text-slate-500 hover:bg-slate-50"
-                  }`}
-                >
-                  {messageEmailAlerts ? "✉ Email alerts on" : "✉ Email alerts off"}
-                </button>
-
-                <div className="rounded-xl border border-cyan-100 bg-cyan-50 px-3 py-2 text-[10px] font-medium text-cyan-800">
-                  Not for urgent or emergency support
-                </div>
-              </div>
-            </div>
-          </div>
-
-          <div
-            className={`grid min-h-[680px] ${
-              messageThreadPanelOpen
-                ? "lg:grid-cols-[290px_minmax(0,1fr)]"
-                : "grid-cols-1"
-            }`}
-          >
-            {messageThreadPanelOpen && (
-              <aside className="border-b border-slate-100 bg-slate-50/55 lg:border-b-0 lg:border-r">
-                <div className="border-b border-slate-100 p-4">
-                  <p className="text-[10px] font-semibold uppercase tracking-[0.15em] text-slate-400">
-                    Client conversations
-                  </p>
-                  <p className="mt-1 text-xs leading-5 text-slate-500">
-                    Choose a connected client to open their secure conversation.
-                  </p>
-                </div>
-
-                <div className="max-h-[590px] space-y-2 overflow-y-auto p-3">
-                  {messageThreads.map((thread) => {
-                    const selected = thread.id === selectedMessageThreadId;
-                    return (
-                      <button
-                        key={thread.id}
-                        type="button"
-                        onClick={() => {
-                          setSelectedMessageThreadId(thread.id);
-                          setMessageThreads((current) =>
-                            current.map((item) =>
-                              item.id === thread.id
-                                ? { ...item, unread: 0 }
-                                : item
-                            )
-                          );
-                        }}
-                        className={`w-full rounded-2xl border p-3 text-left transition ${
-                          selected
-                            ? "border-cyan-200 bg-cyan-50 shadow-sm"
-                            : "border-transparent bg-white hover:border-slate-200"
-                        }`}
-                      >
-                        <div className="flex items-start gap-3">
-                          <div className="relative flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-slate-900 text-xs font-semibold text-white">
-                            {messageInitials(thread.peer)}
-                            {thread.unread > 0 && (
-                              <span className="absolute -right-1 -top-1 flex min-h-5 min-w-5 items-center justify-center rounded-full border-2 border-white bg-cyan-700 px-1 text-[9px] font-semibold text-white">
-                                {thread.unread}
-                              </span>
-                            )}
-                          </div>
-
-                          <div className="min-w-0 flex-1">
-                            <div className="flex items-start justify-between gap-2">
-                              <p className="truncate text-sm font-semibold text-slate-900">
-                                {thread.peer}
-                              </p>
-                              <span className="shrink-0 text-[9px] text-slate-400">
-                                {thread.time}
-                              </span>
-                            </div>
-                            <p
-                              className={`mt-1 truncate text-[11px] ${
-                                thread.unread > 0
-                                  ? "font-semibold text-slate-700"
-                                  : "text-slate-400"
-                              }`}
-                            >
-                              {thread.last}
-                            </p>
-                          </div>
-                        </div>
-                      </button>
-                    );
-                  })}
-                </div>
-              </aside>
-            )}
-
-            <section className="flex min-w-0 flex-col bg-white">
-              {selectedThread && (
-                <>
-                  <div className="flex flex-col justify-between gap-3 border-b border-slate-100 px-5 py-4 sm:flex-row sm:items-center">
-                    <div className="flex min-w-0 items-center gap-3">
-                      <div className="relative flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-cyan-50 text-sm font-semibold text-cyan-900">
-                        {messageInitials(selectedThread.peer)}
-                        <span className="absolute bottom-0 right-0 h-3 w-3 rounded-full border-2 border-white bg-cyan-500" />
-                      </div>
-
-                      <div className="min-w-0">
-                        <p className="truncate text-sm font-semibold text-slate-950">
-                          {selectedThread.peer}
-                        </p>
-                        <p className="mt-1 text-[11px] text-slate-400">
-                          Connected through PsyLattice · New messages appear automatically
-                        </p>
-                      </div>
-                    </div>
-
-                    <div className="rounded-xl border border-cyan-100 bg-cyan-50/60 px-3 py-2 text-[10px] leading-4 text-cyan-900">
-                      Messaging does not change your assessment or monitoring sharing permissions.
-                    </div>
-                  </div>
-
-                  <div className="flex min-h-0 flex-1 flex-col">
-                    <div className="flex-1 overflow-y-auto bg-[linear-gradient(to_bottom,#ffffff,#fbfdfe)] px-4 py-5 sm:px-6">
-                      <div className="mx-auto max-w-3xl space-y-2">
-                        <div className="my-5 flex items-center gap-3">
-                          <div className="h-px flex-1 bg-slate-100" />
-                          <span className="rounded-full border border-slate-100 bg-white px-3 py-1 text-[10px] font-medium text-slate-400">
-                            Today
-                          </span>
-                          <div className="h-px flex-1 bg-slate-100" />
-                        </div>
-
-                        {activeMessages.map((messageItem, index) => {
-                          const previous = activeMessages[index - 1];
-                          const previousSameSender =
-                            previous && previous.isMine === messageItem.isMine;
-
-                          return (
-                            <div
-                              key={messageItem.id}
-                              className={`flex ${
-                                messageItem.isMine ? "justify-end" : "justify-start"
-                              } ${previousSameSender ? "mt-1" : "mt-3"}`}
-                            >
-                              <div
-                                className={`max-w-[86%] sm:max-w-[72%] ${
-                                  messageItem.isMine ? "items-end" : "items-start"
-                                } flex flex-col`}
-                              >
-                                <div
-                                  className={`whitespace-pre-wrap break-words px-4 py-3 text-sm leading-6 ${
-                                    messageItem.isMine
-                                      ? "rounded-[20px] rounded-br-md bg-slate-950 text-white shadow-sm"
-                                      : "rounded-[20px] rounded-bl-md border border-slate-200 bg-white text-slate-700 shadow-[0_8px_24px_-20px_rgba(15,23,42,0.4)]"
-                                  }`}
-                                >
-                                  {messageItem.body}
-                                </div>
-
-                                <div className="mt-1 flex items-center gap-1.5 px-1 text-[9px] text-slate-400">
-                                  <span>{messageItem.time}</span>
-                                  {messageItem.isMine && (
-                                    <>
-                                      <span>·</span>
-                                      <span>{messageItem.read ? "Read" : "Sent"}</span>
-                                    </>
-                                  )}
-                                </div>
-                              </div>
-                            </div>
-                          );
-                        })}
-                      </div>
-                    </div>
-
-                    <div className="border-t border-slate-100 bg-white p-4 sm:p-5">
-                      <div className="mx-auto max-w-3xl">
-                        <div className="rounded-[22px] border border-slate-200 bg-slate-50/60 p-2 transition focus-within:border-cyan-300 focus-within:bg-white focus-within:shadow-[0_14px_34px_-24px_rgba(8,145,178,0.35)]">
-                          <textarea
-                            value={messageDraft}
-                            onChange={(event) =>
-                              setMessageDraft(event.target.value.slice(0, 4000))
-                            }
-                            onKeyDown={(event) => {
-                              if (event.key === "Enter" && !event.shiftKey) {
-                                event.preventDefault();
-                                sendClinicalMessage();
-                              }
-                            }}
-                            rows={2}
-                            placeholder={`Message ${selectedThread.peer}…`}
-                            className="max-h-36 min-h-[58px] w-full resize-none bg-transparent px-3 py-2 text-sm leading-6 text-slate-800 outline-none placeholder:text-slate-400"
-                          />
-
-                          <div className="flex flex-col justify-between gap-2 border-t border-slate-200/70 px-2 pt-2 sm:flex-row sm:items-center">
-                            <span className="text-[10px] text-slate-400">
-                              Enter to send · Shift + Enter for a new line
-                            </span>
-
-                            <button
-                              type="button"
-                              disabled={!messageDraft.trim()}
-                              onClick={sendClinicalMessage}
-                              className="inline-flex items-center justify-center gap-2 rounded-xl bg-cyan-800 px-5 py-2.5 text-xs font-semibold text-white shadow-sm transition hover:bg-cyan-900 disabled:cursor-not-allowed disabled:opacity-40"
-                            >
-                              Send message <span aria-hidden="true">↗</span>
-                            </button>
-                          </div>
-                        </div>
-
-                        <p className="mt-2 text-center text-[10px] leading-4 text-slate-400">
-                          Keep urgent or emergency concerns outside this asynchronous messaging channel and use the appropriate local emergency or crisis service.
-                        </p>
-                      </div>
-                    </div>
-                  </div>
-                </>
-              )}
-            </section>
+  return (
+    <div className="flex h-full min-h-[520px] overflow-hidden rounded-[24px] border border-slate-200/90 bg-[#f6fafb] text-slate-950 shadow-[0_18px_48px_rgba(15,23,42,0.09),0_2px_10px_rgba(8,145,178,0.045)]">
+      <aside className="w-[190px] shrink-0 overflow-y-auto border-r border-slate-200/80 bg-white/96 p-3">
+        <div className="mb-4 flex items-center gap-2 border-b border-slate-100 pb-3">
+          <PsyLatticeLogo size={26} />
+          <div className="min-w-0">
+            <p className="truncate text-[10px] font-semibold text-slate-800">PsyLattice</p>
+            <p className="truncate text-[8px] text-slate-400">{config.shortLabel} workspace</p>
           </div>
         </div>
-      </div>
-    );
-  }
 
-  const perms=[['calendar','View appointment calendar'],['reschedule','Create / reschedule appointments'],['assessments','View assessments'],['notes','View professional notes'],['monitoring','View client monitoring']] as const;
-  return <div><ExplorerScreenTitle eyebrow="Receptionist Access" title="Appointment-only permissions" action="Save permissions" onAction={()=>setNotice("Receptionist permissions saved.")}/>{notice&&<ExplorerNotice text={notice}/>}<ExplorerCard className="p-4" highlight><div className="space-y-2">{perms.map(([key,label])=>{const enabled=reception[key];return <div key={key} className="flex items-center justify-between rounded-xl border border-slate-200 px-3 py-3"><div><p className="text-[10px] font-medium text-slate-700">{label}</p><p className="mt-0.5 text-[8px] text-slate-400">{enabled?"Allowed":"Blocked"}</p></div><ExplorerToggle enabled={enabled} onToggle={()=>setReception(c=>({...c,[key]:!enabled}))}/></div>})}</div></ExplorerCard></div>;
-}
-
-
-
-type ExplorerWorkspace = "self" | "researcher" | "clinician";
-
-type ExplorerNavItem = { id: string; title: string };
-type ExplorerNavGroup = { label: string; items: ExplorerNavItem[] };
-
-const explorerNavigation: Record<ExplorerWorkspace, ExplorerNavGroup[]> = {
-  self: [
-    {
-      label: "Personal",
-      items: [
-        { id: "dashboard", title: "Dashboard" },
-        { id: "ai", title: "AI Guide" },
-        { id: "assessments", title: "Self-Assessments" },
-        { id: "monitoring", title: "Daily Monitoring" },
-        { id: "regulation", title: "Self-Regulation" },
-        { id: "progress", title: "Progress" },
-      ],
-    },
-    {
-      label: "Connected",
-      items: [
-        { id: "wearables", title: "Wearables" },
-        { id: "appointments", title: "Appointments" },
-        { id: "messages", title: "Messages" },
-        { id: "notifications", title: "Notifications" },
-        { id: "privacy", title: "Privacy & Sharing" },
-      ],
-    },
-  ],
-  researcher: [
-    {
-      label: "Research",
-      items: [
-        { id: "dashboard", title: "Dashboard" },
-        { id: "studies", title: "Studies" },
-        { id: "study-builder", title: "Study Builder" },
-        { id: "questionnaires", title: "Questionnaire Library" },
-        { id: "ambulatory", title: "Ambulatory Assessment" },
-        { id: "followups", title: "Follow-up Manager" },
-        { id: "participants", title: "Participants" },
-        { id: "participant-links", title: "Participant Links" },
-      ],
-    },
-    {
-      label: "Data",
-      items: [
-        { id: "data-dashboard", title: "Data Dashboard" },
-        { id: "data-explorer", title: "Data Explorer" },
-        { id: "export", title: "Export Data" },
-      ],
-    },
-    {
-      label: "Governance",
-      items: [
-        { id: "ethics", title: "Ethics & Consent" },
-        { id: "team", title: "Team & Permissions" },
-      ],
-    },
-  ],
-  clinician: [
-    {
-      label: "Clinical",
-      items: [
-        { id: "dashboard", title: "Dashboard" },
-        { id: "notifications", title: "Notifications" },
-        { id: "clients", title: "Clients" },
-        { id: "client-overview", title: "Client Overview" },
-      ],
-    },
-    {
-      label: "Monitoring",
-      items: [
-        { id: "assessments", title: "Assessments" },
-        { id: "monitoring", title: "Ambulatory Monitoring" },
-        { id: "wearables", title: "Wearables & Physiology" },
-        { id: "progress", title: "Progress Timeline" },
-      ],
-    },
-    {
-      label: "Care",
-      items: [
-        { id: "notes", title: "Professional Notes" },
-        { id: "care-pathway", title: "Care Pathway" },
-        { id: "appointments", title: "Appointments" },
-        { id: "messages", title: "Messages" },
-      ],
-    },
-    {
-      label: "Governance",
-      items: [
-        { id: "reports", title: "Reports" },
-        { id: "permissions", title: "Consent & Data Access" },
-        { id: "settings", title: "Clinical Settings" },
-      ],
-    },
-  ],
-};
-
-function SelfNotificationsView() {
-  const [email, setEmail] = useState(true);
-  const [appointment, setAppointment] = useState(true);
-  const [messages, setMessages] = useState(true);
-  const [quiet, setQuiet] = useState(true);
-  return (
-    <div>
-      <ExplorerScreenTitle eyebrow="Notifications" title="Notification preferences" />
-      <div className="grid gap-3 lg:grid-cols-2">
-        <ExplorerCard className="p-4" highlight>
-          <p className="text-xs font-semibold text-slate-900">Email reminders</p>
-          <div className="mt-3 space-y-2">
-            {[
-              ["Monitoring check-ins", email, () => setEmail((v) => !v)],
-              ["Appointments", appointment, () => setAppointment((v) => !v)],
-              ["Secure messages", messages, () => setMessages((v) => !v)],
-            ].map(([label, enabled, onToggle]) => (
-              <div key={String(label)} className="flex items-center justify-between rounded-xl border border-slate-200 px-3 py-3">
-                <span className="text-[10px] font-medium text-slate-700">{String(label)}</span>
-                <ExplorerToggle enabled={Boolean(enabled)} onToggle={onToggle as () => void} />
-              </div>
-            ))}
-          </div>
-        </ExplorerCard>
-        <ExplorerCard className="p-4">
-          <div className="flex items-center justify-between">
-            <div><p className="text-xs font-semibold text-slate-900">Quiet hours</p><p className="mt-1 text-[9px] text-slate-400">Reduce non-essential reminders overnight.</p></div>
-            <ExplorerToggle enabled={quiet} onToggle={() => setQuiet((v) => !v)} />
-          </div>
-          {quiet && <div className="mt-4 grid grid-cols-2 gap-2"><input type="time" defaultValue="22:00" className="rounded-xl border border-slate-200 px-3 py-2 text-[10px]"/><input type="time" defaultValue="07:00" className="rounded-xl border border-slate-200 px-3 py-2 text-[10px]"/></div>}
-        </ExplorerCard>
-      </div>
-    </div>
-  );
-}
-
-function ResearchParticipantLinksView() {
-  const [links, setLinks] = useState([
-    { name: "Main recruitment link", type: "LIVE", token: "stress-study-2026" },
-    { name: "Researcher test link", type: "TEST", token: "stress-study-test" },
-  ]);
-  const [kind, setKind] = useState("LIVE");
-  return (
-    <div>
-      <ExplorerScreenTitle eyebrow="Participant Links" title="Recruitment channels" action="Create link" onAction={() => setLinks((current) => [...current, {name: `${kind === "TEST" ? "Test" : "Recruitment"} link ${current.length + 1}`, type: kind, token: `study-${Math.random().toString(36).slice(2,8)}` }])}/>
-      <div className="grid gap-3 lg:grid-cols-[.75fr_1.25fr]">
-        <ExplorerCard className="p-4">
-          <p className="text-xs font-semibold text-slate-900">New link</p>
-          <div className="mt-3 flex gap-2">{["LIVE","TEST"].map(x=><button key={x} onClick={()=>setKind(x)} className={`rounded-lg px-3 py-2 text-[9px] font-semibold ${kind===x?"bg-slate-950 text-white":"border border-slate-200 text-slate-500"}`}>{x}</button>)}</div>
-          <label className="mt-4 block text-[9px] font-semibold text-slate-500">Maximum participants<input type="number" defaultValue={150} className="mt-1 w-full rounded-xl border border-slate-200 px-3 py-2.5 text-[10px]"/></label>
-        </ExplorerCard>
-        <div className="space-y-3">{links.map((link,index)=><ExplorerCard key={`${link.token}-${index}`} className="p-4" highlight={index===0}><div className="flex flex-wrap items-start justify-between gap-3"><div><span className={`rounded-full px-2 py-1 text-[8px] font-semibold ${link.type==="TEST"?"bg-cyan-50 text-cyan-700":"bg-cyan-50 text-cyan-700"}`}>{link.type}</span><p className="mt-3 text-xs font-semibold text-slate-900">{link.name}</p><p className="mt-1 font-mono text-[8px] text-slate-400">psylattice.com/study/{link.token}</p></div><button onClick={()=>navigator.clipboard?.writeText(`https://psylattice.com/study/${link.token}`)} className="rounded-lg border border-slate-200 px-2.5 py-1.5 text-[8px] font-semibold text-slate-600">Copy link</button></div></ExplorerCard>)}</div>
-      </div>
-    </div>
-  );
-}
-
-function ResearchEthicsView() {
-  const [consentVersion, setConsentVersion] = useState(1);
-  return <div><ExplorerScreenTitle eyebrow="Ethics & Consent" title="Study governance" action="New consent version" onAction={()=>setConsentVersion(v=>v+1)}/><div className="grid gap-3 lg:grid-cols-2"><ExplorerCard className="p-4" highlight><div className="flex items-start justify-between"><div><p className="text-xs font-semibold text-slate-900">Ethics approval</p><p className="mt-1 text-[9px] text-slate-400">Daily Stress in University Students</p></div><span className="rounded-full bg-cyan-50 px-2 py-1 text-[8px] font-semibold text-cyan-700">Approved</span></div><div className="mt-4 grid gap-2 sm:grid-cols-2"><label className="text-[9px] font-semibold text-slate-500">Reference<input defaultValue="PSY-2026-041" className="mt-1 w-full rounded-xl border border-slate-200 px-3 py-2.5 text-[10px]"/></label><label className="text-[9px] font-semibold text-slate-500">Approval date<input type="date" defaultValue="2026-06-12" className="mt-1 w-full rounded-xl border border-slate-200 px-3 py-2.5 text-[10px]"/></label></div></ExplorerCard><ExplorerCard className="p-4"><p className="text-xs font-semibold text-slate-900">Consent versions</p><div className="mt-3 space-y-2">{Array.from({length:consentVersion}).map((_,i)=><button key={i} className="flex w-full items-center justify-between rounded-xl border border-slate-200 px-3 py-3 text-left"><div><p className="text-[10px] font-semibold text-slate-700">Version {i+1}.0</p><p className="mt-0.5 text-[8px] text-slate-400">Participant information + consent items</p></div><span className={`rounded-full px-2 py-1 text-[8px] font-semibold ${i===consentVersion-1?"bg-cyan-50 text-cyan-700":"bg-slate-100 text-slate-500"}`}>{i===consentVersion-1?"Active":"Archived"}</span></button>)}</div></ExplorerCard></div></div>;
-}
-
-function ResearchTeamView() {
-  const [email, setEmail] = useState("");
-  const [members, setMembers] = useState([{name:"Alex Morgan",role:"Owner"},{name:"Sofia Bianchi",role:"Editor"},{name:"Ravi Mehta",role:"Viewer"}]);
-  return <div><ExplorerScreenTitle eyebrow="Team & Permissions" title="Study access"/><div className="grid gap-3 lg:grid-cols-[1.15fr_.85fr]"><ExplorerCard className="p-4" highlight><div className="space-y-2">{members.map((m,i)=><div key={`${m.name}-${i}`} className="grid grid-cols-[1fr_110px_auto] items-center gap-2 rounded-xl border border-slate-200 px-3 py-3"><div><p className="text-[10px] font-semibold text-slate-700">{m.name}</p><p className="mt-0.5 text-[8px] text-slate-400">{i===0?"alex.morgan@example.com":"collaborator@example.com"}</p></div><select value={m.role} disabled={i===0} onChange={e=>setMembers(c=>c.map((x,j)=>j===i?{...x,role:e.target.value}:x))} className="rounded-lg border border-slate-200 bg-white px-2 py-2 text-[9px]"><option>Owner</option><option>Editor</option><option>Viewer</option><option>Exporter</option></select><button disabled={i===0} onClick={()=>setMembers(c=>c.filter((_,j)=>j!==i))} className="text-[8px] font-semibold text-slate-400 disabled:opacity-20">Remove</button></div>)}</div></ExplorerCard><ExplorerCard className="p-4"><p className="text-xs font-semibold text-slate-900">Invite collaborator</p><input value={email} onChange={e=>setEmail(e.target.value)} placeholder="researcher@example.com" className="mt-3 w-full rounded-xl border border-slate-200 px-3 py-2.5 text-[10px]"/><select className="mt-2 w-full rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-[10px]"><option>Editor</option><option>Viewer</option><option>Exporter</option></select><button onClick={()=>{if(email.trim()){setMembers(c=>[...c,{name:email.trim(),role:"Editor"}]);setEmail("")}}} className="mt-3 w-full rounded-xl bg-slate-950 px-3 py-2.5 text-[9px] font-semibold text-white">Invite</button></ExplorerCard></div></div>;
-}
-
-function ClinicalNotificationsView() {
-  const [read, setRead] = useState([false,false,true]);
-  const rows=[["Arjun K. completed Perceived Stress Scale","Today · 08:42"],["New secure message from Lina P.","Today · 08:15"],["Appointment updated for Maya S.","Yesterday · 16:30"]];
-  return <div><ExplorerScreenTitle eyebrow="Notifications" title="Clinical updates" secondary="Mark all read" onSecondary={()=>setRead([true,true,true])}/><div className="space-y-2">{rows.map(([title,time],i)=><button key={title} onClick={()=>setRead(c=>c.map((x,j)=>j===i?true:x))} className={`flex w-full items-start gap-3 rounded-2xl border p-4 text-left ${read[i]?"border-slate-200 bg-white":"border-cyan-200 bg-cyan-50/50"}`}><span className={`mt-1 h-2.5 w-2.5 rounded-full ${read[i]?"bg-slate-300":"bg-cyan-700"}`}/><div><p className="text-[11px] font-semibold text-slate-700">{title}</p><p className="mt-1 text-[9px] text-slate-400">{time}</p></div></button>)}</div></div>;
-}
-
-function ClinicalWearablesView() {
-  const [permission]=useState({sleep:true,activity:true,heart:false});
-  return <div><ExplorerScreenTitle eyebrow="Wearables & Physiology" title="Arjun K."/><div className="grid grid-cols-1 gap-3 sm:grid-cols-3"><ExplorerMiniStat label="Sleep" value="7h 11m" helper="7-day average"/><ExplorerMiniStat label="Steps" value="8,920" helper="daily average"/><ExplorerMiniStat label="Resting HR" value="61 bpm" helper="7-day average"/></div><ExplorerCard className="mt-3 p-4" highlight><div className="space-y-2">{([['sleep','Sleep summary'],['activity','Activity summary'],['heart','Heart-rate summary']] as const).map(([key,label])=><div key={key} className="flex items-center justify-between rounded-xl border border-slate-200 px-3 py-3"><div><p className="text-[10px] font-semibold text-slate-700">{label}</p><p className="mt-0.5 text-[8px] text-slate-400">{permission[key]?"Shared by client":"Not shared by client"}</p></div><span className={`rounded-full px-2 py-1 text-[8px] font-semibold ${permission[key]?"bg-cyan-50 text-cyan-700":"bg-slate-100 text-slate-500"}`}>{permission[key]?"Shared":"Private"}</span></div>)}</div></ExplorerCard></div>;
-}
-
-function ClinicalReportsView() {
-  const [include,setInclude]=useState({assessments:true,monitoring:true,wearables:false,notes:false});
-  return <div><ExplorerScreenTitle eyebrow="Reports" title="Clinical summary" action="Prepare report"/><div className="grid gap-3 lg:grid-cols-[.75fr_1.25fr]"><ExplorerCard className="p-4"><p className="text-xs font-semibold text-slate-900">Report content</p><div className="mt-3 space-y-2">{([['assessments','Assessment history'],['monitoring','Ambulatory monitoring'],['wearables','Wearable summary'],['notes','Professional notes']] as const).map(([key,label])=><div key={key} className="flex items-center justify-between rounded-xl border border-slate-200 px-3 py-3"><span className="text-[10px] font-medium text-slate-700">{label}</span><ExplorerToggle enabled={include[key]} onToggle={()=>setInclude(c=>({...c,[key]:!c[key]}))}/></div>)}</div></ExplorerCard><ExplorerCard className="p-5" highlight><p className="text-[9px] font-semibold uppercase tracking-[.14em] text-cyan-800">PsyLattice clinical summary</p><h4 className="mt-2 text-lg font-semibold text-slate-900">Arjun K.</h4><p className="mt-1 text-[9px] text-slate-400">Prepared 20 Aug 2026</p><div className="mt-5 space-y-4">{include.assessments&&<div><p className="text-[10px] font-semibold text-slate-800">Assessment history</p><p className="mt-1 text-[9px] leading-4 text-slate-500">Latest Perceived Stress Scale score: 16.</p></div>}{include.monitoring&&<div><p className="text-[10px] font-semibold text-slate-800">Monitoring summary</p><p className="mt-1 text-[9px] leading-4 text-slate-500">86% scheduled check-in completion during the past seven days.</p></div>}{include.wearables&&<div><p className="text-[10px] font-semibold text-slate-800">Wearables</p><p className="mt-1 text-[9px] leading-4 text-slate-500">Shared sleep and activity summaries included.</p></div>}{include.notes&&<div><p className="text-[10px] font-semibold text-slate-800">Professional notes</p><p className="mt-1 text-[9px] leading-4 text-slate-500">Selected clinician-authored documentation included.</p></div>}</div></ExplorerCard></div></div>;
-}
-
-function ClinicalPermissionsView() {
-  const [permissions] = useState({assessments:true,monitoring:true,progress:true,wearables:false,regulation:false});
-  return <div><ExplorerScreenTitle eyebrow="Consent & Data Access" title="Arjun K."/><ExplorerCard className="p-4" highlight><p className="text-[10px] leading-5 text-slate-500">The client controls these categories from Self → Privacy & Sharing. Clinical reflects the resulting access state.</p><div className="mt-4 space-y-2">{Object.entries(permissions).map(([key,enabled])=><div key={key} className="flex items-center justify-between rounded-xl border border-slate-200 px-3 py-3"><div><p className="text-[10px] font-semibold capitalize text-slate-700">{key}</p><p className="mt-0.5 text-[8px] text-slate-400">Category-specific permission</p></div><span className={`rounded-full px-2 py-1 text-[8px] font-semibold ${enabled?"bg-cyan-50 text-cyan-700":"bg-slate-100 text-slate-500"}`}>{enabled?"Shared":"Not shared"}</span></div>)}</div></ExplorerCard></div>;
-}
-
-function ClinicalSettingsView() {
-  const [alerts,setAlerts]=useState(true); const [receptionist,setReceptionist]=useState(false);
-  return <div><ExplorerScreenTitle eyebrow="Clinical Settings" title="Professional workspace" action="Save settings"/><div className="grid gap-3 lg:grid-cols-2"><ExplorerCard className="p-4" highlight><p className="text-xs font-semibold text-slate-900">Professional profile</p><label className="mt-3 block text-[9px] font-semibold text-slate-500">Display name<input defaultValue="Dr. Alex Morgan" className="mt-1 w-full rounded-xl border border-slate-200 px-3 py-2.5 text-[10px]"/></label><label className="mt-3 block text-[9px] font-semibold text-slate-500">Professional title<input defaultValue="Psychologist" className="mt-1 w-full rounded-xl border border-slate-200 px-3 py-2.5 text-[10px]"/></label></ExplorerCard><ExplorerCard className="p-4"><div className="flex items-center justify-between rounded-xl bg-slate-50 px-3 py-3"><div><p className="text-[10px] font-semibold text-slate-700">Email alerts</p><p className="text-[8px] text-slate-400">Appointments and secure messages</p></div><ExplorerToggle enabled={alerts} onToggle={()=>setAlerts(v=>!v)}/></div><div className="mt-2 flex items-center justify-between rounded-xl bg-slate-50 px-3 py-3"><div><p className="text-[10px] font-semibold text-slate-700">Receptionist appointment access</p><p className="text-[8px] text-slate-400">Appointment-only delegated access</p></div><ExplorerToggle enabled={receptionist} onToggle={()=>setReceptionist(v=>!v)}/></div>{receptionist&&<div className="mt-2 rounded-xl border border-slate-200 px-3 py-2.5 font-mono text-[8px] text-slate-400">psylattice.com/receptionist/clinical-access</div>}</ExplorerCard></div></div>;
-}
-
-function ExplorerWorkspaceContent({ workspace, screen }: { workspace: ExplorerWorkspace; screen: string }) {
-  if (workspace === "self") {
-    if (screen === "notifications") return <SelfNotificationsView />;
-    return <ExplorerSelfCore slideId={screen} />;
-  }
-  if (workspace === "researcher") {
-    if (screen === "dashboard") return <ExplorerResearchCore slideId="studies" />;
-    if (screen === "participant-links") return <ResearchParticipantLinksView />;
-    if (screen === "data-dashboard") return <ExplorerResearchCore slideId="data" />;
-    if (screen === "data-explorer") return <ExplorerResearchCore slideId="data" />;
-    if (screen === "ethics") return <ResearchEthicsView />;
-    if (screen === "team") return <ResearchTeamView />;
-    return <ExplorerResearchCore slideId={screen} />;
-  }
-  if (screen === "dashboard") return <ExplorerClinicalCore slideId="client-overview" />;
-  if (screen === "notifications") return <ClinicalNotificationsView />;
-  if (screen === "wearables") return <ClinicalWearablesView />;
-  if (screen === "reports") return <ClinicalReportsView />;
-  if (screen === "permissions") return <ClinicalPermissionsView />;
-  if (screen === "settings") return <ClinicalSettingsView />;
-  return <ExplorerClinicalCore slideId={screen} />;
-}
-
-function ExactWorkspaceEnvironment({ workspace }: { workspace: ExplorerWorkspace }) {
-  const defaultScreen = workspace === "self" ? "dashboard" : workspace === "researcher" ? "dashboard" : "dashboard";
-  const [screen, setScreen] = useState(defaultScreen);
-  const [collapsed, setCollapsed] = useState(false);
-  const [accountOpen, setAccountOpen] = useState(false);
-  const navGroups = explorerNavigation[workspace];
-  const workspaceLabel = workspace === "self" ? "Self" : workspace === "researcher" ? "Research" : "Clinical";
-  const screenTitle = navGroups.flatMap((g)=>g.items).find((item)=>item.id===screen)?.title || workspaceLabel;
-
-  useEffect(() => { setScreen(defaultScreen); }, [workspace, defaultScreen]);
-
-  return (
-    <div className="relative h-[860px] overflow-hidden bg-[#f6f8f8] text-slate-950">
-      <header className="absolute inset-x-0 top-0 z-30 h-[74px] border-b border-slate-200 bg-white/95 backdrop-blur">
-        <div className="flex h-full items-center justify-between gap-4 px-5 lg:px-7">
-          <div className="min-w-0"><PsyLatticeLogo size={38}/><p className="mt-0.5 pl-[52px] text-[10px] font-medium text-slate-400">{workspaceLabel} workspace</p></div>
-          <div className="relative flex items-center gap-2">
-            {workspace === "clinician" && <span className="hidden rounded-full border border-cyan-200 bg-cyan-50 px-3 py-1.5 text-[9px] font-semibold text-cyan-800 sm:inline-flex">Verified clinician</span>}
-            <button onClick={()=>setAccountOpen(v=>!v)} className="flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-2.5 py-1.5 hover:bg-slate-50"><div className="flex h-8 w-8 items-center justify-center rounded-full bg-slate-100 text-[10px] font-semibold text-slate-600">AM</div><ChevronDown className="h-3.5 w-3.5 text-slate-400"/></button>
-            {accountOpen&&<div className="absolute right-0 top-11 z-40 w-48 rounded-2xl border border-slate-200 bg-white p-2 shadow-xl"><p className="px-2 py-2 text-[9px] font-semibold uppercase tracking-[.12em] text-slate-400">Alex Morgan</p>{["Workspace selector","Profile","Notifications","Sign out"].map(x=><button key={x} onClick={()=>setAccountOpen(false)} className="block w-full rounded-xl px-3 py-2.5 text-left text-[10px] text-slate-600 hover:bg-slate-50">{x}</button>)}</div>}
-          </div>
+        <p className="mb-2 px-2 text-[8px] font-semibold uppercase tracking-[0.14em] text-slate-400">Workspace</p>
+        <div className="space-y-1 pb-2">
+          {config.slides.map((slide) => {
+            const active = slide.id === activeSlideId;
+            return (
+              <button
+                key={slide.id}
+                type="button"
+                onClick={() => onNavigate(slide.id)}
+                className={`flex w-full items-center gap-2 rounded-full border px-2.5 py-2 text-left text-[9px] font-medium transition-all ${active ? "border-cyan-200/80 bg-white font-semibold text-cyan-900 shadow-[0_5px_14px_rgba(8,145,178,0.14),0_10px_22px_rgba(15,23,42,0.05)]" : "border-transparent text-slate-500 hover:border-slate-200/80 hover:bg-white hover:text-slate-800 hover:shadow-[0_3px_10px_rgba(15,23,42,0.04)]"}`}
+              >
+                <span className={active ? "text-cyan-700" : "text-slate-400"}>{navIcons[slide.id] ?? <ChevronRight className="h-3.5 w-3.5" />}</span>
+                <span className="truncate">{slide.title}</span>
+              </button>
+            );
+          })}
         </div>
-      </header>
 
-      <aside className={`absolute bottom-0 left-0 top-[74px] z-20 hidden overflow-y-auto border-r border-slate-200 bg-white p-3 transition-[width] duration-200 lg:block ${collapsed?"w-[76px]":"w-[250px]"}`}>
-        <div className={`mb-4 flex ${collapsed?"justify-center":"justify-end"}`}><button onClick={()=>setCollapsed(v=>!v)} className="flex h-9 w-9 items-center justify-center rounded-xl border border-slate-200 bg-white text-lg font-semibold text-slate-500 hover:bg-slate-50">{collapsed?"›":"‹"}</button></div>
-        {!collapsed &&
-          navGroups.map((group) => (
-            <div key={group.label} className="mb-6">
-              <p className="px-3 pb-2 text-[9px] font-semibold uppercase tracking-[.17em] text-slate-400">
-                {group.label}
-              </p>
-              <nav className="space-y-1">
-                {group.items.map((item) => {
-                  const active = item.id === screen;
-                  return (
-                    <button
-                      key={item.id}
-                      onClick={() => setScreen(item.id)}
-                      className={`block w-full rounded-xl px-3 py-2.5 text-left text-[11px] transition ${
-                        active
-                          ? "bg-cyan-50 font-semibold text-cyan-900"
-                          : "text-slate-500 hover:bg-slate-50 hover:text-slate-950"
-                      }`}
-                    >
-                      <span className="truncate">{item.title}</span>
-                    </button>
-                  );
-                })}
-              </nav>
-            </div>
-          ))}
+        <div className="mt-4 rounded-[18px] border border-cyan-200/80 bg-cyan-50/70 p-3 text-slate-700 shadow-[0_7px_18px_rgba(8,145,178,0.07)]">
+          <p className="text-[8px] font-semibold uppercase tracking-[0.12em] text-cyan-900">Guided tour</p>
+          <p className="mt-1 text-[8px] leading-4 text-slate-500">Feature preview with sample workspace content.</p>
+        </div>
       </aside>
 
-      <section className={`absolute bottom-0 right-0 top-[74px] overflow-y-auto overscroll-contain p-4 pb-16 transition-[left] duration-200 sm:p-5 lg:p-7 ${collapsed?"lg:left-[76px]":"lg:left-[250px]"} left-0`}>
-        <div className="mx-auto max-w-[1450px]">
-          <div className="mb-5 flex flex-wrap items-end justify-between gap-3"><div><div className="flex items-center gap-2"><span className="rounded-full border border-cyan-100 bg-cyan-50 px-2.5 py-1 text-[8px] font-semibold text-cyan-800">{workspaceLabel}</span><span className="text-[9px] text-slate-400">{screenTitle}</span></div></div></div>
-          <ExplorerWorkspaceContent workspace={workspace} screen={screen}/>
+      <div className="min-w-0 flex-1">
+        <div className="flex h-12 items-center justify-between border-b border-slate-200/80 bg-white/95 px-4">
+          <div>
+            <p className="text-[9px] font-semibold text-slate-700">{config.label}</p>
+            <p className="text-[8px] text-slate-400">Interactive onboarding preview</p>
+          </div>
+          <div className="flex items-center gap-2">
+            <span className="rounded-full bg-cyan-50 px-2.5 py-1 text-[8px] font-semibold text-cyan-800">Tour</span>
+            <div className="flex h-7 w-7 items-center justify-center rounded-full bg-slate-100 text-[9px] font-semibold text-slate-600">PD</div>
+          </div>
         </div>
-      </section>
-    </div>
-  );
-}
 
-function ProductExplorer({ activeWorkspace, onWorkspaceChange }: { activeWorkspace: WorkspaceId; onWorkspaceChange: (workspace: WorkspaceId) => void }) {
-  const [resetKey,setResetKey]=useState(0);
-  const explorerWorkspace: ExplorerWorkspace =
-    activeWorkspace === "research"
-      ? "researcher"
-      : activeWorkspace === "clinical"
-        ? "clinician"
-        : "self";
-  return (
-    <div className="rounded-[32px] border border-slate-200/90 bg-white/75 p-3 shadow-[0_4px_10px_rgba(15,23,42,.045),0_28px_70px_rgba(15,23,42,.11)] backdrop-blur sm:p-4">
-      <div className="mb-3 flex flex-col gap-3 rounded-[24px] border border-slate-200/90 bg-white px-4 py-4 shadow-[0_2px_5px_rgba(15,23,42,.035),0_10px_24px_rgba(15,23,42,.06)] sm:flex-row sm:items-center sm:justify-between">
-        <div className="flex flex-wrap gap-2">{workspaces.map(workspace=>{const Icon=workspace.icon; const selected=workspace.id===activeWorkspace; return <button key={workspace.id} onClick={()=>{onWorkspaceChange(workspace.id);setResetKey(0)}} className={`inline-flex items-center gap-2 rounded-xl border px-4 py-2.5 text-xs font-semibold transition ${selected?"border-cyan-300 bg-cyan-50 text-cyan-950 shadow-[0_2px_6px_rgba(8,145,178,.08),0_10px_24px_rgba(8,145,178,.12)]":"border-transparent bg-transparent text-slate-500 hover:border-slate-200 hover:bg-white hover:text-slate-900 hover:shadow-[0_2px_5px_rgba(15,23,42,.04),0_8px_18px_rgba(15,23,42,.06)]"}`}><Icon className="h-4 w-4"/>{workspace.id==="research"?"Researcher":workspace.navLabel}</button>})}</div>
-        <button onClick={()=>setResetKey(v=>v+1)} className="rounded-full border border-slate-200 bg-white px-4 py-2.5 text-xs font-semibold text-slate-600 shadow-[0_2px_5px_rgba(15,23,42,.035),0_8px_18px_rgba(15,23,42,.055)] transition hover:-translate-y-px hover:border-cyan-200">Reset workspace</button>
+        <div className="h-[calc(100%-48px)] overflow-auto p-4">
+          {workspace === "self" && <SelfDemo slideId={activeSlideId} />}
+          {workspace === "clinician" && <ClinicalDemo slideId={activeSlideId} />}
+        </div>
       </div>
-      <div key={`${explorerWorkspace}-${resetKey}`} className="overflow-hidden rounded-[26px] border border-slate-200/90 bg-white shadow-[0_4px_10px_rgba(15,23,42,.045),0_28px_72px_rgba(15,23,42,.13)]"><ExactWorkspaceEnvironment workspace={explorerWorkspace}/></div>
     </div>
   );
 }
 
-export default function Home() {
-  const [heroWorkspace, setHeroWorkspace] =
-    useState<WorkspaceId>("research");
-  const [explorerWorkspace, setExplorerWorkspace] =
-    useState<WorkspaceId>("research");
-  const [researchStep, setResearchStep] = useState(0);
-  const [processStep, setProcessStep] = useState(0);
-  const [openSecurity, setOpenSecurity] = useState(0);
-  const [showResearchPricing, setShowResearchPricing] = useState(false);
+function WorkspaceTour() {
+  const router = useRouter();
+  const searchParams = useSearchParams();
 
-  const activeHeroWorkspace = useMemo(
-    () =>
-      workspaces.find((workspace) => workspace.id === heroWorkspace) ??
-      workspaces[1],
-    [heroWorkspace]
+  const workspace = useMemo(
+    () => normaliseWorkspace(searchParams.get("workspace")),
+    [searchParams]
   );
 
-  const activePricing = pricingContent.India;
-  const activeProcess = process[processStep];
+  const replay = searchParams.get("replay") === "1";
+  const config = workspace ? tourConfigs[workspace] : null;
+
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [currentIndex, setCurrentIndex] = useState(0);
+  const [dashboardFeatureIndex, setDashboardFeatureIndex] = useState(0);
+  const [studiesFeatureIndex, setStudiesFeatureIndex] = useState(0);
+  const [studyBuilderFeatureIndex, setStudyBuilderFeatureIndex] = useState(0);
+  const [questionnaireFeatureIndex, setQuestionnaireFeatureIndex] = useState(0);
+  const [cognitiveFeatureIndex, setCognitiveFeatureIndex] = useState(0);
+  const [thesisFeatureIndex, setThesisFeatureIndex] = useState(0);
+  const [ambulatoryFeatureIndex, setAmbulatoryFeatureIndex] = useState(0);
+  const [participantsFeatureIndex, setParticipantsFeatureIndex] = useState(0);
+  const [participantLinksFeatureIndex, setParticipantLinksFeatureIndex] = useState(0);
+  const [dataDashboardFeatureIndex, setDataDashboardFeatureIndex] = useState(0);
+  const [dataExplorerFeatureIndex, setDataExplorerFeatureIndex] = useState(0);
+  const [analysisFeatureIndex, setAnalysisFeatureIndex] = useState(0);
+  const [exportFeatureIndex, setExportFeatureIndex] = useState(0);
+  const [error, setError] = useState("");
+  const [focusOpen, setFocusOpen] = useState(false);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    async function loadTour() {
+      if (!workspace || !config) {
+        router.replace("/workspace");
+        return;
+      }
+
+      const destination = config.destination;
+      const slideCount = config.slides.length;
+      const supabase = createClient();
+      const {
+        data: { user },
+        error: userError,
+      } = await supabase.auth.getUser();
+
+      if (cancelled) return;
+
+      if (userError || !user) {
+        router.replace(`/signin?workspace=${workspace}`);
+        return;
+      }
+
+      const { data: onboarding, error: onboardingError } = await supabase
+        .from("workspace_onboarding")
+        .select("current_step, completed_at")
+        .eq("user_id", user.id)
+        .eq("workspace", workspace)
+        .maybeSingle();
+
+      if (cancelled) return;
+
+      if (onboardingError) {
+        console.error("Could not load workspace tour:", onboardingError);
+        setError("We could not restore your previous position.");
+      }
+
+      if (onboarding?.completed_at && !replay) {
+        router.replace(destination);
+        return;
+      }
+
+      if (!replay && typeof onboarding?.current_step === "number") {
+        setCurrentIndex(
+          Math.max(0, Math.min(slideCount - 1, onboarding.current_step - 1))
+        );
+      }
+
+      setLoading(false);
+    }
+
+    void loadTour();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [workspace, config, replay, router]);
+
+  useEffect(() => {
+    if (!focusOpen) return;
+
+    function handleKeyDown(event: KeyboardEvent) {
+      if (event.key === "Escape") setFocusOpen(false);
+    }
+
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [focusOpen]);
+
+  useEffect(() => {
+    const currentSlide = config?.slides[currentIndex];
+
+    if (workspace !== "researcher") {
+      setDashboardFeatureIndex(0);
+      setStudiesFeatureIndex(0);
+      setStudyBuilderFeatureIndex(0);
+      setQuestionnaireFeatureIndex(0);
+      setCognitiveFeatureIndex(0);
+      setThesisFeatureIndex(0);
+      setAmbulatoryFeatureIndex(0);
+      setParticipantsFeatureIndex(0);
+      setParticipantLinksFeatureIndex(0);
+      setDataDashboardFeatureIndex(0);
+      setDataExplorerFeatureIndex(0);
+      setAnalysisFeatureIndex(0);
+      setExportFeatureIndex(0);
+      return;
+    }
+
+    if (currentSlide?.id !== "dashboard") setDashboardFeatureIndex(0);
+    if (currentSlide?.id !== "studies") setStudiesFeatureIndex(0);
+    if (currentSlide?.id !== "study-builder") setStudyBuilderFeatureIndex(0);
+    if (currentSlide?.id !== "questionnaires") setQuestionnaireFeatureIndex(0);
+    if (currentSlide?.id !== "cognitive-lab") setCognitiveFeatureIndex(0);
+    if (currentSlide?.id !== "thesis-builder") setThesisFeatureIndex(0);
+    if (currentSlide?.id !== "ambulatory") setAmbulatoryFeatureIndex(0);
+    if (currentSlide?.id !== "participants") setParticipantsFeatureIndex(0);
+    if (currentSlide?.id !== "participant-links") setParticipantLinksFeatureIndex(0);
+    if (currentSlide?.id !== "data-dashboard") setDataDashboardFeatureIndex(0);
+    if (currentSlide?.id !== "data-explorer") setDataExplorerFeatureIndex(0);
+    if (currentSlide?.id !== "analysis-lab") setAnalysisFeatureIndex(0);
+    if (currentSlide?.id !== "export") setExportFeatureIndex(0);
+
+    const isDashboard = currentSlide?.id === "dashboard";
+    const isStudies = currentSlide?.id === "studies";
+    const isStudyBuilder = currentSlide?.id === "study-builder";
+    const isQuestionnaires = currentSlide?.id === "questionnaires";
+    const isCognitive = currentSlide?.id === "cognitive-lab";
+    const isThesis = currentSlide?.id === "thesis-builder";
+    const isAmbulatory = currentSlide?.id === "ambulatory";
+    const isParticipants = currentSlide?.id === "participants";
+    const isParticipantLinks = currentSlide?.id === "participant-links";
+    const isDataDashboard = currentSlide?.id === "data-dashboard";
+    const isDataExplorer = currentSlide?.id === "data-explorer";
+    const isAnalysis = currentSlide?.id === "analysis-lab";
+    const isExport = currentSlide?.id === "export";
+    if (!isDashboard && !isStudies && !isStudyBuilder && !isQuestionnaires && !isCognitive && !isThesis && !isAmbulatory && !isParticipants && !isParticipantLinks && !isDataDashboard && !isDataExplorer && !isAnalysis && !isExport) return;
+
+    const timer = window.setTimeout(() => {
+      const steps = isDashboard
+        ? dashboardTourSteps
+        : isStudies
+          ? studiesTourSteps
+          : isStudyBuilder
+            ? studyBuilderTourSteps
+            : isQuestionnaires
+              ? questionnaireTourSteps
+              : isCognitive
+                ? cognitiveTourSteps
+                : isThesis
+                  ? thesisTourSteps
+                  : isAmbulatory
+                    ? ambulatoryTourSteps
+                    : isParticipants
+                      ? participantsTourSteps
+                      : isParticipantLinks
+                        ? participantLinksTourSteps
+                        : isDataDashboard
+                          ? dataDashboardTourSteps
+                          : isDataExplorer
+                            ? dataExplorerTourSteps
+                            : isAnalysis
+                              ? analysisTourSteps
+                              : exportTourSteps;
+      const featureIndex = isDashboard
+        ? dashboardFeatureIndex
+        : isStudies
+          ? studiesFeatureIndex
+          : isStudyBuilder
+            ? studyBuilderFeatureIndex
+            : isQuestionnaires
+              ? questionnaireFeatureIndex
+              : isCognitive
+                ? cognitiveFeatureIndex
+                : isThesis
+                  ? thesisFeatureIndex
+                  : isAmbulatory
+                    ? ambulatoryFeatureIndex
+                    : isParticipants
+                      ? participantsFeatureIndex
+                      : isParticipantLinks
+                        ? participantLinksFeatureIndex
+                        : isDataDashboard
+                          ? dataDashboardFeatureIndex
+                          : isDataExplorer
+                            ? dataExplorerFeatureIndex
+                            : isAnalysis
+                              ? analysisFeatureIndex
+                              : exportFeatureIndex;
+      const targetId = steps[featureIndex]?.targetId;
+      if (!targetId) return;
+
+      document.querySelectorAll<HTMLElement>('[data-tour-scroll="true"]').forEach((scrollContainer) => {
+        if (
+          (isDashboard && featureIndex <= 2) ||
+          (isStudies && featureIndex === 0) ||
+          isStudyBuilder ||
+          (isQuestionnaires && (featureIndex === 0 || featureIndex === 3)) ||
+          isCognitive ||
+          isThesis ||
+          (isAmbulatory && featureIndex <= 1) ||
+          (isParticipants && featureIndex === 0) ||
+          (isParticipantLinks && featureIndex === 0) ||
+          (isDataDashboard && featureIndex === 0) ||
+          (isDataExplorer && featureIndex === 0) ||
+          (isAnalysis && featureIndex === 0) ||
+          (isExport && featureIndex === 0)
+        ) {
+          scrollContainer.scrollTo({ top: 0, behavior: "smooth" });
+          return;
+        }
+
+        const target = scrollContainer.querySelector<HTMLElement>(`#${targetId}`);
+        if (!target) return;
+        const containerRect = scrollContainer.getBoundingClientRect();
+        const targetRect = target.getBoundingClientRect();
+        const nextTop = scrollContainer.scrollTop + targetRect.top - containerRect.top - 28;
+        scrollContainer.scrollTo({ top: Math.max(0, nextTop), behavior: "smooth" });
+      });
+    }, 100);
+
+    return () => window.clearTimeout(timer);
+  }, [
+    workspace,
+    config,
+    currentIndex,
+    dashboardFeatureIndex,
+    studiesFeatureIndex,
+    studyBuilderFeatureIndex,
+    questionnaireFeatureIndex,
+    cognitiveFeatureIndex,
+    thesisFeatureIndex,
+    ambulatoryFeatureIndex,
+    participantsFeatureIndex,
+    participantLinksFeatureIndex,
+    dataDashboardFeatureIndex,
+    dataExplorerFeatureIndex,
+    analysisFeatureIndex,
+    exportFeatureIndex,
+    focusOpen,
+  ]);
+
+  async function savePosition(index: number) {
+    if (!workspace || !config || saving) return;
+
+    setSaving(true);
+    setError("");
+
+    const supabase = createClient();
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
+
+    if (!user) {
+      setSaving(false);
+      router.replace(`/signin?workspace=${workspace}`);
+      return;
+    }
+
+    const { error: saveError } = await supabase
+      .from("workspace_onboarding")
+      .upsert(
+        {
+          user_id: user.id,
+          workspace,
+          current_step: index + 1,
+          updated_at: new Date().toISOString(),
+        },
+        { onConflict: "user_id,workspace" }
+      );
+
+    if (saveError) {
+      console.error("Could not save tour position:", saveError);
+      setError("Your position could not be saved.");
+      setSaving(false);
+      return;
+    }
+
+    setCurrentIndex(index);
+    setSaving(false);
+  }
+
+  function navigateBySlideId(slideId: string) {
+    if (!config) return;
+    const index = config.slides.findIndex((slide) => slide.id === slideId);
+    if (slideId === "dashboard") setDashboardFeatureIndex(0);
+    if (slideId === "studies") setStudiesFeatureIndex(0);
+    if (slideId === "study-builder") setStudyBuilderFeatureIndex(0);
+    if (slideId === "questionnaires") setQuestionnaireFeatureIndex(0);
+    if (slideId === "cognitive-lab") setCognitiveFeatureIndex(0);
+    if (slideId === "thesis-builder") setThesisFeatureIndex(0);
+    if (slideId === "ambulatory") setAmbulatoryFeatureIndex(0);
+    if (slideId === "participants") setParticipantsFeatureIndex(0);
+    if (slideId === "participant-links") setParticipantLinksFeatureIndex(0);
+    if (slideId === "data-dashboard") setDataDashboardFeatureIndex(0);
+    if (slideId === "data-explorer") setDataExplorerFeatureIndex(0);
+    if (slideId === "analysis-lab") setAnalysisFeatureIndex(0);
+    if (slideId === "export") setExportFeatureIndex(0);
+    if (index >= 0 && index !== currentIndex) void savePosition(index);
+  }
+
+  function handleGuideBack() {
+    const active = config?.slides[currentIndex];
+
+    if (workspace === "researcher" && active?.id === "dashboard" && dashboardFeatureIndex > 0) {
+      setDashboardFeatureIndex((value) => Math.max(0, value - 1));
+      return;
+    }
+
+    if (workspace === "researcher" && active?.id === "studies" && studiesFeatureIndex > 0) {
+      setStudiesFeatureIndex((value) => Math.max(0, value - 1));
+      return;
+    }
+
+    if (workspace === "researcher" && active?.id === "study-builder" && studyBuilderFeatureIndex > 0) {
+      setStudyBuilderFeatureIndex((value) => Math.max(0, value - 1));
+      return;
+    }
+
+    if (workspace === "researcher" && active?.id === "questionnaires" && questionnaireFeatureIndex > 0) {
+      setQuestionnaireFeatureIndex((value) => Math.max(0, value - 1));
+      return;
+    }
+
+    if (workspace === "researcher" && active?.id === "cognitive-lab" && cognitiveFeatureIndex > 0) {
+      setCognitiveFeatureIndex((value) => Math.max(0, value - 1));
+      return;
+    }
+
+    if (workspace === "researcher" && active?.id === "thesis-builder" && thesisFeatureIndex > 0) {
+      setThesisFeatureIndex((value) => Math.max(0, value - 1));
+      return;
+    }
+
+    if (workspace === "researcher" && active?.id === "ambulatory" && ambulatoryFeatureIndex > 0) {
+      setAmbulatoryFeatureIndex((value) => Math.max(0, value - 1));
+      return;
+    }
+
+    if (workspace === "researcher" && active?.id === "participants" && participantsFeatureIndex > 0) { setParticipantsFeatureIndex((value) => Math.max(0, value - 1)); return; }
+    if (workspace === "researcher" && active?.id === "participant-links" && participantLinksFeatureIndex > 0) { setParticipantLinksFeatureIndex((value) => Math.max(0, value - 1)); return; }
+    if (workspace === "researcher" && active?.id === "data-dashboard" && dataDashboardFeatureIndex > 0) { setDataDashboardFeatureIndex((value) => Math.max(0, value - 1)); return; }
+    if (workspace === "researcher" && active?.id === "data-explorer" && dataExplorerFeatureIndex > 0) { setDataExplorerFeatureIndex((value) => Math.max(0, value - 1)); return; }
+
+    if (workspace === "researcher" && active?.id === "analysis-lab" && analysisFeatureIndex > 0) {
+      setAnalysisFeatureIndex((value) => Math.max(0, value - 1));
+      return;
+    }
+
+    if (workspace === "researcher" && active?.id === "export" && exportFeatureIndex > 0) { setExportFeatureIndex((value) => Math.max(0, value - 1)); return; }
+
+    if (currentIndex > 0) {
+      const previousSlide = config?.slides[currentIndex - 1];
+      if (workspace === "researcher" && previousSlide?.id === "dashboard") {
+        setDashboardFeatureIndex(dashboardTourSteps.length - 1);
+      }
+      if (workspace === "researcher" && previousSlide?.id === "studies") {
+        setStudiesFeatureIndex(studiesTourSteps.length - 1);
+      }
+      if (workspace === "researcher" && previousSlide?.id === "study-builder") {
+        setStudyBuilderFeatureIndex(studyBuilderTourSteps.length - 1);
+      }
+      if (workspace === "researcher" && previousSlide?.id === "questionnaires") {
+        setQuestionnaireFeatureIndex(questionnaireTourSteps.length - 1);
+      }
+      if (workspace === "researcher" && previousSlide?.id === "cognitive-lab") {
+        setCognitiveFeatureIndex(cognitiveTourSteps.length - 1);
+      }
+      if (workspace === "researcher" && previousSlide?.id === "thesis-builder") {
+        setThesisFeatureIndex(thesisTourSteps.length - 1);
+      }
+      if (workspace === "researcher" && previousSlide?.id === "ambulatory") {
+        setAmbulatoryFeatureIndex(ambulatoryTourSteps.length - 1);
+      }
+      if (workspace === "researcher" && previousSlide?.id === "participants") setParticipantsFeatureIndex(participantsTourSteps.length - 1);
+      if (workspace === "researcher" && previousSlide?.id === "participant-links") setParticipantLinksFeatureIndex(participantLinksTourSteps.length - 1);
+      if (workspace === "researcher" && previousSlide?.id === "data-dashboard") setDataDashboardFeatureIndex(dataDashboardTourSteps.length - 1);
+      if (workspace === "researcher" && previousSlide?.id === "data-explorer") setDataExplorerFeatureIndex(dataExplorerTourSteps.length - 1);
+      if (workspace === "researcher" && previousSlide?.id === "analysis-lab") {
+        setAnalysisFeatureIndex(analysisTourSteps.length - 1);
+      }
+      if (workspace === "researcher" && previousSlide?.id === "export") setExportFeatureIndex(exportTourSteps.length - 1);
+      void savePosition(currentIndex - 1);
+    }
+  }
+
+  function handleGuideNext() {
+    const active = config?.slides[currentIndex];
+
+    if (
+      workspace === "researcher" &&
+      active?.id === "dashboard" &&
+      dashboardFeatureIndex < dashboardTourSteps.length - 1
+    ) {
+      setDashboardFeatureIndex((value) =>
+        Math.min(dashboardTourSteps.length - 1, value + 1)
+      );
+      return;
+    }
+
+    if (
+      workspace === "researcher" &&
+      active?.id === "studies" &&
+      studiesFeatureIndex < studiesTourSteps.length - 1
+    ) {
+      setStudiesFeatureIndex((value) =>
+        Math.min(studiesTourSteps.length - 1, value + 1)
+      );
+      return;
+    }
+
+    if (
+      workspace === "researcher" &&
+      active?.id === "study-builder" &&
+      studyBuilderFeatureIndex < studyBuilderTourSteps.length - 1
+    ) {
+      setStudyBuilderFeatureIndex((value) =>
+        Math.min(studyBuilderTourSteps.length - 1, value + 1)
+      );
+      return;
+    }
+
+    if (
+      workspace === "researcher" &&
+      active?.id === "questionnaires" &&
+      questionnaireFeatureIndex < questionnaireTourSteps.length - 1
+    ) {
+      setQuestionnaireFeatureIndex((value) =>
+        Math.min(questionnaireTourSteps.length - 1, value + 1)
+      );
+      return;
+    }
+
+    if (
+      workspace === "researcher" &&
+      active?.id === "cognitive-lab" &&
+      cognitiveFeatureIndex < cognitiveTourSteps.length - 1
+    ) {
+      setCognitiveFeatureIndex((value) =>
+        Math.min(cognitiveTourSteps.length - 1, value + 1)
+      );
+      return;
+    }
+
+    if (
+      workspace === "researcher" &&
+      active?.id === "thesis-builder" &&
+      thesisFeatureIndex < thesisTourSteps.length - 1
+    ) {
+      setThesisFeatureIndex((value) =>
+        Math.min(thesisTourSteps.length - 1, value + 1)
+      );
+      return;
+    }
+
+    if (
+      workspace === "researcher" &&
+      active?.id === "ambulatory" &&
+      ambulatoryFeatureIndex < ambulatoryTourSteps.length - 1
+    ) {
+      setAmbulatoryFeatureIndex((value) =>
+        Math.min(ambulatoryTourSteps.length - 1, value + 1)
+      );
+      return;
+    }
+
+    if (workspace === "researcher" && active?.id === "participants" && participantsFeatureIndex < participantsTourSteps.length - 1) { setParticipantsFeatureIndex((value) => Math.min(participantsTourSteps.length - 1, value + 1)); return; }
+    if (workspace === "researcher" && active?.id === "participant-links" && participantLinksFeatureIndex < participantLinksTourSteps.length - 1) { setParticipantLinksFeatureIndex((value) => Math.min(participantLinksTourSteps.length - 1, value + 1)); return; }
+    if (workspace === "researcher" && active?.id === "data-dashboard" && dataDashboardFeatureIndex < dataDashboardTourSteps.length - 1) { setDataDashboardFeatureIndex((value) => Math.min(dataDashboardTourSteps.length - 1, value + 1)); return; }
+    if (workspace === "researcher" && active?.id === "data-explorer" && dataExplorerFeatureIndex < dataExplorerTourSteps.length - 1) { setDataExplorerFeatureIndex((value) => Math.min(dataExplorerTourSteps.length - 1, value + 1)); return; }
+
+    if (
+      workspace === "researcher" &&
+      active?.id === "analysis-lab" &&
+      analysisFeatureIndex < analysisTourSteps.length - 1
+    ) {
+      setAnalysisFeatureIndex((value) =>
+        Math.min(analysisTourSteps.length - 1, value + 1)
+      );
+      return;
+    }
+
+    if (workspace === "researcher" && active?.id === "export" && exportFeatureIndex < exportTourSteps.length - 1) { setExportFeatureIndex((value) => Math.min(exportTourSteps.length - 1, value + 1)); return; }
+
+    if (config && currentIndex < config.slides.length - 1) {
+      void savePosition(currentIndex + 1);
+    }
+  }
+
+  async function completeTour() {
+    if (!workspace || !config || saving) return;
+
+    setSaving(true);
+    setError("");
+
+    const supabase = createClient();
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
+
+    if (!user) {
+      setSaving(false);
+      router.replace(`/signin?workspace=${workspace}`);
+      return;
+    }
+
+    const now = new Date().toISOString();
+    const { error: saveError } = await supabase
+      .from("workspace_onboarding")
+      .upsert(
+        {
+          user_id: user.id,
+          workspace,
+          current_step: config.slides.length,
+          completed_at: now,
+          updated_at: now,
+        },
+        { onConflict: "user_id,workspace" }
+      );
+
+    if (saveError) {
+      console.error("Could not complete tour:", saveError);
+      setError("The tour could not be completed.");
+      setSaving(false);
+      return;
+    }
+
+    router.replace(config.destination);
+    router.refresh();
+  }
+
+  if (!workspace || !config || loading) {
+    return (
+      <main className="flex min-h-screen items-center justify-center bg-[#f6f8f8]">
+        <PsyLatticeLogo />
+      </main>
+    );
+  }
+
+  const slide = config.slides[currentIndex];
+  const isFirst = currentIndex === 0;
+  const isLast = currentIndex === config.slides.length - 1;
+  const progress = ((currentIndex + 1) / config.slides.length) * 100;
+  const featureDetails = workspace === "researcher" ? researchTourDetails[slide.id] : undefined;
+  const dashboardGuideStep = workspace === "researcher" && slide.id === "dashboard"
+    ? dashboardTourSteps[dashboardFeatureIndex]
+    : null;
+  const studiesGuideStep = workspace === "researcher" && slide.id === "studies"
+    ? studiesTourSteps[studiesFeatureIndex]
+    : null;
+  const studyBuilderGuideStep = workspace === "researcher" && slide.id === "study-builder"
+    ? studyBuilderTourSteps[studyBuilderFeatureIndex]
+    : null;
+  const questionnaireGuideStep = workspace === "researcher" && slide.id === "questionnaires"
+    ? questionnaireTourSteps[questionnaireFeatureIndex]
+    : null;
+  const cognitiveGuideStep = workspace === "researcher" && slide.id === "cognitive-lab"
+    ? cognitiveTourSteps[cognitiveFeatureIndex]
+    : null;
+  const thesisGuideStep = workspace === "researcher" && slide.id === "thesis-builder"
+    ? thesisTourSteps[thesisFeatureIndex]
+    : null;
+  const ambulatoryGuideStep = workspace === "researcher" && slide.id === "ambulatory"
+    ? ambulatoryTourSteps[ambulatoryFeatureIndex]
+    : null;
+  const participantsGuideStep = workspace === "researcher" && slide.id === "participants" ? participantsTourSteps[participantsFeatureIndex] : null;
+  const participantLinksGuideStep = workspace === "researcher" && slide.id === "participant-links" ? participantLinksTourSteps[participantLinksFeatureIndex] : null;
+  const dataDashboardGuideStep = workspace === "researcher" && slide.id === "data-dashboard" ? dataDashboardTourSteps[dataDashboardFeatureIndex] : null;
+  const dataExplorerGuideStep = workspace === "researcher" && slide.id === "data-explorer" ? dataExplorerTourSteps[dataExplorerFeatureIndex] : null;
+  const analysisGuideStep = workspace === "researcher" && slide.id === "analysis-lab"
+    ? analysisTourSteps[analysisFeatureIndex]
+    : null;
+  const exportGuideStep = workspace === "researcher" && slide.id === "export" ? exportTourSteps[exportFeatureIndex] : null;
+  const internalGuideStep = dashboardGuideStep ?? studiesGuideStep ?? studyBuilderGuideStep ?? questionnaireGuideStep ?? cognitiveGuideStep ?? thesisGuideStep ?? ambulatoryGuideStep ?? participantsGuideStep ?? participantLinksGuideStep ?? dataDashboardGuideStep ?? dataExplorerGuideStep ?? analysisGuideStep ?? exportGuideStep;
+  const guideEyebrow = internalGuideStep?.eyebrow ?? slide.eyebrow;
+  const guideTakeaway = dashboardGuideStep
+    ? `Dashboard feature ${dashboardFeatureIndex + 1} of ${dashboardTourSteps.length}`
+    : studiesGuideStep
+      ? `Studies feature ${studiesFeatureIndex + 1} of ${studiesTourSteps.length}`
+      : studyBuilderGuideStep
+        ? `Study Builder step ${studyBuilderFeatureIndex + 1} of ${studyBuilderTourSteps.length}`
+        : questionnaireGuideStep
+          ? `Questionnaire Library feature ${questionnaireFeatureIndex + 1} of ${questionnaireTourSteps.length}`
+          : cognitiveGuideStep
+            ? `Cognitive Lab feature ${cognitiveFeatureIndex + 1} of ${cognitiveTourSteps.length}`
+            : thesisGuideStep
+              ? `Thesis Builder feature ${thesisFeatureIndex + 1} of ${thesisTourSteps.length}`
+              : ambulatoryGuideStep
+                ? `Ambulatory Assessment feature ${ambulatoryFeatureIndex + 1} of ${ambulatoryTourSteps.length}`
+                : participantsGuideStep
+                  ? `Participants feature ${participantsFeatureIndex + 1} of ${participantsTourSteps.length}`
+                  : participantLinksGuideStep
+                    ? `Participant Links feature ${participantLinksFeatureIndex + 1} of ${participantLinksTourSteps.length}`
+                    : dataDashboardGuideStep
+                      ? `Data Dashboard feature ${dataDashboardFeatureIndex + 1} of ${dataDashboardTourSteps.length}`
+                      : dataExplorerGuideStep
+                        ? `Data Explorer feature ${dataExplorerFeatureIndex + 1} of ${dataExplorerTourSteps.length}`
+                        : analysisGuideStep
+                          ? `Analysis Lab feature ${analysisFeatureIndex + 1} of ${analysisTourSteps.length}`
+                          : exportGuideStep
+                            ? `Export Data feature ${exportFeatureIndex + 1} of ${exportTourSteps.length}`
+                            : featureDetails?.takeaway ?? slide.note;
+  const guideIsFirst =
+    isFirst &&
+    (!dashboardGuideStep || dashboardFeatureIndex === 0) &&
+    (!studiesGuideStep || studiesFeatureIndex === 0) &&
+    (!studyBuilderGuideStep || studyBuilderFeatureIndex === 0) &&
+    (!questionnaireGuideStep || questionnaireFeatureIndex === 0) &&
+    (!cognitiveGuideStep || cognitiveFeatureIndex === 0) &&
+    (!thesisGuideStep || thesisFeatureIndex === 0) &&
+    (!ambulatoryGuideStep || ambulatoryFeatureIndex === 0) &&
+    (!participantsGuideStep || participantsFeatureIndex === 0) &&
+    (!participantLinksGuideStep || participantLinksFeatureIndex === 0) &&
+    (!dataDashboardGuideStep || dataDashboardFeatureIndex === 0) &&
+    (!dataExplorerGuideStep || dataExplorerFeatureIndex === 0) &&
+    (!analysisGuideStep || analysisFeatureIndex === 0) &&
+    (!exportGuideStep || exportFeatureIndex === 0);
+
+  const nextButtonLabel =
+    dashboardGuideStep && dashboardFeatureIndex < dashboardTourSteps.length - 1
+      ? "Next feature →"
+      : studiesGuideStep && studiesFeatureIndex < studiesTourSteps.length - 1
+        ? "Next feature →"
+        : studyBuilderGuideStep && studyBuilderFeatureIndex < studyBuilderTourSteps.length - 1
+          ? "Next feature →"
+          : questionnaireGuideStep && questionnaireFeatureIndex < questionnaireTourSteps.length - 1
+            ? "Next feature →"
+            : cognitiveGuideStep && cognitiveFeatureIndex < cognitiveTourSteps.length - 1
+              ? "Next feature →"
+              : thesisGuideStep && thesisFeatureIndex < thesisTourSteps.length - 1
+                ? "Next feature →"
+                : ambulatoryGuideStep && ambulatoryFeatureIndex < ambulatoryTourSteps.length - 1
+                  ? "Next feature →"
+                  : participantsGuideStep && participantsFeatureIndex < participantsTourSteps.length - 1
+                    ? "Next feature →"
+                    : participantLinksGuideStep && participantLinksFeatureIndex < participantLinksTourSteps.length - 1
+                      ? "Next feature →"
+                      : dataDashboardGuideStep && dataDashboardFeatureIndex < dataDashboardTourSteps.length - 1
+                        ? "Next feature →"
+                        : dataExplorerGuideStep && dataExplorerFeatureIndex < dataExplorerTourSteps.length - 1
+                          ? "Next feature →"
+                          : analysisGuideStep && analysisFeatureIndex < analysisTourSteps.length - 1
+                            ? "Next feature →"
+                            : exportGuideStep && exportFeatureIndex < exportTourSteps.length - 1
+                              ? "Next feature →"
+          : isLast
+          ? `Finish tour →`
+          : "Next environment →";
 
   return (
-    <main className="psylattice-public-shell min-h-screen bg-[#f4f8f8] text-slate-950">
+    <main className="relative min-h-screen overflow-x-hidden bg-[radial-gradient(circle_at_top_left,_rgba(34,211,238,0.13),_transparent_30%),linear-gradient(135deg,#e8f2f4_0%,#f7fafb_48%,#eaf1f3_100%)] text-slate-950">
       <style>{`
-        @keyframes heroPanelIn {
-          from {
-            opacity: 0;
-            transform: translateY(10px) scale(0.995);
-            filter: blur(1.5px);
-          }
-          to {
-            opacity: 1;
-            transform: translateY(0) scale(1);
-            filter: blur(0);
-          }
+        @keyframes psylatticeTourIn {
+          from { opacity: 0; transform: translateY(8px) scale(.997); }
+          to { opacity: 1; transform: translateY(0) scale(1); }
         }
-
-        .hero-panel-in {
-          animation: heroPanelIn 680ms cubic-bezier(0.22, 1, 0.36, 1) both;
+        @keyframes psylatticeCardIn {
+          from { opacity: 0; transform: translateY(14px); }
+          to { opacity: 1; transform: translateY(0); }
         }
-
-        @keyframes heroCycleProgress {
-          from { width: 0%; }
-          to { width: 100%; }
+        @keyframes psylatticeGuidePulse {
+          0%, 100% { box-shadow: 0 0 0 0 rgba(34,211,238,.18); }
+          50% { box-shadow: 0 0 0 9px rgba(34,211,238,0); }
         }
-
-        .hero-cycle-progress {
-          animation: heroCycleProgress 6500ms linear both;
-        }
-
-        @media (prefers-reduced-motion: reduce) {
-          .hero-panel-in,
-          .hero-cycle-progress {
-            animation: none !important;
-          }
-        }
-
-        .psylattice-public-shell {
-          --pl-shadow-soft: 0 2px 5px rgba(15,23,42,.035), 0 12px 30px rgba(15,23,42,.07);
-          --pl-shadow-float: 0 3px 8px rgba(15,23,42,.045), 0 20px 50px rgba(15,23,42,.10);
-          --pl-shadow-cyan: 0 3px 8px rgba(8,145,178,.07), 0 18px 44px rgba(8,145,178,.13);
-        }
-        .psylattice-public-shell button,
-        .psylattice-public-shell a {
-          -webkit-tap-highlight-color: transparent;
-        }
+        .psylattice-tour-in { animation: psylatticeTourIn 240ms ease-out both; }
+        .psylattice-card-in { animation: psylatticeCardIn 280ms 50ms ease-out both; }
+        .psylattice-guide-pulse { animation: psylatticeGuidePulse 2.4s ease-in-out infinite; }
       `}</style>
 
-      {/* Navigation */}
-      <header className="sticky top-3 z-50 px-4 sm:px-6 lg:px-8">
-        <div className="mx-auto flex h-[68px] max-w-7xl items-center justify-between rounded-[26px] border border-slate-200/90 bg-white/95 px-5 shadow-[0_3px_8px_rgba(15,23,42,.05),0_18px_42px_rgba(15,23,42,.10)] backdrop-blur-xl sm:px-6">
-          <PsyLatticeLogo />
-
-          <nav className="hidden items-center gap-7 text-sm text-slate-600 lg:flex">
-            <a href="#platform" className="transition hover:text-slate-950">
-              Platform
-            </a>
-            <a href="#mobile" className="transition hover:text-slate-950">
-              Mobile
-            </a>
-            <a href="#research" className="transition hover:text-slate-950">
-              Research
-            </a>
-            <a href="#coming-next" className="transition hover:text-slate-950">
-              Coming next
-            </a>
-            <a href="#how-it-works" className="transition hover:text-slate-950">
-              How it works
-            </a>
-            <a href="#pricing" className="transition hover:text-slate-950">
-              Pricing
-            </a>
-            <a href="#security" className="transition hover:text-slate-950">
-              Security
-            </a>
-            <Link href="/about" className="transition hover:text-slate-950">
-              About
-            </Link>
-          </nav>
-
-          <div className="flex items-center gap-3">
-            <Link
-              href="/signin"
-              className="hidden rounded-full border border-slate-200 bg-white px-4 py-2.5 text-sm font-medium text-slate-700 shadow-[0_2px_5px_rgba(15,23,42,.04),0_8px_20px_rgba(15,23,42,.06)] transition hover:-translate-y-px hover:border-cyan-200 sm:block"
-            >
-              Sign in
-            </Link>
-            <Link
-              href="/signin"
-              className="inline-flex items-center gap-2 rounded-full bg-slate-950 px-5 py-2.5 text-sm font-medium text-white shadow-[0_4px_10px_rgba(15,23,42,.18),0_12px_26px_rgba(15,23,42,.14)] transition hover:-translate-y-px hover:bg-slate-800"
-            >
-              Get started
-              <ArrowRight className="h-4 w-4" />
-            </Link>
-          </div>
-        </div>
-      </header>
-
-      {/* Hero */}
-      <section className="relative overflow-hidden">
-        <div className="pointer-events-none absolute left-1/2 top-[-80px] h-[620px] w-[1050px] -translate-x-1/2 rounded-full bg-cyan-100/50 blur-3xl" />
+      {/* Distinct onboarding atmosphere — deliberately different from the real product shell. */}
+      <div className="pointer-events-none fixed inset-0 overflow-hidden" aria-hidden="true">
+        <div className="absolute -left-24 top-12 h-80 w-80 rounded-full bg-cyan-300/20 blur-3xl" />
+        <div className="absolute right-[-120px] top-[28%] h-96 w-96 rounded-full bg-sky-300/15 blur-3xl" />
+        <div className="absolute bottom-[-180px] left-[30%] h-[420px] w-[420px] rounded-full bg-teal-200/20 blur-3xl" />
         <div
-          className="pointer-events-none absolute inset-0 opacity-[0.18]"
+          className="absolute inset-0 opacity-[0.18]"
           style={{
             backgroundImage:
-              "linear-gradient(rgba(148,163,184,.12) 1px, transparent 1px), linear-gradient(90deg, rgba(148,163,184,.12) 1px, transparent 1px)",
-            backgroundSize: "42px 42px",
+              "radial-gradient(circle at 1px 1px, rgba(8,145,178,.22) 1px, transparent 0)",
+            backgroundSize: "26px 26px",
           }}
         />
+      </div>
 
-        <div className="relative mx-auto grid max-w-7xl gap-10 px-6 pb-24 pt-20 lg:grid-cols-[.94fr_1.06fr] lg:px-8 lg:pb-28 lg:pt-28">
-          <div className="flex flex-col justify-center">
-            <div className="inline-flex w-fit items-center gap-2 rounded-full border border-cyan-200/90 bg-white px-4 py-2 text-xs font-medium text-slate-600 shadow-[0_2px_5px_rgba(15,23,42,.04),0_10px_24px_rgba(8,145,178,.08)]">
-              <span className="h-1.5 w-1.5 rounded-full bg-cyan-600" />
-              A unified psychological measurement ecosystem
+      {/* ONBOARDING CONTROL BAR — intentionally unlike the normal PsyLattice navbar. */}
+      <header className="sticky top-0 z-50 border-b border-cyan-400/20 bg-[#172737]/95 text-white shadow-[0_12px_34px_rgba(23,39,55,.18)] backdrop-blur-xl">
+        <div className="mx-auto flex min-h-[76px] max-w-[1560px] items-center justify-between gap-4 px-4 sm:px-7 lg:px-10">
+          <div className="flex min-w-0 items-center gap-3 sm:gap-4">
+            <div className="hidden rounded-2xl bg-white px-3 py-2 shadow-lg sm:block">
+              <PsyLatticeLogo />
             </div>
 
-            <h1 className="mt-7 max-w-4xl text-5xl font-semibold leading-[1.02] tracking-[-0.05em] sm:text-6xl lg:text-[72px]">
-              Psychological
-              <br />
-              measurements,
-              <br />
-              <span className="text-cyan-800">connected.</span>
-            </h1>
-
-            <p className="mt-6 max-w-2xl text-lg leading-8 text-slate-600">
-              PsyLattice connects psychological self-assessment, ambulatory
-              measurement, research workflows and professional monitoring
-              within one carefully structured platform.
-            </p>
-
-            <div className="mt-6 flex flex-wrap items-center gap-3">
-              <a
-                href="#mobile"
-                className="inline-flex items-center gap-2 rounded-full border border-cyan-200 bg-cyan-50 px-4 py-2 text-xs font-semibold text-cyan-900 transition hover:border-cyan-300"
-              >
-                <Smartphone className="h-3.5 w-3.5" />
-                Android beta available
-                <ArrowRight className="h-3.5 w-3.5" />
-              </a>
-
-              <Link
-                href="/self?screen=ai"
-                className="inline-flex items-center gap-2 rounded-full border border-cyan-200 bg-cyan-50 px-4 py-2 text-xs font-semibold text-cyan-900 transition hover:border-cyan-300"
-              >
-                <Sparkles className="h-3.5 w-3.5" />
-                Now equipped with AI
-                <ArrowRight className="h-3.5 w-3.5" />
-              </Link>
-
-              <span className="text-xs text-slate-400">
-                Supportive guidance, not automated diagnosis.
+            <div className="flex min-w-0 items-center gap-3">
+              <span className="psylattice-guide-pulse flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border border-cyan-300/35 bg-cyan-300/10 text-cyan-200">
+                <Sparkles className="h-4 w-4" />
               </span>
-            </div>
-
-            <div className="mt-7 flex flex-wrap gap-3">
-              <Link
-                href="/signin"
-                className="inline-flex items-center gap-2 rounded-full bg-slate-950 px-6 py-3.5 text-sm font-medium text-white shadow-[0_4px_10px_rgba(15,23,42,.18),0_14px_30px_rgba(15,23,42,.14)] transition hover:-translate-y-px hover:bg-slate-800"
-              >
-                Explore PsyLattice
-                <ArrowRight className="h-4 w-4" />
-              </Link>
-
-              <a
-                href="#platform"
-                className="inline-flex items-center gap-2 rounded-full border border-slate-200 bg-white px-6 py-3.5 text-sm font-medium text-slate-800 shadow-[0_2px_5px_rgba(15,23,42,.04),0_10px_24px_rgba(15,23,42,.07)] transition hover:-translate-y-px hover:border-cyan-200"
-              >
-                Try the interactive tour
-                <ChevronRight className="h-4 w-4" />
-              </a>
-            </div>
-
-            <div className="mt-9 flex flex-wrap gap-x-7 gap-y-3 text-sm text-slate-500">
-              {[
-                "Non-diagnostic by design",
-                "Role-based workspaces",
-                "Privacy-conscious architecture",
-              ].map((item) => (
-                <span key={item} className="flex items-center gap-2">
-                  <CheckMark />
-                  {item}
-                </span>
-              ))}
-            </div>
-
-            <div className="mt-8 rounded-[24px] border border-slate-200/90 bg-white/95 p-4 shadow-[0_2px_5px_rgba(15,23,42,.04),0_14px_34px_rgba(15,23,42,.08)] backdrop-blur">
-              <p className="text-[10px] font-semibold uppercase tracking-[0.15em] text-cyan-800">
-                Selected workspace
-              </p>
-              <div className="mt-2 flex items-center justify-between gap-4">
-                <div>
-                  <p className="text-sm font-semibold text-slate-900">
-                    {activeHeroWorkspace.title}
-                  </p>
-                  <p className="mt-1 text-xs text-slate-500">
-                    {activeHeroWorkspace.shortDescription}
-                  </p>
+              <div className="min-w-0">
+                <div className="flex flex-wrap items-center gap-2">
+                  <span className="rounded-full border border-cyan-300/35 bg-cyan-300/10 px-2.5 py-1 text-[9px] font-bold uppercase tracking-[0.18em] text-cyan-200">
+                    PsyLattice product tour
+                  </span>
+                  <span className="hidden text-[11px] font-medium text-slate-400 md:inline">
+                    Guided researcher onboarding
+                  </span>
                 </div>
-                <span className="rounded-full bg-slate-950 px-3 py-1.5 text-[9px] font-semibold text-white">
-                  Auto-switching preview →
-                </span>
-              </div>
-            </div>
-          </div>
-
-          <div className="flex items-center justify-center">
-            <HeroWorkspaceStage
-              activeWorkspace={heroWorkspace}
-              onChange={setHeroWorkspace}
-            />
-          </div>
-        </div>
-      </section>
-
-      {/* PsyLattice Mobile */}
-      <section
-        id="mobile"
-        className="scroll-mt-24 border-y border-slate-200/80 bg-[#f2f8f8] py-20 lg:py-28"
-      >
-        <div className="mx-auto max-w-7xl px-6 lg:px-8">
-          <div className="grid items-center gap-14 lg:grid-cols-[.9fr_1.1fr] lg:gap-16">
-            <div>
-              <div className="inline-flex items-center gap-2 rounded-full border border-cyan-200 bg-white px-3.5 py-2 text-[11px] font-semibold text-cyan-800 shadow-[0_2px_5px_rgba(15,23,42,.035),0_10px_24px_rgba(8,145,178,.09)]">
-                <span className="h-2 w-2 rounded-full bg-cyan-500" />
-                Android beta available now
-              </div>
-
-              <p className="mt-7 text-xs font-semibold uppercase tracking-[0.18em] text-cyan-800">
-                PsyLattice Mobile
-              </p>
-              <h2 className="mt-4 max-w-2xl text-4xl font-semibold tracking-[-0.045em] sm:text-5xl">
-                Psychological measurement,
-                <span className="text-cyan-800"> beyond the browser.</span>
-              </h2>
-              <p className="mt-6 max-w-2xl text-lg leading-8 text-slate-600">
-                PsyLattice Mobile is designed for the moments that desktop research cannot capture:
-                repeated real-world assessment, longitudinal follow-up, connected wearable context
-                and participant workflows that travel with the person.
-              </p>
-
-              <div className="mt-7 flex flex-wrap gap-3">
-                <a
-                  href={ANDROID_BETA_URL}
-                  target="_blank"
-                  rel="noreferrer"
-                  className="inline-flex items-center gap-2 rounded-full bg-slate-950 px-6 py-3.5 text-sm font-semibold text-white shadow-[0_4px_10px_rgba(15,23,42,.18),0_14px_30px_rgba(15,23,42,.14)] transition hover:-translate-y-px hover:bg-slate-800"
-                >
-                  <FileDown className="h-4 w-4" />
-                  Download Android Beta
-                </a>
-                <a
-                  href={ANDROID_BETA_DRIVE_URL}
-                  target="_blank"
-                  rel="noreferrer"
-                  className="inline-flex items-center gap-2 rounded-full border border-slate-200 bg-white px-6 py-3.5 text-sm font-semibold text-slate-700 shadow-[0_2px_5px_rgba(15,23,42,.035),0_10px_24px_rgba(15,23,42,.07)] transition hover:-translate-y-px hover:border-cyan-200"
-                >
-                  Open in Google Drive
-                  <ArrowRight className="h-4 w-4" />
-                </a>
-              </div>
-
-              <p className="mt-3 max-w-xl text-[11px] leading-5 text-slate-400">
-                Beta distribution currently uses a signed APK outside Google Play. Android may ask
-                you to allow installation from your browser or file manager. Only install PsyLattice
-                from the official link on this website.
-              </p>
-
-              <div className="mt-9 grid gap-3 sm:grid-cols-2">
-                {[
-                  {
-                    icon: Activity,
-                    title: "Ambulatory / EMA / ESM",
-                    text: "Schedule repeated check-ins across everyday contexts instead of relying on a single retrospective snapshot.",
-                  },
-                  {
-                    icon: HeartPulse,
-                    title: "Android Health Connect",
-                    text: "Use permission-based supported health data as contextual input for configured mobile research workflows.",
-                  },
-                  {
-                    icon: Workflow,
-                    title: "Longitudinal research",
-                    text: "Keep repeated assessments, follow-up waves, prompts and participant activity connected across time.",
-                  },
-                  {
-                    icon: BellRing,
-                    title: "Mobile follow-up",
-                    text: "Bring study reminders, appointments and secure communication closer to the participant or client.",
-                  },
-                ].map((item) => {
-                  const Icon = item.icon;
-                  return (
-                    <div
-                      key={item.title}
-                      className="rounded-[22px] border border-slate-200/90 bg-white p-4 shadow-[0_2px_5px_rgba(15,23,42,.035),0_12px_28px_rgba(15,23,42,.07)]"
-                    >
-                      <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-cyan-50 text-cyan-800">
-                        <Icon className="h-4 w-4" />
-                      </div>
-                      <h3 className="mt-3 text-sm font-semibold text-slate-900">{item.title}</h3>
-                      <p className="mt-1.5 text-xs leading-5 text-slate-500">{item.text}</p>
-                    </div>
-                  );
-                })}
-              </div>
-
-              <div className="mt-5 rounded-2xl border border-slate-200 bg-white/75 p-4">
-                <div className="flex items-start gap-3">
-                  <Smartphone className="mt-0.5 h-4 w-4 shrink-0 text-slate-700" />
-                  <div>
-                    <p className="text-xs font-semibold text-slate-800">
-                      iPhone, Apple Health &amp; Apple Watch support is coming next.
-                    </p>
-                    <p className="mt-1 text-[11px] leading-5 text-slate-500">
-                      The current beta is Android-first. The iOS companion and Apple ecosystem
-                      integration are planned, not yet available in this release.
-                    </p>
-                  </div>
-                </div>
-              </div>
-            </div>
-
-            <div>
-              <MobileEcosystemVisual />
-            </div>
-          </div>
-
-          <div className="mt-14 grid gap-4 rounded-[30px] border border-slate-200/90 bg-white p-5 text-slate-950 shadow-[0_4px_10px_rgba(15,23,42,.04),0_24px_58px_rgba(15,23,42,.10)] sm:grid-cols-4 sm:p-6">
-            {[
-              ["01", "Measure in context", "Repeated self-report while experiences are happening."],
-              ["02", "Connect permitted data", "Health Connect adds optional contextual signals to supported Android workflows."],
-              ["03", "Follow over time", "Longitudinal protocols keep days, phases and follow-up linked."],
-              ["04", "Bring it back to the workspace", "Research and clinical views remain structured around role and permission."],
-            ].map(([number, title, description]) => (
-              <div key={number} className="rounded-[22px] border border-slate-200 bg-[#f8fbfb] p-4 shadow-[0_2px_5px_rgba(15,23,42,.03),0_10px_22px_rgba(15,23,42,.055)]">
-                <p className="text-[10px] font-semibold text-cyan-700">{number}</p>
-                <p className="mt-2 text-sm font-semibold">{title}</p>
-                <p className="mt-2 text-xs leading-5 text-slate-500">{description}</p>
-              </div>
-            ))}
-          </div>
-        </div>
-      </section>
-
-      {/* Coming next */}
-      <section
-        id="coming-next"
-        className="scroll-mt-24 border-y border-slate-200 bg-[linear-gradient(180deg,#f7faf9_0%,#eef5f4_100%)] py-20 lg:py-28"
-      >
-        <div className="mx-auto max-w-7xl px-6 lg:px-8">
-          <div className="max-w-3xl">
-            <p className="text-xs font-semibold uppercase tracking-[0.18em] text-cyan-800">
-              Upcoming research capabilities
-            </p>
-            <h2 className="mt-4 text-4xl font-semibold tracking-[-0.04em] text-slate-950 sm:text-5xl">
-              The next wave of PsyLattice is being designed as a real differentiator.
-            </h2>
-            <p className="mt-5 text-lg leading-8 text-slate-600">
-              We want PsyLattice to be the platform that ambitious students, thesis researchers and early-career labs can actually afford—without giving up serious cognitive experimentation, richer device-aware workflows and truly cross-platform participation.
-            </p>
-          </div>
-
-          <div className="mt-10">
-            <UpcomingCapabilitiesShowcase />
-          </div>
-        </div>
-      </section>
-
-      {/* Interactive platform explorer */}
-      <section
-        id="platform"
-        className="scroll-mt-24 border-y border-slate-200 bg-white py-20 lg:py-28"
-      >
-        <div className="mx-auto max-w-7xl px-6 lg:px-8">
-          <div className="max-w-3xl">
-            <p className="text-xs font-semibold uppercase tracking-[0.18em] text-cyan-800">
-              Explore the product
-            </p>
-            <h2 className="mt-4 text-4xl font-semibold tracking-[-0.04em] sm:text-5xl">
-              Step directly into all three PsyLattice workspaces.
-            </h2>
-            <p className="mt-5 max-w-3xl text-lg leading-8 text-slate-600">
-              Switch between Self, Researcher and Clinical, then use the full
-              navigation, forms, builders, records and workspace views directly
-              on this page.
-            </p>
-          </div>
-
-          <div className="mt-10">
-            <ProductExplorer
-              activeWorkspace={explorerWorkspace}
-              onWorkspaceChange={setExplorerWorkspace}
-            />
-          </div>
-        </div>
-      </section>
-
-      {/* Research lifecycle */}
-      <section
-        id="research"
-        className="scroll-mt-24 mx-auto max-w-7xl px-6 py-24 lg:px-8 lg:py-28"
-      >
-        <div className="grid gap-14 lg:grid-cols-[.72fr_1.28fr]">
-          <div>
-            <p className="text-xs font-semibold uppercase tracking-[0.18em] text-cyan-800">
-              PsyLattice Research
-            </p>
-            <h2 className="mt-4 text-4xl font-semibold tracking-[-0.04em] sm:text-5xl">
-              Psychological research, from study design to dataset.
-            </h2>
-            <p className="mt-5 text-lg leading-8 text-slate-600">
-              Researchers can assemble questionnaire studies and ambulatory
-              protocols, distribute participant links, monitor completion and
-              export structured data.
-            </p>
-
-            <Link
-              href="/signin"
-              className="mt-7 inline-flex items-center gap-2 text-sm font-semibold"
-            >
-              Explore Research
-              <ArrowRight className="h-4 w-4" />
-            </Link>
-          </div>
-
-          <div>
-            <div className="grid gap-2 sm:grid-cols-4">
-              {[
-                {
-                  title: "Measures",
-                  icon: ClipboardList,
-                  copy: "Questionnaires and custom items",
-                },
-                {
-                  title: "EMA protocol",
-                  icon: Activity,
-                  copy: "Repeated real-world assessment",
-                },
-                {
-                  title: "Participants",
-                  icon: Users,
-                  copy: "Links, phases and completion",
-                },
-                {
-                  title: "Export",
-                  icon: FileDown,
-                  copy: "Structured research datasets",
-                },
-              ].map((step, index) => {
-                const Icon = step.icon;
-                const selected = index === researchStep;
-
-                return (
-                  <button
-                    key={step.title}
-                    type="button"
-                    onClick={() => setResearchStep(index)}
-                    className={`rounded-2xl border p-4 text-left transition ${
-                      selected
-                        ? "border-cyan-300 bg-cyan-50"
-                        : "border-slate-200 bg-white hover:border-slate-300"
-                    }`}
-                  >
-                    <div
-                      className={`flex h-9 w-9 items-center justify-center rounded-xl ${
-                        selected
-                          ? "bg-cyan-800 text-white"
-                          : "bg-slate-100 text-slate-500"
-                      }`}
-                    >
-                      <Icon className="h-4 w-4" />
-                    </div>
-                    <p className="mt-4 text-xs font-semibold text-slate-900">
-                      {index + 1}. {step.title}
-                    </p>
-                    <p className="mt-1 text-[10px] leading-5 text-slate-400">
-                      {step.copy}
-                    </p>
-                  </button>
-                );
-              })}
-            </div>
-
-            <div className="mt-4 overflow-hidden rounded-[28px] border border-slate-200 bg-white shadow-[0_24px_70px_-42px_rgba(15,23,42,0.3)]">
-              <div className="flex flex-wrap items-start justify-between gap-4 border-b border-slate-100 p-6">
-                <div>
-                  <p className="text-[10px] font-semibold uppercase tracking-[0.15em] text-slate-400">
-                    Active study
-                  </p>
-                  <h3 className="mt-2 text-xl font-semibold">
-                    Daily Stress in University Students
-                  </h3>
-                  <p className="mt-1 text-sm text-slate-500">
-                    14-day ambulatory protocol
-                  </p>
-                </div>
-                <span className="rounded-full bg-cyan-50 px-3 py-1 text-xs font-medium text-cyan-700">
-                  Live
-                </span>
-              </div>
-
-              <div className="grid grid-cols-2 gap-3 p-5 sm:grid-cols-4 sm:p-6">
-                {[
-                  ["93", "Participants"],
-                  ["81%", "Compliance"],
-                  ["2,846", "Responses"],
-                  ["7", "Data flags"],
-                ].map(([value, label]) => (
-                  <div
-                    key={label}
-                    className={`rounded-xl px-4 py-4 transition ${
-                      researchStep === 2 && label === "Participants"
-                        ? "bg-cyan-50 ring-1 ring-cyan-200"
-                        : "bg-slate-50"
-                    }`}
-                  >
-                    <p className="text-xl font-semibold">{value}</p>
-                    <p className="mt-1 text-xs text-slate-500">{label}</p>
-                  </div>
-                ))}
-              </div>
-
-              <div className="px-5 pb-5 sm:px-6 sm:pb-6">
-                <div className="rounded-2xl border border-slate-100 bg-[#f9fbfb] p-5">
-                  {researchStep === 0 && (
-                    <div>
-                      <p className="text-sm font-semibold">Measures</p>
-                      <div className="mt-4 grid gap-2 sm:grid-cols-3">
-                        {[
-                          "Perceived Stress Scale",
-                          "General Self-Efficacy Scale",
-                          "Weekly custom check-in",
-                        ].map((item) => (
-                          <div
-                            key={item}
-                            className="rounded-xl border border-slate-200 bg-white px-3 py-3 text-[10px] font-medium text-slate-600"
-                          >
-                            {item}
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-                  )}
-
-                  {researchStep === 1 && (
-                    <div>
-                      <p className="text-sm font-semibold">EMA protocol</p>
-                      <div className="mt-4 space-y-2">
-                        {[
-                          ["Morning window", "08:00–10:00"],
-                          ["Afternoon window", "13:00–15:00"],
-                          ["Evening window", "19:00–21:00"],
-                        ].map(([label, time]) => (
-                          <div
-                            key={label}
-                            className="flex items-center justify-between rounded-xl border border-slate-200 bg-white px-4 py-3"
-                          >
-                            <span className="text-[10px] font-medium text-slate-600">
-                              {label}
-                            </span>
-                            <span className="text-[9px] text-slate-400">
-                              {time}
-                            </span>
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-                  )}
-
-                  {researchStep === 2 && (
-                    <div>
-                      <p className="text-sm font-semibold">Participants</p>
-                      <div className="mt-4 overflow-hidden rounded-xl border border-slate-200 bg-white">
-                        {[
-                          ["PL-1042", "Complete"],
-                          ["PL-1043", "Day 7 due"],
-                          ["PL-1044", "In progress"],
-                        ].map(([id, status]) => (
-                          <div
-                            key={id}
-                            className="flex items-center justify-between border-b border-slate-100 px-4 py-3 last:border-0"
-                          >
-                            <span className="text-[10px] font-semibold text-slate-700">
-                              {id}
-                            </span>
-                            <span className="text-[9px] text-slate-400">
-                              {status}
-                            </span>
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-                  )}
-
-                  {researchStep === 3 && (
-                    <div>
-                      <p className="text-sm font-semibold">Export</p>
-                      <div className="mt-4 grid gap-2 sm:grid-cols-3">
-                        {["CSV", "XLSX", "Analysis ready"].map(
-                          (format, index) => (
-                            <button
-                              key={format}
-                              className={`rounded-xl border px-4 py-4 text-[10px] font-semibold ${
-                                index === 1
-                                  ? "border-cyan-200 bg-cyan-50 text-cyan-900"
-                                  : "border-slate-200 bg-white text-slate-600"
-                              }`}
-                            >
-                              {format}
-                            </button>
-                          )
-                        )}
-                      </div>
-                    </div>
-                  )}
-                </div>
-              </div>
-            </div>
-          </div>
-        </div>
-      </section>
-
-      {/* Process */}
-      <section
-        id="how-it-works"
-        className="scroll-mt-24 border-y border-slate-200 bg-slate-950 py-20 text-white lg:py-24"
-      >
-        <div className="mx-auto max-w-7xl px-6 lg:px-8">
-          <div className="grid gap-12 lg:grid-cols-[.7fr_1.3fr]">
-            <div>
-              <p className="text-xs font-semibold uppercase tracking-[0.18em] text-cyan-300">
-                How PsyLattice works
-              </p>
-              <h2 className="mt-4 text-4xl font-semibold tracking-[-0.04em]">
-                Measure.
-                <br />
-                Observe.
-                <br />
-                Understand.
-                <br />
-                Act.
-              </h2>
-            </div>
-
-            <div>
-              <div className="grid gap-2 sm:grid-cols-4">
-                {process.map((step, index) => {
-                  const Icon = step.icon;
-                  const selected = index === processStep;
-
-                  return (
-                    <button
-                      key={step.number}
-                      type="button"
-                      onClick={() => setProcessStep(index)}
-                      className={`rounded-2xl border p-4 text-left transition ${
-                        selected
-                          ? "border-cyan-500/50 bg-cyan-500/10"
-                          : "border-white/10 bg-white/[0.035] hover:bg-white/[0.06]"
-                      }`}
-                    >
-                      <div
-                        className={`flex h-9 w-9 items-center justify-center rounded-xl ${
-                          selected
-                            ? "bg-cyan-300 text-slate-950"
-                            : "bg-white/10 text-slate-300"
-                        }`}
-                      >
-                        <Icon className="h-4 w-4" />
-                      </div>
-                      <p className="mt-4 text-[10px] font-semibold uppercase tracking-[0.13em] text-slate-400">
-                        {step.number}
-                      </p>
-                      <p className="mt-1 text-sm font-semibold">{step.title}</p>
-                    </button>
-                  );
-                })}
-              </div>
-
-              <div className="mt-4 rounded-[28px] border border-white/10 bg-white/[0.045] p-6 sm:p-8">
-                <div className="flex items-start gap-5">
-                  <div className="hidden h-16 w-16 shrink-0 items-center justify-center rounded-2xl bg-cyan-300 text-xl font-semibold text-slate-950 sm:flex">
-                    {activeProcess.number}
-                  </div>
-                  <div>
-                    <h3 className="text-2xl font-semibold">
-                      {activeProcess.title}
-                    </h3>
-                    <p className="mt-3 max-w-2xl text-sm leading-7 text-slate-300">
-                      {activeProcess.description}
-                    </p>
-                    <p className="mt-4 max-w-2xl border-l-2 border-cyan-400/60 pl-4 text-sm leading-7 text-slate-400">
-                      {activeProcess.detail}
-                    </p>
-                  </div>
-                </div>
-              </div>
-            </div>
-          </div>
-        </div>
-      </section>
-
-      {/* Security */}
-      <section
-        id="security"
-        className="scroll-mt-24 mx-auto max-w-7xl px-6 py-24 lg:px-8 lg:py-28"
-      >
-        <div className="grid gap-14 lg:grid-cols-[.76fr_1.24fr]">
-          <div>
-            <p className="text-xs font-semibold uppercase tracking-[0.18em] text-cyan-800">
-              Privacy & security
-            </p>
-            <h2 className="mt-4 text-4xl font-semibold tracking-[-0.04em]">
-              Sensitive information requires careful design.
-            </h2>
-            <p className="mt-5 max-w-lg text-base leading-8 text-slate-600">
-              PsyLattice is built so connected workflows do not automatically
-              mean unrestricted information sharing.
-            </p>
-
-            <div className="mt-7 rounded-2xl border border-cyan-100 bg-cyan-50/60 p-5">
-              <div className="flex items-start gap-3">
-                <ShieldCheck className="mt-0.5 h-5 w-5 shrink-0 text-cyan-800" />
-                <p className="text-sm leading-7 text-cyan-950">
-                  Human clinical responsibility remains with qualified
-                  professionals. PsyLattice does not automate diagnosis or
-                  treatment decisions.
+                <p className="mt-1 truncate text-sm font-semibold text-white sm:text-base">
+                  {config.label} · {slide.title}
                 </p>
               </div>
             </div>
           </div>
 
-          <div className="space-y-2">
-            {securityItems.map((item, index) => {
-              const Icon = item.icon;
-              const open = openSecurity === index;
-
-              return (
-                <button
-                  key={item.title}
-                  type="button"
-                  onClick={() => setOpenSecurity(open ? -1 : index)}
-                  className={`w-full rounded-2xl border p-5 text-left transition ${
-                    open
-                      ? "border-cyan-200 bg-cyan-50/60"
-                      : "border-slate-200 bg-white hover:border-slate-300"
-                  }`}
-                >
-                  <div className="flex items-center gap-4">
-                    <div
-                      className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-xl ${
-                        open
-                          ? "bg-cyan-800 text-white"
-                          : "bg-slate-100 text-slate-500"
-                      }`}
-                    >
-                      <Icon className="h-4 w-4" />
-                    </div>
-                    <div className="flex-1">
-                      <p className="text-sm font-semibold text-slate-900">
-                        {item.title}
-                      </p>
-                    </div>
-                    <ChevronDown
-                      className={`h-4 w-4 text-slate-400 transition-transform ${
-                        open ? "rotate-180" : ""
-                      }`}
-                    />
-                  </div>
-
-                  {open && (
-                    <p className="mt-4 pl-14 text-sm leading-7 text-slate-600">
-                      {item.description}
-                    </p>
-                  )}
-                </button>
-              );
-            })}
-          </div>
-        </div>
-      </section>
-
-      {/* Pricing */}
-      <section
-        id="pricing"
-        className="scroll-mt-24 border-y border-slate-200 bg-white py-24 lg:py-28"
-      >
-        <div className="mx-auto max-w-7xl px-6 lg:px-8">
-          <div className="flex flex-col gap-8 lg:flex-row lg:items-end lg:justify-between">
-            <div className="max-w-3xl">
-              <p className="text-xs font-semibold uppercase tracking-[0.18em] text-cyan-800">
-                Pricing
-              </p>
-              <h2 className="mt-4 text-4xl font-semibold tracking-[-0.04em] sm:text-5xl">
-                Our unbeatable pricing.
-              </h2>
-              <p className="mt-5 text-lg leading-8 text-slate-600">
-                Individuals subscribe to Self, clinicians can join for free, and researchers
-                can run a real study on the Free plan before moving to a Study Pass or
-                Researcher Pro when they need more capacity.
-              </p>
-            </div>
-
-            <div className="w-full max-w-md rounded-2xl border border-slate-200 bg-slate-50 p-4">
-              <div className="flex items-center justify-between gap-3 rounded-xl bg-white px-4 py-3 shadow-sm">
-                <div>
-                  <p className="text-sm font-semibold text-slate-950">India</p>
-                  <p className="mt-1 text-xs text-slate-500">{activePricing.sublabel}</p>
-                </div>
-                <span className="rounded-full border border-cyan-200 bg-cyan-50 px-3 py-1.5 text-[10px] font-semibold uppercase tracking-[0.12em] text-cyan-800">
-                  Available now
-                </span>
+          <div className="flex items-center gap-2 sm:gap-3">
+            <div className="hidden min-w-[210px] lg:block">
+              <div className="mb-1.5 flex items-center justify-between text-[10px] font-semibold">
+                <span className="text-slate-300">Onboarding progress</span>
+                <span className="text-cyan-200">{currentIndex + 1} of {config.slides.length}</span>
+              </div>
+              <div className="h-1.5 overflow-hidden rounded-full bg-white/10">
+                <div
+                  className="h-full rounded-full bg-cyan-300 transition-[width] duration-300 ease-out"
+                  style={{ width: `${progress}%` }}
+                />
               </div>
             </div>
-          </div>
 
-          <div className="mt-10 grid gap-5 lg:grid-cols-3">
-            {activePricing.cards
-              .filter((card) =>
-                ["self", "researcher", "clinician"].includes(card.id)
-              )
-              .sort(
-                (a, b) =>
-                  ["self", "researcher", "clinician"].indexOf(a.id) -
-                  ["self", "researcher", "clinician"].indexOf(b.id)
-              )
-              .map((card) => {
-                const isResearcher = card.id === "researcher";
-
-                return (
-                  <article
-                    key={card.id}
-                    className={`relative flex h-full flex-col rounded-[28px] border p-6 transition duration-300 hover:-translate-y-1 hover:shadow-xl ${
-                      isResearcher
-                        ? "border-cyan-200 bg-gradient-to-br from-cyan-50 via-white to-white shadow-lg shadow-cyan-100/50"
-                        : "border-slate-200 bg-white hover:border-slate-300"
-                    }`}
-                  >
-                    {isResearcher && (
-                      <div className="absolute -top-3 left-1/2 -translate-x-1/2">
-                        <span className="whitespace-nowrap rounded-full bg-cyan-950 px-4 py-1.5 text-[11px] font-semibold uppercase tracking-[0.12em] text-white">
-                          Start here
-                        </span>
-                      </div>
-                    )}
-
-                    <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-cyan-800">
-                      {card.eyebrow}
-                    </p>
-                    <h3 className="mt-2 text-xl font-semibold tracking-tight">
-                      {card.title}
-                    </h3>
-
-                    <div className="mt-5 flex items-end gap-2">
-                      <span className="text-3xl font-semibold tracking-tight">
-                        {card.price}
-                      </span>
-                      {card.cadence && (
-                        <span className="pb-0.5 text-sm text-slate-500">
-                          {card.cadence}
-                        </span>
-                      )}
-                    </div>
-
-                    <p className="mt-3 text-sm leading-6 text-slate-600">
-                      {card.description}
-                    </p>
-
-                    <div className="my-5 h-px bg-slate-100" />
-
-                    <ul className="space-y-2.5">
-                      {card.bullets.map((bullet) => (
-                        <li
-                          key={bullet}
-                          className="flex items-start gap-2.5 text-sm leading-5 text-slate-600"
-                        >
-                          <span className="mt-0.5 text-cyan-700">
-                            <CheckMark />
-                          </span>
-                          <span>{bullet}</span>
-                        </li>
-                      ))}
-                    </ul>
-
-                    {isResearcher ? (
-                      <button
-                        type="button"
-                        onClick={() => setShowResearchPricing(true)}
-                        className="mt-6 flex w-full items-center justify-between rounded-xl bg-cyan-950 px-4 py-3.5 text-left text-sm font-semibold text-white transition hover:bg-cyan-900"
-                      >
-                        <span>Start free · upgrade only when you need more</span>
-                        <ArrowRight className="ml-3 h-4 w-4 text-cyan-200" />
-                      </button>
-                    ) : (
-                      <div className="mt-6 rounded-xl bg-slate-50 px-4 py-3 text-xs leading-5 text-slate-500">
-                        {card.note}
-                      </div>
-                    )}
-
-                    <div className="mt-auto pt-5">
-                      <Link
-                        href={card.ctaHref}
-                        className={`inline-flex w-full items-center justify-center gap-2 rounded-xl px-5 py-3 text-sm font-medium transition ${
-                          isResearcher
-                            ? "border border-cyan-900 bg-white text-cyan-950 hover:bg-cyan-50"
-                            : "border border-slate-300 bg-white text-slate-900 hover:border-slate-400"
-                        }`}
-                      >
-                        {card.ctaLabel}
-                        <ArrowRight className="h-4 w-4" />
-                      </Link>
-                      <p className="mt-3 text-[11px] leading-5 text-slate-400">
-                        By continuing, you agree to the{" "}
-                        <Link
-                          href="/terms"
-                          className="font-medium text-slate-600 underline underline-offset-2 hover:text-slate-950"
-                        >
-                          Terms of Use
-                        </Link>
-                        .
-                      </p>
-                    </div>
-                  </article>
-                );
-              })}
-          </div>
-
-          <div className="mt-7 flex flex-wrap items-center justify-between gap-4 rounded-2xl border border-slate-200 bg-[#f8faf9] px-5 py-4">
-            <div className="flex flex-wrap gap-x-6 gap-y-2 text-xs text-slate-500">
-              <span>
-                <strong className="font-semibold text-slate-800">Self:</strong>{" "}
-                personal subscription
-              </span>
-              <span>
-                <strong className="font-semibold text-slate-800">
-                  Clinicians:
-                </strong>{" "}
-                free
-              </span>
-              <span>
-                <strong className="font-semibold text-slate-800">
-                  Researchers:
-                </strong>{" "}
-                1 study free · then Study Pass or Pro
-              </span>
-              <span>
-                <strong className="font-semibold text-slate-800">
-                  Participants:
-                </strong>{" "}
-                always free
-              </span>
-            </div>
-
+            {!replay && (
+              <button
+                type="button"
+                disabled={saving}
+                onClick={() => void completeTour()}
+                className="rounded-full border border-white/20 bg-white/[0.045] px-3 py-2 text-xs font-semibold text-slate-200 transition hover:border-white/35 hover:bg-white/10 hover:text-white disabled:opacity-40"
+              >
+                Skip tour
+              </button>
+            )}
             <button
               type="button"
-              onClick={() => setShowResearchPricing(true)}
-              className="inline-flex items-center gap-2 text-xs font-semibold text-cyan-900"
+              onClick={() => router.push("/workspace")}
+              className="rounded-full border border-cyan-200/35 bg-cyan-200/10 px-3.5 py-2 text-xs font-semibold text-cyan-50 transition hover:bg-cyan-200/15"
             >
-              See research plans
-              <ArrowRight className="h-3.5 w-3.5" />
+              Exit tour
             </button>
           </div>
         </div>
+      </header>
 
-        {showResearchPricing && (
-          <div
-            className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-950/55 px-4 py-8 backdrop-blur-sm"
-            onMouseDown={() => setShowResearchPricing(false)}
-          >
-            <div
-              role="dialog"
-              aria-modal="true"
-              aria-labelledby="research-pricing-title"
-              onMouseDown={(event) => event.stopPropagation()}
-              className="relative max-h-[90vh] w-full max-w-6xl overflow-y-auto rounded-[30px] border border-slate-200 bg-[#f8fafb] shadow-[0_32px_100px_-24px_rgba(15,23,42,0.45)]"
-            >
-              <div className="sticky top-0 z-10 flex items-start justify-between border-b border-slate-200 bg-[#f8fafb]/95 px-6 py-5 backdrop-blur-xl sm:px-8">
-                <div>
-                  <p className="text-xs font-semibold uppercase tracking-[0.18em] text-cyan-800">
-                    Research study pricing
-                  </p>
-                  <h3
-                    id="research-pricing-title"
-                    className="mt-2 text-2xl font-semibold tracking-tight"
-                  >
-                    Start free. Pay only when your research needs more.
-                  </h3>
-                  <p className="mt-2 text-sm text-slate-500">
-                    Try PsyLattice with one study for free. Upgrade to a Study Pass for one
-                    serious project or Pro for ongoing research.
-                  </p>
+      <section className="relative mx-auto max-w-[1560px] px-3 pb-7 pt-5 sm:px-6 lg:px-9 lg:pt-7">
+        {error && (
+          <div className="mb-4 flex items-start gap-3 rounded-2xl border border-rose-200 bg-white/85 px-4 py-3 text-sm text-slate-600 shadow-sm">
+            <span className="mt-1 h-4 w-0.5 rounded-full bg-rose-400" aria-hidden="true" />
+            <span>{error}</span>
+          </div>
+        )}
+
+        <div
+          key={slide.id}
+          className="psylattice-tour-in relative rounded-[34px] border-2 border-cyan-300/70 bg-white/55 p-[7px] shadow-[0_4px_12px_rgba(15,23,42,0.06),0_26px_70px_rgba(8,145,178,0.16),0_0_0_5px_rgba(255,255,255,.72)] backdrop-blur-sm"
+        >
+          {/* Product-tour rail lives outside the replica so it never covers PsyLattice UI. */}
+          <div className="pointer-events-none absolute -left-[26px] top-[132px] z-30 hidden xl:flex">
+            <div className="relative flex h-[188px] w-[34px] items-center justify-center rounded-full border border-cyan-300/35 bg-[#1b3042] shadow-[0_12px_30px_rgba(23,39,55,0.16),0_0_0_4px_rgba(255,255,255,.74)]">
+              <span
+                className="whitespace-nowrap text-[8px] font-bold uppercase tracking-[0.20em] text-cyan-200"
+                style={{ writingMode: "vertical-rl", transform: "rotate(180deg)" }}
+              >
+                Product onboarding
+              </span>
+              <span className="absolute -right-[9px] top-1/2 h-px w-[9px] -translate-y-1/2 bg-cyan-300/55" />
+            </div>
+          </div>
+
+          <div className="overflow-hidden rounded-[29px] border border-slate-200/90 bg-white shadow-[0_3px_8px_rgba(15,23,42,0.05),0_18px_48px_rgba(15,23,42,0.10)]">
+            {/* Dedicated tour strip: visually separates onboarding from the product replica without overlapping it. */}
+            <div className="flex h-9 items-center justify-between border-b border-cyan-300/20 bg-[#20394b] px-4 text-white sm:px-5">
+              <div className="flex items-center gap-2">
+                <span className="flex h-5 w-5 items-center justify-center rounded-md border border-cyan-300/25 bg-cyan-300/10 text-cyan-200">
+                  <Sparkles className="h-2.5 w-2.5" />
+                </span>
+                <span className="text-[8px] font-bold uppercase tracking-[0.18em] text-cyan-200">
+                  Onboarding preview
+                </span>
+                <span className="hidden text-[8px] font-medium text-slate-400 md:inline">
+                  {slide.title}
+                </span>
+              </div>
+              <span className="rounded-full border border-white/10 bg-white/[0.06] px-2.5 py-1 text-[8px] font-semibold text-slate-300">
+                Step {currentIndex + 1} of {config.slides.length}
+              </span>
+            </div>
+
+            {/* Browser-like preview chrome. */}
+            <div className="flex items-center justify-between border-b border-slate-200/90 bg-[#f9fbfc] px-4 py-3 sm:px-5">
+              <div className="flex min-w-0 items-center gap-3">
+                <div className="flex gap-1.5" aria-hidden="true">
+                  <span className="h-2.5 w-2.5 rounded-full border border-slate-300 bg-slate-300" />
+                  <span className="h-2.5 w-2.5 rounded-full border border-slate-300 bg-slate-300" />
+                  <span className="h-2.5 w-2.5 rounded-full border border-cyan-300 bg-cyan-300" />
                 </div>
-
-                <button
-                  type="button"
-                  onClick={() => setShowResearchPricing(false)}
-                  aria-label="Close research pricing"
-                  className="ml-5 flex h-10 w-10 shrink-0 items-center justify-center rounded-full border border-slate-200 bg-white text-slate-500 transition hover:border-slate-300 hover:text-slate-950"
-                >
-                  <X className="h-4 w-4" />
-                </button>
-              </div>
-
-              <div className="px-6 pt-6 sm:px-8 sm:pt-8">
-                <div className="rounded-[22px] border border-cyan-200 bg-cyan-50/80 p-5">
-                  <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-                    <div>
-                      <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-cyan-800">
-                        A real free research tier
-                      </p>
-                      <p className="mt-2 text-sm leading-6 text-cyan-950">
-                        Free includes one study, a small AI allowance and PsyLattice Auto; custom media uploads are available only on Pro Monthly and Pro Annual.
-                      </p>
-                    </div>
-                    <span className="w-fit rounded-full bg-white px-4 py-2 text-xs font-semibold text-cyan-800 shadow-sm">
-                      Free to start
-                    </span>
-                  </div>
-                </div>
-              </div>
-
-              <div className="grid gap-4 p-6 md:grid-cols-2 xl:grid-cols-4 sm:p-8">
-                {activePricing.cards
-                  .filter((card) =>
-                    [
-                      "researcher",
-                      "study-pass",
-                      "research-pro-monthly",
-                      "research-pro-annual",
-                    ].includes(card.id)
-                  )
-                  .map((card) => (
-                    <article
-                      key={card.id}
-                      className={`relative flex flex-col rounded-[22px] border bg-white p-6 ${
-                        card.id === "research-pro-monthly"
-                          ? "border-cyan-300 shadow-lg shadow-cyan-100/50"
-                          : card.id === "research-pro-annual"
-                            ? "border-cyan-300 shadow-lg shadow-cyan-100/50"
-                            : "border-slate-200"
-                      }`}
-                    >
-                      <div className="flex items-start justify-between gap-3">
-                        <div>
-                          <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-cyan-800">
-                            {card.eyebrow}
-                          </p>
-                          <h4 className="mt-2 text-xl font-semibold tracking-tight">
-                            {card.title}
-                          </h4>
-                        </div>
-
-                        {card.id === "research-pro-monthly" && (
-                          <span className="rounded-full bg-cyan-950 px-3 py-1 text-[10px] font-semibold text-white">
-                            Regular use
-                          </span>
-                        )}
-                        {card.id === "research-pro-annual" && (
-                          <span className="rounded-full bg-cyan-700 px-3 py-1 text-[10px] font-semibold text-white">
-                            Best value
-                          </span>
-                        )}
-                      </div>
-
-                      <div className="mt-5 flex items-end gap-2">
-                        <span className="text-3xl font-semibold tracking-tight">
-                          {card.price}
-                        </span>
-                        {card.cadence && (
-                          <span className="pb-0.5 text-sm text-slate-500">
-                            {card.cadence}
-                          </span>
-                        )}
-                      </div>
-
-                      <p className="mt-3 text-sm leading-6 text-slate-600">
-                        {card.description}
-                      </p>
-
-                      <div className="my-5 h-px bg-slate-100" />
-
-                      <ul className="space-y-2.5">
-                        {card.bullets.map((bullet) => (
-                          <li
-                            key={bullet}
-                            className="flex items-start gap-2.5 text-sm leading-5 text-slate-600"
-                          >
-                            <span className="mt-0.5 text-cyan-700">
-                              <CheckMark />
-                            </span>
-                            <span>{bullet}</span>
-                          </li>
-                        ))}
-                      </ul>
-
-                      <div className="mt-auto pt-6">
-                        <div className="rounded-xl bg-slate-50 px-4 py-3 text-xs leading-5 text-slate-500">
-                          {card.note}
-                        </div>
-
-                        {card.id === "study-pass" ? <StudyPassCheckout className="mt-4" /> : <Link
-                          href={card.ctaHref}
-                          className={`mt-4 inline-flex w-full items-center justify-center gap-2 rounded-xl px-5 py-3 text-sm font-semibold transition ${
-                            card.id === "research-pro-monthly"
-                              ? "bg-cyan-950 text-white hover:bg-cyan-900"
-                              : card.id === "research-pro-annual"
-                                ? "bg-cyan-700 text-white hover:bg-cyan-600"
-                                : "bg-slate-950 text-white hover:bg-slate-800"
-                          }`}
-                        >
-                          {card.ctaLabel}
-                          <ArrowRight className="h-4 w-4" />
-                        </Link>}
-
-                        <p className="mt-3 text-[11px] leading-5 text-slate-400">
-                          By continuing, you agree to the{" "}
-                          <Link
-                            href="/terms"
-                            className="font-medium text-slate-600 underline underline-offset-2 hover:text-slate-950"
-                          >
-                            Terms of Use
-                          </Link>
-                          .
-                        </p>
-                      </div>
-                    </article>
-                  ))}
-              </div>
-
-              <div className="mx-6 mb-6 rounded-2xl border border-slate-200 bg-white px-5 py-4 sm:mx-8 sm:mb-8">
-                <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-                  <div>
-                    <p className="text-sm font-semibold text-slate-900">Study participants remain free</p>
-                    <p className="mt-1 text-xs leading-5 text-slate-500">
-                      Participants never need a paid PsyLattice subscription to take part in a study.
-                    </p>
-                  </div>
-                  <span className="w-fit rounded-full bg-slate-100 px-3 py-1.5 text-[10px] font-semibold text-slate-600">
-                    Participant access · Free
+                <div className="hidden min-w-0 items-center gap-2 rounded-lg border border-slate-300/80 bg-white/90 px-4 py-1.5 text-[10px] font-medium text-slate-500 shadow-[inset_0_1px_2px_rgba(15,23,42,0.04)] sm:flex sm:w-[360px]">
+                  <Lock className="h-3 w-3 text-slate-400" />
+                  <span className="truncate">psylattice.com</span>
+                  <span className="ml-auto rounded-full bg-cyan-50 px-2 py-0.5 text-[8px] font-bold uppercase tracking-[0.08em] text-cyan-700">
+                    Demo
                   </span>
                 </div>
               </div>
 
-              <div className="border-t border-slate-200 px-6 py-5 sm:px-8">
-                <div className="flex flex-col justify-between gap-3 sm:flex-row sm:items-center">
-                  <p className="text-sm text-slate-500">
-                    Need more participant capacity than your plan includes?
-                  </p>
-                  <Link
-                    href="/contact"
-                    className="inline-flex items-center gap-2 text-sm font-semibold text-cyan-900 transition hover:text-cyan-700"
-                  >
-                    Contact PsyLattice for larger studies
-                    <ArrowRight className="h-4 w-4" />
-                  </Link>
-                </div>
+              <div className="flex items-center gap-2">
+                <span className="hidden text-[10px] font-medium text-slate-400 md:inline">
+                  Feature walkthrough
+                </span>
+                <button
+                  type="button"
+                  onClick={() => setFocusOpen(true)}
+                  className="rounded-full border border-slate-200 bg-white px-3 py-1.5 text-[11px] font-semibold text-slate-600 shadow-[0_4px_12px_rgba(15,23,42,0.05)] transition hover:-translate-y-px hover:border-cyan-200 hover:text-slate-900"
+                >
+                  Expand preview
+                </button>
               </div>
             </div>
-          </div>
-        )}
-      </section>
 
-      {/* CTA */}
-      <section className="px-6 py-20 lg:px-8 lg:py-24">
-        <div className="relative mx-auto max-w-7xl overflow-hidden rounded-[34px] bg-cyan-900 px-7 py-14 text-white sm:px-10 lg:px-14 lg:py-16">
-          <div className="pointer-events-none absolute -right-20 -top-24 h-80 w-80 rounded-full bg-cyan-300/15 blur-3xl" />
-          <div className="relative flex flex-col justify-between gap-10 lg:flex-row lg:items-end">
-            <div className="max-w-3xl">
-              <p className="text-xs font-semibold uppercase tracking-[0.18em] text-cyan-200">
-                Start with PsyLattice
-              </p>
-              <h2 className="mt-5 text-4xl font-semibold tracking-[-0.04em] sm:text-5xl">
-                A connected foundation for psychological measurement.
-              </h2>
-              <p className="mt-5 max-w-2xl text-lg leading-8 text-cyan-100/80">
-                Choose the workspace designed for your role and begin building
-                a clearer view of psychological information over time.
-              </p>
+            <div className="relative h-[clamp(545px,67dvh,760px)] overflow-hidden bg-[#eef5f6] p-3 sm:p-4">
+              <MockWorkspace
+                workspace={workspace}
+                config={config}
+                activeSlideId={slide.id}
+                dashboardStep={dashboardFeatureIndex}
+                studiesStep={studiesFeatureIndex}
+                studyBuilderStep={studyBuilderFeatureIndex}
+                questionnaireStep={questionnaireFeatureIndex}
+                cognitiveStep={cognitiveFeatureIndex}
+                thesisStep={thesisFeatureIndex}
+                ambulatoryStep={ambulatoryFeatureIndex}
+                participantsStep={participantsFeatureIndex}
+                participantLinksStep={participantLinksFeatureIndex}
+                dataDashboardStep={dataDashboardFeatureIndex}
+                dataExplorerStep={dataExplorerFeatureIndex}
+                analysisStep={analysisFeatureIndex}
+                exportStep={exportFeatureIndex}
+                onNavigate={navigateBySlideId}
+              />
+
             </div>
+          </div>
+        </div>
 
-            <Link
-              href="/signin"
-              className="inline-flex w-fit items-center gap-2 rounded-xl bg-white px-6 py-3.5 text-sm font-semibold text-cyan-950 transition hover:bg-cyan-50"
+        {/* Persistent tour navigation. Internal feature steps happen before the journey advances. */}
+        <div className="mt-5 flex flex-col items-center gap-2.5">
+          <p className="text-[10px] font-bold uppercase tracking-[0.16em] text-slate-400">
+            Your onboarding journey
+          </p>
+
+          <div className="flex w-full max-w-[980px] items-center justify-center gap-3">
+            <button
+              type="button"
+              disabled={saving || guideIsFirst}
+              onClick={handleGuideBack}
+              className="shrink-0 rounded-full border border-slate-300 bg-white/90 px-4 py-2.5 text-[10px] font-bold text-slate-600 shadow-[0_6px_18px_rgba(15,23,42,.07)] backdrop-blur transition hover:-translate-y-px hover:border-cyan-300 hover:text-slate-900 disabled:cursor-not-allowed disabled:opacity-30"
             >
-              Choose your workspace
-              <ArrowRight className="h-4 w-4" />
-            </Link>
+              ← Previous
+            </button>
+
+            <div className="flex min-w-0 flex-1 items-center justify-center gap-1.5 overflow-x-auto rounded-full border border-white/70 bg-white/70 px-3 py-2 shadow-sm backdrop-blur-xl">
+              {config.slides.map((item, index) => (
+                <button
+                  key={item.id}
+                  type="button"
+                  title={item.title}
+                  disabled={saving}
+                  onClick={() => {
+                    if (item.id === "dashboard") setDashboardFeatureIndex(0);
+                    if (item.id === "studies") setStudiesFeatureIndex(0);
+                    if (item.id === "study-builder") setStudyBuilderFeatureIndex(0);
+                    if (item.id === "questionnaires") setQuestionnaireFeatureIndex(0);
+                    if (item.id === "cognitive-lab") setCognitiveFeatureIndex(0);
+                    if (item.id === "thesis-builder") setThesisFeatureIndex(0);
+                    if (item.id === "ambulatory") setAmbulatoryFeatureIndex(0);
+                    if (item.id === "participants") setParticipantsFeatureIndex(0);
+                    if (item.id === "participant-links") setParticipantLinksFeatureIndex(0);
+                    if (item.id === "data-dashboard") setDataDashboardFeatureIndex(0);
+                    if (item.id === "data-explorer") setDataExplorerFeatureIndex(0);
+                    if (item.id === "analysis-lab") setAnalysisFeatureIndex(0);
+                    if (item.id === "export") setExportFeatureIndex(0);
+                    void savePosition(index);
+                  }}
+                  className={`group flex items-center gap-1.5 rounded-full px-2 py-1.5 transition-all ${
+                    index === currentIndex
+                      ? "bg-[#17384d] text-white shadow-md"
+                      : index < currentIndex
+                        ? "bg-cyan-50 text-cyan-800 hover:bg-cyan-100"
+                        : "text-slate-400 hover:bg-white hover:text-slate-700"
+                  }`}
+                >
+                  <span
+                    className={`flex h-5 w-5 items-center justify-center rounded-full text-[9px] font-bold ${
+                      index === currentIndex
+                        ? "bg-cyan-300 text-slate-950"
+                        : index < currentIndex
+                          ? "bg-cyan-100 text-cyan-800"
+                          : "bg-slate-100 text-slate-500"
+                    }`}
+                  >
+                    {index + 1}
+                  </span>
+                  <span className={`hidden whitespace-nowrap text-[10px] font-semibold ${index === currentIndex ? "sm:inline" : "xl:group-hover:inline"}`}>
+                    {item.title}
+                  </span>
+                </button>
+              ))}
+            </div>
+
+            {isLast ? (
+              <button
+                type="button"
+                disabled={saving}
+                onClick={() => void completeTour()}
+                className="shrink-0 rounded-full bg-[#17384d] px-4 py-2.5 text-[10px] font-bold text-white shadow-[0_8px_18px_rgba(23,56,77,.14)] transition hover:-translate-y-px hover:bg-slate-800 disabled:opacity-50"
+              >
+                {saving ? "Opening..." : "Finish tour →"}
+              </button>
+            ) : (
+              <button
+                type="button"
+                disabled={saving}
+                onClick={handleGuideNext}
+                className="shrink-0 rounded-full bg-[#17384d] px-4 py-2.5 text-[10px] font-bold text-white shadow-[0_8px_18px_rgba(23,56,77,.14)] transition hover:-translate-y-px hover:bg-slate-800 disabled:opacity-50"
+              >
+                {saving ? "Saving..." : nextButtonLabel}
+              </button>
+            )}
           </div>
+
+          {internalGuideStep && (
+            <p className="text-[9px] font-semibold text-cyan-800">
+              {guideEyebrow} · {guideTakeaway}
+            </p>
+          )}
         </div>
       </section>
 
-      {/* Footer */}
-      <footer className="border-t border-slate-200 bg-white">
-        <div className="mx-auto max-w-7xl px-6 py-12 lg:px-8">
-          <div className="flex flex-col justify-between gap-10 md:flex-row">
-            <div>
-              <PsyLatticeLogo />
-              <p className="mt-5 max-w-sm text-sm leading-6 text-slate-500">
-                A modular platform for psychological assessment, research,
-                real-world monitoring and professional support.
-              </p>
-            </div>
-
-            <div className="grid grid-cols-2 gap-x-14 gap-y-8 text-sm sm:grid-cols-3">
-              <div>
-                <p className="font-semibold">Platform</p>
-                <div className="mt-4 space-y-3 text-slate-500">
-                  <a href="#platform" className="block hover:text-slate-950">
-                    Self
-                  </a>
-                  <a href="#platform" className="block hover:text-slate-950">
-                    Research
-                  </a>
-                  <a href="#platform" className="block hover:text-slate-950">
-                    Clinical
-                  </a>
-                  <a href="#mobile" className="block hover:text-slate-950">
-                    Mobile
-                  </a>
-                  <a href="#coming-next" className="block hover:text-slate-950">
-                    Coming next
-                  </a>
-                  <a
-                    href={ANDROID_BETA_URL}
-                    target="_blank"
-                    rel="noreferrer"
-                    className="block font-medium text-cyan-800 hover:text-cyan-700"
-                  >
-                    Android Beta ↓
-                  </a>
+      {focusOpen && (
+        <div
+          className="fixed inset-0 z-[100] flex items-center justify-center bg-[#172737]/72 p-3 backdrop-blur-md sm:p-6"
+          role="dialog"
+          aria-modal="true"
+          onClick={() => setFocusOpen(false)}
+        >
+          <div
+            className="flex h-[94dvh] w-full max-w-[1740px] flex-col overflow-hidden rounded-[30px] border border-cyan-300/30 bg-white shadow-[0_30px_100px_rgba(0,0,0,.38)]"
+            onClick={(event) => event.stopPropagation()}
+          >
+            <div className="flex items-center justify-between border-b border-slate-200 bg-[#1b3042] px-4 py-3 text-white sm:px-5">
+              <div className="flex items-center gap-3">
+                <span className="flex h-8 w-8 items-center justify-center rounded-xl border border-cyan-300/30 bg-cyan-300/10 text-cyan-200">
+                  <Sparkles className="h-4 w-4" />
+                </span>
+                <div>
+                  <p className="text-[9px] font-bold uppercase tracking-[0.16em] text-cyan-200">
+                    Product tour focus
+                  </p>
+                  <p className="mt-0.5 text-sm font-semibold text-white">{slide.title}</p>
                 </div>
               </div>
-
-              <div>
-                <p className="font-semibold">Company</p>
-                <div className="mt-4 space-y-3 text-slate-500">
-                  <Link href="/about" className="block hover:text-slate-950">
-                    About
-                  </Link>
-                  <Link href="/security" className="block hover:text-slate-950">
-                    Security
-                  </Link>
-                  <Link href="/contact" className="block hover:text-slate-950">
-                    Contact
-                  </Link>
-                </div>
-              </div>
-
-              <div>
-                <p className="font-semibold">Legal</p>
-                <div className="mt-4 space-y-3 text-slate-500">
-                  <Link href="/privacy" className="block hover:text-slate-950">
-                    Privacy
-                  </Link>
-                  <Link href="/terms" className="block hover:text-slate-950">
-                    Terms
-                  </Link>
-                  <Link
-                    href="/data-policy"
-                    className="block hover:text-slate-950"
-                  >
-                    Data policy
-                  </Link>
-                </div>
+              <div className="flex items-center gap-2">
+                <span className="hidden rounded-full border border-white/15 bg-white/10 px-3 py-1.5 text-[10px] font-medium text-slate-300 md:inline">
+                  Guided feature preview
+                </span>
+                <button
+                  type="button"
+                  onClick={() => setFocusOpen(false)}
+                  className="rounded-full border border-white/15 bg-white/10 px-3 py-2 text-xs font-semibold text-white hover:bg-white/15"
+                >
+                  Close ✕
+                </button>
               </div>
             </div>
-          </div>
-
-          <div className="mt-12 flex flex-col justify-between gap-3 border-t border-slate-100 pt-6 text-xs text-slate-400 sm:flex-row">
-            <p>© 2026 PsyLattice. Concept platform.</p>
-            <p>Designed for responsible psychological measurement.</p>
+            <div className="min-h-0 flex-1 bg-[#eef5f6] p-4 sm:p-6">
+              <MockWorkspace
+                workspace={workspace}
+                config={config}
+                activeSlideId={slide.id}
+                dashboardStep={dashboardFeatureIndex}
+                studiesStep={studiesFeatureIndex}
+                studyBuilderStep={studyBuilderFeatureIndex}
+                questionnaireStep={questionnaireFeatureIndex}
+                cognitiveStep={cognitiveFeatureIndex}
+                thesisStep={thesisFeatureIndex}
+                ambulatoryStep={ambulatoryFeatureIndex}
+                participantsStep={participantsFeatureIndex}
+                participantLinksStep={participantLinksFeatureIndex}
+                dataDashboardStep={dataDashboardFeatureIndex}
+                dataExplorerStep={dataExplorerFeatureIndex}
+                analysisStep={analysisFeatureIndex}
+                exportStep={exportFeatureIndex}
+                onNavigate={(slideId) => {
+                  navigateBySlideId(slideId);
+                  setFocusOpen(false);
+                }}
+              />
+            </div>
           </div>
         </div>
-      </footer>
+      )}
     </main>
+  );
+}
+
+export default function OnboardingPage() {
+  return (
+    <Suspense
+      fallback={
+        <main className="flex min-h-screen items-center justify-center bg-[#f6f8f8]">
+          <PsyLatticeLogo />
+        </main>
+      }
+    >
+      <WorkspaceTour />
+    </Suspense>
   );
 }

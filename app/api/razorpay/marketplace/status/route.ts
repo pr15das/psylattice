@@ -1,25 +1,36 @@
 import { NextResponse } from "next/server";
-import { authenticatedBillingUser, loadBillingSnapshot } from "@/lib/razorpay/marketplaceServer";
+import {
+  authenticatedBillingUser,
+  getResearcherEntitlements,
+} from "@/lib/billing/server";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
 
+/**
+ * Backwards-compatible marketplace status endpoint.
+ * New product code should prefer /api/billing/me.
+ */
 export async function GET() {
   try {
     const user = await authenticatedBillingUser();
     if (!user) {
-      return NextResponse.json({ ok: false, error: "Please sign in again." }, { status: 401 });
+      return NextResponse.json(
+        { ok: false, error: "Please sign in again." },
+        { status: 401 },
+      );
     }
 
-    const snapshot = await loadBillingSnapshot(user.id);
+    const entitlements = await getResearcherEntitlements(user.id);
 
     return NextResponse.json(
       {
         ok: true,
-        planTier: snapshot.effectivePlan,
-        hasStudyPass: snapshot.hasStudyPass,
-        subscriptionStatus: snapshot.account?.plan_status || null,
-        renewalAt: snapshot.account?.current_period_end || null,
+        planTier: entitlements.plan,
+        hasStudyPass: entitlements.hasAnyStudyPass,
+        subscriptionStatus: entitlements.planStatus,
+        renewalAt: entitlements.subscription.currentPeriodEnd,
+        entitlements,
       },
       { headers: { "Cache-Control": "private, no-store" } },
     );

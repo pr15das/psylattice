@@ -197,6 +197,8 @@ export default function AdminDashboard({
   const [users, setUsers] = useState<AnyRow[]>([]);
   const [usersTotal, setUsersTotal] = useState(0);
   const [payments, setPayments] = useState<AnyRow[]>([]);
+  const [paymentSearchInput, setPaymentSearchInput] = useState("");
+  const [paymentSearchQuery, setPaymentSearchQuery] = useState("");
   const [admins, setAdmins] = useState<AnyRow[]>([]);
   const [audit, setAudit] = useState<AnyRow[]>([]);
   const [loading, setLoading] = useState(false);
@@ -256,14 +258,20 @@ export default function AdminDashboard({
     setLoading(true);
     setError("");
     try {
-      const result = await getJson<{ ok: boolean; payments: AnyRow[] }>("/api/admin/payments?limit=150");
+      const params = new URLSearchParams();
+      params.set("limit", paymentSearchQuery ? "250" : "150");
+      if (paymentSearchQuery) params.set("q", paymentSearchQuery);
+
+      const result = await getJson<{ ok: boolean; payments: AnyRow[] }>(
+        `/api/admin/payments?${params.toString()}`,
+      );
       setPayments(result.payments || []);
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : "Payments could not be loaded.");
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [paymentSearchQuery]);
 
   const loadAdmins = useCallback(async () => {
     setLoading(true);
@@ -700,25 +708,126 @@ export default function AdminDashboard({
           )}
 
           {tab === "payments" && (
-            <Section title="Payment history" description="Canonical successful-payment ledger. Synced Razorpay subscription invoices appear as separate renewal transactions.">
+            <Section
+              title="Payment history"
+              description={
+                paymentSearchQuery
+                  ? `Transaction lookup · ${payments.length} matching record${payments.length === 1 ? "" : "s"}`
+                  : "Canonical successful-payment ledger. Razorpay renewals appear as separate transactions."
+              }
+            >
+              <div className="mb-5 rounded-2xl border border-cyan-100 bg-cyan-50/50 p-4">
+                <p className="text-[10px] font-bold uppercase tracking-[0.12em] text-cyan-800">
+                  Transaction lookup
+                </p>
+                <p className="mt-1 text-[11px] leading-5 text-slate-500">
+                  Paste a Razorpay Payment, Invoice, Order or Subscription ID to find the related PsyLattice account and billing record.
+                </p>
+                <div className="mt-3 flex flex-col gap-2 sm:flex-row">
+                  <div className="relative min-w-0 flex-1">
+                    <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+                    <input
+                      value={paymentSearchInput}
+                      onChange={(e) => setPaymentSearchInput(e.target.value)}
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter") {
+                          setPaymentSearchQuery(paymentSearchInput.trim());
+                        }
+                      }}
+                      placeholder="pay_… / inv_… / order_… / sub_…"
+                      className="w-full rounded-xl border border-slate-200 bg-white py-3 pl-10 pr-4 font-mono text-xs outline-none focus:border-cyan-300"
+                    />
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setPaymentSearchQuery(paymentSearchInput.trim())}
+                    className="rounded-xl bg-slate-950 px-5 py-3 text-xs font-semibold text-white"
+                  >
+                    Search
+                  </button>
+                  {(paymentSearchInput || paymentSearchQuery) && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setPaymentSearchInput("");
+                        setPaymentSearchQuery("");
+                      }}
+                      className="rounded-xl border border-slate-200 bg-white px-4 py-3 text-xs font-semibold text-slate-600"
+                    >
+                      Clear
+                    </button>
+                  )}
+                </div>
+              </div>
+
               <div className="overflow-x-auto rounded-2xl border border-slate-200">
                 <table className="min-w-full text-left text-xs">
                   <thead className="bg-slate-50 text-[10px] uppercase tracking-[0.12em] text-slate-400">
-                    <tr><th className="px-4 py-3">User</th><th className="px-4 py-3">Status</th><th className="px-4 py-3">Amount</th><th className="px-4 py-3">Transaction</th><th className="px-4 py-3">Date</th></tr>
+                    <tr>
+                      <th className="px-4 py-3">User</th>
+                      <th className="px-4 py-3">Status</th>
+                      <th className="px-4 py-3">Amount</th>
+                      <th className="px-4 py-3">Razorpay references</th>
+                      <th className="px-4 py-3">Date</th>
+                      <th className="px-4 py-3" />
+                    </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-100">
                     {payments.map((row) => (
-                      <tr key={row.id}>
-                        <td className="px-4 py-3"><p className="font-semibold">{row.user?.full_name || row.user?.email || "Unknown"}</p><p className="mt-0.5 text-[10px] text-slate-400">{row.user?.email}</p></td>
-                        <td className="px-4 py-3"><p className="capitalize text-slate-600">{row.status}</p><p className="mt-0.5 text-[9px] text-slate-400">{row.source === "subscription_invoice" ? "Renewal" : "Checkout"}</p></td>
+                      <tr key={row.id} className="align-top hover:bg-slate-50/70">
+                        <td className="px-4 py-3">
+                          <p className="font-semibold">{row.user?.full_name || row.user?.email || "Unknown"}</p>
+                          <p className="mt-0.5 text-[10px] text-slate-400">{row.user?.email || row.user_id || "—"}</p>
+                        </td>
+                        <td className="px-4 py-3">
+                          <p className="capitalize text-slate-600">{row.status}</p>
+                          <p className="mt-0.5 text-[9px] text-slate-400">
+                            {row.source === "subscription_invoice" ? "Recurring renewal" : "Checkout"}
+                          </p>
+                          {row.description && (
+                            <p className="mt-1 max-w-[180px] text-[9px] leading-4 text-slate-400">{row.description}</p>
+                          )}
+                        </td>
                         <td className="px-4 py-3 font-semibold">{money(row.amount_paise)}</td>
-                        <td className="max-w-[240px] truncate px-4 py-3 font-mono text-[10px] text-slate-500">{row.razorpay_payment_id || row.razorpay_invoice_id || row.razorpay_order_id || row.razorpay_subscription_id || "—"}</td>
+                        <td className="min-w-[290px] px-4 py-3">
+                          <div className="space-y-1 font-mono text-[9px] text-slate-500">
+                            {row.razorpay_payment_id && <p><span className="font-sans text-slate-400">Payment:</span> {row.razorpay_payment_id}</p>}
+                            {row.razorpay_invoice_id && <p><span className="font-sans text-slate-400">Invoice:</span> {row.razorpay_invoice_id}</p>}
+                            {row.razorpay_order_id && <p><span className="font-sans text-slate-400">Order:</span> {row.razorpay_order_id}</p>}
+                            {row.razorpay_subscription_id && <p><span className="font-sans text-slate-400">Subscription:</span> {row.razorpay_subscription_id}</p>}
+                            {!row.razorpay_payment_id &&
+                              !row.razorpay_invoice_id &&
+                              !row.razorpay_order_id &&
+                              !row.razorpay_subscription_id && <p>Ledger: {row.id}</p>}
+                          </div>
+                        </td>
                         <td className="px-4 py-3 text-slate-500">{dateTime(row.paid_at || row.created_at)}</td>
+                        <td className="px-4 py-3 text-right">
+                          {row.user_id && (
+                            <button
+                              type="button"
+                              onClick={() => setSelectedUserId(String(row.user_id))}
+                              className="rounded-xl border border-slate-200 px-3 py-2 text-[10px] font-semibold text-slate-700 hover:border-cyan-200 hover:text-cyan-900"
+                            >
+                              Manage
+                            </button>
+                          )}
+                        </td>
                       </tr>
                     ))}
                   </tbody>
                 </table>
-                {payments.length === 0 && <div className="p-6"><EmptyState text="No billing records yet." /></div>}
+                {payments.length === 0 && (
+                  <div className="p-6">
+                    <EmptyState
+                      text={
+                        paymentSearchQuery
+                          ? `No billing transaction matched "${paymentSearchQuery}".`
+                          : "No billing records yet."
+                      }
+                    />
+                  </div>
+                )}
               </div>
             </Section>
           )}

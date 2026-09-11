@@ -475,6 +475,63 @@ export function CurrentPlanBadge() {
   );
 }
 
+type AiProviderKey = "psylattice" | "openai" | "claude" | "gemini";
+
+function aiProviderForModel(model: Pick<AiModelApiOption, "key" | "name"> | null | undefined): AiProviderKey {
+  const key = String(model?.key || "").toLowerCase();
+  const name = String(model?.name || "").toLowerCase();
+
+  if (key.includes("openai") || name.includes("openai") || name.includes("gpt")) return "openai";
+  if (key.includes("claude") || name.includes("claude") || name.includes("anthropic")) return "claude";
+  if (key.includes("gemini") || name.includes("gemini")) return "gemini";
+  return "psylattice";
+}
+
+function aiProviderLabel(provider: AiProviderKey) {
+  if (provider === "openai") return "OpenAI";
+  if (provider === "claude") return "Anthropic";
+  if (provider === "gemini") return "Google Gemini";
+  return "PsyLattice";
+}
+
+function AiProviderMark({
+  provider,
+  compact = false,
+}: {
+  provider: AiProviderKey;
+  compact?: boolean;
+}) {
+  const boxClass = compact ? "h-7 w-7 rounded-lg" : "h-9 w-9 rounded-xl";
+  const iconClass = compact ? "h-4 w-4" : "h-5 w-5";
+
+  if (provider === "psylattice") {
+    return (
+      <span
+        className={`${boxClass} flex shrink-0 items-center justify-center border border-cyan-200 bg-gradient-to-br from-cyan-50 via-white to-sky-50 text-cyan-800 shadow-sm`}
+        aria-label="PsyLattice"
+      >
+        <Sparkles className={iconClass} strokeWidth={1.8} />
+      </span>
+    );
+  }
+
+  const src =
+    provider === "openai"
+      ? "/ai-models/openai.svg"
+      : provider === "claude"
+        ? "/ai-models/claude.svg"
+        : "/ai-models/gemini.svg";
+
+  return (
+    <span
+      className={`${boxClass} flex shrink-0 items-center justify-center border border-slate-200/90 bg-white shadow-sm`}
+      aria-label={aiProviderLabel(provider)}
+    >
+      <img src={src} alt="" aria-hidden="true" className={`${iconClass} object-contain`} />
+    </span>
+  );
+}
+
 export function AiModelSwitcher() {
   const [open, setOpen] = useState(false);
   const [notice, setNotice] = useState("");
@@ -506,8 +563,17 @@ export function AiModelSwitcher() {
     void loadModels();
   }, [loadModels]);
 
-  const selectedName =
-    models.find((model) => model.key === selectedModel)?.name || "PsyLattice Auto";
+  const selectedModelOption = models.find((model) => model.key === selectedModel) || null;
+  const selectedName = selectedModelOption?.name || "PsyLattice Auto";
+  const selectedProvider = aiProviderForModel(
+    selectedModelOption || { key: selectedModel, name: selectedName },
+  );
+  const selectedProviderCaption =
+    selectedModel === "auto"
+      ? modelAccess === "auto-only"
+        ? "Gemini"
+        : "Smart routing"
+      : aiProviderLabel(selectedProvider);
 
   async function chooseModel(model: AiModelApiOption) {
     if (saving) return;
@@ -554,20 +620,28 @@ export function AiModelSwitcher() {
           setNotice("");
           void loadModels();
         }}
-        className={`relative z-[82] flex items-center gap-2 rounded-full border px-3 py-2 text-xs font-semibold shadow-sm transition hover:-translate-y-px hover:shadow-md ${
+        aria-haspopup="dialog"
+        aria-expanded={open}
+        className={`relative z-[82] flex h-[38px] items-center gap-2 rounded-full border px-2.5 text-left shadow-sm transition-all duration-200 hover:-translate-y-px hover:shadow-md ${
           open
-            ? "border-cyan-300 bg-cyan-50 text-cyan-950"
-            : "border-cyan-200 bg-white text-slate-700"
+            ? "border-cyan-300 bg-cyan-50/90 shadow-[0_8px_22px_rgba(8,145,178,0.12)]"
+            : "border-cyan-200/90 bg-white hover:border-cyan-300"
         }`}
       >
-        <Sparkles className="h-3.5 w-3.5 text-cyan-600" />
-        {selectedName}
-        {(modelAccess === "auto-only" || selectedModel === "gemini-flash-economy") && (
-          <span className="hidden rounded-full bg-cyan-50 px-1.5 py-0.5 text-[8px] font-bold uppercase tracking-[0.08em] text-cyan-700 sm:inline-flex">
-            Gemini
+        <AiProviderMark provider={selectedProvider} compact />
+        <span className="min-w-0">
+          <span className="block max-w-[136px] truncate text-[10px] font-bold leading-3.5 text-slate-900 sm:max-w-[160px]">
+            {selectedName}
           </span>
-        )}
-        <ChevronDown className={`h-3.5 w-3.5 text-slate-400 transition-transform ${open ? "rotate-180" : ""}`} />
+          <span className="block text-[7px] font-semibold uppercase tracking-[0.1em] text-cyan-700/80">
+            {selectedProviderCaption}
+          </span>
+        </span>
+        <ChevronDown
+          className={`ml-0.5 h-3.5 w-3.5 shrink-0 text-slate-400 transition-transform duration-200 ${
+            open ? "rotate-180" : ""
+          }`}
+        />
       </button>
 
       {open && (
@@ -579,19 +653,33 @@ export function AiModelSwitcher() {
             className="fixed inset-0 z-[76] cursor-default bg-transparent"
           />
 
-          <div className="absolute right-0 top-[calc(100%+10px)] z-[96] w-[350px] overflow-hidden rounded-[24px] border border-slate-200/90 bg-white shadow-[0_24px_70px_rgba(15,23,42,0.18),0_4px_18px_rgba(8,145,178,0.08)]">
-            <div className="border-b border-cyan-100 bg-gradient-to-br from-white via-white to-cyan-50 px-4 py-4">
-              <div className="flex items-start justify-between gap-3">
-                <div>
-                  <p className="text-[9px] font-bold uppercase tracking-[0.17em] text-cyan-700">AI models</p>
-                  <p className="mt-1 text-sm font-bold text-slate-950">Choose your model</p>
-                  <p className="mt-1 text-[10px] leading-4 text-slate-500">Model access follows your current PsyLattice plan.</p>
+          <div className="absolute right-0 top-[calc(100%+10px)] z-[96] flex h-[540px] w-[380px] max-h-[calc(100vh-96px)] max-w-[calc(100vw-20px)] flex-col overflow-hidden rounded-[24px] border border-slate-200/90 bg-white shadow-[0_26px_70px_rgba(15,23,42,0.18),0_4px_16px_rgba(8,145,178,0.07)]">
+            <div className="shrink-0 border-b border-slate-100 bg-white px-4 py-4">
+              <div className="flex items-start justify-between gap-4">
+                <div className="min-w-0">
+                  <div className="flex items-center gap-2">
+                    <span className="flex h-8 w-8 items-center justify-center rounded-xl border border-cyan-200 bg-cyan-50 text-cyan-800">
+                      <Sparkles className="h-4 w-4" strokeWidth={1.8} />
+                    </span>
+                    <div>
+                      <p className="text-[9px] font-bold uppercase tracking-[0.17em] text-cyan-700">
+                        AI models
+                      </p>
+                      <p className="mt-0.5 text-[14px] font-bold tracking-[-0.015em] text-slate-950">
+                        Choose your model
+                      </p>
+                    </div>
+                  </div>
+                  <p className="mt-2 max-w-[300px] text-[9px] leading-4 text-slate-500">
+                    Choose the provider for your research AI. Model access follows your current plan.
+                  </p>
                 </div>
+
                 <button
                   type="button"
                   onClick={() => setOpen(false)}
                   aria-label="Close model picker"
-                  className="flex h-8 w-8 items-center justify-center rounded-xl border border-slate-200 bg-white text-slate-400 transition hover:text-slate-700"
+                  className="flex h-8 w-8 shrink-0 items-center justify-center rounded-xl border border-slate-200 bg-white text-slate-400 transition hover:bg-slate-50 hover:text-slate-700"
                 >
                   <X className="h-3.5 w-3.5" />
                 </button>
@@ -599,83 +687,137 @@ export function AiModelSwitcher() {
             </div>
 
             {(modelAccess === "auto-only" || selectedModel === "gemini-flash-economy") && (
-              <div className="mx-3 mt-3 rounded-2xl border border-violet-200 bg-violet-50/70 px-3 py-2.5">
-                <div className="flex items-start gap-2">
+              <div className="shrink-0 border-b border-slate-100 px-4 py-3">
+                <div className="flex items-start gap-2.5 rounded-xl border border-violet-200/80 bg-violet-50/65 px-3 py-2.5">
                   <Info className="mt-0.5 h-3.5 w-3.5 shrink-0 text-violet-700" />
-                  <p className="text-[9px] leading-4 text-violet-900">
-                    Free AI uses Gemini. Content sent through this free AI may be used by Google to improve its models. Upgrade to unlock other model choices with different provider and data/privacy terms.
-                  </p>
+                  <div>
+                    <p className="text-[9px] font-bold text-violet-950">Free AI is powered by Gemini</p>
+                    <p className="mt-0.5 text-[8px] leading-3.5 text-violet-800/85">
+                      Provider data terms may differ. Upgrade to unlock additional model choices.
+                    </p>
+                  </div>
                 </div>
               </div>
             )}
 
-            <div className="space-y-1 p-3">
-              {models.map((model) => {
-                const selected = model.key === selectedModel;
-                const stateLabel = selected
-                  ? "ACTIVE"
-                  : !model.allowed
-                    ? "UPGRADE"
-                    : !model.available
-                      ? "COMING SOON"
-                      : "AVAILABLE";
+            <div className="shrink-0 flex items-center justify-between px-4 pb-2 pt-3">
+              <p className="text-[8px] font-bold uppercase tracking-[0.14em] text-slate-400">
+                Available models
+              </p>
+              <p className="text-[8px] text-slate-400">{models.length || "—"} choices</p>
+            </div>
 
-                return (
-                  <button
-                    key={model.key}
-                    type="button"
-                    disabled={saving}
-                    onClick={() => void chooseModel(model)}
-                    className={`w-full rounded-2xl border px-3 py-2.5 text-left transition ${
-                      selected
-                        ? "border-cyan-200 bg-cyan-50/70"
-                        : "border-transparent hover:border-cyan-100 hover:bg-cyan-50/40"
-                    } ${!model.allowed || !model.available ? "opacity-65" : ""}`}
-                  >
-                    <div className="flex items-center gap-2">
-                      <span className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-lg ${
-                        selected ? "bg-cyan-100 text-cyan-800" : "bg-slate-100 text-slate-500"
-                      }`}>
-                        {model.allowed && model.available ? (
-                          <Cpu className="h-3.5 w-3.5" />
-                        ) : (
-                          <LockKeyhole className="h-3.5 w-3.5" />
-                        )}
-                      </span>
-                      <span className="min-w-0 flex-1">
-                        <span className="flex items-center gap-2">
-                          <span className="text-[11px] font-semibold text-slate-800">{model.name}</span>
-                          {model.badge && (
-                            <span className="rounded-full bg-cyan-100 px-1.5 py-0.5 text-[8px] font-semibold text-cyan-800">
-                              {model.badge}
+            <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-3 pb-3">
+              <div className="space-y-1.5 pr-1">
+                {models.map((model) => {
+                  const selected = model.key === selectedModel;
+                  const provider = aiProviderForModel(model);
+                  const locked = !model.allowed;
+                  const comingSoon = model.allowed && !model.available;
+                  const stateLabel = selected
+                    ? "Active"
+                    : locked
+                      ? "Upgrade"
+                      : comingSoon
+                        ? "Soon"
+                        : "Available";
+
+                  const stateClasses = selected
+                    ? "border-cyan-200 bg-cyan-50 text-cyan-800"
+                    : locked
+                      ? "border-slate-200 bg-slate-50 text-slate-500"
+                      : comingSoon
+                        ? "border-violet-200 bg-violet-50 text-violet-700"
+                        : "border-emerald-200 bg-emerald-50 text-emerald-700";
+
+                  const description =
+                    model.key === "auto"
+                      ? modelAccess === "auto-only"
+                        ? "PsyLattice chooses the best available free research model."
+                        : "PsyLattice automatically routes each request to the best available model."
+                      : model.available
+                        ? model.description
+                        : "Provider integration coming later.";
+
+                  return (
+                    <button
+                      key={model.key}
+                      type="button"
+                      disabled={saving}
+                      onClick={() => void chooseModel(model)}
+                      className={`group relative w-full rounded-[15px] border px-3 py-2.5 text-left transition-all duration-150 disabled:cursor-wait disabled:opacity-70 ${
+                        selected
+                          ? "border-cyan-300 bg-cyan-50/55 shadow-[0_5px_16px_rgba(8,145,178,0.07)]"
+                          : "border-slate-200/80 bg-white hover:border-cyan-200 hover:bg-slate-50/60"
+                      }`}
+                    >
+                      <div className="flex items-center gap-2.5">
+                        <AiProviderMark provider={provider} />
+
+                        <span className="min-w-0 flex-1">
+                          <span className="flex min-w-0 items-center gap-1.5">
+                            <span className="truncate text-[10px] font-bold text-slate-900">
+                              {model.name}
                             </span>
-                          )}
-                        </span>
-                        <span className="mt-0.5 block truncate text-[9px] text-slate-500">
-                          {selected
-                            ? `Budget impact: ${model.impact}`
-                            : model.available
-                              ? model.description
-                              : "Provider integration coming later."}
-                        </span>
-                      </span>
-                      <span className="shrink-0 text-[8px] font-bold text-slate-400">{stateLabel}</span>
-                    </div>
-                  </button>
-                );
-              })}
+                            {model.badge && (
+                              <span className="shrink-0 rounded-full border border-cyan-100 bg-white px-1.5 py-0.5 text-[6px] font-bold uppercase tracking-[0.06em] text-cyan-700">
+                                {model.badge}
+                              </span>
+                            )}
+                          </span>
 
-              {models.length === 0 && (
-                <div className="rounded-xl bg-slate-50 p-3 text-[10px] text-slate-500">
-                  Loading your available AI models…
-                </div>
-              )}
+                          <span className="mt-0.5 block text-[8px] font-medium text-slate-400">
+                            {aiProviderLabel(provider)} · Budget {model.impact}
+                          </span>
 
-              {notice && (
-                <p className="mt-2 rounded-xl border border-slate-100 bg-slate-50 px-3 py-2 text-[9px] leading-4 text-slate-600">
-                  {notice}
-                </p>
-              )}
+                          <span className="mt-0.5 block truncate text-[8px] text-slate-500">
+                            {description}
+                          </span>
+                        </span>
+
+                        <span className="flex shrink-0 items-center gap-1.5">
+                          <span
+                            className={`inline-flex items-center gap-1 rounded-full border px-1.5 py-0.5 text-[6px] font-bold uppercase tracking-[0.07em] ${stateClasses}`}
+                          >
+                            {(locked || comingSoon) && <LockKeyhole className="h-2 w-2" />}
+                            {stateLabel}
+                          </span>
+                          {selected && <Check className="h-3.5 w-3.5 text-cyan-600" />}
+                        </span>
+                      </div>
+                    </button>
+                  );
+                })}
+
+                {models.length === 0 && (
+                  <div className="rounded-xl border border-slate-100 bg-slate-50 p-3 text-[9px] text-slate-500">
+                    Loading your available AI models…
+                  </div>
+                )}
+
+                {notice && (
+                  <div className="flex items-start gap-2 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-[8px] leading-3.5 text-amber-900">
+                    <Info className="mt-0.5 h-3 w-3 shrink-0" />
+                    <span>{notice}</span>
+                  </div>
+                )}
+              </div>
+            </div>
+
+            <div className="shrink-0 flex items-center justify-between gap-3 border-t border-slate-100 bg-slate-50/70 px-4 py-2.5">
+              <p className="max-w-[230px] text-[7px] leading-3 text-slate-400">
+                Availability is enforced by your PsyLattice plan and server configuration.
+              </p>
+              <button
+                type="button"
+                onClick={() => {
+                  setOpen(false);
+                  window.location.assign("/researcher?screen=billing");
+                }}
+                className="shrink-0 rounded-full border border-slate-200 bg-white px-3 py-1.5 text-[8px] font-bold text-slate-600 shadow-sm transition hover:border-cyan-200 hover:text-cyan-800"
+              >
+                Plans & Billing
+              </button>
             </div>
           </div>
         </>

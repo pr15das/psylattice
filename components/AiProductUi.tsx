@@ -27,71 +27,112 @@ import {
 } from "lucide-react";
 import PsyLatticeLogo from "@/components/PsyLatticeLogo";
 
+// Kept only as a compatibility export for older imports. The visible budget
+// below is loaded from the authenticated billing endpoint and is no longer mock data.
 export const AI_USAGE_MOCK = {
-  usedPercentage: 62,
-  remainingPercentage: 38,
+  usedPercentage: 0,
+  remainingPercentage: 100,
 };
 
 export const AI_MODELS = [
-  {
-    name: "PsyLattice Auto",
-    description:
-      "Chooses the best model for your task while preserving your remaining budget.",
-    impact: "Low",
-    badge: "Recommended",
-    active: true,
-  },
-  {
-    name: "OpenAI GPT",
-    description: "Best for complex reasoning, writing and detailed analysis.",
-    impact: "High",
-    active: false,
-    badge: "",
-  },
-  {
-    name: "Claude",
-    description: "Best for research analysis, summaries and interpretation.",
-    impact: "Medium",
-    active: false,
-    badge: "",
-  },
-  {
-    name: "Gemini Pro",
-    description: "Best for long documents and large research context.",
-    impact: "Medium",
-    active: false,
-    badge: "",
-  },
-  {
-    name: "Gemini Flash",
-    description: "Best for everyday analysis and quick research tasks.",
-    impact: "Low",
-    active: false,
-    badge: "",
-  },
-  {
-    name: "Gemini Flash Economy",
-    description: "Fast economical model for routine research tasks.",
-    impact: "Lowest",
-    active: false,
-    badge: "",
-  },
+  { name: "PsyLattice Auto", description: "PsyLattice default research routing.", impact: "Low", badge: "Recommended", active: true },
+  { name: "OpenAI GPT", description: "Selectable OpenAI model path for paid research accounts.", impact: "High", badge: "", active: true },
+  { name: "Claude", description: "Provider integration coming soon.", impact: "Medium", badge: "", active: false },
+  { name: "Gemini Pro", description: "Provider integration coming soon.", impact: "Medium", badge: "", active: false },
+  { name: "Gemini Flash", description: "Provider integration coming soon.", impact: "Low", badge: "", active: false },
+  { name: "Gemini Flash Economy", description: "Google Gemini 3.5 Flash-Lite Free Tier. Lowest budget impact.", impact: "Lowest", badge: "Efficient", active: true },
 ] as const;
 
+type PlanBadgeApiResponse = {
+  ok?: boolean;
+  plan?: PlanTier;
+  planName?: string;
+  studyPassCount?: number;
+};
+
+type AiModelApiOption = {
+  key: string;
+  name: string;
+  description: string;
+  impact: string;
+  allowed: boolean;
+  available: boolean;
+  badge?: string;
+};
+
+type AiModelApiResponse = {
+  ok?: boolean;
+  error?: string;
+  selectedModel?: string;
+  modelAccess?: "auto-only" | "selected" | "full";
+  remainingPercent?: number;
+  models?: AiModelApiOption[];
+};
+
+function clampBudgetPercent(value: unknown) {
+  const numeric = Number(value);
+  if (!Number.isFinite(numeric)) return null;
+  return Math.max(0, Math.min(100, Math.round(numeric)));
+}
+
+function useLiveAiBudget() {
+  const [remaining, setRemaining] = useState<number | null>(null);
+  const [allowanceLabel, setAllowanceLabel] = useState("AI allowance");
+  const [canBuyAddons, setCanBuyAddons] = useState(false);
+
+  const refresh = useCallback(async () => {
+    try {
+      const response = await fetch("/api/billing/ai/model", {
+        method: "GET",
+        cache: "no-store",
+      });
+      const data = (await response.json()) as AiModelApiResponse;
+      if (!response.ok || !data.ok) return;
+
+      const next = clampBudgetPercent(data.remainingPercent);
+      setRemaining(next);
+      setAllowanceLabel("AI allowance");
+      setCanBuyAddons(data.modelAccess === "selected" || data.modelAccess === "full");
+    } catch {
+      // Keep the header usable if account status is temporarily unavailable.
+    }
+  }, []);
+
+  useEffect(() => {
+    void refresh();
+    const timer = window.setInterval(() => void refresh(), 15_000);
+    const onFocus = () => void refresh();
+    const onBudgetRefresh = () => void refresh();
+    window.addEventListener("focus", onFocus);
+    window.addEventListener("psylattice-ai-budget-refresh", onBudgetRefresh);
+    return () => {
+      window.clearInterval(timer);
+      window.removeEventListener("focus", onFocus);
+      window.removeEventListener("psylattice-ai-budget-refresh", onBudgetRefresh);
+    };
+  }, [refresh]);
+
+  return { remaining, allowanceLabel, canBuyAddons, refresh };
+}
+
 export function AiBudgetIndicator({ onAddons }: { onAddons?: () => void }) {
+  const { remaining, allowanceLabel, canBuyAddons } = useLiveAiBudget();
+  const display = remaining === null ? "—" : `${remaining}% left`;
+
   return (
-    <div className="flex items-center gap-2 rounded-full border border-slate-200 bg-white px-3 py-1.5 text-[10px] text-slate-600 shadow-sm">
+    <div
+      className="flex items-center gap-2 rounded-full border border-slate-200 bg-white px-3 py-1.5 text-[10px] text-slate-600 shadow-sm"
+      title={`${allowanceLabel} AI allowance`}
+    >
       <span className="font-semibold text-slate-800">AI budget</span>
       <span className="hidden h-1.5 w-16 overflow-hidden rounded-full bg-slate-100 sm:block">
         <span
-          className="block h-full rounded-full bg-cyan-500"
-          style={{ width: `${AI_USAGE_MOCK.usedPercentage}%` }}
+          className="block h-full rounded-full bg-cyan-500 transition-[width] duration-500"
+          style={{ width: `${remaining ?? 0}%` }}
         />
       </span>
-      <span className="whitespace-nowrap">
-        {AI_USAGE_MOCK.remainingPercentage}% left
-      </span>
-      {onAddons && (
+      <span className="whitespace-nowrap">{display}</span>
+      {onAddons && canBuyAddons && (
         <button
           type="button"
           onClick={onAddons}
@@ -104,72 +145,248 @@ export function AiBudgetIndicator({ onAddons }: { onAddons?: () => void }) {
   );
 }
 
+export function CurrentPlanBadge() {
+  const [label, setLabel] = useState("Plan");
+  const [plan, setPlan] = useState<PlanTier | null>(null);
+
+  const refresh = useCallback(async () => {
+    try {
+      const response = await fetch("/api/billing/plan", {
+        method: "GET",
+        cache: "no-store",
+        credentials: "same-origin",
+      });
+      const data = (await response.json()) as PlanBadgeApiResponse;
+      if (!response.ok || !data.ok || !data.plan) return;
+
+      const nextPlan = data.plan;
+      const passCount = Math.max(0, Math.floor(Number(data.studyPassCount || 0)));
+      setPlan(nextPlan);
+      setLabel(
+        nextPlan === "study-pass"
+          ? `Study Pass ×${Math.max(1, passCount)}`
+          : nextPlan === "pro-monthly"
+            ? "Pro Monthly"
+            : nextPlan === "pro-annual"
+              ? "Pro Annual"
+              : "Free",
+      );
+    } catch {
+      // Keep the header stable if billing status is briefly unavailable.
+    }
+  }, []);
+
+  useEffect(() => {
+    void refresh();
+    const timer = window.setInterval(() => void refresh(), 30_000);
+    const onFocus = () => void refresh();
+    const onBillingRefresh = () => void refresh();
+    window.addEventListener("focus", onFocus);
+    window.addEventListener("psylattice-billing-refresh", onBillingRefresh);
+    return () => {
+      window.clearInterval(timer);
+      window.removeEventListener("focus", onFocus);
+      window.removeEventListener("psylattice-billing-refresh", onBillingRefresh);
+    };
+  }, [refresh]);
+
+  const isPro = plan === "pro-monthly" || plan === "pro-annual";
+  const isPass = plan === "study-pass";
+
+  return (
+    <span
+      title="Current PsyLattice plan"
+      className={`inline-flex items-center gap-1.5 rounded-full border px-3 py-2 text-xs font-semibold shadow-sm ${
+        isPro
+          ? "border-cyan-200 bg-cyan-50 text-cyan-900"
+          : isPass
+            ? "border-sky-200 bg-sky-50 text-sky-900"
+            : "border-slate-200 bg-white text-slate-600"
+      }`}
+    >
+      {isPro ? (
+        <Crown className="h-3.5 w-3.5 text-cyan-700" />
+      ) : isPass ? (
+        <BadgeCheck className="h-3.5 w-3.5 text-sky-700" />
+      ) : null}
+      {label}
+    </span>
+  );
+}
+
 export function AiModelSwitcher() {
   const [open, setOpen] = useState(false);
   const [notice, setNotice] = useState("");
+  const [saving, setSaving] = useState(false);
+  const [selectedModel, setSelectedModel] = useState("auto");
+  const [modelAccess, setModelAccess] = useState<"auto-only" | "selected" | "full" | null>(null);
+  const [models, setModels] = useState<AiModelApiOption[]>([]);
+
+  const loadModels = useCallback(async () => {
+    try {
+      const response = await fetch("/api/billing/ai/model", {
+        method: "GET",
+        cache: "no-store",
+      });
+      const data = (await response.json()) as AiModelApiResponse;
+      if (!response.ok || !data.ok) {
+        setNotice(data.error || "AI model access could not be loaded.");
+        return;
+      }
+      setSelectedModel(data.selectedModel || "auto");
+      setModelAccess(data.modelAccess || null);
+      setModels(data.models || []);
+    } catch {
+      setNotice("AI model access could not be loaded.");
+    }
+  }, []);
+
+  useEffect(() => {
+    void loadModels();
+  }, [loadModels]);
+
+  const selectedName =
+    models.find((model) => model.key === selectedModel)?.name || "PsyLattice Auto";
+
+  async function chooseModel(model: AiModelApiOption) {
+    if (saving) return;
+
+    if (!model.allowed) {
+      setNotice("Your current plan does not include this model. Upgrade to unlock it.");
+      return;
+    }
+    if (!model.available) {
+      setNotice("This provider integration is coming soon.");
+      return;
+    }
+
+    setSaving(true);
+    setNotice("");
+    try {
+      const response = await fetch("/api/billing/ai/model", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ model: model.key }),
+      });
+      const data = (await response.json()) as AiModelApiResponse;
+      if (!response.ok || !data.ok) {
+        throw new Error(data.error || "The AI model could not be changed.");
+      }
+      setSelectedModel(data.selectedModel || model.key);
+      setModelAccess(data.modelAccess || modelAccess);
+      setModels(data.models || models);
+      setOpen(false);
+      window.dispatchEvent(new Event("psylattice-ai-budget-refresh"));
+    } catch (error) {
+      setNotice(error instanceof Error ? error.message : "The AI model could not be changed.");
+    } finally {
+      setSaving(false);
+    }
+  }
 
   return (
     <div className="relative">
       <button
         type="button"
-        onClick={() => setOpen((value) => !value)}
+        onClick={() => {
+          setOpen((value) => !value);
+          setNotice("");
+          void loadModels();
+        }}
         className="flex items-center gap-2 rounded-full border border-cyan-200 bg-white px-3 py-2 text-xs font-semibold text-slate-700 shadow-sm"
       >
         <Sparkles className="h-3.5 w-3.5 text-cyan-600" />
-        PsyLattice Auto
+        {selectedName}
+        {(modelAccess === "auto-only" || selectedModel === "gemini-flash-economy") && (
+          <span className="hidden rounded-full bg-cyan-50 px-1.5 py-0.5 text-[8px] font-bold uppercase tracking-[0.08em] text-cyan-700 sm:inline-flex">
+            Gemini Free
+          </span>
+        )}
         <ChevronDown className="h-3.5 w-3.5 text-slate-400" />
       </button>
 
       {open && (
-        <div className="absolute right-0 top-11 z-[70] w-[min(360px,calc(100vw-32px))] rounded-2xl border border-slate-200 bg-white p-3 shadow-xl">
+        <div className="absolute right-0 top-11 z-[70] w-[min(380px,calc(100vw-32px))] rounded-2xl border border-slate-200 bg-white p-3 shadow-xl">
           <div className="mb-2 flex items-center justify-between">
-            <p className="text-xs font-semibold text-slate-900">Choose a model</p>
-            <button
-              type="button"
-              onClick={() => setOpen(false)}
-              aria-label="Close model picker"
-            >
+            <div>
+              <p className="text-xs font-semibold text-slate-900">Choose a model</p>
+              <p className="mt-0.5 text-[9px] text-slate-400">
+                Access is controlled by your current PsyLattice plan.
+              </p>
+            </div>
+            <button type="button" onClick={() => setOpen(false)} aria-label="Close model picker">
               <X className="h-3.5 w-3.5 text-slate-400" />
             </button>
           </div>
 
-          <div className="space-y-1">
-            {AI_MODELS.map((model) => (
-              <button
-                key={model.name}
-                type="button"
-                onClick={() => {
-                  if (!model.active) setNotice("Model integration coming soon.");
-                  setOpen(false);
-                }}
-                className="w-full rounded-xl border border-transparent p-2.5 text-left hover:border-cyan-100 hover:bg-cyan-50/60"
-              >
-                <div className="flex items-center gap-2">
-                  <Cpu className="h-3.5 w-3.5 text-cyan-700" />
-                  <span className="text-[11px] font-semibold text-slate-800">
-                    {model.name}
-                  </span>
-                  {model.badge && (
-                    <span className="rounded-full bg-cyan-100 px-1.5 py-0.5 text-[8px] font-semibold text-cyan-800">
-                      {model.badge}
-                    </span>
-                  )}
-                  <span className="ml-auto text-[9px] text-slate-400">
-                    {model.active ? "ACTIVE" : "COMING SOON"}
-                  </span>
+          {(modelAccess === "auto-only" || selectedModel === "gemini-flash-economy") && (
+            <div className="mb-2 rounded-xl border border-amber-200 bg-amber-50/80 p-3">
+              <div className="flex items-start gap-2">
+                <Info className="mt-0.5 h-3.5 w-3.5 shrink-0 text-amber-700" />
+                <div>
+                  <p className="text-[10px] font-semibold text-amber-950">Gemini Free Tier data notice</p>
+                  <p className="mt-1 text-[9px] leading-4 text-amber-900/80">
+                    Free PsyLattice Auto uses Google Gemini 3.5 Flash-Lite through Google&apos;s Free Tier. Content sent to this AI, including study or document context you explicitly allow PsyLattice to include, may be used by Google to improve its products under its Free Tier terms. Avoid information you consider confidential or sensitive. Paid PsyLattice plans unlock additional model choices with different provider and data terms.
+                  </p>
                 </div>
-                <p className="mt-1 pl-5 text-[9px] leading-4 text-slate-500">
-                  {model.description}
-                </p>
-                <p className="pl-5 text-[9px] font-semibold text-slate-400">
-                  Budget impact: {model.impact}
-                </p>
-              </button>
-            ))}
+              </div>
+            </div>
+          )}
+
+          <div className="space-y-1">
+            {models.map((model) => {
+              const selected = model.key === selectedModel;
+              const stateLabel = selected
+                ? "ACTIVE"
+                : !model.allowed
+                  ? "UPGRADE"
+                  : !model.available
+                    ? "COMING SOON"
+                    : "AVAILABLE";
+
+              return (
+                <button
+                  key={model.key}
+                  type="button"
+                  disabled={saving}
+                  onClick={() => void chooseModel(model)}
+                  className={`w-full rounded-xl border p-2.5 text-left transition ${
+                    selected
+                      ? "border-cyan-200 bg-cyan-50/70"
+                      : "border-transparent hover:border-cyan-100 hover:bg-cyan-50/60"
+                  } ${!model.allowed || !model.available ? "opacity-70" : ""}`}
+                >
+                  <div className="flex items-center gap-2">
+                    {model.allowed && model.available ? (
+                      <Cpu className="h-3.5 w-3.5 text-cyan-700" />
+                    ) : (
+                      <LockKeyhole className="h-3.5 w-3.5 text-slate-400" />
+                    )}
+                    <span className="text-[11px] font-semibold text-slate-800">{model.name}</span>
+                    {model.badge && (
+                      <span className="rounded-full bg-cyan-100 px-1.5 py-0.5 text-[8px] font-semibold text-cyan-800">
+                        {model.badge}
+                      </span>
+                    )}
+                    <span className="ml-auto text-[8px] font-semibold text-slate-400">{stateLabel}</span>
+                  </div>
+                  <p className="mt-1 pl-5 text-[9px] leading-4 text-slate-500">{model.description}</p>
+                  <p className="pl-5 text-[9px] font-semibold text-slate-400">
+                    Budget impact: {model.impact}
+                  </p>
+                </button>
+              );
+            })}
           </div>
 
+          {models.length === 0 && (
+            <div className="rounded-xl bg-slate-50 p-3 text-[10px] text-slate-500">
+              Loading your available AI models…
+            </div>
+          )}
+
           {notice && (
-            <p className="mt-2 rounded-lg bg-slate-50 px-2.5 py-2 text-[9px] text-slate-500">
+            <p className="mt-2 rounded-lg bg-slate-50 px-2.5 py-2 text-[9px] text-slate-600">
               {notice}
             </p>
           )}
@@ -180,15 +397,18 @@ export function AiModelSwitcher() {
 }
 
 export function AiBudgetWarning() {
-  if (AI_USAGE_MOCK.usedPercentage < 80) return null;
+  const { remaining } = useLiveAiBudget();
+  if (remaining === null || remaining > 20) return null;
 
   return (
     <div className="mt-4 rounded-2xl border border-violet-200 bg-violet-50/60 p-4 text-xs text-violet-950">
-      <p className="font-semibold">Your AI budget is getting low</p>
+      <p className="font-semibold">
+        {remaining === 0 ? "Your AI allowance is exhausted" : "Your AI budget is getting low"}
+      </p>
       <p className="mt-1 text-[10px] leading-4">
-        You&apos;ve used {AI_USAGE_MOCK.usedPercentage}% of your AI allowance.
-        Use PsyLattice Auto to make the remaining budget last longer, or add
-        more AI capacity.
+        {remaining === 0
+          ? "Add an AI Boost or upgrade your plan to continue using research AI features."
+          : `${remaining}% of your current AI allowance remains. PsyLattice Auto is the most economical routing option.`}
       </p>
     </div>
   );
@@ -209,10 +429,7 @@ export function AiAddonPopover({ onClose }: { onClose: () => void }) {
           ["Research Boost", "Best value for regular AI use"],
           ["Power Boost", "For intensive writing and analysis"],
         ].map(([name, detail]) => (
-          <div
-            key={name}
-            className="flex items-center justify-between rounded-xl bg-slate-50 p-3"
-          >
+          <div key={name} className="flex items-center justify-between rounded-xl bg-slate-50 p-3">
             <div>
               <p className="text-[11px] font-semibold">{name}</p>
               <p className="mt-0.5 text-[9px] text-slate-500">{detail}</p>
@@ -1260,7 +1477,7 @@ export function PlansAndBilling({ currentPlan = "free" }: { currentPlan?: PlanTi
         benefits: [
           "Enough participant capacity for a small pilot, classroom project or early-stage study.",
           "Access to the core research workflow before committing to a paid plan.",
-          "Starter AI allowance is available through PsyLattice Auto without exposing model-level accounting.",
+          "A generous Starter AI allowance is available through PsyLattice Auto, powered by Gemini 3.5 Flash-Lite Free Tier on Free accounts.",
           "A clean upgrade path when participant, AI or media requirements increase.",
         ],
         useCases: [
@@ -1270,7 +1487,8 @@ export function PlansAndBilling({ currentPlan = "free" }: { currentPlan?: PlanTi
         ],
         notes: [
           "Participant ceiling: 50 for the free study.",
-          "AI model switching is unavailable on Free.",
+          "AI model switching is unavailable on Free. PsyLattice Auto is pinned to Gemini 3.5 Flash-Lite Free Tier and cannot silently route to OpenAI.",
+          "Google Free Tier data terms apply to Free AI usage; content sent to the model may be used by Google to improve its products. Avoid confidential or sensitive information unless you are comfortable with those terms.",
           "Free users cannot purchase AI, participant, email or media add-ons until a paid plan is added.",
           "Custom media uploads are unavailable.",
         ],
@@ -2126,6 +2344,8 @@ export function PlansAndBilling({ currentPlan = "free" }: { currentPlan?: PlanTi
           if (nextPlan) setBillingPlan(nextPlan);
           setCartLines([]);
           setCartOpen(false);
+          window.dispatchEvent(new Event("psylattice-billing-refresh"));
+          window.dispatchEvent(new Event("psylattice-ai-budget-refresh"));
           void refreshBillingStatus();
         }}
       />

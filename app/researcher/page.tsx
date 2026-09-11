@@ -23,7 +23,7 @@ import {
 import { createClient } from "@/lib/supabase/client";
 import PsyLatticeLogo from "@/components/PsyLatticeLogo";
 import AccountSwitcher from "@/components/AccountSwitcher";
-import FollowupManager from "@/components/FollowupManager";
+import FollowupManager from "@/components/PlanAwareFollowupManager";
 import ResearchAiAssistant from "@/components/ResearchAiAssistant";
 import ResearchWritingWorkspace from "@/components/ResearchWritingWorkspace";
 import ResearchStudyAssociations from "@/components/ResearchStudyAssociations";
@@ -46,7 +46,7 @@ import {
   type AmbulatoryScheduleDraft,
   type AmbulatoryQuestionnaireOption,
 } from "@/components/AmbulatoryProtocolBuilder";
-import { AiBudgetIndicator, AiModelSwitcher, PlansAndBilling } from "@/components/AiProductUi";
+import { AiBudgetIndicator, AiModelSwitcher, CurrentPlanBadge, PlansAndBilling } from "@/components/AiProductUi";
 
 type Screen =
   | "dashboard"
@@ -247,6 +247,70 @@ function Status({
       {children}
     </span>
   );
+}
+
+
+
+type ClientBillingEntitlements = {
+  plan: "free" | "study-pass" | "pro-monthly" | "pro-annual";
+  planName: string;
+  hasPro: boolean;
+  hasAnyStudyPass: boolean;
+  studyPassCount: number;
+  selectedStudyHasPass: boolean;
+  studies: {
+    maxSimultaneous: number;
+    activeCount: number;
+    remainingActiveSlots: number;
+  };
+  participants: {
+    includedPerStudy: number;
+    purchasedExtraForSelectedStudy: number;
+    effectiveLimitForSelectedStudy: number;
+    currentForSelectedStudy: number;
+    remainingForSelectedStudy: number;
+    canBuyExpansionForSelectedStudy: boolean;
+  };
+  media: {
+    uploadsAllowed: boolean;
+    remainingBytes: number;
+    remainingPercent: number;
+  };
+  participantEmails: {
+    included: number;
+    effectiveAllowance: number;
+    remaining: number;
+    remainingPercent: number;
+  };
+};
+
+async function loadClientBillingEntitlements(studyId?: string | null) {
+  const query = studyId ? `?studyId=${encodeURIComponent(studyId)}` : "";
+  const response = await fetch(`/api/billing/me${query}`, {
+    method: "GET",
+    cache: "no-store",
+    credentials: "include",
+  });
+  const payload = await response.json().catch(() => ({}));
+  if (!response.ok || !payload?.ok || !payload?.entitlements) {
+    throw new Error(payload?.error || "PsyLattice could not verify your current plan.");
+  }
+  return payload.entitlements as ClientBillingEntitlements;
+}
+
+function planCapacityMessage(entitlements: ClientBillingEntitlements, limit: number) {
+  if (entitlements.plan === "free") {
+    return `Free supports up to ${limit} participants for this study. Upgrade to Study Pass or Pro to increase capacity.`;
+  }
+  if (entitlements.plan === "study-pass") {
+    return `This Study Pass currently supports up to ${limit} participants. Add participant capacity or upgrade to Pro for a larger default allowance.`;
+  }
+  return `${entitlements.planName} currently supports up to ${limit} participants for this study. Add participant capacity in Plans & Billing if you need more.`;
+}
+
+function paidStudyFeatureMessage(entitlements: ClientBillingEntitlements, feature: string) {
+  if (entitlements.hasPro || entitlements.selectedStudyHasPass) return "";
+  return `${feature} requires a Study Pass for this study or a Pro subscription. Open Plans & Billing to upgrade.`;
 }
 
 /* =========================================================
@@ -1764,6 +1828,31 @@ function StudyBuilder({
   const [savingStudy, setSavingStudy] = useState(false);
   const [saveMessage, setSaveMessage] = useState("");
   const [studyError, setStudyError] = useState("");
+  const [billingEntitlements, setBillingEntitlements] = useState<ClientBillingEntitlements | null>(null);
+  const [billingLoading, setBillingLoading] = useState(true);
+
+  useEffect(() => {
+    let cancelled = false;
+    setBillingLoading(true);
+    loadClientBillingEntitlements(studyId || null)
+      .then((entitlements) => {
+        if (!cancelled) setBillingEntitlements(entitlements);
+      })
+      .catch((error) => {
+        if (!cancelled) {
+          console.warn("Could not load Study Builder plan limits:", error);
+          setStudyError(error instanceof Error ? error.message : "PsyLattice could not verify your plan limits.");
+        }
+      })
+      .finally(() => {
+        if (!cancelled) setBillingLoading(false);
+      });
+    return () => { cancelled = true; };
+  }, [studyId]);
+
+  const studyParticipantLimit = billingEntitlements?.participants.effectiveLimitForSelectedStudy ?? 50;
+  const followupsAllowed = Boolean(billingEntitlements?.hasPro || billingEntitlements?.selectedStudyHasPass);
+  const participantUploadsAllowed = Boolean(billingEntitlements?.media.uploadsAllowed);
 
   const [measureCatalogue, setMeasureCatalogue] = useState<
     StudyMeasureCatalogueItem[]
@@ -2797,6 +2886,20 @@ function StudyBuilder({
   }
 
   function toggleComponent(key: keyof StudyComponents) {
+    if (key === "uploads" && !participantUploadsAllowed) {
+      setStudyError("Participant file/media uploads require Pro Monthly or Pro Annual. Open Plans & Billing to upgrade.");
+      return;
+    }
+
+    if (key === "followup" && !followupsAllowed) {
+      const message = billingEntitlements
+        ? paidStudyFeatureMessage(billingEntitlements, "Follow-up assessments")
+        : "Follow-up assessments require a Study Pass or Pro subscription.";
+      setStudyError(message);
+      return;
+    }
+
+    setStudyError("");
     setComponents((previous) => ({ ...previous, [key]: !previous[key] }));
   }
 
@@ -3134,6 +3237,31 @@ function StudyBuilder({
 
     if (targetSampleSize < 1) {
       setStudyError("Target sample size must be at least 1.");
+      return null;
+    }
+
+    if (billingLoading) {
+      setStudyError("PsyLattice is still checking your plan limits. Please try again in a moment.");
+      return null;
+    }
+
+    if (!billingEntitlements) {
+      setStudyError("PsyLattice could not verify your current plan. Reload the page before saving this study.");
+      return null;
+    }
+
+    if (targetSampleSize > studyParticipantLimit) {
+      setStudyError(planCapacityMessage(billingEntitlements, studyParticipantLimit));
+      return null;
+    }
+
+    if (components.followup && !followupsAllowed) {
+      setStudyError(paidStudyFeatureMessage(billingEntitlements, "Follow-up assessments"));
+      return null;
+    }
+
+    if (components.uploads && !participantUploadsAllowed) {
+      setStudyError("Participant file/media uploads require Pro Monthly or Pro Annual. Open Plans & Billing to upgrade.");
       return null;
     }
 
@@ -3507,7 +3635,18 @@ function StudyBuilder({
               : "border-cyan-300/70 bg-[#ecfbff] text-cyan-900"
           }`}
         >
-          <p className="text-sm">{studyError || saveMessage}</p>
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <p className="text-sm">{studyError || saveMessage}</p>
+            {studyError && /(upgrade|Study Pass|Pro Monthly|Pro Annual|Plans & Billing)/i.test(studyError) && (
+              <button
+                type="button"
+                onClick={() => changeScreen("billing")}
+                className="rounded-full border border-red-200 bg-white px-3 py-1.5 text-xs font-semibold text-red-700"
+              >
+                Open Plans & Billing
+              </button>
+            )}
+          </div>
         </div>
       )}
 
@@ -3561,10 +3700,26 @@ function StudyBuilder({
                   <input
                     type="number"
                     min={1}
+                    max={studyParticipantLimit}
                     value={targetSampleSize}
-                    onChange={(event) => setTargetSampleSize(Number(event.target.value))}
-                    className="mt-2 w-full rounded-xl border shadow-[0_5px_18px_rgba(15,23,42,0.06),0_1px_4px_rgba(15,23,42,0.035)] border-slate-200 px-4 py-3 text-sm"
+                    onChange={(event) => {
+                      const next = Number(event.target.value);
+                      setTargetSampleSize(next);
+                      if (billingEntitlements && next > studyParticipantLimit) {
+                        setStudyError(planCapacityMessage(billingEntitlements, studyParticipantLimit));
+                      } else if (studyError.includes("participants")) {
+                        setStudyError("");
+                      }
+                    }}
+                    className={`mt-2 w-full rounded-xl border px-4 py-3 text-sm ${
+                      targetSampleSize > studyParticipantLimit
+                        ? "border-red-300 bg-red-50"
+                        : "border-slate-200"
+                    }`}
                   />
+                  <span className={`mt-2 block text-xs ${targetSampleSize > studyParticipantLimit ? "text-red-700" : "text-slate-400"}`}>
+                    Current plan capacity: {studyParticipantLimit} participant{studyParticipantLimit === 1 ? "" : "s"} for this study.
+                  </span>
                 </label>
               </div>
             </div>
@@ -3589,7 +3744,15 @@ function StudyBuilder({
                     }`}
                   >
                     <div className="flex items-center justify-between gap-3">
-                      <p className="font-medium">{component.title}</p>
+                      <div className="flex flex-wrap items-center gap-2">
+                        <p className="font-medium">{component.title}</p>
+                        {component.key === "followup" && !followupsAllowed && (
+                          <Status type="warning">Study Pass / Pro</Status>
+                        )}
+                        {component.key === "uploads" && !participantUploadsAllowed && (
+                          <Status type="warning">Pro</Status>
+                        )}
+                      </div>
                       <Status type={components[component.key] ? "success" : "neutral"}>
                         {components[component.key] ? "Included" : "Not included"}
                       </Status>
@@ -5822,6 +5985,21 @@ function QuestionnaireLibrary({
     optionId?: string
   ) {
     const uploadKey = optionId ? `${itemId}:${optionId}` : itemId;
+
+    try {
+      const entitlements = await loadClientBillingEntitlements();
+      if (!entitlements.media.uploadsAllowed) {
+        setBuilderError("Custom questionnaire media uploads require Pro Monthly or Pro Annual. Open Plans & Billing to upgrade.");
+        setBuilderMediaUploadState((previous) => ({
+          ...previous,
+          [uploadKey]: "Pro required",
+        }));
+        return;
+      }
+    } catch (error) {
+      setBuilderError(error instanceof Error ? error.message : "PsyLattice could not verify your media allowance.");
+      return;
+    }
     setBuilderError("");
     setBuilderMediaUploadState((previous) => ({
       ...previous,
@@ -8535,6 +8713,8 @@ function AmbulatoryBuilder({
   const [saving, setSaving] = useState(false);
   const [errorMessage, setErrorMessage] = useState("");
   const [successMessage, setSuccessMessage] = useState("");
+  const [billingEntitlements, setBillingEntitlements] = useState<ClientBillingEntitlements | null>(null);
+  const [billingLoading, setBillingLoading] = useState(true);
 
   const [protocolName, setProtocolName] =
     useState("Ambulatory protocol");
@@ -8718,6 +8898,31 @@ function AmbulatoryBuilder({
     }
   }, [selectedStudyId]);
 
+  useEffect(() => {
+    let cancelled = false;
+    if (!selectedStudyId) {
+      setBillingEntitlements(null);
+      setBillingLoading(false);
+      return;
+    }
+    setBillingLoading(true);
+    loadClientBillingEntitlements(selectedStudyId)
+      .then((entitlements) => {
+        if (cancelled) return;
+        setBillingEntitlements(entitlements);
+        if (!(entitlements.hasPro || entitlements.selectedStudyHasPass)) {
+          setNotificationsEnabled(false);
+        }
+      })
+      .catch((error) => {
+        if (!cancelled) setErrorMessage(error instanceof Error ? error.message : "PsyLattice could not verify participant-email access.");
+      })
+      .finally(() => { if (!cancelled) setBillingLoading(false); });
+    return () => { cancelled = true; };
+  }, [selectedStudyId]);
+
+  const participantEmailAllowed = Boolean(billingEntitlements?.hasPro || billingEntitlements?.selectedStudyHasPass);
+
   async function saveProtocol() {
     if (!selectedStudy || saving) {
       return;
@@ -8733,6 +8938,16 @@ function AmbulatoryBuilder({
 
     if (durationDays < 1 || durationDays > 730) {
       setErrorMessage("Duration must be between 1 and 730 days.");
+      return;
+    }
+
+    if (billingLoading) {
+      setErrorMessage("PsyLattice is still checking your plan. Please try again in a moment.");
+      return;
+    }
+
+    if (notificationsEnabled && !participantEmailAllowed) {
+      setErrorMessage("Participant email reminders require a Study Pass for this study or a Pro subscription. Open Plans & Billing to upgrade.");
       return;
     }
 
@@ -8889,9 +9104,15 @@ function AmbulatoryBuilder({
             <input
               type="checkbox"
               checked={notificationsEnabled}
-              onChange={(event) =>
-                setNotificationsEnabled(event.target.checked)
-              }
+              onChange={(event) => {
+                if (event.target.checked && !participantEmailAllowed) {
+                  setNotificationsEnabled(false);
+                  setErrorMessage("Participant email reminders require a Study Pass for this study or a Pro subscription. Open Plans & Billing to upgrade.");
+                  return;
+                }
+                setErrorMessage("");
+                setNotificationsEnabled(event.target.checked);
+              }}
               className="mt-1"
             />
             <div>
@@ -8901,6 +9122,11 @@ function AmbulatoryBuilder({
               <p className="mt-1 text-xs leading-5 text-slate-500">
                 Time-contingent schedules can create reminder emails after the participant supplies an email address and explicitly enables reminders.
               </p>
+              {!participantEmailAllowed && (
+                <p className="mt-2 text-xs font-semibold text-violet-700">
+                  Study Pass / Pro required for participant email delivery.
+                </p>
+              )}
             </div>
           </label>
 
@@ -9567,6 +9793,7 @@ function ParticipantLinks() {
   const [creatingLink, setCreatingLink] = useState(false);
   const [linkError, setLinkError] = useState("");
   const [linkMessage, setLinkMessage] = useState("");
+  const [billingEntitlements, setBillingEntitlements] = useState<ClientBillingEntitlements | null>(null);
 
   const [linkNameDraft, setLinkNameDraft] = useState("Main study link");
   const [linkKind, setLinkKind] = useState<"test" | "live">("test");
@@ -9676,6 +9903,25 @@ function ParticipantLinks() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedStudyId]);
 
+  useEffect(() => {
+    let cancelled = false;
+    if (!selectedStudyId) {
+      setBillingEntitlements(null);
+      return;
+    }
+    loadClientBillingEntitlements(selectedStudyId)
+      .then((entitlements) => {
+        if (cancelled) return;
+        setBillingEntitlements(entitlements);
+        const limit = entitlements.participants.effectiveLimitForSelectedStudy;
+        setMaxParticipants((current) => Math.min(Math.max(1, current), limit));
+      })
+      .catch((error) => {
+        if (!cancelled) setLinkError(error instanceof Error ? error.message : "PsyLattice could not verify this study's participant capacity.");
+      });
+    return () => { cancelled = true; };
+  }, [selectedStudyId]);
+
   function participantCountForLink(linkId: string, includeTests: boolean) {
     return participants.filter(
       (participant) =>
@@ -9739,6 +9985,22 @@ function ParticipantLinks() {
       );
       setCreatingLink(false);
       return;
+    }
+
+    if (linkKind === "live" && billingEntitlements) {
+      const limit = billingEntitlements.participants.effectiveLimitForSelectedStudy;
+      if (maxParticipants > limit) {
+        setLinkError(planCapacityMessage(billingEntitlements, limit));
+        setCreatingLink(false);
+        return;
+      }
+
+      const selected = studies.find((study) => study.id === selectedStudyId);
+      if (selected?.status !== "active" && billingEntitlements.studies.remainingActiveSlots <= 0) {
+        setLinkError(`Your ${billingEntitlements.planName} plan has no remaining active-study slots. Pause or complete another active study, or upgrade your plan before creating another live link.`);
+        setCreatingLink(false);
+        return;
+      }
     }
 
     const supabase = createClient();
@@ -10043,13 +10305,24 @@ function ParticipantLinks() {
                     type="number"
                     min={1}
                     value={maxParticipants}
-                    onChange={(event) =>
-                      setMaxParticipants(
-                        Math.max(1, Number(event.target.value))
-                      )
-                    }
+                    max={billingEntitlements?.participants.effectiveLimitForSelectedStudy}
+                    onChange={(event) => {
+                      const next = Math.max(1, Number(event.target.value));
+                      setMaxParticipants(next);
+                      const limit = billingEntitlements?.participants.effectiveLimitForSelectedStudy;
+                      if (billingEntitlements && limit && next > limit) {
+                        setLinkError(planCapacityMessage(billingEntitlements, limit));
+                      } else if (linkError.includes("participants")) {
+                        setLinkError("");
+                      }
+                    }}
                     className="mt-2 w-full rounded-xl border shadow-[0_5px_18px_rgba(15,23,42,0.06),0_1px_4px_rgba(15,23,42,0.035)] border-slate-200 px-4 py-3 text-sm"
                   />
+                  {billingEntitlements && (
+                    <span className="mt-2 block text-xs text-slate-400">
+                      Current plan capacity: {billingEntitlements.participants.effectiveLimitForSelectedStudy} live participants for this study.
+                    </span>
+                  )}
                 </label>
               )}
             </div>
@@ -23447,7 +23720,7 @@ export default function ResearcherWorkspace() {
           <div className="hidden items-center gap-3 sm:flex">
             <AiBudgetIndicator />
             <AiModelSwitcher />
-            <Status type="accent">Researcher</Status>
+            <CurrentPlanBadge />
 
             <AccountSwitcher
               initials="PD"

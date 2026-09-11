@@ -1,6 +1,11 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
-import { createHash } from "node:crypto";
+import {
+  commitMediaPath,
+  releaseMediaReservation,
+  reserveMediaUpload,
+  ResourceEntitlementError,
+} from "@/lib/billing/resources";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -34,31 +39,34 @@ function adminClient() {
   });
 }
 
-function publicRpcClient() {
-  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
-  const publishableKey =
-    process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY ||
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ||
-    process.env.NEXT_PUBLIC_SUPABASE_KEY;
-
-  if (!supabaseUrl || !publishableKey) {
-    throw new Error(
-      "A public Supabase key is not configured. Expected NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY, NEXT_PUBLIC_SUPABASE_ANON_KEY, or NEXT_PUBLIC_SUPABASE_KEY."
-    );
-  }
-
-  // psylattice_public_study is granted to anon/authenticated, not service_role.
-  // Use the same public role as the participant browser for this RPC.
-  return createClient(supabaseUrl, publishableKey, {
-    auth: {
-      persistSession: false,
-      autoRefreshToken: false,
-    },
-  });
-}
-
 function jsonError(message: string, status = 400) {
   return NextResponse.json({ ok: false, error: message }, { status });
+}
+
+
+function resourceUploadError(error: unknown) {
+  if (!(error instanceof ResourceEntitlementError)) return null;
+
+  if (error.code === "MEDIA_UPLOAD_LOCKED") {
+    return jsonError(
+      "Custom media and participant file uploads require Pro Monthly or Pro Annual.",
+      403,
+    );
+  }
+  if (error.code === "MEDIA_LIMIT_EXHAUSTED") {
+    return jsonError(
+      "Your PsyLattice media storage allowance is full. Add storage or change plan before uploading more media.",
+      402,
+    );
+  }
+  if (error.code === "MEDIA_STUDY_FORBIDDEN") {
+    return jsonError("This study is not available to this researcher account.", 403);
+  }
+  if (error.code === "MEDIA_INVALID_SIZE" || error.code === "MEDIA_INVALID_PATH") {
+    return jsonError(error.message, 400);
+  }
+
+  return jsonError("PsyLattice could not verify the media allowance right now.", 503);
 }
 
 function bearerToken(request: NextRequest) {
@@ -144,49 +152,30 @@ function isAllowedParticipantMime(responseType: string, mime: string) {
   return false;
 }
 
-async function authenticatedResearcherContext(request: NextRequest) {
+async function authenticatedResearcher(request: NextRequest) {
   const token = bearerToken(request);
   if (!token) return null;
 
-  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
-  const publishableKey =
-    process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY ||
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ||
-    process.env.NEXT_PUBLIC_SUPABASE_KEY;
-
-  if (!supabaseUrl || !publishableKey) {
-    throw new Error(
-      "A public Supabase key is not configured for researcher authentication."
-    );
-  }
-
-  // Use the researcher's own JWT for authorization-sensitive database reads.
-  // Those reads therefore obey the same RLS policies as Data Explorer itself.
-  const authClient = createClient(supabaseUrl, publishableKey, {
-    global: {
-      headers: {
-        Authorization: `Bearer ${token}`,
-      },
-    },
-    auth: {
-      persistSession: false,
-      autoRefreshToken: false,
-      detectSessionInUrl: false,
-    },
-  });
-
+  const supabase = adminClient();
   const {
     data: { user },
     error,
-  } = await authClient.auth.getUser();
+  } = await supabase.auth.getUser(token);
 
   if (error || !user) return null;
-  return { user, client: authClient };
+  return user;
 }
 
-async function authenticatedResearcher(request: NextRequest) {
-  const context = await authenticatedResearcherContext(request);
-  return context?.user || null;
+async function activeParticipantSession(sessionToken: string) {
+  const supabase = adminClient();
+  const { data, error } = await supabase
+    .from("participant_sessions")
+    .select("id, participant_id, study_id, owner_user_id, status, phase")
+    .eq("session_token", sessionToken)
+    .maybeSingle();
+
+  if (error || !data || data.status !== "in_progress") return null;
+  return data;
 }
 
 function referencedMediaValues(item: {
@@ -220,12 +209,7 @@ export async function POST(request: NextRequest) {
 
     if (action === "researcher_upload") {
       const user = await authenticatedResearcher(request);
-      if (!user) {
-        return NextResponse.json(
-          { ok: false, stage: "researcher_auth", error: "Researcher authentication is required. Please refresh the page and sign in again." },
-          { status: 401 }
-        );
-      }
+      if (!user) return jsonError("Researcher authentication is required.", 401);
 
       const fileName = safeName(String(body.fileName || "upload.bin"));
       const mime = normaliseMime(body.contentType);
@@ -250,28 +234,38 @@ export async function POST(request: NextRequest) {
         .toISOString()
         .slice(0, 10)}/${crypto.randomUUID()}-${fileName}`;
 
+      let reservationId = "";
+      try {
+        const reservation = await reserveMediaUpload({
+          userId: user.id,
+          studyId: null,
+          bucket: QUESTIONNAIRE_BUCKET,
+          objectPath: path,
+          bytes: fileSize,
+          mediaKind,
+        });
+        reservationId = reservation.reservationId;
+      } catch (error) {
+        return resourceUploadError(error) || jsonError("PsyLattice could not verify the media allowance right now.", 503);
+      }
+
       const { data, error } = await supabase.storage
         .from(QUESTIONNAIRE_BUCKET)
         .createSignedUploadUrl(path);
 
       if (error || !data?.token) {
-        return NextResponse.json(
-          {
-            ok: false,
-            stage: "signed_upload_ticket",
-            error: error?.message || "Could not create the media upload ticket.",
-          },
-          { status: 500 }
-        );
+        await releaseMediaReservation(user.id, reservationId).catch(() => undefined);
+        console.error("Could not create researcher media upload ticket:", error);
+        return jsonError("Could not create the media upload ticket.", 500);
       }
 
       return NextResponse.json({
         ok: true,
-        stage: "signed_upload_ticket",
         bucket: QUESTIONNAIRE_BUCKET,
         path,
         token: data.token,
         storage_ref: storageRef(QUESTIONNAIRE_BUCKET, path),
+        reservation_id: reservationId,
       });
     }
 
@@ -288,247 +282,88 @@ export async function POST(request: NextRequest) {
         return jsonError("This questionnaire media reference is not accessible.", 403);
       }
 
+      await commitMediaPath(user.id, ref.bucket, ref.path).catch(() => undefined);
+
       const { data, error } = await supabase.storage
         .from(ref.bucket)
         .createSignedUrl(ref.path, 60 * 60);
 
       if (error || !data?.signedUrl) {
-        return jsonError(error?.message || "Could not create the media preview URL.", 500);
+        console.error("Could not create researcher media preview URL:", error);
+        return jsonError("Could not create the media preview URL.", 500);
       }
 
       return NextResponse.json({ ok: true, signedUrl: data.signedUrl });
     }
 
-
-    if (action === "researcher_participant_read") {
-      const researcher = await authenticatedResearcherContext(request);
-      if (!researcher) {
-        return jsonError(
-          "Researcher authentication is required. Please refresh the page and sign in again.",
-          401
-        );
-      }
-
-      const responseId = String(body.responseId || "").trim();
-      const disposition = body.disposition === "download" ? "download" : "view";
-
-      if (!responseId) {
-        return jsonError("The participant upload response could not be identified.");
-      }
-
-      // Authorize with the exact same authenticated/RLS path that Data Explorer
-      // uses. If this signed-in researcher cannot SELECT this response through
-      // RLS, the API refuses to sign the private file.
-      const { data: responseRow, error: responseError } = await researcher.client
-        .from("research_responses")
-        .select(
-          "id, measure_session_id, participant_id, study_id, study_measure_id, item_id, response"
-        )
-        .eq("id", responseId)
-        .maybeSingle();
-
-      if (responseError || !responseRow) {
-        return jsonError(
-          "This participant upload is not available to the signed-in researcher.",
-          403
-        );
-      }
-
-      // Do not perform a second questionnaire-item lookup here. Data Explorer
-      // has already identified this exact RLS-readable response as a participant
-      // upload from its stored response metadata. The secure file-access decision
-      // is therefore bound to the exact research_responses.id, the private
-      // storage://study-uploads reference saved in that row, and the study/measure/
-      // item identifiers encoded in the current participant-upload path. This
-      // avoids false negatives when questionnaire metadata/version visibility
-      // differs from the immutable stored research response.
-
-      const metadata =
-        responseRow.response &&
-        typeof responseRow.response === "object" &&
-        !Array.isArray(responseRow.response)
-          ? (responseRow.response as Record<string, unknown>)
-          : null;
-
-      const ref = parseStorageRef(metadata?.storage_ref);
-      const metadataBucket =
-        typeof metadata?.bucket === "string" ? metadata.bucket : "";
-      const metadataPath =
-        typeof metadata?.path === "string" ? metadata.path : "";
-      const fileName = safeName(
-        typeof metadata?.name === "string" ? metadata.name : "participant-upload.bin"
-      );
-      const mimeType = normaliseMime(metadata?.mime_type);
-      const rawSize = metadata?.size;
-      const size =
-        typeof rawSize === "number" && Number.isFinite(rawSize)
-          ? rawSize
-          : typeof rawSize === "string" && Number.isFinite(Number(rawSize))
-            ? Number(rawSize)
-            : null;
-
-      if (!ref || ref.bucket !== PARTICIPANT_BUCKET) {
-        return jsonError("The stored participant upload reference is invalid.", 403);
-      }
-
-      if (
-        (metadataBucket && metadataBucket !== ref.bucket) ||
-        (metadataPath && metadataPath !== ref.path)
-      ) {
-        return jsonError("The participant upload metadata is inconsistent.", 403);
-      }
-
-      // Current participant uploads intentionally do not expose participant IDs
-      // or raw session tokens in Storage paths. Validate the V9 path contract:
-      // study_id/sessions/<hashed-session>/study_measure_id/item_id/file
-      const expectedStudyPrefix = `${responseRow.study_id}/sessions/`;
-      const expectedMeasureItemSegment =
-        `/${responseRow.study_measure_id}/${responseRow.item_id}/`;
-
-      if (
-        !ref.path.startsWith(expectedStudyPrefix) ||
-        !ref.path.includes(expectedMeasureItemSegment)
-      ) {
-        return jsonError("The participant upload path does not match this response.", 403);
-      }
-
-      const { data, error } = await supabase.storage
-        .from(PARTICIPANT_BUCKET)
-        .createSignedUrl(
-          ref.path,
-          5 * 60,
-          disposition === "download" ? { download: fileName } : undefined
-        );
-
-      if (error || !data?.signedUrl) {
-        return jsonError(
-          error?.message || "Could not create secure participant file access.",
-          500
-        );
-      }
-
-      return NextResponse.json(
-        {
-          ok: true,
-          signedUrl: data.signedUrl,
-          name: fileName,
-          mimeType,
-          size,
-          expiresIn: 5 * 60,
-          disposition,
-        },
-        { headers: { "Cache-Control": "no-store" } }
-      );
-    }
-
     if (action === "participant_upload") {
-      const studyToken = String(body.studyToken || "").trim();
-      const sessionToken = String(body.sessionToken || "").trim();
-      const studyMeasureId = String(body.studyMeasureId || "").trim();
-      const itemId = String(body.itemId || "").trim();
+      const sessionToken = String(body.sessionToken || "");
+      const studyMeasureId = String(body.studyMeasureId || "");
+      const itemId = String(body.itemId || "");
       const fileName = safeName(String(body.fileName || "upload.bin"));
       const mime = normaliseMime(body.contentType);
       const fileSize = Number(body.fileSize || 0);
 
-      if (!studyToken || !sessionToken) {
-        return jsonError("The participant study session could not be verified.", 401);
-      }
+      const session = await activeParticipantSession(sessionToken);
+      if (!session) return jsonError("This participant session is not active.", 401);
 
-      // IMPORTANT: use the same token/session contract as the participant
-      // runner instead of independently querying participant_sessions through
-      // the privileged client. This keeps upload authorization aligned with
-      // the exact RPCs the participant page already uses successfully.
-      const publicSupabase = publicRpcClient();
+      const { data: measure, error: measureError } = await supabase
+        .from("study_measures")
+        .select("id, questionnaire_version_id")
+        .eq("id", studyMeasureId)
+        .eq("study_id", session.study_id)
+        .maybeSingle();
 
-      const [{ data: resumeData, error: resumeError }, { data: publicStudy, error: publicStudyError }] =
-        await Promise.all([
-          publicSupabase.rpc("psylattice_resume_participation", {
-            p_token: studyToken,
-            p_session_token: sessionToken,
-          }),
-          publicSupabase.rpc("psylattice_public_study", {
-            p_token: studyToken,
-          }),
-        ]);
-
-      if (
-        resumeError ||
-        !resumeData?.ok ||
-        String(resumeData.session_status || "") !== "in_progress"
-      ) {
-        return jsonError(
-          String(
-            resumeData?.error ||
-              resumeError?.message ||
-              "This participant session is not active."
-          ),
-          401
-        );
-      }
-
-      if (publicStudyError || !publicStudy?.ok) {
-        return jsonError(
-          String(
-            publicStudy?.error ||
-              publicStudyError?.message ||
-              "This study could not be verified."
-          ),
-          403
-        );
-      }
-
-      const studyId = String(publicStudy?.study?.id || "").trim();
-      const measures = Array.isArray(publicStudy?.measures)
-        ? publicStudy.measures
-        : [];
-
-      const measure = measures.find(
-        (candidate: { study_measure_id?: unknown }) =>
-          String(candidate?.study_measure_id || "") === studyMeasureId
-      );
-
-      if (!studyId || !measure) {
+      if (measureError || !measure) {
         return jsonError("This questionnaire is not part of the active study.", 403);
       }
 
-      const items = Array.isArray(measure?.items) ? measure.items : [];
-      const item = items.find(
-        (candidate: { id?: unknown }) => String(candidate?.id || "") === itemId
-      ) as { id?: unknown; response_type?: unknown } | undefined;
+      const { data: item, error: itemError } = await supabase
+        .from("questionnaire_items")
+        .select("id, version_id, response_type")
+        .eq("id", itemId)
+        .eq("version_id", measure.questionnaire_version_id)
+        .maybeSingle();
 
-      const responseType = String(item?.response_type || "");
-      if (!item || !PARTICIPANT_RESPONSE_TYPES.has(responseType)) {
+      if (itemError || !item || !PARTICIPANT_RESPONSE_TYPES.has(item.response_type)) {
         return jsonError("This question does not accept participant file uploads.", 403);
       }
 
       if (!Number.isFinite(fileSize) || fileSize <= 0) {
         return jsonError("The selected file is empty or invalid.");
       }
-      if (fileSize > participantMaxBytes(responseType)) {
+      if (fileSize > participantMaxBytes(item.response_type)) {
         return jsonError("The selected file is larger than the limit for this response type.");
       }
-      if (!isAllowedParticipantMime(responseType, mime)) {
+      if (!isAllowedParticipantMime(item.response_type, mime)) {
         return jsonError("That file type is not allowed for this response.");
       }
 
-      // Never put the raw participant session token in a Storage path.
-      const sessionFolder = createHash("sha256")
-        .update(sessionToken)
-        .digest("hex")
-        .slice(0, 24);
+      const path = `${session.study_id}/${session.participant_id}/${session.id}/${studyMeasureId}/${itemId}/${crypto.randomUUID()}-${fileName}`;
 
-      const path = `${studyId}/sessions/${sessionFolder}/${studyMeasureId}/${itemId}/${crypto.randomUUID()}-${fileName}`;
+      let reservationId = "";
+      try {
+        const reservation = await reserveMediaUpload({
+          userId: session.owner_user_id,
+          studyId: session.study_id,
+          bucket: PARTICIPANT_BUCKET,
+          objectPath: path,
+          bytes: fileSize,
+          mediaKind: `participant_${item.response_type}`,
+        });
+        reservationId = reservation.reservationId;
+      } catch (error) {
+        return resourceUploadError(error) || jsonError("PsyLattice could not verify the media allowance right now.", 503);
+      }
 
-      // Privileged client is used only for private Storage signing.
       const { data, error } = await supabase.storage
         .from(PARTICIPANT_BUCKET)
         .createSignedUploadUrl(path);
 
       if (error || !data?.token) {
-        return jsonError(
-          error?.message || "Could not create the participant upload ticket.",
-          500
-        );
+        await releaseMediaReservation(session.owner_user_id, reservationId).catch(() => undefined);
+        console.error("Could not create participant media upload ticket:", error);
+        return jsonError("Could not create the participant upload ticket.", 500);
       }
 
       return NextResponse.json({
@@ -537,84 +372,47 @@ export async function POST(request: NextRequest) {
         path,
         token: data.token,
         storage_ref: storageRef(PARTICIPANT_BUCKET, path),
+        reservation_id: reservationId,
       });
     }
 
     if (action === "participant_read") {
-      const studyToken = String(body.studyToken || "").trim();
-      const itemId = String(body.itemId || "").trim();
+      const sessionToken = String(body.sessionToken || "");
+      const itemId = String(body.itemId || "");
       const ref = parseStorageRef(body.storageRef);
-
-      if (!studyToken) {
-        return jsonError("The study media token is missing.", 401);
-      }
-
-      if (!itemId) {
-        return jsonError("The questionnaire item is missing.");
-      }
 
       if (!ref || ref.bucket !== QUESTIONNAIRE_BUCKET) {
         return jsonError("Invalid questionnaire media reference.");
       }
 
-      // IMPORTANT: use the exact same authorization contract as the participant
-      // page itself. If psylattice_public_study(p_token) allows the questionnaire
-      // to load, the media endpoint should make its decision from that same
-      // filtered public payload instead of independently re-deriving participant
-      // session / recruitment-link state.
-      //
-      // This also means the endpoint never trusts an arbitrary storage path: the
-      // requested storage:// reference must be present on the exact item returned
-      // by psylattice_public_study for this token before a signed URL is issued.
-      const publicSupabase = publicRpcClient();
-      const { data: publicStudy, error: publicStudyError } =
-        await publicSupabase.rpc("psylattice_public_study", {
-          p_token: studyToken,
-        });
+      const session = await activeParticipantSession(sessionToken);
+      if (!session) return jsonError("This participant session is not active.", 401);
 
-      if (publicStudyError || !publicStudy?.ok) {
-        return jsonError(
-          String(
-            publicStudy?.error ||
-              publicStudyError?.message ||
-              "This study questionnaire could not be verified."
-          ),
-          403
-        );
+      const { data: item, error: itemError } = await supabase
+        .from("questionnaire_items")
+        .select("id, version_id, media_config, response_options")
+        .eq("id", itemId)
+        .maybeSingle();
+
+      if (itemError || !item) {
+        return jsonError("Questionnaire media could not be verified.", 404);
       }
 
-      const measures = Array.isArray(publicStudy.measures)
-        ? publicStudy.measures
-        : [];
+      const { data: attachedMeasure, error: measureError } = await supabase
+        .from("study_measures")
+        .select("id")
+        .eq("study_id", session.study_id)
+        .eq("questionnaire_version_id", item.version_id)
+        .limit(1)
+        .maybeSingle();
 
-      let publicItem: {
-        id?: unknown;
-        media_config?: unknown;
-        response_options?: unknown;
-      } | null = null;
-
-      for (const measure of measures) {
-        const items = Array.isArray(measure?.items) ? measure.items : [];
-        const found = items.find(
-          (candidate: { id?: unknown }) => String(candidate?.id || "") === itemId
-        );
-
-        if (found) {
-          publicItem = found;
-          break;
-        }
-      }
-
-      if (!publicItem) {
-        return jsonError("This questionnaire item is not part of this study.", 403);
+      if (measureError || !attachedMeasure) {
+        return jsonError("This media is not part of the active study.", 403);
       }
 
       const requestedRef = storageRef(ref.bucket, ref.path);
-      if (!referencedMediaValues(publicItem).includes(requestedRef)) {
-        return jsonError(
-          "This media file is not referenced by this questionnaire item.",
-          403
-        );
+      if (!referencedMediaValues(item).includes(requestedRef)) {
+        return jsonError("This media is not referenced by the requested question.", 403);
       }
 
       const { data, error } = await supabase.storage
@@ -622,24 +420,18 @@ export async function POST(request: NextRequest) {
         .createSignedUrl(ref.path, 60 * 60);
 
       if (error || !data?.signedUrl) {
-        return jsonError(
-          error?.message || "Could not create the questionnaire media URL.",
-          500
-        );
+        console.error("Could not create questionnaire media URL:", error);
+        return jsonError("Could not create the questionnaire media URL.", 500);
       }
 
-      return NextResponse.json(
-        { ok: true, signedUrl: data.signedUrl },
-        { headers: { "Cache-Control": "no-store" } }
-      );
+      return NextResponse.json({ ok: true, signedUrl: data.signedUrl });
     }
 
     return jsonError("Unknown media ticket action.");
   } catch (error) {
     console.error("PsyLattice media ticket error:", error);
-    return jsonError(
-      error instanceof Error ? error.message : "Unexpected media service error.",
-      500
-    );
+    const entitlementResponse = resourceUploadError(error);
+    if (entitlementResponse) return entitlementResponse;
+    return jsonError("Unexpected media service error.", 500);
   }
 }

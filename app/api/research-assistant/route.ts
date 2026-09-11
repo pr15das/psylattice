@@ -1,7 +1,12 @@
-import OpenAI from "openai";
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
-import { aiRateLimitResponse, consumeAiRateLimit } from "@/lib/ai/rateLimit";
+import {
+  AiAccessError,
+  completeResearchAiRequest,
+  prepareResearchAiRequest,
+  refundResearchAiRequest,
+} from "@/lib/billing/ai";
+import { generatePsyLatticeAiResponse } from "@/lib/ai/provider";
 
 export const dynamic = "force-dynamic";
 
@@ -106,15 +111,6 @@ export async function POST(request: NextRequest) {
       return jsonError("Your PsyLattice session has expired. Please sign in again.", 401);
     }
 
-    if (!consumeAiRateLimit("research", user.id)) {
-      return aiRateLimitResponse();
-    }
-
-    const apiKey = process.env.OPENAI_API_KEY;
-    if (!apiKey) {
-      return jsonError("The PsyLattice Research Assistant is not configured.", 503);
-    }
-
     const body = (await request.json()) as Record<string, unknown>;
     const studyId = typeof body.study_id === "string" ? body.study_id.trim() : "";
     if (!studyId) {
@@ -144,35 +140,85 @@ export async function POST(request: NextRequest) {
       return jsonError("The supplied study context does not match the selected study.");
     }
 
-    const openai = new OpenAI({ apiKey });
-    const response = await openai.responses.create({
-      model:
-        process.env.PSYLATTICE_RESEARCH_AI_MODEL ||
-        process.env.PSYLATTICE_AI_GUIDE_MODEL ||
-        "gpt-5.6",
-      instructions: RESEARCH_ASSISTANT_INSTRUCTIONS,
-      input: [
-        {
-          role: "user",
-          content: `AUTHORITATIVE PSYLATTICE STUDY CONTEXT\nStudy: ${study.title}\n\n${serialized}\n\nEND STUDY CONTEXT`,
-        },
-        ...messages,
-      ],
-      max_output_tokens: 1_500,
-      store: false,
+    const routeDefaultModel =
+      process.env.PSYLATTICE_RESEARCH_AI_MODEL ||
+      process.env.PSYLATTICE_AI_GUIDE_MODEL ||
+      "gpt-5.6";
+
+    const reservation = await prepareResearchAiRequest({
+      userId: user.id,
+      surface: "research-assistant",
+      studyId,
+      routeDefaultModel,
+      contextChars: serialized.length,
+      messages,
+      metadata: { studyContext: true },
     });
 
-    const reply = response.output_text?.trim();
+    let response;
+    try {
+      response = await generatePsyLatticeAiResponse({
+        provider: reservation.provider,
+        providerModel: reservation.providerModel,
+        instructions: RESEARCH_ASSISTANT_INSTRUCTIONS,
+        input: [
+          {
+            role: "user",
+            content: `AUTHORITATIVE PSYLATTICE STUDY CONTEXT\nStudy: ${study.title}\n\n${serialized}\n\nEND STUDY CONTEXT`,
+          },
+          ...messages,
+        ],
+        maxOutputTokens: 1_500,
+      });
+    } catch (providerError) {
+      await refundResearchAiRequest(
+        user.id,
+        reservation.usageId,
+        "research_assistant_provider_failure",
+      );
+      throw providerError;
+    }
+
+    const reply = response.text.trim();
     if (!reply) {
+      await refundResearchAiRequest(
+        user.id,
+        reservation.usageId,
+        "research_assistant_empty_response",
+      );
       return jsonError("The Research Assistant returned an empty response.", 502);
     }
 
+    try {
+      await completeResearchAiRequest(user.id, reservation.usageId, {
+        inputTokens: response.inputTokens,
+        outputTokens: response.outputTokens,
+        metadata: {
+          outcome: "success",
+          provider: response.provider,
+          providerModel: response.providerModel,
+        },
+      });
+    } catch (ledgerError) {
+      console.error("Could not finalize Research Assistant AI usage:", ledgerError);
+    }
+
     return NextResponse.json(
-      { ok: true, reply },
-      { headers: { "Cache-Control": "no-store" } }
+      { ok: true, reply, aiRemainingPercent: reservation.remainingPercent },
+      { headers: { "Cache-Control": "no-store" } },
     );
-  } catch {
-    console.error("PsyLattice Research Assistant request failed.");
-    return jsonError("Unable to process the Research Assistant request right now.", 500);
+  } catch (error) {
+    if (error instanceof AiAccessError) {
+      return NextResponse.json(
+        { ok: false, error: error.message, code: error.code },
+        { status: error.status, headers: { "Cache-Control": "no-store" } },
+      );
+    }
+
+    console.error("PsyLattice Research Assistant request failed:", error);
+    return jsonError(
+      "The Research Assistant could not respond. Please try again.",
+      500,
+    );
   }
 }

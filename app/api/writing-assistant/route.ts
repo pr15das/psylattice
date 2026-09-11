@@ -1,7 +1,12 @@
-import OpenAI from "openai";
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
-import { aiRateLimitResponse, consumeAiRateLimit } from "@/lib/ai/rateLimit";
+import {
+  AiAccessError,
+  completeResearchAiRequest,
+  prepareResearchAiRequest,
+  refundResearchAiRequest,
+} from "@/lib/billing/ai";
+import { generatePsyLatticeAiResponse } from "@/lib/ai/provider";
 
 export const dynamic = "force-dynamic";
 
@@ -100,18 +105,14 @@ export async function POST(request: NextRequest) {
       error: userError,
     } = await supabase.auth.getUser();
 
-    if (userError || !user) return jsonError("Your PsyLattice session has expired. Please sign in again.", 401);
-
-    if (!consumeAiRateLimit("writing", user.id)) {
-      return aiRateLimitResponse();
+    if (userError || !user) {
+      return jsonError("Your PsyLattice session has expired. Please sign in again.", 401);
     }
-
-    const apiKey = process.env.OPENAI_API_KEY;
-    if (!apiKey) return jsonError("The PsyLattice Writing Assistant is not configured.", 503);
 
     const body = (await request.json()) as Record<string, unknown>;
     const action = body.action === "restructure" ? "restructure" : "chat";
-    const documentId = typeof body.document_id === "string" ? body.document_id.trim() : "";
+    const documentId =
+      typeof body.document_id === "string" ? body.document_id.trim() : "";
     if (!documentId) return jsonError("A writing document is required.");
 
     const { data: ownedDocument, error: documentError } = await supabase
@@ -121,61 +122,176 @@ export async function POST(request: NextRequest) {
       .eq("owner_user_id", user.id)
       .maybeSingle();
 
-    if (documentError || !ownedDocument) return jsonError("This writing document is not available to your researcher account.", 404);
+    if (documentError || !ownedDocument) {
+      return jsonError(
+        "This writing document is not available to your researcher account.",
+        404,
+      );
+    }
 
-    const formatStyle = typeof body.format_style === "string" && FORMAT_LABELS[body.format_style] ? body.format_style : "custom";
+    const formatStyle =
+      typeof body.format_style === "string" && FORMAT_LABELS[body.format_style]
+        ? body.format_style
+        : "custom";
     const formatLabel = FORMAT_LABELS[formatStyle];
-    const documentTitle = typeof body.document_title === "string" ? body.document_title.trim().slice(0, 300) : ownedDocument.title;
-    // The client must explicitly grant access for this request. Do not use the
-    // presence of document_text as proof of permission.
-    const allowDocumentAccess = body.allow_document_access === true;
-    const documentText = allowDocumentAccess ? parseDocumentText(body.document_text) : "";
+    const documentTitle =
+      typeof body.document_title === "string"
+        ? body.document_title.trim().slice(0, 300)
+        : ownedDocument.title;
+    const documentText = parseDocumentText(body.document_text);
 
-    const openai = new OpenAI({ apiKey });
-    const model = process.env.PSYLATTICE_WRITING_AI_MODEL || process.env.PSYLATTICE_RESEARCH_AI_MODEL || process.env.PSYLATTICE_AI_GUIDE_MODEL || "gpt-5.6";
-
+    const routeDefaultModel =
+      process.env.PSYLATTICE_WRITING_AI_MODEL ||
+      process.env.PSYLATTICE_RESEARCH_AI_MODEL ||
+      process.env.PSYLATTICE_AI_GUIDE_MODEL ||
+      "gpt-5.6";
     if (action === "restructure") {
-      if (!allowDocumentAccess || !documentText) return jsonError("Document access is required to restructure the paper.");
-      const response = await openai.responses.create({
-        model,
-        instructions: RESTRUCTURE_INSTRUCTIONS,
-        input: [
-          {
-            role: "user",
-            content: `TARGET FORMAT: ${formatLabel}\nDOCUMENT TITLE: ${documentTitle}\n\nCURRENT AUTHOR DRAFT\n${documentText}\n\nEND AUTHOR DRAFT\n\nRestructure this draft into a clear ${formatLabel} paper organization. Preserve the author's content and use bracketed placeholders where expected sections lack content.`,
-          },
-        ],
-        max_output_tokens: 5_000,
-        store: false,
+      if (!documentText) {
+        return jsonError("Document access is required to restructure the paper.");
+      }
+
+      const reservation = await prepareResearchAiRequest({
+        userId: user.id,
+        surface: "writing-restructure",
+        routeDefaultModel,
+        contextChars: documentText.length,
+        metadata: { action: "restructure" },
       });
-      const html = response.output_text?.trim();
-      if (!html) return jsonError("The Writing Assistant returned an empty restructure response.", 502);
-      return NextResponse.json({ ok: true, html }, { headers: { "Cache-Control": "no-store" } });
+
+      let response;
+      try {
+        response = await generatePsyLatticeAiResponse({
+          provider: reservation.provider,
+          providerModel: reservation.providerModel,
+          instructions: RESTRUCTURE_INSTRUCTIONS,
+          input: [
+            {
+              role: "user",
+              content: `TARGET FORMAT: ${formatLabel}\nDOCUMENT TITLE: ${documentTitle}\n\nCURRENT AUTHOR DRAFT\n${documentText}\n\nEND AUTHOR DRAFT\n\nRestructure this draft into a clear ${formatLabel} paper organization. Preserve the author's content and use bracketed placeholders where expected sections lack content.`,
+            },
+          ],
+          maxOutputTokens: 5_000,
+        });
+      } catch (providerError) {
+        await refundResearchAiRequest(
+          user.id,
+          reservation.usageId,
+          "writing_restructure_provider_failure",
+        );
+        throw providerError;
+      }
+
+      const html = response.text.trim();
+      if (!html) {
+        await refundResearchAiRequest(
+          user.id,
+          reservation.usageId,
+          "writing_restructure_empty_response",
+        );
+        return jsonError(
+          "The Writing Assistant returned an empty restructure response.",
+          502,
+        );
+      }
+
+      try {
+        await completeResearchAiRequest(user.id, reservation.usageId, {
+          inputTokens: response.inputTokens,
+          outputTokens: response.outputTokens,
+          metadata: {
+            outcome: "success",
+            action: "restructure",
+            provider: response.provider,
+            providerModel: response.providerModel,
+          },
+        });
+      } catch (ledgerError) {
+        console.error("Could not finalize Writing AI usage:", ledgerError);
+      }
+
+      return NextResponse.json(
+        { ok: true, html, aiRemainingPercent: reservation.remainingPercent },
+        { headers: { "Cache-Control": "no-store" } },
+      );
     }
 
     const messages = parseMessages(body.messages);
-    if (!messages.some((message) => message.role === "user")) return jsonError("Enter a writing question first.");
+    if (!messages.some((message) => message.role === "user")) {
+      return jsonError("Enter a writing question first.");
+    }
 
     const contextMessage = documentText
       ? `The user explicitly allowed PsyLattice to include the current document for THIS REQUEST ONLY.\nDOCUMENT TITLE: ${documentTitle}\nCURRENT FORMAT: ${formatLabel}\n\nDOCUMENT TEXT\n${documentText}\nEND DOCUMENT TEXT`
       : `No document text was provided for this request. Do not claim you can see or review the user's paper. The current selected format label is ${formatLabel}.`;
 
-    const response = await openai.responses.create({
-      model,
-      instructions: WRITING_ASSISTANT_INSTRUCTIONS,
-      input: [
-        { role: "user", content: contextMessage },
-        ...messages,
-      ],
-      max_output_tokens: 1_800,
-      store: false,
+    const reservation = await prepareResearchAiRequest({
+      userId: user.id,
+      surface: "writing-assistant",
+      routeDefaultModel,
+      contextChars: contextMessage.length,
+      messages,
+      metadata: { action: "chat", documentIncluded: Boolean(documentText) },
     });
 
-    const reply = response.output_text?.trim();
-    if (!reply) return jsonError("The Writing Assistant returned an empty response.", 502);
-    return NextResponse.json({ ok: true, reply }, { headers: { "Cache-Control": "no-store" } });
-  } catch {
-    console.error("PsyLattice Writing Assistant request failed.");
-    return jsonError("Unable to process the Writing Assistant request right now.", 500);
+    let response;
+    try {
+      response = await generatePsyLatticeAiResponse({
+        provider: reservation.provider,
+        providerModel: reservation.providerModel,
+        instructions: WRITING_ASSISTANT_INSTRUCTIONS,
+        input: [{ role: "user", content: contextMessage }, ...messages],
+        maxOutputTokens: 1_800,
+      });
+    } catch (providerError) {
+      await refundResearchAiRequest(
+        user.id,
+        reservation.usageId,
+        "writing_assistant_provider_failure",
+      );
+      throw providerError;
+    }
+
+    const reply = response.text.trim();
+    if (!reply) {
+      await refundResearchAiRequest(
+        user.id,
+        reservation.usageId,
+        "writing_assistant_empty_response",
+      );
+      return jsonError("The Writing Assistant returned an empty response.", 502);
+    }
+
+    try {
+      await completeResearchAiRequest(user.id, reservation.usageId, {
+        inputTokens: response.inputTokens,
+        outputTokens: response.outputTokens,
+        metadata: {
+          outcome: "success",
+          action: "chat",
+          provider: response.provider,
+          providerModel: response.providerModel,
+        },
+      });
+    } catch (ledgerError) {
+      console.error("Could not finalize Writing Assistant AI usage:", ledgerError);
+    }
+
+    return NextResponse.json(
+      { ok: true, reply, aiRemainingPercent: reservation.remainingPercent },
+      { headers: { "Cache-Control": "no-store" } },
+    );
+  } catch (error) {
+    if (error instanceof AiAccessError) {
+      return NextResponse.json(
+        { ok: false, error: error.message, code: error.code },
+        { status: error.status, headers: { "Cache-Control": "no-store" } },
+      );
+    }
+
+    console.error("PsyLattice Writing Assistant request failed:", error);
+    return jsonError(
+      "The Writing Assistant could not respond. Please try again.",
+      500,
+    );
   }
 }

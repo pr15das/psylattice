@@ -33,9 +33,18 @@ export async function GET(request: NextRequest) {
     );
   } catch (error) {
     console.error("Could not load PsyLattice entitlements:", error);
+
+    const message = error instanceof Error ? error.message : "";
+    const notOwned = message.includes("does not belong to this researcher account");
+
     return NextResponse.json(
-      { ok: false, error: "PsyLattice could not load your account access right now." },
-      { status: 500 },
+      {
+        ok: false,
+        error: notOwned
+          ? "The selected research study is unavailable."
+          : "PsyLattice could not load your account access right now.",
+      },
+      { status: notOwned ? 404 : 500 },
     );
   }
 }

@@ -1,6 +1,12 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 import { Resend } from "resend";
+import {
+  completeParticipantEmail,
+  refundParticipantEmail,
+  reserveParticipantEmail,
+  ResourceEntitlementError,
+} from "@/lib/billing/resources";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -230,6 +236,8 @@ export async function GET(request: NextRequest) {
     }
 
     let recipientEmail = "";
+    let participantBilling: { userId: string; studyId: string } | null = null;
+    let emailUsageId = "";
 
     if (
       notification.target_kind === "self_user" &&
@@ -395,6 +403,32 @@ export async function GET(request: NextRequest) {
 
         recipientEmail = contact.email || "";
       }
+
+      const { data: participant, error: participantError } = await supabase
+        .from("study_participants")
+        .select("study_id, owner_user_id")
+        .eq("id", notification.participant_id)
+        .maybeSingle();
+
+      if (participantError || !participant?.study_id || !participant?.owner_user_id) {
+        console.error("Could not resolve participant billing owner:", participantError);
+        await supabase
+          .from("psylattice_notification_queue")
+          .update({
+            status: "failed",
+            attempts: (notification.attempts || 0) + 1,
+            last_error: "The research participant billing owner could not be resolved.",
+          })
+          .eq("id", notification.id);
+
+        failed += 1;
+        continue;
+      }
+
+      participantBilling = {
+        userId: String(participant.owner_user_id),
+        studyId: String(participant.study_id),
+      };
     }
 
     if (!recipientEmail) {
@@ -411,6 +445,47 @@ export async function GET(request: NextRequest) {
 
       failed += 1;
       continue;
+    }
+
+    if (participantBilling) {
+      try {
+        const reservation = await reserveParticipantEmail({
+          userId: participantBilling.userId,
+          studyId: participantBilling.studyId,
+          notificationId: notification.id,
+          referenceType: notification.reference_type,
+        });
+        emailUsageId = reservation.usageId;
+      } catch (error) {
+        if (error instanceof ResourceEntitlementError && error.code === "EMAIL_LIMIT_EXHAUSTED") {
+          const retryAt = new Date(Date.now() + 30 * 60 * 1000).toISOString();
+          await supabase
+            .from("psylattice_notification_queue")
+            .update({
+              status: "pending",
+              scheduled_for: retryAt,
+              attempts: (notification.attempts || 0) + 1,
+              last_error: "Participant email allowance exhausted. Delivery will retry after the allowance is expanded.",
+            })
+            .eq("id", notification.id);
+
+          skipped += 1;
+          continue;
+        }
+
+        console.error("Could not reserve participant email allowance:", error);
+        await supabase
+          .from("psylattice_notification_queue")
+          .update({
+            status: "failed",
+            attempts: (notification.attempts || 0) + 1,
+            last_error: "PsyLattice could not verify the participant email allowance.",
+          })
+          .eq("id", notification.id);
+
+        failed += 1;
+        continue;
+      }
     }
 
     const targetUrl = absoluteUrl(
@@ -440,6 +515,12 @@ export async function GET(request: NextRequest) {
     );
 
     if (emailError) {
+      if (participantBilling && emailUsageId) {
+        await refundParticipantEmail(participantBilling.userId, emailUsageId).catch((refundError) => {
+          console.error("Could not refund failed participant email reservation:", refundError);
+        });
+      }
+
       await supabase
         .from("psylattice_notification_queue")
         .update({
@@ -453,6 +534,15 @@ export async function GET(request: NextRequest) {
 
       failed += 1;
       continue;
+    }
+
+    if (participantBilling && emailUsageId) {
+      await completeParticipantEmail(participantBilling.userId, emailUsageId).catch((completionError) => {
+        // The provider already accepted the email. Keep the reservation counted
+        // rather than risking an under-charge; a later support reconciliation can
+        // safely complete the ledger row.
+        console.error("Could not complete participant email usage record:", completionError);
+      });
     }
 
     const sentAt = new Date().toISOString();

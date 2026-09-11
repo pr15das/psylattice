@@ -28,7 +28,7 @@ import ResearchAiAssistant from "@/components/ResearchAiAssistant";
 import ResearchWritingWorkspace from "@/components/ResearchWritingWorkspace";
 import ResearchStudyAssociations from "@/components/ResearchStudyAssociations";
 import AnalysisLab from "@/components/AnalysisLab";
-import CognitiveLab from "../../components/CognitiveLab";
+import CognitiveLab from "@/components/CognitiveLab";
 import StudyBatteryPicker, { type StudyBatterySelection } from "@/components/StudyBatteryPicker";
 import { buildBatteryReporting, type BatteryAssignmentLike } from "@/lib/research/batteryReporting";
 import {
@@ -5990,7 +5990,7 @@ function QuestionnaireLibrary({
       const entitlements = await loadClientBillingEntitlements();
       if (!entitlements.media.uploadsAllowed) {
         setBuilderError("Custom questionnaire media uploads require Pro Monthly or Pro Annual. Open Plans & Billing to upgrade.");
-        setBuilderUploadStatus((previous) => ({
+        setBuilderMediaUploadState((previous) => ({
           ...previous,
           [uploadKey]: "Pro required",
         }));

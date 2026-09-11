@@ -34,7 +34,7 @@ export async function POST(
 
     const { data: existing, error: existingError } = await admin
       .from("research_billing_accounts")
-      .select("user_id, plan_tier, plan_status, razorpay_subscription_id, current_period_start, current_period_end, ai_bonus_units, email_bonus, media_bonus_bytes")
+      .select("user_id, plan_tier, plan_status, razorpay_subscription_id, current_period_start, current_period_end, billing_access_until, last_successful_charge_at, last_payment_failure_at, last_provider_event, last_provider_event_at, billing_issue_code, ai_bonus_units, email_bonus, media_bonus_bytes")
       .eq("user_id", userId)
       .maybeSingle();
     if (existingError) throw existingError;
@@ -60,6 +60,10 @@ export async function POST(
             razorpay_subscription_id: null,
             current_period_start: null,
             current_period_end: null,
+            billing_access_until: null,
+            billing_issue_code: null,
+            last_provider_event: "admin.complimentary_plan_removed",
+            last_provider_event_at: now.toISOString(),
           }
         : {
             user_id: userId,
@@ -70,6 +74,10 @@ export async function POST(
             razorpay_subscription_id: null,
             current_period_start: now.toISOString(),
             current_period_end: end.toISOString(),
+            billing_access_until: end.toISOString(),
+            billing_issue_code: null,
+            last_provider_event: "admin.complimentary_plan_granted",
+            last_provider_event_at: now.toISOString(),
           };
 
     const { error: upsertError } = await admin

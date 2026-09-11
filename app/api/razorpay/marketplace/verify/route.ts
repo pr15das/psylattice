@@ -56,17 +56,88 @@ async function applyPurchase(purchaseId: string) {
   if (error) throw error;
 }
 
+async function recordCheckoutTransaction(
+  purchase: PurchaseRow,
+  payment: RazorpayPayment,
+  paidAt: string,
+) {
+  const admin = billingAdmin();
+
+  const { data: existingByPayment, error: paymentLookupError } = await admin
+    .from("psylattice_billing_transactions")
+    .select("id")
+    .eq("razorpay_payment_id", payment.id)
+    .maybeSingle();
+  if (paymentLookupError) throw paymentLookupError;
+
+  const patch = {
+    user_id: purchase.user_id,
+    source: "checkout",
+    purchase_id: purchase.id,
+    description:
+      purchase.checkout_kind === "subscription"
+        ? "PsyLattice subscription checkout"
+        : "PsyLattice marketplace purchase",
+    status: "paid",
+    amount_paise: Math.max(0, Number(payment.amount || purchase.amount_paise)),
+    currency: payment.currency || purchase.currency || "INR",
+    razorpay_order_id: payment.order_id || purchase.razorpay_order_id || null,
+    razorpay_subscription_id: purchase.razorpay_subscription_id || null,
+    razorpay_invoice_id: null,
+    razorpay_payment_id: payment.id,
+    paid_at: paidAt,
+    provider_created_at: paidAt,
+    metadata: { source: "checkout_verification" },
+    updated_at: new Date().toISOString(),
+  };
+
+  if (existingByPayment) {
+    const { error } = await admin
+      .from("psylattice_billing_transactions")
+      .update(patch)
+      .eq("id", existingByPayment.id);
+    if (error) throw error;
+    return;
+  }
+
+  const { data: existingByPurchase, error: purchaseLookupError } = await admin
+    .from("psylattice_billing_transactions")
+    .select("id")
+    .eq("purchase_id", purchase.id)
+    .maybeSingle();
+  if (purchaseLookupError) throw purchaseLookupError;
+
+  if (existingByPurchase) {
+    const { error } = await admin
+      .from("psylattice_billing_transactions")
+      .update(patch)
+      .eq("id", existingByPurchase.id);
+    if (error) throw error;
+    return;
+  }
+
+  const { error } = await admin
+    .from("psylattice_billing_transactions")
+    .insert(patch);
+  if (error) throw error;
+}
+
 export async function POST(request: NextRequest) {
   try {
     const user = await authenticatedBillingUser();
     if (!user) return jsonError("Please sign in again.", 401);
 
     const body = (await request.json()) as Record<string, unknown>;
-    const purchaseId = typeof body.purchaseId === "string" ? body.purchaseId.trim() : "";
+    const purchaseId =
+      typeof body.purchaseId === "string" ? body.purchaseId.trim() : "";
     const paymentId =
-      typeof body.razorpay_payment_id === "string" ? body.razorpay_payment_id.trim() : "";
+      typeof body.razorpay_payment_id === "string"
+        ? body.razorpay_payment_id.trim()
+        : "";
     const suppliedSignature =
-      typeof body.razorpay_signature === "string" ? body.razorpay_signature.trim() : "";
+      typeof body.razorpay_signature === "string"
+        ? body.razorpay_signature.trim()
+        : "";
 
     if (!purchaseId || !paymentId || !suppliedSignature) {
       return jsonError("The payment verification response is incomplete.");
@@ -100,12 +171,22 @@ export async function POST(request: NextRequest) {
     let signatureValid = false;
 
     if (purchase.checkout_kind === "order") {
-      if (!purchase.razorpay_order_id) throw new Error("Purchase order id is missing.");
+      if (!purchase.razorpay_order_id) {
+        throw new Error("Purchase order id is missing.");
+      }
 
       const returnedOrderId =
-        typeof body.razorpay_order_id === "string" ? body.razorpay_order_id.trim() : "";
-      if (returnedOrderId && returnedOrderId !== purchase.razorpay_order_id) {
-        return jsonError("The Razorpay order does not match this checkout.", 400);
+        typeof body.razorpay_order_id === "string"
+          ? body.razorpay_order_id.trim()
+          : "";
+      if (
+        returnedOrderId &&
+        returnedOrderId !== purchase.razorpay_order_id
+      ) {
+        return jsonError(
+          "The Razorpay order does not match this checkout.",
+          400,
+        );
       }
 
       signatureValid = verifyHexHmac(
@@ -114,14 +195,20 @@ export async function POST(request: NextRequest) {
         keySecret,
       );
     } else {
-      if (!purchase.razorpay_subscription_id) throw new Error("Purchase subscription id is missing.");
+      if (!purchase.razorpay_subscription_id) {
+        throw new Error("Purchase subscription id is missing.");
+      }
 
       const returnedSubscriptionId =
         typeof body.razorpay_subscription_id === "string"
           ? body.razorpay_subscription_id.trim()
           : "";
+
       if (returnedSubscriptionId !== purchase.razorpay_subscription_id) {
-        return jsonError("The Razorpay subscription does not match this checkout.", 400);
+        return jsonError(
+          "The Razorpay subscription does not match this checkout.",
+          400,
+        );
       }
 
       signatureValid = verifyHexHmac(
@@ -135,10 +222,18 @@ export async function POST(request: NextRequest) {
       return jsonError("Payment signature verification failed.", 400);
     }
 
-    let payment = await razorpayRequest<RazorpayPayment>(`/payments/${encodeURIComponent(paymentId)}`);
+    let payment = await razorpayRequest<RazorpayPayment>(
+      `/payments/${encodeURIComponent(paymentId)}`,
+    );
 
-    if (payment.currency !== "INR" || Number(payment.amount) !== Number(purchase.amount_paise)) {
-      return jsonError("The captured payment amount does not match this checkout.", 400);
+    if (
+      payment.currency !== "INR" ||
+      Number(payment.amount) !== Number(purchase.amount_paise)
+    ) {
+      return jsonError(
+        "The captured payment amount does not match this checkout.",
+        400,
+      );
     }
 
     if (
@@ -146,16 +241,24 @@ export async function POST(request: NextRequest) {
       purchase.razorpay_order_id &&
       payment.order_id !== purchase.razorpay_order_id
     ) {
-      return jsonError("The captured payment is not attached to this order.", 400);
+      return jsonError(
+        "The captured payment is not attached to this order.",
+        400,
+      );
     }
 
-    // If account-level auto-capture is off, capture a verified one-time order here.
-    if (purchase.checkout_kind === "order" && payment.status === "authorized") {
+    if (
+      purchase.checkout_kind === "order" &&
+      payment.status === "authorized"
+    ) {
       payment = await razorpayRequest<RazorpayPayment>(
         `/payments/${encodeURIComponent(paymentId)}/capture`,
         {
           method: "POST",
-          body: { amount: purchase.amount_paise, currency: "INR" },
+          body: {
+            amount: purchase.amount_paise,
+            currency: "INR",
+          },
         },
       );
     }
@@ -177,7 +280,8 @@ export async function POST(request: NextRequest) {
           ok: true,
           paid: false,
           processing: true,
-          message: "Payment was verified and is waiting for capture. Your purchase will activate automatically when Razorpay confirms it.",
+          message:
+            "Payment was verified and is waiting for capture. Your purchase will activate automatically when Razorpay confirms it.",
         },
         { status: 202 },
       );
@@ -187,17 +291,29 @@ export async function POST(request: NextRequest) {
     let periodStart: string | null = null;
     let periodEnd: string | null = null;
 
-    if (purchase.checkout_kind === "subscription" && purchase.razorpay_subscription_id) {
+    if (
+      purchase.checkout_kind === "subscription" &&
+      purchase.razorpay_subscription_id
+    ) {
       const subscription = await razorpayRequest<RazorpaySubscription>(
-        `/subscriptions/${encodeURIComponent(purchase.razorpay_subscription_id)}`,
+        `/subscriptions/${encodeURIComponent(
+          purchase.razorpay_subscription_id,
+        )}`,
       );
+
       if (subscription.id !== purchase.razorpay_subscription_id) {
-        return jsonError("The provider subscription could not be verified.", 400);
+        return jsonError(
+          "The provider subscription could not be verified.",
+          400,
+        );
       }
+
       providerState = subscription.status;
       periodStart = providerUnixToIso(subscription.current_start);
       periodEnd = providerUnixToIso(subscription.current_end);
     }
+
+    const paidAt = new Date().toISOString();
 
     const { error: markError } = await admin
       .from("research_billing_purchases")
@@ -206,8 +322,8 @@ export async function POST(request: NextRequest) {
         razorpay_payment_id: paymentId,
         signature_verified: true,
         provider_state: providerState,
-        paid_at: new Date().toISOString(),
-        updated_at: new Date().toISOString(),
+        paid_at: paidAt,
+        updated_at: paidAt,
       })
       .eq("id", purchase.id)
       .eq("user_id", user.id);
@@ -215,18 +331,35 @@ export async function POST(request: NextRequest) {
     if (markError) throw markError;
 
     await applyPurchase(purchase.id);
+    await recordCheckoutTransaction(purchase, payment, paidAt);
 
-    if (purchase.checkout_kind === "subscription" && purchase.razorpay_subscription_id) {
-      await admin
+    if (
+      purchase.checkout_kind === "subscription" &&
+      purchase.razorpay_subscription_id
+    ) {
+      const { error: accountUpdateError } = await admin
         .from("research_billing_accounts")
         .update({
           plan_status: providerState,
           current_period_start: periodStart,
           current_period_end: periodEnd,
-          updated_at: new Date().toISOString(),
+          // A verified captured first payment can activate the period Razorpay
+          // reports. Later periods are extended only by successful
+          // subscription.charged webhooks.
+          billing_access_until: periodEnd,
+          last_successful_charge_at: paidAt,
+          last_provider_event: "marketplace.checkout.verified",
+          last_provider_event_at: paidAt,
+          billing_issue_code: null,
+          updated_at: paidAt,
         })
         .eq("user_id", user.id)
-        .eq("razorpay_subscription_id", purchase.razorpay_subscription_id);
+        .eq(
+          "razorpay_subscription_id",
+          purchase.razorpay_subscription_id,
+        );
+
+      if (accountUpdateError) throw accountUpdateError;
     }
 
     const snapshot = await loadBillingSnapshot(user.id);
@@ -236,12 +369,16 @@ export async function POST(request: NextRequest) {
         ok: true,
         paid: true,
         planTier: snapshot.effectivePlan,
-        message: "Payment verified. Your PsyLattice purchase is active.",
+        message:
+          "Payment verified. Your PsyLattice purchase is active.",
       },
       { headers: { "Cache-Control": "private, no-store" } },
     );
   } catch (error) {
     console.error("Marketplace payment verification failed:", error);
-    return jsonError("PsyLattice could not verify this payment right now.", 500);
+    return jsonError(
+      "PsyLattice could not verify this payment right now.",
+      500,
+    );
   }
 }

@@ -7,23 +7,6 @@ import {
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
 
-function purchaseLabel(cart: unknown) {
-  if (!Array.isArray(cart) || cart.length === 0) return "PsyLattice purchase";
-  const names = cart
-    .map((line) => {
-      if (!line || typeof line !== "object") return null;
-      const row = line as Record<string, unknown>;
-      const name = typeof row.name === "string" ? row.name.trim() : "";
-      const quantity = Math.max(1, Number(row.quantity || 1));
-      return name ? (quantity > 1 ? `${name} ×${quantity}` : name) : null;
-    })
-    .filter((value): value is string => Boolean(value));
-
-  if (names.length === 0) return "PsyLattice purchase";
-  if (names.length <= 2) return names.join(" + ");
-  return `${names[0]} + ${names.length - 1} more`;
-}
-
 export async function GET() {
   try {
     const user = await authenticatedBillingUser();
@@ -36,53 +19,54 @@ export async function GET() {
 
     const admin = billingAdmin();
     const { data, error } = await admin
-      .from("research_billing_purchases")
+      .from("psylattice_billing_transactions")
       .select(
-        "id, checkout_kind, status, amount_paise, currency, cart, razorpay_order_id, razorpay_subscription_id, razorpay_payment_id, provider_state, paid_at, created_at",
+        "id, source, description, status, amount_paise, currency, razorpay_order_id, razorpay_subscription_id, razorpay_invoice_id, razorpay_payment_id, paid_at, created_at",
       )
       .eq("user_id", user.id)
-      .order("created_at", { ascending: false })
-      .limit(100);
+      .eq("status", "paid")
+      .order("paid_at", { ascending: false, nullsFirst: false })
+      .limit(200);
 
     if (error) throw error;
 
     const payments = (data || []).map((row) => ({
       id: row.id,
-      label: purchaseLabel(row.cart),
-      checkoutKind: row.checkout_kind,
+      label: row.description || "PsyLattice payment",
+      checkoutKind: row.source,
       status: row.status,
       amountPaise: Number(row.amount_paise || 0),
       currency: row.currency || "INR",
       transactionId:
         row.razorpay_payment_id ||
+        row.razorpay_invoice_id ||
         row.razorpay_order_id ||
         row.razorpay_subscription_id ||
         null,
       razorpayPaymentId: row.razorpay_payment_id || null,
+      razorpayInvoiceId: row.razorpay_invoice_id || null,
       razorpayOrderId: row.razorpay_order_id || null,
       razorpaySubscriptionId: row.razorpay_subscription_id || null,
-      providerState: row.provider_state || null,
+      providerState: row.status || null,
       paidAt: row.paid_at || null,
       createdAt: row.created_at,
     }));
-
-    const successful = payments.filter((payment) => payment.status === "paid");
 
     return NextResponse.json(
       {
         ok: true,
         stats: {
-          successfulPayments: successful.length,
-          totalPaidPaise: successful.reduce(
+          successfulPayments: payments.length,
+          totalPaidPaise: payments.reduce(
             (sum, payment) => sum + payment.amountPaise,
             0,
           ),
           lastPaymentAt:
-            successful[0]?.paidAt || successful[0]?.createdAt || null,
+            payments[0]?.paidAt || payments[0]?.createdAt || null,
         },
         payments,
         note:
-          "This history reflects PsyLattice payment records stored by the current checkout system. Recurring-renewal ledger expansion will be added with subscription lifecycle handling.",
+          "Payment history uses the PsyLattice transaction ledger and includes recurring Razorpay invoices after reconciliation.",
       },
       { headers: { "Cache-Control": "private, no-store" } },
     );

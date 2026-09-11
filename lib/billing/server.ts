@@ -6,8 +6,6 @@ import {
   RESEARCH_PLAN_DEFINITIONS,
   type ResearchPlanTier,
 } from "@/lib/billing/plans";
-import { getPublicAiBudgetSnapshot } from "@/lib/billing/ai";
-import { getPublicResourceBudgetSnapshot } from "@/lib/billing/resources";
 
 export type BillingAccountRow = {
   user_id: string;
@@ -16,6 +14,12 @@ export type BillingAccountRow = {
   razorpay_subscription_id: string | null;
   current_period_start: string | null;
   current_period_end: string | null;
+  billing_access_until: string | null;
+  last_successful_charge_at: string | null;
+  last_payment_failure_at: string | null;
+  last_provider_event: string | null;
+  last_provider_event_at: string | null;
+  billing_issue_code: string | null;
   ai_bonus_units: number;
   email_bonus: number;
   media_bonus_bytes: number;
@@ -34,13 +38,16 @@ export type ResearcherEntitlements = {
   planStatus: string;
   hasPro: boolean;
   hasAnyStudyPass: boolean;
-  studyPassCount: number;
   selectedStudyHasPass: boolean;
   studyId: string | null;
   subscription: {
     razorpaySubscriptionId: string | null;
     currentPeriodStart: string | null;
     currentPeriodEnd: string | null;
+    accessUntil: string | null;
+    lastSuccessfulChargeAt: string | null;
+    lastPaymentFailureAt: string | null;
+    billingIssueCode: string | null;
   };
   studies: {
     maxSimultaneous: number;
@@ -65,17 +72,11 @@ export type ResearcherEntitlements = {
     includedBytes: number;
     purchasedExtraBytes: number;
     effectiveStorageBytes: number;
-    usedBytes: number;
-    remainingBytes: number;
-    remainingPercent: number;
   };
   participantEmails: {
     included: number;
     purchasedExtra: number;
     effectiveAllowance: number;
-    used: number;
-    remaining: number;
-    remainingPercent: number;
   };
   marketplace: {
     canBuyAddons: boolean;
@@ -138,16 +139,35 @@ export function accountHasCurrentPro(account: BillingAccountRow | null | undefin
     return false;
   }
 
-  if (["active", "authenticated", "pending"].includes(account.plan_status)) {
+  // Phase 8C deliberately separates provider status from paid access.
+  // A future billing_access_until is the authoritative proof that the user has
+  // already paid through that moment. This means transient pending/halted/paused
+  // states do not erase time the customer has already paid for.
+  if (
+    account.billing_access_until &&
+    new Date(account.billing_access_until).getTime() > Date.now()
+  ) {
     return true;
   }
 
-  if (
-    ["cancelled", "completed"].includes(account.plan_status) &&
-    account.current_period_end &&
-    new Date(account.current_period_end).getTime() > Date.now()
-  ) {
+  // Backwards compatibility for an older active Pro row that predates
+  // billing_access_until.
+  if (account.billing_access_until === null && account.plan_status === "active") {
     return true;
+  }
+
+  // Immediately after a verified first subscription payment, Razorpay can
+  // briefly report `authenticated` before the activation/charged lifecycle
+  // webhooks establish the paid cycle boundary. Keep this bridge deliberately
+  // short so an authenticated state can never grant indefinite Pro access.
+  if (
+    account.billing_access_until === null &&
+    account.plan_status === "authenticated" &&
+    account.last_successful_charge_at
+  ) {
+    const ageMs =
+      Date.now() - new Date(account.last_successful_charge_at).getTime();
+    return ageMs >= 0 && ageMs <= 48 * 60 * 60 * 1000;
   }
 
   return false;
@@ -181,16 +201,17 @@ async function loadAccountAndStudyEntitlements(userId: string, studyId?: string 
   const accountPromise = admin
     .from("research_billing_accounts")
     .select(
-      "user_id, plan_tier, plan_status, razorpay_subscription_id, current_period_start, current_period_end, ai_bonus_units, email_bonus, media_bonus_bytes",
+      "user_id, plan_tier, plan_status, razorpay_subscription_id, current_period_start, current_period_end, billing_access_until, last_successful_charge_at, last_payment_failure_at, last_provider_event, last_provider_event_at, billing_issue_code, ai_bonus_units, email_bonus, media_bonus_bytes",
     )
     .eq("user_id", userId)
     .maybeSingle();
 
-  const studyPassCountPromise = admin
+  const anyPassPromise = admin
     .from("research_study_entitlements")
-    .select("study_id", { count: "exact", head: true })
+    .select("study_id")
     .eq("user_id", userId)
-    .eq("study_pass_active", true);
+    .eq("study_pass_active", true)
+    .limit(1);
 
   const selectedStudyPromise = studyId
     ? admin
@@ -218,28 +239,27 @@ async function loadAccountAndStudyEntitlements(userId: string, studyId?: string 
 
   const [
     accountResult,
-    studyPassCountResult,
+    anyPassResult,
     selectedStudyResult,
     activeStudyCountResult,
     selectedParticipantCountResult,
   ] = await Promise.all([
     accountPromise,
-    studyPassCountPromise,
+    anyPassPromise,
     selectedStudyPromise,
     activeStudyCountPromise,
     selectedParticipantCountPromise,
   ]);
 
   if (accountResult.error) throw accountResult.error;
-  if (studyPassCountResult.error) throw studyPassCountResult.error;
+  if (anyPassResult.error) throw anyPassResult.error;
   if (selectedStudyResult.error) throw selectedStudyResult.error;
   if (activeStudyCountResult.error) throw activeStudyCountResult.error;
   if (selectedParticipantCountResult.error) throw selectedParticipantCountResult.error;
 
   return {
     account: (accountResult.data || null) as BillingAccountRow | null,
-    studyPassCount: Math.max(0, Number(studyPassCountResult.count || 0)),
-    hasAnyStudyPass: Math.max(0, Number(studyPassCountResult.count || 0)) > 0,
+    hasAnyStudyPass: Boolean(anyPassResult.data?.length),
     selectedStudyEntitlement: (selectedStudyResult.data || null) as StudyEntitlementRow | null,
     activeStudyCount: Math.max(0, Number(activeStudyCountResult.count || 0)),
     selectedParticipantCount: Math.max(
@@ -256,7 +276,6 @@ export async function getResearcherEntitlements(
   const {
     account,
     hasAnyStudyPass,
-    studyPassCount,
     selectedStudyEntitlement,
     activeStudyCount,
     selectedParticipantCount,
@@ -283,13 +302,12 @@ export async function getResearcherEntitlements(
     0,
     Number(selectedStudyEntitlement?.participant_bonus || 0),
   );
+  const emailBonus = Math.max(0, Number(account?.email_bonus || 0));
+  const mediaBonusBytes = Math.max(0, Number(account?.media_bonus_bytes || 0));
+
   const hasPaidAccess = hasPro || hasAnyStudyPass;
   const canBuyExpansionForSelectedStudy = hasPro || selectedStudyHasPass;
   const effectiveParticipantLimit = definition.participantsPerStudy + participantBonus;
-  const [aiBudget, resourceBudget] = await Promise.all([
-    getPublicAiBudgetSnapshot(userId),
-    getPublicResourceBudgetSnapshot(userId, studyId),
-  ]);
 
   return {
     plan,
@@ -297,13 +315,16 @@ export async function getResearcherEntitlements(
     planStatus: account?.plan_status || "active",
     hasPro,
     hasAnyStudyPass,
-    studyPassCount: Math.max(studyPassCount, resourceBudget.studyPassCount),
     selectedStudyHasPass,
     studyId: studyId || null,
     subscription: {
       razorpaySubscriptionId: account?.razorpay_subscription_id || null,
       currentPeriodStart: account?.current_period_start || null,
       currentPeriodEnd: account?.current_period_end || null,
+      accessUntil: account?.billing_access_until || null,
+      lastSuccessfulChargeAt: account?.last_successful_charge_at || null,
+      lastPaymentFailureAt: account?.last_payment_failure_at || null,
+      billingIssueCode: account?.billing_issue_code || null,
     },
     studies: {
       maxSimultaneous: definition.maxSimultaneousStudies,
@@ -327,26 +348,20 @@ export async function getResearcherEntitlements(
     ai: {
       allowanceLabel: definition.aiAllowanceLabel,
       modelAccess: definition.aiModelAccess,
-      // Only the customer-safe percentage leaves the server. Hidden units stay
-      // inside service-role-only billing tables/RPCs.
-      remainingPercent: aiBudget.remainingPercent,
+      // Real percentage becomes available when AI usage enforcement/ledger is wired.
+      // Do not expose hidden internal AI units from research_billing_accounts.
+      remainingPercent: null,
     },
     media: {
-      uploadsAllowed: resourceBudget.media.uploadsAllowed,
-      includedBytes: resourceBudget.media.includedBytes,
-      purchasedExtraBytes: resourceBudget.media.purchasedExtraBytes,
-      effectiveStorageBytes: resourceBudget.media.effectiveStorageBytes,
-      usedBytes: resourceBudget.media.usedBytes,
-      remainingBytes: resourceBudget.media.remainingBytes,
-      remainingPercent: resourceBudget.media.remainingPercent,
+      uploadsAllowed: definition.mediaUploadsAllowed,
+      includedBytes: definition.includedMediaBytes,
+      purchasedExtraBytes: mediaBonusBytes,
+      effectiveStorageBytes: definition.includedMediaBytes + mediaBonusBytes,
     },
     participantEmails: {
-      included: resourceBudget.participantEmails.included,
-      purchasedExtra: resourceBudget.participantEmails.purchasedExtra,
-      effectiveAllowance: resourceBudget.participantEmails.effectiveAllowance,
-      used: resourceBudget.participantEmails.used,
-      remaining: resourceBudget.participantEmails.remaining,
-      remainingPercent: resourceBudget.participantEmails.remainingPercent,
+      included: definition.includedParticipantEmails,
+      purchasedExtra: emailBonus,
+      effectiveAllowance: definition.includedParticipantEmails + emailBonus,
     },
     marketplace: {
       // Account-level AI/email add-ons become available after any paid access.
@@ -367,7 +382,7 @@ export async function loadBillingSnapshot(userId: string) {
   const { data: account, error } = await admin
     .from("research_billing_accounts")
     .select(
-      "user_id, plan_tier, plan_status, razorpay_subscription_id, current_period_start, current_period_end, ai_bonus_units, email_bonus, media_bonus_bytes",
+      "user_id, plan_tier, plan_status, razorpay_subscription_id, current_period_start, current_period_end, billing_access_until, last_successful_charge_at, last_payment_failure_at, last_provider_event, last_provider_event_at, billing_issue_code, ai_bonus_units, email_bonus, media_bonus_bytes",
     )
     .eq("user_id", userId)
     .maybeSingle();

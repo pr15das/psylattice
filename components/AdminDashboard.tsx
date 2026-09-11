@@ -50,10 +50,13 @@ type UsersPayload = {
 type DetailPayload = {
   ok: boolean;
   account?: AnyRow;
+  billingAccount?: AnyRow | null;
   studies?: AnyRow[];
   studyEntitlements?: AnyRow[];
   payments?: AnyRow[];
+  billingTransactions?: AnyRow[];
   adminGrants?: AnyRow[];
+  supportNotes?: AnyRow[];
   error?: string;
 };
 
@@ -212,6 +215,12 @@ export default function AdminDashboard({
   const [adminEmail, setAdminEmail] = useState("");
   const [adminRole, setAdminRole] = useState("admin");
   const [adminReason, setAdminReason] = useState("");
+  const [resourceReason, setResourceReason] = useState("");
+  const [supportCategory, setSupportCategory] = useState("support");
+  const [supportNote, setSupportNote] = useState("");
+  const [subscriptionReason, setSubscriptionReason] = useState("");
+  const [subscriptionSnapshot, setSubscriptionSnapshot] = useState<AnyRow | null>(null);
+  const [subscriptionBusy, setSubscriptionBusy] = useState(false);
 
   const loadOverview = useCallback(async () => {
     setLoading(true);
@@ -288,6 +297,7 @@ export default function AdminDashboard({
     try {
       const result = await getJson<DetailPayload>(`/api/admin/users/${encodeURIComponent(userId)}`);
       setDetail(result);
+      setSubscriptionSnapshot(null);
       const firstStudy = result.studies?.[0]?.id;
       setSelectedStudyId(firstStudy ? String(firstStudy) : "");
     } catch (cause) {
@@ -385,6 +395,70 @@ export default function AdminDashboard({
       setActionMessage(cause instanceof Error ? cause.message : "Capacity update failed.");
     } finally {
       setActionBusy(false);
+    }
+  }
+
+  async function grantResource(presetId: string) {
+    if (!selectedUserId) return;
+    setActionBusy(true);
+    setActionMessage("");
+    try {
+      const result = await postJson<{ ok: boolean; label?: string }>(
+        `/api/admin/users/${selectedUserId}/resources`,
+        { presetId, reason: resourceReason },
+      );
+      setActionMessage(`${result.label || "Resource"} granted.`);
+      setResourceReason("");
+      await refreshAllAfterAction();
+    } catch (cause) {
+      setActionMessage(cause instanceof Error ? cause.message : "Resource grant failed.");
+    } finally {
+      setActionBusy(false);
+    }
+  }
+
+  async function addSupportNote() {
+    if (!selectedUserId) return;
+    setActionBusy(true);
+    setActionMessage("");
+    try {
+      await postJson(`/api/admin/users/${selectedUserId}/support-notes`, {
+        category: supportCategory,
+        note: supportNote,
+      });
+      setSupportNote("");
+      setActionMessage("Internal support note added.");
+      await loadDetail(selectedUserId);
+    } catch (cause) {
+      setActionMessage(cause instanceof Error ? cause.message : "Support note could not be added.");
+    } finally {
+      setActionBusy(false);
+    }
+  }
+
+  async function manageSubscription(action: "sync" | "cancel_cycle_end" | "cancel_now") {
+    if (!selectedUserId) return;
+    setSubscriptionBusy(true);
+    setActionMessage("");
+    try {
+      const result = await postJson<AnyRow>(
+        `/api/admin/users/${selectedUserId}/subscription`,
+        { action, reason: subscriptionReason },
+      );
+      setSubscriptionSnapshot(result);
+      setActionMessage(
+        action === "sync"
+          ? `Razorpay synced. ${Number(result?.reconciled?.inserted || 0)} new renewal transaction(s) added.`
+          : action === "cancel_cycle_end"
+            ? "Subscription will cancel at the end of the current billing cycle."
+            : "Subscription cancelled immediately.",
+      );
+      if (action !== "sync") setSubscriptionReason("");
+      await refreshAllAfterAction();
+    } catch (cause) {
+      setActionMessage(cause instanceof Error ? cause.message : "Subscription action failed.");
+    } finally {
+      setSubscriptionBusy(false);
     }
   }
 
@@ -626,7 +700,7 @@ export default function AdminDashboard({
           )}
 
           {tab === "payments" && (
-            <Section title="Payment history" description="Server-side Razorpay checkout ledger. Transaction IDs are available for support and reconciliation.">
+            <Section title="Payment history" description="Canonical successful-payment ledger. Synced Razorpay subscription invoices appear as separate renewal transactions.">
               <div className="overflow-x-auto rounded-2xl border border-slate-200">
                 <table className="min-w-full text-left text-xs">
                   <thead className="bg-slate-50 text-[10px] uppercase tracking-[0.12em] text-slate-400">
@@ -636,9 +710,9 @@ export default function AdminDashboard({
                     {payments.map((row) => (
                       <tr key={row.id}>
                         <td className="px-4 py-3"><p className="font-semibold">{row.user?.full_name || row.user?.email || "Unknown"}</p><p className="mt-0.5 text-[10px] text-slate-400">{row.user?.email}</p></td>
-                        <td className="px-4 py-3 capitalize text-slate-600">{row.status}</td>
+                        <td className="px-4 py-3"><p className="capitalize text-slate-600">{row.status}</p><p className="mt-0.5 text-[9px] text-slate-400">{row.source === "subscription_invoice" ? "Renewal" : "Checkout"}</p></td>
                         <td className="px-4 py-3 font-semibold">{money(row.amount_paise)}</td>
-                        <td className="max-w-[240px] truncate px-4 py-3 font-mono text-[10px] text-slate-500">{row.razorpay_payment_id || row.razorpay_order_id || row.razorpay_subscription_id || "—"}</td>
+                        <td className="max-w-[240px] truncate px-4 py-3 font-mono text-[10px] text-slate-500">{row.razorpay_payment_id || row.razorpay_invoice_id || row.razorpay_order_id || row.razorpay_subscription_id || "—"}</td>
                         <td className="px-4 py-3 text-slate-500">{dateTime(row.paid_at || row.created_at)}</td>
                       </tr>
                     ))}
@@ -734,8 +808,176 @@ export default function AdminDashboard({
                   </div>}
                 </Section>
 
-                <Section title="Recent payments" description={`${detail.account.successful_payments || 0} successful payments on this account.`}>
-                  {(detail.payments || []).length === 0 ? <EmptyState text="No payment records for this account." /> : <div className="space-y-2">{(detail.payments || []).slice(0, 10).map((payment) => <div key={payment.id} className="flex items-center justify-between rounded-xl border border-slate-100 px-3 py-3"><div><p className="text-xs font-semibold capitalize">{payment.status} · {payment.checkout_kind}</p><p className="mt-1 max-w-[320px] truncate font-mono text-[9px] text-slate-400">{payment.razorpay_payment_id || payment.razorpay_order_id || payment.razorpay_subscription_id || payment.id}</p></div><p className="text-sm font-bold">{money(payment.amount_paise)}</p></div>)}</div>}
+
+                <Section
+                  title="Complimentary resource grants"
+                  description="Use the same capacity increments as PsyLattice marketplace products for support corrections, pilots and internal arrangements. These grants do not create fake payments."
+                >
+                  <div className="space-y-4">
+                    <textarea
+                      value={resourceReason}
+                      onChange={(e) => setResourceReason(e.target.value)}
+                      rows={2}
+                      placeholder="Reason required for the audit log"
+                      className="w-full rounded-xl border border-slate-200 px-3 py-3 text-sm"
+                    />
+
+                    <div>
+                      <p className="mb-2 text-[10px] font-bold uppercase tracking-[0.12em] text-slate-400">AI capacity</p>
+                      <div className="grid grid-cols-3 gap-2">
+                        <button disabled={actionBusy} onClick={() => void grantResource("ai-starter")} className="rounded-xl border border-cyan-200 bg-cyan-50 px-2 py-2.5 text-[10px] font-semibold text-cyan-900">Starter Boost</button>
+                        <button disabled={actionBusy} onClick={() => void grantResource("ai-research")} className="rounded-xl border border-cyan-200 bg-cyan-50 px-2 py-2.5 text-[10px] font-semibold text-cyan-900">Research Boost</button>
+                        <button disabled={actionBusy} onClick={() => void grantResource("ai-power")} className="rounded-xl border border-cyan-200 bg-cyan-50 px-2 py-2.5 text-[10px] font-semibold text-cyan-900">Power Boost</button>
+                      </div>
+                    </div>
+
+                    <div>
+                      <p className="mb-2 text-[10px] font-bold uppercase tracking-[0.12em] text-slate-400">Participant emails</p>
+                      <div className="grid grid-cols-3 gap-2">
+                        {[
+                          ["email-1000", "+1,000"],
+                          ["email-5000", "+5,000"],
+                          ["email-15000", "+15,000"],
+                        ].map(([id, label]) => (
+                          <button key={id} disabled={actionBusy} onClick={() => void grantResource(id)} className="rounded-xl border border-slate-200 px-2 py-2.5 text-[10px] font-semibold text-slate-700">{label}</button>
+                        ))}
+                      </div>
+                    </div>
+
+                    <div>
+                      <p className="mb-2 text-[10px] font-bold uppercase tracking-[0.12em] text-slate-400">Media storage</p>
+                      <div className="grid grid-cols-3 gap-2">
+                        {[
+                          ["storage-5gb", "+5 GB"],
+                          ["storage-20gb", "+20 GB"],
+                          ["storage-50gb", "+50 GB"],
+                        ].map(([id, label]) => (
+                          <button key={id} disabled={actionBusy} onClick={() => void grantResource(id)} className="rounded-xl border border-slate-200 px-2 py-2.5 text-[10px] font-semibold text-slate-700">{label}</button>
+                        ))}
+                      </div>
+                    </div>
+
+                    <div className="rounded-xl bg-slate-50 p-3 text-[10px] leading-4 text-slate-500">
+                      Current account bonuses: AI {Number(detail.billingAccount?.ai_bonus_units || 0)} hidden units · Emails +{Number(detail.billingAccount?.email_bonus || 0).toLocaleString("en-IN")} · Media {(Number(detail.billingAccount?.media_bonus_bytes || 0) / (1024 ** 3)).toFixed(1)} GB.
+                      Plan-gated features remain plan-gated; a storage grant alone does not turn a Free account into Pro.
+                    </div>
+                  </div>
+                </Section>
+
+                {detail.billingAccount?.razorpay_subscription_id && (
+                  <Section
+                    title="Razorpay subscription support"
+                    description="Webhooks now reconcile renewals automatically. Use Sync only for support recovery, or cancel the subscription when required. Immediate cancellation is restricted to Super Admin."
+                  >
+                    <div className="space-y-3">
+                      <div className="rounded-xl bg-slate-50 p-3 text-xs text-slate-600">
+                        <p>Subscription: <strong className="font-mono text-[10px]">{detail.billingAccount.razorpay_subscription_id}</strong></p>
+                        <p className="mt-1">Provider status: <strong>{detail.billingAccount.plan_status || "—"}</strong></p>
+                        <p className="mt-1">Paid access until: <strong>{dateTime(detail.billingAccount.billing_access_until)}</strong></p>
+                        <p className="mt-1">Current provider period ends: <strong>{dateTime(detail.billingAccount.current_period_end)}</strong></p>
+                        <p className="mt-1">Last successful charge: <strong>{dateTime(detail.billingAccount.last_successful_charge_at)}</strong></p>
+                        <p className="mt-1">Last failed charge: <strong>{dateTime(detail.billingAccount.last_payment_failure_at)}</strong></p>
+                        <p className="mt-1">Cancel at period end: <strong>{detail.billingAccount.cancel_at_period_end ? "Yes" : "No"}</strong></p>
+                        <p className="mt-1">Last provider event: <strong>{detail.billingAccount.last_provider_event || "—"}</strong></p>
+                        <p className="mt-1">Last provider sync: <strong>{dateTime(detail.billingAccount.provider_last_synced_at)}</strong></p>
+                      </div>
+
+                      {(detail.billingAccount.billing_issue_code ||
+                        ["pending", "halted"].includes(String(detail.billingAccount.plan_status || ""))) && (
+                        <div className="rounded-xl border border-amber-200 bg-amber-50 p-3 text-[10px] leading-5 text-amber-900">
+                          <p className="font-semibold">Billing attention required</p>
+                          <p className="mt-1">
+                            Razorpay is reporting {detail.billingAccount.plan_status || "a payment issue"}
+                            {detail.billingAccount.billing_issue_code ? ` · ${detail.billingAccount.billing_issue_code}` : ""}.
+                            PsyLattice does not extend access from a failed renewal. Any already-paid access remains valid only through {dateTime(detail.billingAccount.billing_access_until)} unless a successful charge extends it.
+                          </p>
+                        </div>
+                      )}
+
+                      <button
+                        disabled={subscriptionBusy}
+                        onClick={() => void manageSubscription("sync")}
+                        className="w-full rounded-xl border border-cyan-200 bg-cyan-50 px-4 py-3 text-xs font-semibold text-cyan-900 disabled:opacity-50"
+                      >
+                        {subscriptionBusy ? "Working…" : "Support sync with Razorpay"}
+                      </button>
+
+                      {subscriptionSnapshot?.provider && (
+                        <div className="rounded-xl border border-cyan-100 bg-white p-3 text-[10px] leading-4 text-slate-500">
+                          Razorpay status: <strong className="text-slate-700">{subscriptionSnapshot.provider.status}</strong>
+                          {subscriptionSnapshot?.invoices && <> · {subscriptionSnapshot.invoices.length} invoice(s) returned</>}
+                        </div>
+                      )}
+
+                      <textarea
+                        value={subscriptionReason}
+                        onChange={(e) => setSubscriptionReason(e.target.value)}
+                        rows={2}
+                        placeholder="Cancellation reason (required)"
+                        className="w-full rounded-xl border border-slate-200 px-3 py-3 text-sm"
+                      />
+                      <div className="grid grid-cols-2 gap-2">
+                        <button
+                          disabled={subscriptionBusy}
+                          onClick={() => void manageSubscription("cancel_cycle_end")}
+                          className="rounded-xl border border-slate-200 px-3 py-3 text-[10px] font-semibold text-slate-700 disabled:opacity-50"
+                        >
+                          Cancel at cycle end
+                        </button>
+                        <button
+                          disabled={subscriptionBusy || initialAdmin.role !== "super_admin"}
+                          onClick={() => void manageSubscription("cancel_now")}
+                          className="rounded-xl border border-rose-200 bg-rose-50 px-3 py-3 text-[10px] font-semibold text-rose-700 disabled:opacity-40"
+                        >
+                          Cancel immediately
+                        </button>
+                      </div>
+                      {initialAdmin.role !== "super_admin" && (
+                        <p className="text-[10px] leading-4 text-slate-400">Only a Super Admin can cancel an active paid subscription immediately.</p>
+                      )}
+                    </div>
+                  </Section>
+                )}
+
+                <Section
+                  title="Internal support notes"
+                  description="Private operational notes for billing questions, university pilots and support history. These are never shown to the customer."
+                >
+                  <div className="space-y-3">
+                    <select value={supportCategory} onChange={(e) => setSupportCategory(e.target.value)} className="w-full rounded-xl border border-slate-200 px-3 py-3 text-sm">
+                      <option value="support">Support</option>
+                      <option value="billing">Billing</option>
+                      <option value="university">University / pilot</option>
+                      <option value="abuse">Abuse / risk</option>
+                      <option value="other">Other</option>
+                    </select>
+                    <textarea
+                      value={supportNote}
+                      onChange={(e) => setSupportNote(e.target.value)}
+                      rows={3}
+                      placeholder="Internal note…"
+                      className="w-full rounded-xl border border-slate-200 px-3 py-3 text-sm"
+                    />
+                    <button disabled={actionBusy || !supportNote.trim()} onClick={() => void addSupportNote()} className="w-full rounded-xl bg-slate-950 px-4 py-3 text-xs font-semibold text-white disabled:opacity-50">Add internal note</button>
+
+                    <div className="space-y-2 pt-1">
+                      {(detail.supportNotes || []).slice(0, 12).map((note) => (
+                        <div key={note.id} className="rounded-xl border border-slate-100 bg-slate-50/70 p-3">
+                          <div className="flex items-center justify-between gap-3">
+                            <span className="rounded-full bg-white px-2 py-1 text-[8px] font-bold uppercase tracking-[0.08em] text-slate-500">{note.category}</span>
+                            <span className="text-[9px] text-slate-400">{dateTime(note.created_at)}</span>
+                          </div>
+                          <p className="mt-2 whitespace-pre-wrap text-[11px] leading-5 text-slate-700">{note.note}</p>
+                          <p className="mt-2 text-[9px] text-slate-400">{note.creator?.full_name || note.creator?.email || "PsyLattice admin"}</p>
+                        </div>
+                      ))}
+                      {(detail.supportNotes || []).length === 0 && <EmptyState text="No internal support notes yet." />}
+                    </div>
+                  </div>
+                </Section>
+
+                <Section title="Recent payments" description={`${detail.account.successful_payments || 0} successful payment transactions on this account.`}>
+                  {(detail.billingTransactions || []).length === 0 ? <EmptyState text="No successful payment transactions for this account." /> : <div className="space-y-2">{(detail.billingTransactions || []).slice(0, 12).map((payment) => <div key={payment.id} className="flex items-center justify-between rounded-xl border border-slate-100 px-3 py-3"><div><p className="text-xs font-semibold">{payment.description || "PsyLattice payment"}</p><p className="mt-1 text-[9px] text-slate-400">{payment.source === "subscription_invoice" ? "Recurring renewal" : "Checkout"} · {dateTime(payment.paid_at || payment.created_at)}</p><p className="mt-1 max-w-[320px] truncate font-mono text-[9px] text-slate-400">{payment.razorpay_payment_id || payment.razorpay_invoice_id || payment.razorpay_order_id || payment.razorpay_subscription_id || payment.id}</p></div><p className="text-sm font-bold">{money(payment.amount_paise)}</p></div>)}</div>}
                 </Section>
               </>
             )}

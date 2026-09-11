@@ -1,0 +1,32 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 250" fill="none">
+<style>
+  @keyframes dash { to { stroke-dashoffset: -90; } }
+  @keyframes pulse { 0%,100% { opacity:.45; transform:scale(.9); } 50% { opacity:1; transform:scale(1.14); } }
+  .dash { stroke-dasharray:8 12; animation:dash 4.8s linear infinite; }
+  .node { transform-box:fill-box; transform-origin:center; animation:pulse 3s ease-in-out infinite; }
+  .n2 { animation-delay:.45s; } .n3 { animation-delay:.9s; } .n4 { animation-delay:1.35s; } .n5 { animation-delay:1.8s; }
+</style>
+<defs>
+  <linearGradient id="a" x1="80" y1="0" x2="1120" y2="0" gradientUnits="userSpaceOnUse">
+    <stop stop-color="#0891b2"/>
+    <stop offset=".5" stop-color="#22d3ee"/>
+    <stop offset="1" stop-color="#0f766e"/>
+  </linearGradient>
+  <filter id="glow" x="-70%" y="-70%" width="240%" height="240%">
+    <feGaussianBlur stdDeviation="6" result="blur"/>
+    <feMerge><feMergeNode in="blur"/><feMergeNode in="SourceGraphic"/></feMerge>
+  </filter>
+</defs>
+<path d="M78 128 C174 58 245 191 338 127 S510 61 600 127 S760 194 860 127 S1031 59 1122 126"
+      stroke="#0891b2" stroke-width="2" opacity=".12"/>
+<path class="dash" d="M78 128 C174 58 245 191 338 127 S510 61 600 127 S760 194 860 127 S1031 59 1122 126"
+      stroke="url(#a)" stroke-width="3.5" stroke-linecap="round"/>
+<path d="M80 190 C260 220 390 40 600 67 S880 218 1120 174" stroke="#22d3ee" stroke-width="1.5" opacity=".10"/>
+<g filter="url(#glow)">
+  <circle class="node" cx="78" cy="128" r="8" fill="#0891b2"/>
+  <circle class="node n2" cx="338" cy="127" r="8" fill="#06b6d4"/>
+  <circle class="node n3" cx="600" cy="127" r="8" fill="#22d3ee"/>
+  <circle class="node n4" cx="860" cy="127" r="8" fill="#06b6d4"/>
+  <circle class="node n5" cx="1122" cy="126" r="8" fill="#0f766e"/>
+</g>
+</svg>

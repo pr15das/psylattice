@@ -1,0 +1,23 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 700" fill="none">
+<style>
+@keyframes dash{to{stroke-dashoffset:-70}}
+@keyframes pulse{0%,100%{opacity:.28;r:4}50%{opacity:.9;r:7}}
+.path{stroke-dasharray:10 12;animation:dash 8s linear infinite}
+.node{animation:pulse 3.6s ease-in-out infinite;transform-box:fill-box;transform-origin:center}
+</style>
+<defs>
+  <linearGradient id="g" x1="80" y1="120" x2="1080" y2="620" gradientUnits="userSpaceOnUse">
+    <stop stop-color="#22d3ee"/><stop offset=".55" stop-color="#0891b2"/><stop offset="1" stop-color="#7c3aed"/>
+  </linearGradient>
+  <radialGradient id="r"><stop stop-color="#cffafe" stop-opacity=".8"/><stop offset="1" stop-color="#cffafe" stop-opacity="0"/></radialGradient>
+</defs>
+<ellipse cx="605" cy="358" rx="430" ry="265" fill="url(#r)" opacity=".36"/>
+<path class="path" d="M90 420C215 260 272 510 394 318S620 210 706 372s181 152 267-12 102-75 152-40" stroke="url(#g)" stroke-width="2.2" opacity=".38"/>
+<path class="path" d="M140 170c110 92 177 62 257 0s161-50 232 37 146 73 214 14 119-34 205 28" stroke="url(#g)" stroke-width="1.8" opacity=".27"/>
+<g fill="#06b6d4">
+  <circle class="node" cx="90" cy="420" r="5"/><circle class="node" cx="394" cy="318" r="5" style="animation-delay:.4s"/>
+  <circle class="node" cx="706" cy="372" r="5" style="animation-delay:.8s"/><circle class="node" cx="973" cy="360" r="5" style="animation-delay:1.2s"/>
+  <circle class="node" cx="140" cy="170" r="4" style="animation-delay:.2s"/><circle class="node" cx="629" cy="207" r="4" style="animation-delay:.7s"/>
+  <circle class="node" cx="1048" cy="249" r="4" style="animation-delay:1.4s"/>
+</g>
+</svg>

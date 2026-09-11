@@ -1,0 +1,17 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1100 180" fill="none">
+<style>
+@keyframes flow{to{stroke-dashoffset:-120}}
+@keyframes ping{0%,100%{opacity:.25;transform:scale(.8)}50%{opacity:1;transform:scale(1.2)}}
+.flow{stroke-dasharray:8 13;animation:flow 6s linear infinite}
+.ping{animation:ping 2.8s ease-in-out infinite;transform-box:fill-box;transform-origin:center}
+</style>
+<defs><linearGradient id="g" x1="0" x2="1"><stop stop-color="#22d3ee"/><stop offset=".5" stop-color="#0ea5e9"/><stop offset="1" stop-color="#8b5cf6"/></linearGradient></defs>
+<path d="M60 90H1040" stroke="#cbd5e1" stroke-width="2" opacity=".35"/>
+<path class="flow" d="M60 90H1040" stroke="url(#g)" stroke-width="3"/>
+<g fill="#fff" stroke="#06b6d4" stroke-width="3">
+<circle cx="100" cy="90" r="18"/><circle cx="325" cy="90" r="18"/><circle cx="550" cy="90" r="18"/><circle cx="775" cy="90" r="18"/><circle cx="1000" cy="90" r="18"/>
+</g>
+<g fill="#06b6d4">
+<circle class="ping" cx="100" cy="90" r="5"/><circle class="ping" cx="325" cy="90" r="5" style="animation-delay:.4s"/><circle class="ping" cx="550" cy="90" r="5" style="animation-delay:.8s"/><circle class="ping" cx="775" cy="90" r="5" style="animation-delay:1.2s"/><circle class="ping" cx="1000" cy="90" r="5" style="animation-delay:1.6s"/>
+</g>
+</svg>

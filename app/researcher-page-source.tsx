@@ -23,7 +23,6 @@ import {
 import { createClient } from "@/lib/supabase/client";
 import PsyLatticeLogo from "@/components/PsyLatticeLogo";
 import AccountSwitcher from "@/components/AccountSwitcher";
-import SidebarAccountCard from "@/components/SidebarAccountCard";
 import FollowupManager from "@/components/PlanAwareFollowupManager";
 import ResearchAiAssistant from "@/components/ResearchAiAssistant";
 import ResearchWritingWorkspace from "@/components/ResearchWritingWorkspace";
@@ -5991,7 +5990,7 @@ function QuestionnaireLibrary({
       const entitlements = await loadClientBillingEntitlements();
       if (!entitlements.media.uploadsAllowed) {
         setBuilderError("Custom questionnaire media uploads require Pro Monthly or Pro Annual. Open Plans & Billing to upgrade.");
-        setBuilderMediaUploadState((previous) => ({
+        setBuilderUploadStatus((previous) => ({
           ...previous,
           [uploadKey]: "Pro required",
         }));
@@ -23430,19 +23429,6 @@ export default function ResearcherWorkspace() {
     );
   }, [sidebarCollapsed]);
 
-  useEffect(() => {
-    const requestedScreen = new URLSearchParams(window.location.search).get(
-      "screen"
-    );
-
-    if (
-      requestedScreen &&
-      navigation.some((item) => item.id === requestedScreen)
-    ) {
-      setScreen(requestedScreen as Screen);
-    }
-  }, []);
-
   function editStudy(studyId: string) {
     setEditingStudyId(studyId);
     setScreen("builder");
@@ -23736,7 +23722,17 @@ export default function ResearcherWorkspace() {
             <AiModelSwitcher />
             <CurrentPlanBadge />
 
-            <AccountSwitcher currentWorkspace="researcher" />
+            <AccountSwitcher
+              initials="PD"
+              currentWorkspace="researcher"
+            />
+
+            <Link
+              href="/signin"
+              className="rounded-full border shadow-[0_5px_16px_rgba(15,23,42,0.075),0_1px_3px_rgba(15,23,42,0.04)] border-slate-300/70 bg-white px-4 py-2 text-xs font-semibold text-slate-600 shadow-[0_2px_6px_rgba(15,23,42,0.045)] transition hover:-translate-y-px hover:shadow-[0_5px_14px_rgba(15,23,42,0.07)]"
+            >
+              Sign out
+            </Link>
           </div>
 
           <select
@@ -23873,7 +23869,25 @@ export default function ResearcherWorkspace() {
             </div>
           ))}
 
-          <SidebarAccountCard collapsed={sidebarCollapsed} />
+          {sidebarCollapsed ? (
+            <div
+              title="Research workspace"
+              className="mx-auto mt-8 flex h-11 w-11 items-center justify-center rounded-full border border-cyan-200/80 bg-white text-xs font-semibold text-cyan-800 shadow-[0_4px_12px_rgba(8,145,178,0.13),0_12px_28px_rgba(15,23,42,0.08)]"
+            >
+              R
+            </div>
+          ) : (
+            <div className="mt-8 rounded-[22px] border border-cyan-200/80 bg-gradient-to-br from-white to-cyan-50/70 p-4 text-slate-800 shadow-[0_4px_14px_rgba(8,145,178,0.09),0_16px_36px_rgba(15,23,42,0.07)]">
+              <p className="text-xs font-semibold text-cyan-800">
+                Research workspace
+              </p>
+
+              <p className="mt-2 text-xs leading-5 text-slate-400">
+                Saved studies, participant records and recruitment links shown
+                here are loaded from your PsyLattice research database.
+              </p>
+            </div>
+          )}
         </aside>
 
         {/* Main content */}

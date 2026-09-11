@@ -1,6 +1,7 @@
 "use client";
 
-import { useCallback, useEffect, useState, type ReactNode } from "react";
+import Link from "next/link";
+import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
 import {
   ArrowRight,
   BadgeCheck,
@@ -41,6 +42,28 @@ export const AI_MODELS = [
   { name: "Gemini Pro", description: "Provider integration coming soon.", impact: "Medium", badge: "", active: false },
   { name: "Gemini Flash", description: "Provider integration coming soon.", impact: "Low", badge: "", active: false },
   { name: "Gemini Flash Economy", description: "Google Gemini 3.5 Flash-Lite Free Tier. Lowest budget impact.", impact: "Lowest", badge: "Efficient", active: true },
+] as const;
+
+const AI_BUDGET_BOOST_CHOICES = [
+  {
+    id: "ai-starter",
+    name: "Starter Boost",
+    price: "₹99",
+    detail: "A light top-up for a few more AI-assisted research tasks.",
+  },
+  {
+    id: "ai-research",
+    name: "Research Boost",
+    price: "₹249",
+    detail: "More headroom for active analysis, writing and study development.",
+    badge: "Popular",
+  },
+  {
+    id: "ai-power",
+    name: "Power Boost",
+    price: "₹499",
+    detail: "The largest one-off boost for intensive AI-assisted work.",
+  },
 ] as const;
 
 type PlanBadgeApiResponse = {
@@ -115,31 +138,108 @@ function useLiveAiBudget() {
   return { remaining, allowanceLabel, canBuyAddons, refresh };
 }
 
-export function AiBudgetIndicator({ onAddons }: { onAddons?: () => void }) {
+export function AiBudgetIndicator() {
   const { remaining, allowanceLabel, canBuyAddons } = useLiveAiBudget();
+  const [open, setOpen] = useState(false);
   const display = remaining === null ? "—" : `${remaining}% left`;
 
+  function chooseBoost(productId: string) {
+    setOpen(false);
+    const params = new URLSearchParams();
+    params.set("screen", "billing");
+    params.set("addToCart", productId);
+    params.set("openCart", "1");
+    window.location.assign(`/researcher?${params.toString()}`);
+  }
+
   return (
-    <div
-      className="flex items-center gap-2 rounded-full border border-slate-200 bg-white px-3 py-1.5 text-[10px] text-slate-600 shadow-sm"
-      title={`${allowanceLabel} AI allowance`}
-    >
-      <span className="font-semibold text-slate-800">AI budget</span>
-      <span className="hidden h-1.5 w-16 overflow-hidden rounded-full bg-slate-100 sm:block">
-        <span
-          className="block h-full rounded-full bg-cyan-500 transition-[width] duration-500"
-          style={{ width: `${remaining ?? 0}%` }}
+    <div className="relative">
+      <button
+        type="button"
+        onClick={() => setOpen((current) => !current)}
+        aria-haspopup="dialog"
+        aria-expanded={open}
+        title={`${allowanceLabel} AI allowance · click for AI Boosts`}
+        className={`relative z-[82] flex items-center gap-2 rounded-full border px-3 py-1.5 text-[10px] shadow-sm transition hover:-translate-y-px hover:shadow-md ${
+          open
+            ? "border-cyan-300 bg-cyan-50 text-cyan-950"
+            : "border-slate-200 bg-white text-slate-600 hover:border-cyan-200"
+        }`}
+      >
+        <span className="font-semibold text-slate-800">AI budget</span>
+        <span className="hidden h-1.5 w-16 overflow-hidden rounded-full bg-slate-100 sm:block">
+          <span
+            className="block h-full rounded-full bg-cyan-500 transition-[width] duration-500"
+            style={{ width: `${remaining ?? 0}%` }}
+          />
+        </span>
+        <span className="whitespace-nowrap">{display}</span>
+        <ChevronDown
+          className={`h-3 w-3 text-slate-400 transition-transform ${open ? "rotate-180" : ""}`}
         />
-      </span>
-      <span className="whitespace-nowrap">{display}</span>
-      {onAddons && canBuyAddons && (
-        <button
-          type="button"
-          onClick={onAddons}
-          className="font-semibold text-cyan-700 hover:text-cyan-900"
-        >
-          Buy add-ons
-        </button>
+      </button>
+
+      {open && (
+        <>
+          <button
+            type="button"
+            aria-label="Close AI budget menu"
+            onClick={() => setOpen(false)}
+            className="fixed inset-0 z-[76] cursor-default bg-transparent"
+          />
+
+          <div className="absolute right-0 top-[calc(100%+10px)] z-[96] w-[340px] overflow-hidden rounded-[24px] border border-slate-200/90 bg-white shadow-[0_24px_70px_rgba(15,23,42,0.18),0_4px_18px_rgba(8,145,178,0.08)]">
+            <div className="border-b border-cyan-100 bg-gradient-to-br from-white via-white to-cyan-50 px-4 py-4">
+              <div className="flex items-start justify-between gap-3">
+                <div>
+                  <p className="text-[9px] font-bold uppercase tracking-[0.17em] text-cyan-700">AI capacity</p>
+                  <p className="mt-1 text-sm font-bold text-slate-950">Add more AI headroom</p>
+                  <p className="mt-1 text-[10px] leading-4 text-slate-500">
+                    Choose a boost. PsyLattice will add it to your marketplace cart and open checkout.
+                  </p>
+                </div>
+                <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border border-cyan-100 bg-white text-cyan-700 shadow-sm">
+                  <Zap className="h-4 w-4" />
+                </span>
+              </div>
+            </div>
+
+            <div className="space-y-2 p-3">
+              {AI_BUDGET_BOOST_CHOICES.map((boost) => (
+                <button
+                  key={boost.id}
+                  type="button"
+                  onClick={() => chooseBoost(boost.id)}
+                  className="group flex w-full items-center gap-3 rounded-2xl border border-slate-100 bg-white p-3 text-left transition hover:border-cyan-200 hover:bg-cyan-50/50"
+                >
+                  <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-cyan-50 text-cyan-700 ring-1 ring-cyan-100">
+                    <Sparkles className="h-4 w-4" />
+                  </span>
+                  <span className="min-w-0 flex-1">
+                    <span className="flex items-center gap-2">
+                      <span className="text-xs font-semibold text-slate-900">{boost.name}</span>
+                      {"badge" in boost && boost.badge && (
+                        <span className="rounded-full bg-cyan-100 px-1.5 py-0.5 text-[8px] font-bold uppercase tracking-[0.08em] text-cyan-800">
+                          {boost.badge}
+                        </span>
+                      )}
+                    </span>
+                    <span className="mt-0.5 block text-[9px] leading-4 text-slate-500">{boost.detail}</span>
+                  </span>
+                  <span className="shrink-0 text-xs font-bold text-slate-950">{boost.price}</span>
+                </button>
+              ))}
+            </div>
+
+            <div className="border-t border-slate-100 bg-slate-50/70 px-4 py-3">
+              <p className="text-[9px] leading-4 text-slate-500">
+                {canBuyAddons
+                  ? "Boosts are one-time purchases and do not change your plan."
+                  : "AI Boosts require Study Pass or Pro. You can still add one now, then add a paid plan before checkout."}
+              </p>
+            </div>
+          </div>
+        </>
       )}
     </div>
   );
@@ -148,6 +248,9 @@ export function AiBudgetIndicator({ onAddons }: { onAddons?: () => void }) {
 export function CurrentPlanBadge() {
   const [label, setLabel] = useState("Plan");
   const [plan, setPlan] = useState<PlanTier | null>(null);
+  const [studyPassCount, setStudyPassCount] = useState(0);
+  const [open, setOpen] = useState(false);
+  const rootRef = useRef<HTMLDivElement | null>(null);
 
   const refresh = useCallback(async () => {
     try {
@@ -162,6 +265,7 @@ export function CurrentPlanBadge() {
       const nextPlan = data.plan;
       const passCount = Math.max(0, Math.floor(Number(data.studyPassCount || 0)));
       setPlan(nextPlan);
+      setStudyPassCount(passCount);
       setLabel(
         nextPlan === "study-pass"
           ? `Study Pass ×${Math.max(1, passCount)}`
@@ -190,27 +294,184 @@ export function CurrentPlanBadge() {
     };
   }, [refresh]);
 
+  useEffect(() => {
+    if (!open) return;
+
+    function closeOnOutside(event: PointerEvent) {
+      if (!rootRef.current?.contains(event.target as Node)) setOpen(false);
+    }
+
+    function closeOnEscape(event: KeyboardEvent) {
+      if (event.key === "Escape") setOpen(false);
+    }
+
+    document.addEventListener("pointerdown", closeOnOutside);
+    document.addEventListener("keydown", closeOnEscape);
+    return () => {
+      document.removeEventListener("pointerdown", closeOnOutside);
+      document.removeEventListener("keydown", closeOnEscape);
+    };
+  }, [open]);
+
   const isPro = plan === "pro-monthly" || plan === "pro-annual";
   const isPass = plan === "study-pass";
 
+  const planDetails =
+    plan === "pro-annual"
+      ? {
+          eyebrow: "Highest default capacity",
+          title: "Pro Annual",
+          description: "Built for researchers using PsyLattice throughout the academic year.",
+          benefits: [
+            "Up to 3 simultaneous studies",
+            "Up to 500 participants per study",
+            "Extended AI allowance + full model switcher",
+            "Custom media uploads + 5 GB included storage",
+            "Full add-on marketplace access",
+          ],
+          next: "You are already on PsyLattice's highest self-service research plan.",
+          cta: "View Plans & Billing",
+        }
+      : plan === "pro-monthly"
+        ? {
+            eyebrow: "Active researcher plan",
+            title: "Pro Monthly",
+            description: "High-capacity monthly access for ongoing data collection and analysis.",
+            benefits: [
+              "Up to 3 simultaneous studies",
+              "Up to 300 participants per study",
+              "High AI allowance + full model switcher",
+              "Custom media uploads + 2 GB included storage",
+              "Full add-on marketplace access",
+            ],
+            next: "Upgrade to Pro Annual for 500 participants per study, extended AI capacity and 5 GB media storage.",
+            cta: "Upgrade plan",
+          }
+        : plan === "study-pass"
+          ? {
+              eyebrow: studyPassCount > 1 ? `${studyPassCount} active Study Passes` : "One-study paid access",
+              title: label,
+              description: "Paid capacity for a focused thesis, dissertation, pilot or research project.",
+              benefits: [
+                "Up to 100 participants on each Study Pass study",
+                "Standard AI allowance",
+                "Selected AI model access",
+                "AI, participant and email add-ons available",
+                "No recurring subscription for the Study Pass itself",
+              ],
+              next: "Move to Pro Monthly when you need several active studies, larger default recruitment or media uploads.",
+              cta: "Upgrade plan",
+            }
+          : {
+              eyebrow: "Current starter plan",
+              title: "Free",
+              description: "A real small-study workspace for learning, piloting and evaluating PsyLattice.",
+              benefits: [
+                "1 study",
+                "Up to 50 participants",
+                "Starter AI allowance",
+                "PsyLattice Auto powered by Gemini Free",
+                "Core research workflow access",
+              ],
+              next: "Study Pass raises one study to 100 participants and unlocks paid AI, participant and email add-ons.",
+              cta: "Upgrade plan",
+            };
+
   return (
-    <span
-      title="Current PsyLattice plan"
-      className={`inline-flex items-center gap-1.5 rounded-full border px-3 py-2 text-xs font-semibold shadow-sm ${
-        isPro
-          ? "border-cyan-200 bg-cyan-50 text-cyan-900"
-          : isPass
-            ? "border-sky-200 bg-sky-50 text-sky-900"
-            : "border-slate-200 bg-white text-slate-600"
-      }`}
-    >
-      {isPro ? (
-        <Crown className="h-3.5 w-3.5 text-cyan-700" />
-      ) : isPass ? (
-        <BadgeCheck className="h-3.5 w-3.5 text-sky-700" />
-      ) : null}
-      {label}
-    </span>
+    <div ref={rootRef} className="relative">
+      <button
+        type="button"
+        onClick={() => setOpen((current) => !current)}
+        aria-haspopup="dialog"
+        aria-expanded={open}
+        title="Current PsyLattice plan"
+        className={`inline-flex items-center gap-2 rounded-full border px-3.5 py-2 text-xs font-bold shadow-sm transition hover:-translate-y-px hover:shadow-md ${
+          isPro
+            ? "border-cyan-300 bg-gradient-to-r from-cyan-900 to-slate-900 text-white"
+            : isPass
+              ? "border-sky-300 bg-gradient-to-r from-sky-100 to-cyan-50 text-sky-950"
+              : "border-cyan-300 bg-cyan-50 text-cyan-950"
+        }`}
+      >
+        {isPro ? (
+          <Crown className="h-3.5 w-3.5 text-cyan-200" />
+        ) : isPass ? (
+          <BadgeCheck className="h-3.5 w-3.5 text-sky-700" />
+        ) : (
+          <Sparkles className="h-3.5 w-3.5 text-cyan-700" />
+        )}
+        <span>{label}</span>
+        <ChevronDown
+          className={`h-3.5 w-3.5 transition-transform ${
+            isPro ? "text-cyan-100" : "text-slate-400"
+          } ${open ? "rotate-180" : ""}`}
+        />
+      </button>
+
+      {open && (
+        <>
+          <button
+            type="button"
+            aria-label="Close current plan menu"
+            onClick={() => setOpen(false)}
+            className="fixed inset-0 z-[76] cursor-default bg-transparent"
+          />
+          <div className="absolute right-0 top-[calc(100%+10px)] z-[96] w-[340px] overflow-hidden rounded-[24px] border border-slate-200/90 bg-white shadow-[0_24px_70px_rgba(15,23,42,0.18),0_4px_18px_rgba(8,145,178,0.08)]">
+          <div className="border-b border-cyan-100 bg-gradient-to-br from-white via-white to-cyan-50 px-5 py-5 text-slate-950">
+            <div className="flex items-start justify-between gap-3">
+              <div>
+                <p className="text-[9px] font-bold uppercase tracking-[0.18em] text-cyan-700">
+                  {planDetails.eyebrow}
+                </p>
+                <p className="mt-2 text-lg font-bold">{planDetails.title}</p>
+              </div>
+              <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border border-cyan-100 bg-white text-cyan-700 shadow-sm">
+                {isPro ? <Crown className="h-4 w-4" /> : isPass ? <BadgeCheck className="h-4 w-4" /> : <Sparkles className="h-4 w-4" />}
+              </span>
+            </div>
+            <p className="mt-2 text-[11px] leading-5 text-slate-500">
+              {planDetails.description}
+            </p>
+          </div>
+
+          <div className="p-4">
+            <p className="text-[9px] font-bold uppercase tracking-[0.16em] text-slate-400">
+              Included in your plan
+            </p>
+            <div className="mt-3 space-y-2.5">
+              {planDetails.benefits.map((benefit) => (
+                <div key={benefit} className="flex items-start gap-2.5">
+                  <span className="mt-0.5 flex h-4 w-4 shrink-0 items-center justify-center rounded-full bg-cyan-50 text-cyan-700">
+                    <Check className="h-2.5 w-2.5" />
+                  </span>
+                  <p className="text-[11px] leading-4 text-slate-600">{benefit}</p>
+                </div>
+              ))}
+            </div>
+
+            <div className="mt-4 rounded-2xl border border-cyan-100 bg-cyan-50/70 p-3.5">
+              <p className="text-[10px] font-semibold text-cyan-950">
+                {plan === "pro-annual" ? "Plan status" : "Higher-tier benefits"}
+              </p>
+              <p className="mt-1 text-[10px] leading-4 text-cyan-800/80">{planDetails.next}</p>
+            </div>
+
+            <button
+              type="button"
+              onClick={() => {
+                setOpen(false);
+                window.location.assign("/researcher?screen=billing");
+              }}
+              className="mt-4 flex w-full items-center justify-center gap-2 rounded-full bg-slate-950 px-4 py-3 text-xs font-bold text-white shadow-[0_8px_20px_rgba(15,23,42,0.16)] transition hover:-translate-y-px hover:bg-cyan-950"
+            >
+              {planDetails.cta}
+              <ArrowRight className="h-3.5 w-3.5" />
+            </button>
+          </div>
+        </div>
+        </>
+      )}
+    </div>
   );
 }
 
@@ -293,104 +554,131 @@ export function AiModelSwitcher() {
           setNotice("");
           void loadModels();
         }}
-        className="flex items-center gap-2 rounded-full border border-cyan-200 bg-white px-3 py-2 text-xs font-semibold text-slate-700 shadow-sm"
+        className={`relative z-[82] flex items-center gap-2 rounded-full border px-3 py-2 text-xs font-semibold shadow-sm transition hover:-translate-y-px hover:shadow-md ${
+          open
+            ? "border-cyan-300 bg-cyan-50 text-cyan-950"
+            : "border-cyan-200 bg-white text-slate-700"
+        }`}
       >
         <Sparkles className="h-3.5 w-3.5 text-cyan-600" />
         {selectedName}
         {(modelAccess === "auto-only" || selectedModel === "gemini-flash-economy") && (
           <span className="hidden rounded-full bg-cyan-50 px-1.5 py-0.5 text-[8px] font-bold uppercase tracking-[0.08em] text-cyan-700 sm:inline-flex">
-            Gemini Free
+            Gemini
           </span>
         )}
-        <ChevronDown className="h-3.5 w-3.5 text-slate-400" />
+        <ChevronDown className={`h-3.5 w-3.5 text-slate-400 transition-transform ${open ? "rotate-180" : ""}`} />
       </button>
 
       {open && (
-        <div className="absolute right-0 top-11 z-[70] w-[min(380px,calc(100vw-32px))] rounded-2xl border border-slate-200 bg-white p-3 shadow-xl">
-          <div className="mb-2 flex items-center justify-between">
-            <div>
-              <p className="text-xs font-semibold text-slate-900">Choose a model</p>
-              <p className="mt-0.5 text-[9px] text-slate-400">
-                Access is controlled by your current PsyLattice plan.
-              </p>
-            </div>
-            <button type="button" onClick={() => setOpen(false)} aria-label="Close model picker">
-              <X className="h-3.5 w-3.5 text-slate-400" />
-            </button>
-          </div>
+        <>
+          <button
+            type="button"
+            aria-label="Close AI model menu"
+            onClick={() => setOpen(false)}
+            className="fixed inset-0 z-[76] cursor-default bg-transparent"
+          />
 
-          {(modelAccess === "auto-only" || selectedModel === "gemini-flash-economy") && (
-            <div className="mb-2 rounded-xl border border-amber-200 bg-amber-50/80 p-3">
-              <div className="flex items-start gap-2">
-                <Info className="mt-0.5 h-3.5 w-3.5 shrink-0 text-amber-700" />
+          <div className="absolute right-0 top-[calc(100%+10px)] z-[96] w-[350px] overflow-hidden rounded-[24px] border border-slate-200/90 bg-white shadow-[0_24px_70px_rgba(15,23,42,0.18),0_4px_18px_rgba(8,145,178,0.08)]">
+            <div className="border-b border-cyan-100 bg-gradient-to-br from-white via-white to-cyan-50 px-4 py-4">
+              <div className="flex items-start justify-between gap-3">
                 <div>
-                  <p className="text-[10px] font-semibold text-amber-950">Gemini Free Tier data notice</p>
-                  <p className="mt-1 text-[9px] leading-4 text-amber-900/80">
-                    Free PsyLattice Auto uses Google Gemini 3.5 Flash-Lite through Google&apos;s Free Tier. Content sent to this AI, including study or document context you explicitly allow PsyLattice to include, may be used by Google to improve its products under its Free Tier terms. Avoid information you consider confidential or sensitive. Paid PsyLattice plans unlock additional model choices with different provider and data terms.
+                  <p className="text-[9px] font-bold uppercase tracking-[0.17em] text-cyan-700">AI models</p>
+                  <p className="mt-1 text-sm font-bold text-slate-950">Choose your model</p>
+                  <p className="mt-1 text-[10px] leading-4 text-slate-500">Model access follows your current PsyLattice plan.</p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setOpen(false)}
+                  aria-label="Close model picker"
+                  className="flex h-8 w-8 items-center justify-center rounded-xl border border-slate-200 bg-white text-slate-400 transition hover:text-slate-700"
+                >
+                  <X className="h-3.5 w-3.5" />
+                </button>
+              </div>
+            </div>
+
+            {(modelAccess === "auto-only" || selectedModel === "gemini-flash-economy") && (
+              <div className="mx-3 mt-3 rounded-2xl border border-violet-200 bg-violet-50/70 px-3 py-2.5">
+                <div className="flex items-start gap-2">
+                  <Info className="mt-0.5 h-3.5 w-3.5 shrink-0 text-violet-700" />
+                  <p className="text-[9px] leading-4 text-violet-900">
+                    Free AI uses Gemini. Content sent through this free AI may be used by Google to improve its models. Upgrade to unlock other model choices with different provider and data/privacy terms.
                   </p>
                 </div>
               </div>
-            </div>
-          )}
+            )}
 
-          <div className="space-y-1">
-            {models.map((model) => {
-              const selected = model.key === selectedModel;
-              const stateLabel = selected
-                ? "ACTIVE"
-                : !model.allowed
-                  ? "UPGRADE"
-                  : !model.available
-                    ? "COMING SOON"
-                    : "AVAILABLE";
+            <div className="space-y-1 p-3">
+              {models.map((model) => {
+                const selected = model.key === selectedModel;
+                const stateLabel = selected
+                  ? "ACTIVE"
+                  : !model.allowed
+                    ? "UPGRADE"
+                    : !model.available
+                      ? "COMING SOON"
+                      : "AVAILABLE";
 
-              return (
-                <button
-                  key={model.key}
-                  type="button"
-                  disabled={saving}
-                  onClick={() => void chooseModel(model)}
-                  className={`w-full rounded-xl border p-2.5 text-left transition ${
-                    selected
-                      ? "border-cyan-200 bg-cyan-50/70"
-                      : "border-transparent hover:border-cyan-100 hover:bg-cyan-50/60"
-                  } ${!model.allowed || !model.available ? "opacity-70" : ""}`}
-                >
-                  <div className="flex items-center gap-2">
-                    {model.allowed && model.available ? (
-                      <Cpu className="h-3.5 w-3.5 text-cyan-700" />
-                    ) : (
-                      <LockKeyhole className="h-3.5 w-3.5 text-slate-400" />
-                    )}
-                    <span className="text-[11px] font-semibold text-slate-800">{model.name}</span>
-                    {model.badge && (
-                      <span className="rounded-full bg-cyan-100 px-1.5 py-0.5 text-[8px] font-semibold text-cyan-800">
-                        {model.badge}
+                return (
+                  <button
+                    key={model.key}
+                    type="button"
+                    disabled={saving}
+                    onClick={() => void chooseModel(model)}
+                    className={`w-full rounded-2xl border px-3 py-2.5 text-left transition ${
+                      selected
+                        ? "border-cyan-200 bg-cyan-50/70"
+                        : "border-transparent hover:border-cyan-100 hover:bg-cyan-50/40"
+                    } ${!model.allowed || !model.available ? "opacity-65" : ""}`}
+                  >
+                    <div className="flex items-center gap-2">
+                      <span className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-lg ${
+                        selected ? "bg-cyan-100 text-cyan-800" : "bg-slate-100 text-slate-500"
+                      }`}>
+                        {model.allowed && model.available ? (
+                          <Cpu className="h-3.5 w-3.5" />
+                        ) : (
+                          <LockKeyhole className="h-3.5 w-3.5" />
+                        )}
                       </span>
-                    )}
-                    <span className="ml-auto text-[8px] font-semibold text-slate-400">{stateLabel}</span>
-                  </div>
-                  <p className="mt-1 pl-5 text-[9px] leading-4 text-slate-500">{model.description}</p>
-                  <p className="pl-5 text-[9px] font-semibold text-slate-400">
-                    Budget impact: {model.impact}
-                  </p>
-                </button>
-              );
-            })}
-          </div>
+                      <span className="min-w-0 flex-1">
+                        <span className="flex items-center gap-2">
+                          <span className="text-[11px] font-semibold text-slate-800">{model.name}</span>
+                          {model.badge && (
+                            <span className="rounded-full bg-cyan-100 px-1.5 py-0.5 text-[8px] font-semibold text-cyan-800">
+                              {model.badge}
+                            </span>
+                          )}
+                        </span>
+                        <span className="mt-0.5 block truncate text-[9px] text-slate-500">
+                          {selected
+                            ? `Budget impact: ${model.impact}`
+                            : model.available
+                              ? model.description
+                              : "Provider integration coming later."}
+                        </span>
+                      </span>
+                      <span className="shrink-0 text-[8px] font-bold text-slate-400">{stateLabel}</span>
+                    </div>
+                  </button>
+                );
+              })}
 
-          {models.length === 0 && (
-            <div className="rounded-xl bg-slate-50 p-3 text-[10px] text-slate-500">
-              Loading your available AI models…
+              {models.length === 0 && (
+                <div className="rounded-xl bg-slate-50 p-3 text-[10px] text-slate-500">
+                  Loading your available AI models…
+                </div>
+              )}
+
+              {notice && (
+                <p className="mt-2 rounded-xl border border-slate-100 bg-slate-50 px-3 py-2 text-[9px] leading-4 text-slate-600">
+                  {notice}
+                </p>
+              )}
             </div>
-          )}
-
-          {notice && (
-            <p className="mt-2 rounded-lg bg-slate-50 px-2.5 py-2 text-[9px] text-slate-600">
-              {notice}
-            </p>
-          )}
-        </div>
+          </div>
+        </>
       )}
     </div>
   );
@@ -1428,6 +1716,7 @@ function CartDrawer({
 
 export function PlansAndBilling({ currentPlan = "free" }: { currentPlan?: PlanTier }) {
   const [cartOpen, setCartOpen] = useState(false);
+  const pendingCartHydratedRef = useRef(false);
   const [cartLines, setCartLines] = useState<CartLine[]>([]);
   const [infoProduct, setInfoProduct] = useState<CartProduct | null>(null);
   const [billingPlan, setBillingPlan] = useState<PlanTier>(currentPlan);
@@ -2002,6 +2291,55 @@ export function PlansAndBilling({ currentPlan = "free" }: { currentPlan?: PlanTi
       },
     },
   ];
+
+  useEffect(() => {
+    if (pendingCartHydratedRef.current) return;
+    pendingCartHydratedRef.current = true;
+
+    const params = new URLSearchParams(window.location.search);
+    const requestedProductId = params.get("addToCart");
+    const shouldOpenCart = params.get("openCart") === "1";
+
+    if (requestedProductId) {
+      const requestedBoost = aiBoosts.find((item) => item.id === requestedProductId);
+      if (requestedBoost) {
+        const product: CartProduct = {
+          id: requestedBoost.id,
+          category: requestedBoost.category,
+          name: requestedBoost.name,
+          price: requestedBoost.price,
+          priceValue: requestedBoost.priceValue,
+          description: requestedBoost.description,
+          info: requestedBoost.info,
+        };
+
+        setCartLines((current) => {
+          const existing = current.find((line) => line.product.id === product.id);
+          if (existing) {
+            return current.map((line) =>
+              line.product.id === product.id
+                ? { ...line, quantity: line.quantity + 1 }
+                : line,
+            );
+          }
+          return [...current, { product, quantity: 1 }];
+        });
+      }
+    }
+
+    if (shouldOpenCart || requestedProductId) setCartOpen(true);
+
+    if (requestedProductId || shouldOpenCart) {
+      params.delete("addToCart");
+      params.delete("openCart");
+      const query = params.toString();
+      window.history.replaceState(
+        {},
+        "",
+        `${window.location.pathname}${query ? `?${query}` : ""}${window.location.hash}`,
+      );
+    }
+  }, []);
 
   const selectedPlanInCart = cartLines.find((line) => line.product.category === "plan")?.product.id as PlanTier | undefined;
   const effectivePlan: PlanTier = selectedPlanInCart || billingPlan;

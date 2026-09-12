@@ -62,7 +62,7 @@ const cards = [
 
 export default function FeatureDeck() {
   return (
-    <section id="features" className="scroll-mt-28 bg-white py-16 sm:py-18">
+    <section id="features" className="scroll-mt-28 bg-white py-20">
       <div className="mx-auto max-w-[1380px] px-5 sm:px-6 lg:px-8">
         <div className="grid gap-6 lg:grid-cols-[.75fr_1.25fr] lg:items-end">
           <div>
@@ -78,7 +78,7 @@ export default function FeatureDeck() {
           </p>
         </div>
 
-        <div className="mt-8 grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+        <div className="mt-9 grid gap-5 md:grid-cols-2 xl:grid-cols-4">
           {cards.map((card) => {
             const Icon = card.icon;
 
@@ -86,9 +86,10 @@ export default function FeatureDeck() {
               <Link
                 key={card.slug}
                 href={`/features/${card.slug}`}
-                className={`group relative flex min-h-[500px] flex-col overflow-hidden rounded-[30px] border ${card.outline} ${card.tint} p-5 transition duration-300 hover:-translate-y-1.5 hover:shadow-[0_26px_55px_-38px_rgba(15,23,42,.28)]`}
+                className={`group relative flex min-h-[590px] flex-col overflow-hidden rounded-[30px] border ${card.outline} ${card.tint} p-6 transition duration-300 xl:min-h-[620px] hover:-translate-y-1 hover:shadow-[0_24px_48px_-38px_rgba(15,23,42,.24)]`}
               >
-                <div className="absolute inset-x-5 top-5 h-24 rounded-[20px] bg-cyan-100/24 blur-2xl" />
+                <div className="absolute inset-x-8 top-7 h-20 rounded-[20px] bg-cyan-100/16 blur-2xl" />
+
                 <div className="relative z-10">
                   <div className="flex items-start justify-between gap-3">
                     <div className="flex items-center gap-3">
@@ -108,24 +109,30 @@ export default function FeatureDeck() {
                     </span>
                   </div>
 
-                  <h3 className={`mt-6 max-w-[240px] text-[30px] font-semibold leading-[1.04] tracking-[-.038em] ${card.accent}`}>
+                  <h3 className={`mt-7 max-w-[250px] text-[29px] font-semibold leading-[1.06] tracking-[-.036em] ${card.accent}`}>
                     {card.title}
                   </h3>
 
-                  <p className="mt-3 max-w-[260px] text-sm leading-6 text-slate-700/80">
+                  <p className="mt-4 max-w-[255px] text-sm leading-6 text-slate-700/78">
                     {card.copy}
                   </p>
 
+                  <div className="mt-5">
+                    <span className="inline-flex items-center gap-2 rounded-xl bg-white/72 px-4 py-2 text-[11px] font-semibold text-cyan-950 shadow-[0_8px_18px_-16px_rgba(8,145,178,.36)] backdrop-blur transition group-hover:bg-white">
+                      Explore
+                      <ArrowRight className="h-3.5 w-3.5 transition group-hover:translate-x-0.5" />
+                    </span>
+                  </div>
                 </div>
 
-                <div className="relative mt-auto min-h-[260px] pt-4">
-                  <div className="pointer-events-none absolute inset-x-[8%] bottom-[2%] h-32 rounded-full bg-white/42 blur-3xl" />
+                <div className="relative mt-auto min-h-[320px] pt-8">
+                  <div className="pointer-events-none absolute inset-x-[15%] bottom-[6%] h-28 rounded-full bg-white/34 blur-3xl" />
 
                   <img
                     src={card.image}
                     alt=""
                     aria-hidden="true"
-                    className="absolute bottom-[-18px] left-1/2 w-[132%] max-w-none -translate-x-1/2 object-contain drop-shadow-[0_22px_28px_rgba(15,23,42,.11)] transition duration-500 group-hover:bottom-[-10px] group-hover:scale-[1.02]"
+                    className="absolute bottom-[-8px] left-1/2 w-[118%] max-w-none -translate-x-1/2 object-contain drop-shadow-[0_20px_26px_rgba(15,23,42,.10)] transition duration-500 group-hover:bottom-[-4px] group-hover:scale-[1.012]"
                   />
                 </div>
               </Link>

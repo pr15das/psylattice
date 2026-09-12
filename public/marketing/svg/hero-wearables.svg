@@ -1,0 +1,22 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 640 360" fill="none">
+<rect width="640" height="360" rx="26" fill="#f3fbfb"/>
+<rect x="56" y="74" width="150" height="212" rx="22" fill="white" stroke="#dbeafe"/>
+<rect x="80" y="99" width="84" height="9" rx="4.5" fill="#0e7490"/>
+<rect x="80" y="133" width="102" height="46" rx="14" fill="#ecfeff"/>
+<path d="M94 157h14l6-12 8 24 8-18 7 6h25" stroke="#06b6d4" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
+<rect x="80" y="192" width="102" height="34" rx="12" fill="#f8fafc"/>
+<rect x="80" y="238" width="102" height="26" rx="10" fill="#f8fafc"/>
+
+<rect x="252" y="56" width="156" height="244" rx="30" fill="#0f172a"/>
+<rect x="265" y="70" width="130" height="216" rx="24" fill="white"/>
+<circle cx="330" cy="149" r="44" fill="#ecfeff"/>
+<path d="M303 149h18l7-17 10 34 10-24 8 7h23" stroke="#0e7490" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/>
+<text x="291" y="220" font-size="13" font-family="Arial" font-weight="700" fill="#0f172a">Health context</text>
+
+<rect x="456" y="92" width="126" height="72" rx="18" fill="white" stroke="#bae6fd"/>
+<rect x="456" y="180" width="126" height="72" rx="18" fill="white" stroke="#bae6fd"/>
+<circle cx="481" cy="119" r="10" fill="#cffafe"/>
+<circle cx="481" cy="207" r="10" fill="#dbeafe"/>
+<path d="M408 180C432 180 440 127 456 127" stroke="#22d3ee" stroke-width="3" stroke-dasharray="7 8"/>
+<path d="M408 206C430 206 441 216 456 216" stroke="#0ea5e9" stroke-width="3" stroke-dasharray="7 8"/>
+</svg>

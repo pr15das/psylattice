@@ -1,0 +1,27 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 840 620" fill="none">
+<style>
+  @keyframes dash { to { stroke-dashoffset:-150; } }
+  @keyframes orbPulse { 0%,100% { opacity:.25; transform:scale(.88); } 50% { opacity:.9; transform:scale(1.15); } }
+  .dash { stroke-dasharray:8 14; animation:dash 8s linear infinite; }
+  .pulse { transform-box:fill-box; transform-origin:center; animation:orbPulse 3.8s ease-in-out infinite; }
+</style>
+<defs>
+  <linearGradient id="o1" x1="105" y1="90" x2="742" y2="528" gradientUnits="userSpaceOnUse">
+    <stop stop-color="#22d3ee"/>
+    <stop offset=".48" stop-color="#0ea5e9"/>
+    <stop offset="1" stop-color="#5eead4"/>
+  </linearGradient>
+</defs>
+<ellipse cx="420" cy="305" rx="310" ry="216" stroke="#0891b2" stroke-width="1.4" opacity=".08"/>
+<ellipse cx="420" cy="305" rx="248" ry="174" stroke="#22d3ee" stroke-width="1.4" opacity=".10"/>
+<path class="dash" d="M86 154C188 51 269 202 397 119s221-62 337 67" stroke="url(#o1)" stroke-width="2.2" opacity=".38"/>
+<path class="dash" d="M71 454C201 531 274 376 409 468s235 50 351-50" stroke="url(#o1)" stroke-width="2" opacity=".28"/>
+<path d="M128 83C227 153 254 215 300 301" stroke="#0ea5e9" stroke-width="1.3" opacity=".12"/>
+<path d="M742 96C653 165 616 224 570 312" stroke="#06b6d4" stroke-width="1.3" opacity=".12"/>
+<g fill="#22d3ee">
+  <circle class="pulse" cx="92" cy="154" r="5"/>
+  <circle class="pulse" cx="734" cy="186" r="5" style="animation-delay:.7s"/>
+  <circle class="pulse" cx="97" cy="456" r="5" style="animation-delay:1.4s"/>
+  <circle class="pulse" cx="754" cy="420" r="5" style="animation-delay:2.1s"/>
+</g>
+</svg>

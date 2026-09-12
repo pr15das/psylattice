@@ -1,0 +1,44 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1600 920" fill="none">
+<style>
+  @keyframes sqDash { to { stroke-dashoffset:-180; } }
+  @keyframes sqPulse { 0%,100% { opacity:.24; transform:scale(.86); } 50% { opacity:.82; transform:scale(1.14); } }
+  @keyframes sqDrift { 0%,100% { transform:translateY(0); } 50% { transform:translateY(-8px); } }
+  .dash { stroke-dasharray:10 17; animation:sqDash 13s linear infinite; }
+  .dash2 { stroke-dasharray:6 18; animation:sqDash 17s linear infinite reverse; }
+  .p { transform-box:fill-box; transform-origin:center; animation:sqPulse 4s ease-in-out infinite; }
+  .p2 { animation-delay:.7s } .p3 { animation-delay:1.4s } .p4 { animation-delay:2.1s }
+</style>
+<defs>
+  <linearGradient id="s1" x1="0" y1="0" x2="1600" y2="920" gradientUnits="userSpaceOnUse">
+    <stop stop-color="#67e8f9"/>
+    <stop offset=".46" stop-color="#0ea5e9"/>
+    <stop offset="1" stop-color="#a5b4fc"/>
+  </linearGradient>
+  <radialGradient id="bg1" cx="0" cy="0" r="1" gradientTransform="translate(1170 330) rotate(133) scale(480 610)" gradientUnits="userSpaceOnUse">
+    <stop stop-color="#cffafe" stop-opacity=".65"/>
+    <stop offset="1" stop-color="#fff" stop-opacity="0"/>
+  </radialGradient>
+</defs>
+
+<rect width="1600" height="920" fill="#f7fbfa"/>
+<rect width="1600" height="920" fill="url(#bg1)"/>
+
+<path class="dash" d="M48 278C165 174 262 382 395 267s230-80 330 14 190 25 290-96 203-68 282 12 178 96 255 16"
+      stroke="url(#s1)" stroke-width="2.2" opacity=".24" stroke-linecap="round"/>
+<path class="dash2" d="M-40 654C123 521 252 726 397 600s243-64 349 25 205 24 319-73 254-64 383 35 197 72 270 7"
+      stroke="#06b6d4" stroke-width="1.8" opacity=".16" stroke-linecap="round"/>
+<path d="M202 78C292 141 324 173 388 249" stroke="#0891b2" stroke-width="1.4" opacity=".08"/>
+<path d="M1320 112C1261 189 1250 236 1187 309" stroke="#7dd3fc" stroke-width="1.4" opacity=".10"/>
+
+<g fill="#22d3ee">
+  <circle class="p" cx="175" cy="230" r="5"/>
+  <circle class="p p2" cx="530" cy="239" r="4.5"/>
+  <circle class="p p3" cx="1010" cy="191" r="5"/>
+  <circle class="p p4" cx="1390" cy="246" r="4.5"/>
+</g>
+
+<g opacity=".22" fill="#0891b2">
+  <circle cx="144" cy="690" r="2.5"/><circle cx="180" cy="713" r="2.5"/><circle cx="216" cy="690" r="2.5"/>
+  <circle cx="1330" cy="650" r="2.5"/><circle cx="1366" cy="673" r="2.5"/><circle cx="1402" cy="650" r="2.5"/>
+</g>
+</svg>

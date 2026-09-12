@@ -1,0 +1,56 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1600 900" fill="none">
+<style>
+  @keyframes dashA { to { stroke-dashoffset:-190; } }
+  @keyframes dashB { to { stroke-dashoffset:160; } }
+  @keyframes pulse { 0%,100% { opacity:.28; transform:scale(.82); } 50% { opacity:.82; transform:scale(1.14); } }
+  @keyframes bob { 0%,100% { transform:translateY(0); } 50% { transform:translateY(-8px); } }
+  .a { stroke-dasharray:10 18; animation:dashA 14s linear infinite; }
+  .b { stroke-dasharray:6 20; animation:dashB 18s linear infinite; }
+  .p { transform-box:fill-box; transform-origin:center; animation:pulse 4s ease-in-out infinite; }
+</style>
+<defs>
+  <linearGradient id="line1" x1="0" y1="0" x2="1600" y2="900" gradientUnits="userSpaceOnUse">
+    <stop stop-color="#22d3ee"/>
+    <stop offset=".35" stop-color="#3b82f6"/>
+    <stop offset=".68" stop-color="#8b5cf6"/>
+    <stop offset="1" stop-color="#10b981"/>
+  </linearGradient>
+  <radialGradient id="glow1" cx="0" cy="0" r="1" gradientTransform="translate(1210 320) rotate(132) scale(470 590)" gradientUnits="userSpaceOnUse">
+    <stop stop-color="#dbeafe" stop-opacity=".72"/>
+    <stop offset=".45" stop-color="#cffafe" stop-opacity=".38"/>
+    <stop offset="1" stop-color="white" stop-opacity="0"/>
+  </radialGradient>
+  <radialGradient id="glow2" cx="0" cy="0" r="1" gradientTransform="translate(355 655) rotate(40) scale(390 420)" gradientUnits="userSpaceOnUse">
+    <stop stop-color="#dcfce7" stop-opacity=".44"/>
+    <stop offset="1" stop-color="white" stop-opacity="0"/>
+  </radialGradient>
+</defs>
+
+<rect width="1600" height="900" fill="#f8fbfb"/>
+<rect width="1600" height="900" fill="url(#glow1)"/>
+<rect width="1600" height="900" fill="url(#glow2)"/>
+
+<path class="a" d="M-58 355C92 198 223 428 384 274s277-106 407 18 246 27 365-98 264-67 382 34 171 82 225 26"
+      stroke="url(#line1)" stroke-width="2.4" opacity=".26" stroke-linecap="round"/>
+<path class="b" d="M-42 704C102 591 229 764 378 646s284-86 425 5 242 66 372-26 266-51 449 32"
+      stroke="url(#line1)" stroke-width="2" opacity=".17" stroke-linecap="round"/>
+
+<path d="M173 164C273 215 318 273 370 342" stroke="#06b6d4" stroke-width="1.4" opacity=".08"/>
+<path d="M1355 128C1287 187 1255 238 1198 317" stroke="#8b5cf6" stroke-width="1.4" opacity=".08"/>
+
+<g>
+  <circle class="p" cx="168" cy="310" r="5" fill="#22d3ee"/>
+  <circle class="p" cx="511" cy="258" r="5" fill="#3b82f6" style="animation-delay:.6s"/>
+  <circle class="p" cx="1020" cy="212" r="5" fill="#8b5cf6" style="animation-delay:1.2s"/>
+  <circle class="p" cx="1372" cy="260" r="5" fill="#10b981" style="animation-delay:1.8s"/>
+</g>
+
+<g opacity=".20">
+  <circle cx="208" cy="735" r="3" fill="#06b6d4"/>
+  <circle cx="244" cy="759" r="3" fill="#3b82f6"/>
+  <circle cx="280" cy="735" r="3" fill="#8b5cf6"/>
+  <circle cx="1325" cy="690" r="3" fill="#10b981"/>
+  <circle cx="1361" cy="714" r="3" fill="#3b82f6"/>
+  <circle cx="1397" cy="690" r="3" fill="#8b5cf6"/>
+</g>
+</svg>

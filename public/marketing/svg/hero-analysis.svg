@@ -1,0 +1,17 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 640 360" fill="none">
+<rect width="640" height="360" rx="26" fill="#f5fbfc"/>
+<rect x="58" y="58" width="524" height="244" rx="24" fill="white" stroke="#dbeafe"/>
+<rect x="83" y="83" width="91" height="10" rx="5" fill="#0e7490"/>
+<path d="M96 257V124M96 257H381" stroke="#cbd5e1" stroke-width="2"/>
+<path d="M116 237L165 218L210 225L257 178L305 163L356 127" stroke="#0891b2" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/>
+<g fill="#0f172a">
+  <circle cx="116" cy="237" r="5"/><circle cx="165" cy="218" r="5"/><circle cx="210" cy="225" r="5"/>
+  <circle cx="257" cy="178" r="5"/><circle cx="305" cy="163" r="5"/><circle cx="356" cy="127" r="5"/>
+</g>
+<rect x="420" y="111" width="132" height="66" rx="16" fill="#ecfeff"/>
+<text x="443" y="139" font-size="13" font-family="Arial" fill="#0e7490">Effect estimate</text>
+<text x="443" y="160" font-size="20" font-family="Arial" font-weight="700" fill="#0f172a">β = .31</text>
+<rect x="420" y="191" width="132" height="66" rx="16" fill="#f8fafc"/>
+<text x="443" y="218" font-size="13" font-family="Arial" fill="#64748b">Participants</text>
+<text x="443" y="240" font-size="20" font-family="Arial" font-weight="700" fill="#0f172a">n = 128</text>
+</svg>

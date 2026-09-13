@@ -11,9 +11,10 @@ registerHooks({ resolve(specifier, context, nextResolve) {
   }
 } });
 const { notificationHandlers } = await import('../../lib/mobile/notificationApi.ts');
+const { diagnosticNotificationHandler, isDiagnosticPushEnabled } = await import('../../lib/mobile/diagnosticNotification.ts');
 const { parseDeviceRegistration, parseScheduleWindow } = await import('../../lib/mobile/notificationValidation.ts');
 const { dispatchNotifications } = await import('../../lib/mobile/notificationDispatcher.ts');
-const { fcmMessage, FcmHttpSender } = await import('../../lib/mobile/fcmSender.ts');
+const { diagnosticFcmMessage, fcmMessage, FcmHttpSender } = await import('../../lib/mobile/fcmSender.ts');
 const id = '10000000-0000-4000-8000-000000000001';
 const body = {installation_id:id,installation_secret:'10000000-0000-4000-8000-000000000002',platform:'android',fcm_token:'mock-token-123456789012345',timezone:'Asia/Kolkata',notifications_enabled:true};
 function request(value = body) { return new Request('https://example.invalid/api/mobile/devices/register',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(value)}); }
@@ -78,6 +79,62 @@ test('FCM payload only contains generic text and routing IDs; missing config fai
   const previous = process.env.FCM_SERVICE_ACCOUNT_JSON; delete process.env.FCM_SERVICE_ACCOUNT_JSON;
   assert.equal(FcmHttpSender.fromEnvironment(),null);
   if (previous !== undefined) process.env.FCM_SERVICE_ACCOUNT_JSON = previous;
+});
+test('diagnostic FCM payload is generic and contains only its harmless marker',() => {
+  const message = diagnosticFcmMessage('unit-private-token').message;
+  assert.deepEqual(message.notification,{title:'PsyLattice',body:'Notifications are working on this device.'});
+  assert.deepEqual(message.data,{type:'diagnostic_test'});
+  assert.equal(message.android.notification.tag,'psylattice-diagnostic');
+});
+test('diagnostic endpoint rejects production and unauthenticated requests before privileged lookup',async () => {
+  let lookedUp = false;
+  const handler = diagnosticNotificationHandler({enabled:() => false,lookupDevice:async() => {lookedUp=true;return null;}});
+  assert.equal((await handler(new Request('https://example.invalid',{method:'POST',body:'{}'}))).status,404);
+  assert.equal(lookedUp,false);
+  const unauthenticated = diagnosticNotificationHandler({enabled:() => true,lookupDevice:async() => {lookedUp=true;return null;}});
+  assert.equal((await unauthenticated(new Request('https://example.invalid',{method:'POST',body:'{}'}))).status,401);
+  assert.equal(lookedUp,false);
+  assert.equal(isDiagnosticPushEnabled({VERCEL_ENV:'production',NODE_ENV:'development'}),false);
+  assert.equal(isDiagnosticPushEnabled({VERCEL_ENV:'preview',NODE_ENV:'production'}),true);
+  assert.equal(isDiagnosticPushEnabled({VERCEL_ENV:'preview',NODE_ENV:'development'}),true);
+});
+test('diagnostic endpoint uses only the authenticated owner and never returns a token',async () => {
+  const lookups = [], sent = [];
+  const handler = diagnosticNotificationHandler({
+    enabled:() => true,
+    authenticate:async() => ({userId:'authenticated-owner',supabase:{}}),
+    lookupDevice:async(userId,installationId) => {lookups.push({userId,installationId});return 'private-device-token';},
+    createSender:() => ({sendDiagnostic:async(token) => {sent.push(token);return 'accepted';}}),
+  });
+  const response = await handler(new Request('https://example.invalid',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({installation_id:id})}));
+  assert.equal(response.status,200);
+  const responseBody = await response.text();
+  assert.equal(responseBody.includes('private-device-token'),false);
+  assert.deepEqual(lookups,[{userId:'authenticated-owner',installationId:id}]);
+  assert.deepEqual(sent,['private-device-token']);
+  assert.equal((await handler(new Request('https://example.invalid',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({auth_user_id:id})}))).status,400);
+  assert.equal(lookups.length,1);
+});
+test('diagnostic endpoint validates installation, safely handles no device/config, and rate limits by owner',async () => {
+  const validRequest = (value = {}) => new Request('https://example.invalid',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(value)});
+  const authenticate = async() => ({userId:'diagnostic-rate-owner',supabase:{}});
+  const invalid = diagnosticNotificationHandler({enabled:() => true,authenticate:async() => ({userId:'diagnostic-invalid-owner',supabase:{}}),lookupDevice:async() => 'unused',createSender:() => ({sendDiagnostic:async() => 'accepted'})});
+  assert.equal((await invalid(validRequest({installation_id:'not-a-uuid'}))).status,400);
+  const noConfig = diagnosticNotificationHandler({enabled:() => true,authenticate:async() => ({userId:'diagnostic-config-owner',supabase:{}}),lookupDevice:async() => {throw new Error('must not query');},createSender:() => null});
+  assert.equal((await noConfig(validRequest())).status,503);
+  const noDevice = diagnosticNotificationHandler({enabled:() => true,authenticate:async() => ({userId:'diagnostic-device-owner',supabase:{}}),lookupDevice:async() => null,createSender:() => ({sendDiagnostic:async() => 'accepted'})});
+  assert.equal((await noDevice(validRequest())).status,409);
+  let sends = 0;
+  const limited = diagnosticNotificationHandler({enabled:() => true,authenticate,lookupDevice:async() => 'private-device-token',createSender:() => ({sendDiagnostic:async() => {sends++;return 'accepted';}})});
+  for (let count = 0; count < 5; count++) assert.equal((await limited(validRequest())).status,200);
+  assert.equal((await limited(validRequest())).status,429);
+  assert.equal(sends,5);
+});
+test('diagnostic lookup source constrains the query to the authenticated active device',() => {
+  const source = readFileSync(new URL('../../lib/mobile/diagnosticNotification.ts',import.meta.url),'utf8');
+  assert.match(source,/\.eq\('auth_user_id', userId\)\.eq\('active', true\)\.not\('fcm_token', 'is', null\)/);
+  assert.match(source,/query = query\.eq\('installation_id', installationId\)/);
+  assert.match(source,/order\('last_seen_at', \{ ascending: false \}\)\.limit\(1\)\.maybeSingle\(\)/);
 });
 test('HTTP v1 sender classifies invalid tokens and uncertain failures with fake HTTP only',async () => {
   const {privateKey} = generateKeyPairSync('rsa',{modulusLength:2048});

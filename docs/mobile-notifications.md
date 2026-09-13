@@ -1,7 +1,8 @@
-# Mobile notifications: local Step 3 implementation
+# Mobile notifications: Step 3 backend
 
-Status: partially blocked; not deployed and migration not applied. Existing web
-email dispatcher and both mobile dashboard overloads are preserved.
+Status: deployed to Preview; the notification migration is applied and Firebase
+Android registration has been verified on a real device. Existing web email
+dispatcher and both mobile dashboard overloads are preserved.
 
 `supabase/migrations/20260913090000_mobile_notification_delivery.sql` adds only
 device registrations and per-device delivery receipts referencing existing
@@ -32,9 +33,16 @@ SUPABASE_SERVICE_ROLE_KEY. No cron cadence or production job was configured.
 FCM accepted does not mean device delivered. Ambiguous attempts are terminal
 unknown; abandoned sending claims need operator reconciliation, never blind retry.
 
-Tests use fake auth/RPCs, mocked sender/HTTP and SQL contract checks, with no real
-push or Supabase connections. They do not execute PostgreSQL/RLS or the guarded
-rollback; TEST database integration is required before enabling delivery.
+`POST /api/mobile/devices/test-notification` is a development/Vercel Preview-only
+transport diagnostic. It authenticates the caller, selects only that caller's
+active registered device (optionally by installation ID), and sends generic FCM
+content with only `type: diagnostic_test`. It is unavailable in production, does
+not create receipts or schedules, and is limited to five requests per account per
+ten minutes. It is not a scheduler adapter or a research-notification path.
+
+Tests use fake auth/RPCs, mocked sender/HTTP and SQL contract checks. The focused
+diagnostic transport endpoint is covered without real push or Supabase connections.
+Authoritative scheduler integration remains blocked and is not enabled.
 
 The mobile repository's docs/step-3-notifications-scheduling.md and
 docs/manual-setup.md contain exact schema/functions, source discovery, security,

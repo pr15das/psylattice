@@ -9,6 +9,7 @@ export const MOBILE_RATE_LIMITS = {
   join: { limit: 12, windowMs: 10 * 60 * 1000 },
   devices: { limit: 60, windowMs: 10 * 60 * 1000 },
   notifications: { limit: 300, windowMs: 10 * 60 * 1000 },
+  diagnosticPush: { limit: 5, windowMs: 10 * 60 * 1000 },
 } satisfies Record<string, Rule>;
 
 export function consumeMobileRateLimit(

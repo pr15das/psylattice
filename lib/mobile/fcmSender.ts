@@ -1,7 +1,8 @@
 import { createSign } from 'node:crypto';
 import type { PushSender, SendOutcome, SendTarget } from './notificationDispatcher';
 type ServiceAccount = { project_id: string; client_email: string; private_key: string };
-export function fcmMessage(target: SendTarget) {
+type FcmRequest = { message: { token: string; notification: { title: string; body: string }; data: Record<string, string>; android: { priority: string; ttl: string; notification: { channel_id: string; icon: string; tag: string; visibility: string } } } };
+export function fcmMessage(target: SendTarget): FcmRequest {
   const channel = target.notification_type === 'study_reminder' ? 'psylattice_study_reminders' : 'psylattice_research_tasks';
   return { message: {
     token: target.fcm_token,
@@ -10,6 +11,15 @@ export function fcmMessage(target: SendTarget) {
       task_id: target.task_id, task_instance_id: target.task_instance_id },
     android: { priority: 'normal', ttl: `${Math.max(0,Math.min(86400,Math.floor((Date.parse(target.expires_at)-Date.now())/1000)))}s`,
       notification: { channel_id: channel, icon: 'ic_stat_psylattice', tag: target.notification_id, visibility: 'PRIVATE' } },
+  } };
+}
+export function diagnosticFcmMessage(token: string): FcmRequest {
+  return { message: {
+    token,
+    notification: { title: 'PsyLattice', body: 'Notifications are working on this device.' },
+    data: { type: 'diagnostic_test' },
+    android: { priority: 'normal', ttl: '60s',
+      notification: { channel_id: 'psylattice_research_tasks', icon: 'ic_stat_psylattice', tag: 'psylattice-diagnostic', visibility: 'PRIVATE' } },
   } };
 }
 // HTTP v1 sender; credentials are server-only. Fixed Google OAuth audience/URL,
@@ -48,11 +58,11 @@ export class FcmHttpSender implements PushSender {
     this.accessToken = body.access_token; this.tokenExpiry = Date.now()+3300000;
     return this.accessToken!;
   }
-  async send(target: SendTarget): Promise<SendOutcome> {
+  private async sendMessage(message: ReturnType<typeof fcmMessage>): Promise<SendOutcome> {
     try {
       const response = await this.http(`https://fcm.googleapis.com/v1/projects/${this.account.project_id}/messages:send`, {
         method:'POST', headers:{Authorization:`Bearer ${await this.token()}`,'Content-Type':'application/json'},
-        body:JSON.stringify(fcmMessage(target)),signal:AbortSignal.timeout(10000),
+        body:JSON.stringify(message),signal:AbortSignal.timeout(10000),
       });
       if (response.ok) return 'accepted';
       if (response.status >= 500) return 'unknown';
@@ -61,4 +71,6 @@ export class FcmHttpSender implements PushSender {
       return 'rejected';
     } catch { return 'unknown'; }
   }
+  async send(target: SendTarget): Promise<SendOutcome> { return this.sendMessage(fcmMessage(target)); }
+  async sendDiagnostic(token: string): Promise<SendOutcome> { return this.sendMessage(diagnosticFcmMessage(token)); }
 }

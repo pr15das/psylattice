@@ -7,6 +7,8 @@ const MAX_BUCKETS = 5_000;
 export const MOBILE_RATE_LIMITS = {
   resolveJoin: { limit: 30, windowMs: 10 * 60 * 1000 },
   join: { limit: 12, windowMs: 10 * 60 * 1000 },
+  devices: { limit: 60, windowMs: 10 * 60 * 1000 },
+  notifications: { limit: 300, windowMs: 10 * 60 * 1000 },
 } satisfies Record<string, Rule>;
 
 export function consumeMobileRateLimit(

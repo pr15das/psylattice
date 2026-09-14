@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { BrainCircuit, Sparkles, ShieldCheck, RefreshCw, History, X } from "lucide-react";
+import { BrainCircuit, Sparkles, ShieldCheck, RefreshCw } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import {
   buildCognitiveAttachmentAnalysis,
@@ -12,6 +12,7 @@ import {
 type Props = {
   studyId: string;
   studyTitle: string;
+  variant?: "page" | "dock";
 };
 
 type ChatMessage = {
@@ -101,12 +102,6 @@ const suggestedPrompts = [
   "What can I safely say in a Results section from the analyses already run?",
   "What important statistical analyses are still missing?",
 ];
-
-function researchConversationTitle(question: string) {
-  const clean = question.replace(/\s+/g, " ").trim();
-  if (!clean) return "Research Assistant conversation";
-  return clean.length <= 88 ? clean : `${clean.slice(0, 85)}…`;
-}
 
 function numeric(value: unknown) {
   const next = typeof value === "number" ? value : Number(value);
@@ -1210,7 +1205,7 @@ async function loadStudyAiContext(
   };
 }
 
-export default function ResearchAiAssistant({ studyId, studyTitle }: Props) {
+export default function ResearchAiAssistant({ studyId, studyTitle, variant = "page" }: Props) {
   const [includeTestData, setIncludeTestData] = useState(false);
   const [includeParticipantLevel, setIncludeParticipantLevel] = useState(false);
   const [loaded, setLoaded] = useState<LoadedContext | null>(null);
@@ -1220,11 +1215,6 @@ export default function ResearchAiAssistant({ studyId, studyTitle }: Props) {
   const [draft, setDraft] = useState("");
   const [sending, setSending] = useState(false);
   const [chatError, setChatError] = useState("");
-  const [saveHistoryEnabled, setSaveHistoryEnabled] = useState(false);
-  const [currentConversationId, setCurrentConversationId] = useState("");
-  const [savedMessageCount, setSavedMessageCount] = useState(0);
-  const [historyError, setHistoryError] = useState("");
-  const [historyPermissionOpen, setHistoryPermissionOpen] = useState(false);
 
   async function refreshContext() {
     setLoadingContext(true);
@@ -1249,8 +1239,6 @@ export default function ResearchAiAssistant({ studyId, studyTitle }: Props) {
     setMessages([]);
     setDraft("");
     setChatError("");
-    setCurrentConversationId("");
-    setSavedMessageCount(0);
     void refreshContext();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [studyId, includeTestData]);
@@ -1270,87 +1258,18 @@ export default function ResearchAiAssistant({ studyId, studyTitle }: Props) {
     return fitContext(context);
   }, [loaded, includeParticipantLevel]);
 
-  async function createSavedConversation(title: string) {
-    const supabase = createClient();
-    const { data: auth, error: authError } = await supabase.auth.getUser();
-    if (authError || !auth.user) throw new Error("Your PsyLattice session has expired.");
-    const { data, error } = await supabase
-      .from("research_ai_conversations")
-      .insert({
-        owner_user_id: auth.user.id,
-        surface: "research",
-        study_id: studyId,
-        document_id: null,
-        title: title || "Research Assistant conversation",
-      })
-      .select("id")
-      .single();
-    if (error || !data?.id) throw new Error(error?.message || "The Research Assistant conversation could not be saved.");
-    const id = String(data.id);
-    setCurrentConversationId(id);
-    setSavedMessageCount(0);
-    return id;
-  }
-
-  async function persistSavedMessage(conversationId: string, message: ChatMessage) {
-    const supabase = createClient();
-    const { data: auth, error: authError } = await supabase.auth.getUser();
-    if (authError || !auth.user) throw new Error("Your PsyLattice session has expired.");
-    const { error } = await supabase.from("research_ai_messages").insert({
-      conversation_id: conversationId,
-      owner_user_id: auth.user.id,
-      role: message.role,
-      content: message.content.slice(0, 12000),
-      metadata: {},
-    });
-    if (error) throw new Error(error.message || "The Research Assistant message could not be saved.");
-    await supabase.from("research_ai_conversations").update({ updated_at: new Date().toISOString() }).eq("id", conversationId);
-  }
-
-  async function enableHistorySaving() {
-    setHistoryPermissionOpen(false);
-    setHistoryError("");
-    try {
-      let conversationId = currentConversationId;
-      if (!conversationId) {
-        const firstUser = messages.find((message) => message.role === "user")?.content || "Research Assistant conversation";
-        conversationId = await createSavedConversation(researchConversationTitle(firstUser));
-      }
-      const unsavedMessages = messages.slice(currentConversationId ? savedMessageCount : 0);
-      for (const message of unsavedMessages) await persistSavedMessage(conversationId, message);
-      setSavedMessageCount(messages.length);
-      setSaveHistoryEnabled(true);
-    } catch (error) {
-      setSaveHistoryEnabled(false);
-      setHistoryError(error instanceof Error ? error.message : "Conversation saving could not be enabled.");
-    }
-  }
-
   async function send(questionOverride?: string) {
     const question = (questionOverride ?? draft).trim();
     if (!question || !effectiveContext || sending) return;
 
-    const userMessage: ChatMessage = { role: "user", content: question };
-    const nextMessages: ChatMessage[] = [...messages, userMessage];
+    const nextMessages: ChatMessage[] = [
+      ...messages,
+      { role: "user", content: question },
+    ];
     setMessages(nextMessages);
     setDraft("");
     setSending(true);
     setChatError("");
-
-    let persistenceConversationId = currentConversationId;
-    if (saveHistoryEnabled) {
-      try {
-        if (!persistenceConversationId) {
-          persistenceConversationId = await createSavedConversation(researchConversationTitle(question));
-        }
-        await persistSavedMessage(persistenceConversationId, userMessage);
-        setSavedMessageCount((count) => count + 1);
-      } catch (error) {
-        setSaveHistoryEnabled(false);
-        persistenceConversationId = "";
-        setHistoryError(error instanceof Error ? error.message : "This Research Assistant conversation could not be saved.");
-      }
-    }
 
     try {
       const response = await fetch("/api/research-assistant", {
@@ -1370,17 +1289,10 @@ export default function ResearchAiAssistant({ studyId, studyTitle }: Props) {
       if (!response.ok || !data.ok || !data.reply) {
         throw new Error(data.error || "The Research Assistant could not respond.");
       }
-      const assistantMessage: ChatMessage = { role: "assistant", content: data.reply as string };
-      setMessages((current) => [...current, assistantMessage]);
-      if (saveHistoryEnabled && persistenceConversationId) {
-        try {
-          await persistSavedMessage(persistenceConversationId, assistantMessage);
-          setSavedMessageCount((count) => count + 1);
-        } catch (error) {
-          setSaveHistoryEnabled(false);
-          setHistoryError(error instanceof Error ? error.message : "The Research Assistant reply could not be saved.");
-        }
-      }
+      setMessages((current) => [
+        ...current,
+        { role: "assistant", content: data.reply as string },
+      ]);
     } catch (error) {
       setChatError(
         error instanceof Error
@@ -1390,6 +1302,172 @@ export default function ResearchAiAssistant({ studyId, studyTitle }: Props) {
     } finally {
       setSending(false);
     }
+  }
+
+  if (variant === "dock") {
+    return (
+      <section className="flex h-full min-h-0 min-w-0 flex-col bg-white">
+        <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-3 py-3">
+          <div className="min-w-0 rounded-2xl border border-cyan-100 bg-cyan-50/55 p-3">
+            <div className="flex min-w-0 items-start gap-2.5">
+              <ShieldCheck className="mt-0.5 h-4 w-4 shrink-0 text-cyan-800" />
+              <div className="min-w-0 flex-1">
+                <p className="text-[10px] font-semibold text-cyan-950">Data boundary</p>
+                <p className="mt-1 break-words text-[9px] leading-4 text-cyan-900/70">
+                  Aggregate verified summaries are shared by default. Direct identifiers are never included. Participant-level derived summaries remain pseudonymous and require explicit permission.
+                </p>
+              </div>
+            </div>
+          </div>
+
+          <div className="mt-3 grid min-w-0 gap-2">
+            <label className="flex min-w-0 cursor-pointer items-start gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-[9px] leading-4 text-slate-600">
+              <input
+                type="checkbox"
+                checked={includeTestData}
+                onChange={(event) => setIncludeTestData(event.target.checked)}
+                className="mt-0.5 shrink-0"
+              />
+              <span className="min-w-0 break-words">Include TEST data</span>
+            </label>
+            <label className="flex min-w-0 cursor-pointer items-start gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-[9px] leading-4 text-slate-600">
+              <input
+                type="checkbox"
+                checked={includeParticipantLevel}
+                onChange={(event) => setIncludeParticipantLevel(event.target.checked)}
+                className="mt-0.5 shrink-0"
+              />
+              <span className="min-w-0 break-words">Include pseudonymous participant-level summaries</span>
+            </label>
+            <button
+              type="button"
+              onClick={() => void refreshContext()}
+              disabled={loadingContext}
+              className="flex min-w-0 items-center justify-center gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-[9px] font-semibold text-slate-600 disabled:opacity-50"
+            >
+              <RefreshCw className={`h-3.5 w-3.5 shrink-0 ${loadingContext ? "animate-spin" : ""}`} />
+              <span className="truncate">Refresh study context</span>
+            </button>
+          </div>
+
+          {loadingContext ? (
+            <div className="mt-3 rounded-2xl bg-slate-50 p-4 text-[10px] text-slate-500">
+              Preparing verified study context…
+            </div>
+          ) : contextError ? (
+            <div className="mt-3 min-w-0 rounded-2xl border border-red-200 bg-red-50 p-3 text-[9px] leading-4 text-red-700">
+              <p className="break-words">{contextError}</p>
+            </div>
+          ) : loaded ? (
+            <div className="mt-3 grid min-w-0 grid-cols-2 gap-2">
+              {[
+                ["Participants", loaded.includedParticipants],
+                ["Questionnaire summaries", loaded.questionnaireSummaries],
+                ["Cognitive administrations", loaded.cognitiveTasks],
+                ["Quality flags", loaded.qualityFlags],
+              ].map(([label, value]) => (
+                <div key={String(label)} className="min-w-0 overflow-hidden rounded-xl border border-slate-200 bg-slate-50/65 p-3">
+                  <p className="break-words text-[7px] font-semibold uppercase leading-3 tracking-[0.08em] text-slate-400">
+                    {label}
+                  </p>
+                  <p className="mt-1 text-[17px] font-semibold text-slate-900">{String(value)}</p>
+                </div>
+              ))}
+            </div>
+          ) : null}
+
+          {loaded && messages.length === 0 && (
+            <div className="mt-4 min-w-0">
+              <p className="text-[9px] font-semibold text-slate-700">Ask about this study</p>
+              <div className="mt-2 grid min-w-0 gap-2">
+                {suggestedPrompts.map((prompt) => (
+                  <button
+                    key={prompt}
+                    type="button"
+                    onClick={() => void send(prompt)}
+                    disabled={sending}
+                    className="min-w-0 rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-left text-[9px] leading-4 text-slate-600 transition hover:border-cyan-200 hover:bg-cyan-50 disabled:opacity-50"
+                  >
+                    <span className="block break-words">{prompt}</span>
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {messages.length > 0 && (
+            <div className="mt-4 min-w-0 space-y-2.5">
+              {messages.map((message, index) => (
+                <div
+                  key={`${message.role}-${index}`}
+                  className={`min-w-0 max-w-[94%] overflow-hidden rounded-2xl px-3 py-2.5 text-[10px] leading-5 ${
+                    message.role === "user"
+                      ? "ml-auto bg-slate-950 text-white"
+                      : "mr-auto border border-slate-200 bg-slate-50 text-slate-700"
+                  }`}
+                >
+                  <div className="whitespace-pre-wrap break-words [overflow-wrap:anywhere]">{message.content}</div>
+                </div>
+              ))}
+              {sending && (
+                <div className="mr-auto inline-flex max-w-[94%] items-center gap-2 rounded-2xl border border-slate-200 bg-white px-3 py-2.5 text-[9px] text-slate-500">
+                  <BrainCircuit className="h-3.5 w-3.5 shrink-0 animate-pulse" />
+                  <span className="break-words">Interpreting verified results…</span>
+                </div>
+              )}
+            </div>
+          )}
+
+          {chatError && (
+            <div className="mt-3 min-w-0 rounded-xl border border-red-200 bg-red-50 px-3 py-2.5 text-[9px] leading-4 text-red-700">
+              <p className="break-words">{chatError}</p>
+            </div>
+          )}
+
+          <p className="mt-4 break-words px-1 text-[8px] leading-4 text-slate-400">
+            Explorer AI interprets the verified study context available here. Numerical conclusions must come from PsyLattice's deterministic analysis engine or an explicitly run statistical module.
+          </p>
+        </div>
+
+        <div className="shrink-0 border-t border-slate-200 bg-white p-3 shadow-[0_-8px_24px_rgba(15,23,42,.04)]">
+          <textarea
+            value={draft}
+            onChange={(event) => setDraft(event.target.value.slice(0, 4000))}
+            onKeyDown={(event) => {
+              if (event.key === "Enter" && !event.shiftKey) {
+                event.preventDefault();
+                void send();
+              }
+            }}
+            rows={3}
+            placeholder="Ask about this study, data quality, interpretation, or what analysis is still missing…"
+            className="max-h-32 min-h-[72px] w-full resize-none rounded-2xl border border-slate-200 bg-white px-3 py-2.5 text-[10px] leading-5 text-slate-700 outline-none focus:border-cyan-300"
+          />
+          <div className="mt-2 flex items-center gap-2">
+            <button
+              type="button"
+              onClick={() => void send()}
+              disabled={!draft.trim() || !effectiveContext || sending}
+              className="min-w-0 flex-1 rounded-xl bg-slate-950 px-4 py-2.5 text-[10px] font-semibold text-white disabled:opacity-40"
+            >
+              {sending ? "Thinking…" : "Ask"}
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                setMessages([]);
+                setDraft("");
+                setChatError("");
+              }}
+              disabled={sending || messages.length === 0}
+              className="shrink-0 rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-[9px] font-semibold text-slate-500 disabled:opacity-40"
+            >
+              New chat
+            </button>
+          </div>
+        </div>
+      </section>
+    );
   }
 
   return (
@@ -1459,17 +1537,6 @@ export default function ResearchAiAssistant({ studyId, studyTitle }: Props) {
             />
             Include pseudonymous participant-level summaries
           </label>
-          <button
-            type="button"
-            onClick={() => {
-              if (saveHistoryEnabled) setSaveHistoryEnabled(false);
-              else setHistoryPermissionOpen(true);
-            }}
-            className={`flex items-center gap-2 rounded-xl border px-3 py-2 text-xs font-medium ${saveHistoryEnabled ? "border-emerald-200 bg-emerald-50 text-emerald-800" : "border-slate-200 bg-white text-slate-600"}`}
-          >
-            <History className="h-3.5 w-3.5" />
-            {saveHistoryEnabled ? "Saving this conversation" : "Save conversation history"}
-          </button>
         </div>
 
         {loadingContext ? (
@@ -1495,12 +1562,6 @@ export default function ResearchAiAssistant({ studyId, studyTitle }: Props) {
             ))}
           </div>
         ) : null}
-
-        {historyError && (
-          <div className="mt-3 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-xs leading-5 text-amber-800">
-            {historyError}
-          </div>
-        )}
 
         {loaded && (
           <>
@@ -1581,8 +1642,6 @@ export default function ResearchAiAssistant({ studyId, studyTitle }: Props) {
                     setMessages([]);
                     setDraft("");
                     setChatError("");
-                    setCurrentConversationId("");
-                    setSavedMessageCount(0);
                   }}
                   disabled={sending || messages.length === 0}
                   className="rounded-xl border border-slate-200 bg-white px-4 py-3 text-xs font-semibold text-slate-500 disabled:opacity-40"
@@ -1593,30 +1652,11 @@ export default function ResearchAiAssistant({ studyId, studyTitle }: Props) {
             </div>
 
             <p className="mt-3 text-[11px] leading-5 text-slate-400">
-              {saveHistoryEnabled ? "Conversation saving is on for this chat. Saved research discussions remain private to your PsyLattice account and are not supplied to Analysis AI later unless you explicitly select and permit them." : "Conversation saving is off. Turn it on only if you want this research discussion available for later, explicitly permitted Analysis AI context."} Numerical conclusions must still come from the PsyLattice analysis engine or an explicitly run statistical module.
+              AI chat history is kept only in this page state and is not stored by this feature. Numerical conclusions must come from the PsyLattice analysis engine or an explicitly run statistical module.
             </p>
           </>
         )}
       </div>
-
-
-      {historyPermissionOpen && (
-        <div className="fixed inset-0 z-[320] flex items-center justify-center bg-slate-950/40 p-4 backdrop-blur-[2px]">
-          <div className="w-full max-w-md rounded-[24px] border border-slate-200 bg-white p-5 shadow-2xl">
-            <div className="flex items-start justify-between gap-4">
-              <div className="flex h-10 w-10 items-center justify-center rounded-2xl bg-emerald-50 text-emerald-800"><History className="h-5 w-5" /></div>
-              <button type="button" onClick={() => setHistoryPermissionOpen(false)} className="rounded-full border border-slate-200 p-2 text-slate-400"><X className="h-4 w-4" /></button>
-            </div>
-            <h3 className="mt-4 text-lg font-semibold text-slate-950">Save this Research Assistant conversation?</h3>
-            <p className="mt-2 text-[11px] leading-5 text-slate-500">PsyLattice will save this chat in your own research account so it can appear in the Analysis AI past-conversation picker later. Existing messages in this chat will be saved when you approve.</p>
-            <div className="mt-4 rounded-xl border border-amber-200 bg-amber-50 p-3 text-[9px] leading-4 text-amber-900">Saving does not automatically let another AI session read the conversation. Analysis AI still requires you to select the exact saved chat and grant access separately.</div>
-            <div className="mt-5 flex justify-end gap-2">
-              <button type="button" onClick={() => setHistoryPermissionOpen(false)} className="rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-[10px] font-semibold text-slate-600">Cancel</button>
-              <button type="button" onClick={() => void enableHistorySaving()} className="rounded-xl bg-slate-950 px-4 py-2.5 text-[10px] font-semibold text-white">Enable saving</button>
-            </div>
-          </div>
-        </div>
-      )}
     </section>
   );
 }

@@ -10,6 +10,8 @@ import {
   FolderOpen,
   History,
   LockKeyhole,
+  Map as MapIcon,
+  ArrowRight,
   Minimize2,
   RefreshCw,
   SlidersHorizontal,
@@ -121,6 +123,25 @@ export type AnalysisAiWorkflowProposal = {
   can_apply: boolean;
 };
 
+export type AnalysisAiStudyNavigationTarget =
+  | "builder"
+  | "participants"
+  | "explorer"
+  | "analysis_data"
+  | "analysis_variables"
+  | "analysis_analyses"
+  | "exports"
+  | "writing";
+
+export type AnalysisAiStudyRoadmapStage = {
+  id: string;
+  label: string;
+  status: "evidence" | "current" | "next" | "available" | "needs_data";
+  detail: string;
+  target?: AnalysisAiStudyNavigationTarget;
+  actionLabel?: string;
+};
+
 export type AnalysisAiContext = {
   schema_version: string;
   generated_at?: string;
@@ -141,8 +162,26 @@ export type AnalysisAiContext = {
     data_fingerprint?: string;
     primary_result?: AnalysisAiTableContext | null;
     supplementary_results?: AnalysisAiTableContext[];
+    guardrails?: Array<{
+      id: string;
+      severity: "block" | "review" | "info";
+      category: string;
+      title: string;
+      detail: string;
+      action?: string;
+      action_label?: string;
+    }>;
   };
   saved_analysis_records?: Array<Record<string, unknown>>;
+  study_progress?: {
+    basis: string;
+    stages: AnalysisAiStudyRoadmapStage[];
+  };
+  reporting_artifacts?: {
+    available_tables: Array<{ title: string; subtitle?: string; note?: string }>;
+    available_figures: Array<{ id: string; label: string; purpose: string; thesis_ready: boolean }>;
+    handoff_note?: string;
+  };
   capability_registry: Array<Record<string, unknown>>;
   apply_setup_schema?: Record<string, unknown>;
   apply_preparation_schema?: Record<string, unknown>;
@@ -161,6 +200,8 @@ type Props = {
   workingRowsTotal?: number;
   onApplySetup?: (proposal: AnalysisAiSetupProposal) => ApplySetupResult;
   onApplyWorkflow?: (proposal: AnalysisAiWorkflowProposal) => ApplySetupResult;
+  roadmap?: AnalysisAiStudyRoadmapStage[];
+  onNavigate?: (target: AnalysisAiStudyNavigationTarget) => void;
 };
 
 type ChatMessage = {
@@ -219,9 +260,11 @@ const MAX_PAST_CONVERSATIONS = 6;
 const QUICK_PROMPTS = [
   "Which analysis best fits my current variables and research question?",
   "Guide me through the current analysis step by step.",
+  "What stage of the study workflow am I at, and what should I do next in PsyLattice?",
   "Do I need to prepare, derive, recode, center, lag, or filter anything before the best analysis?",
   "Explain what my current result means and what I should check next.",
   "What should I report from this analysis in my thesis?",
+  "Which table or figure should I copy to Thesis Builder for my hypothesis, and why?",
 ];
 
 function clip(value: string, max: number) {
@@ -294,9 +337,12 @@ export default function AnalysisAiAssistant({
   workingRowsTotal = 0,
   onApplySetup,
   onApplyWorkflow,
+  roadmap = [],
+  onNavigate,
 }: Props) {
   const [open, setOpen] = useState(false);
   const [minimized, setMinimized] = useState(false);
+  const [studyPathOpen, setStudyPathOpen] = useState(false);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [draft, setDraft] = useState("");
   const [sending, setSending] = useState(false);
@@ -593,6 +639,16 @@ export default function AnalysisAiAssistant({
     );
   }
 
+  const currentRoadmapStage = roadmap.find((stage) => stage.status === "current") || null;
+  const nextRoadmapStage = roadmap.find((stage) => stage.status === "next") || null;
+  const roadmapStatusLabel = (status: AnalysisAiStudyRoadmapStage["status"]) => {
+    if (status === "evidence") return "Evidence present";
+    if (status === "current") return "Current";
+    if (status === "next") return "Suggested next";
+    if (status === "needs_data") return "Needs data";
+    return "Available";
+  };
+
   const requestContext = useMemo(() => {
     const base = {
       ...context,
@@ -861,6 +917,74 @@ export default function AnalysisAiAssistant({
                   </p>
                 </div>
               </div>
+
+              {roadmap.length > 0 && (
+                <div className="shrink-0 border-b border-slate-100 bg-white px-4 py-3">
+                  <button
+                    type="button"
+                    onClick={() => setStudyPathOpen((value) => !value)}
+                    className="flex w-full items-center justify-between gap-3 text-left"
+                  >
+                    <div className="flex min-w-0 items-center gap-2.5">
+                      <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-xl border border-cyan-200 bg-cyan-50 text-cyan-800">
+                        <MapIcon className="h-4 w-4" />
+                      </div>
+                      <div className="min-w-0">
+                        <p className="text-[10px] font-semibold text-slate-900">Study workflow navigator</p>
+                        <p className="mt-0.5 truncate text-[8px] text-slate-400">
+                          {nextRoadmapStage
+                            ? `Suggested next · ${nextRoadmapStage.label}`
+                            : currentRoadmapStage
+                              ? `Current · ${currentRoadmapStage.label}`
+                              : "PsyLattice navigation based on current workspace evidence"}
+                        </p>
+                      </div>
+                    </div>
+                    <span className="shrink-0 rounded-full border border-slate-200 bg-slate-50 px-2.5 py-1 text-[8px] font-semibold text-slate-500">
+                      {studyPathOpen ? "Hide path" : "View path"}
+                    </span>
+                  </button>
+
+                  {studyPathOpen && (
+                    <div className="mt-3 space-y-2">
+                      <p className="text-[8px] leading-4 text-slate-400">
+                        Statuses are navigation hints from current PsyLattice state, not a claim that scientific, ethics, or reporting requirements are complete.
+                      </p>
+                      {roadmap.map((stage) => (
+                        <div key={stage.id} className="flex items-start gap-2 rounded-xl border border-slate-200 bg-slate-50/60 p-2.5">
+                          <div className={`mt-0.5 h-2.5 w-2.5 shrink-0 rounded-full ${
+                            stage.status === "current"
+                              ? "bg-cyan-500"
+                              : stage.status === "next"
+                                ? "bg-violet-500"
+                                : stage.status === "evidence"
+                                  ? "bg-slate-700"
+                                  : stage.status === "needs_data"
+                                    ? "bg-rose-400"
+                                    : "bg-slate-300"
+                          }`} />
+                          <div className="min-w-0 flex-1">
+                            <div className="flex flex-wrap items-center gap-1.5">
+                              <p className="text-[9px] font-semibold text-slate-800">{stage.label}</p>
+                              <span className="rounded-full bg-white px-1.5 py-0.5 text-[7px] font-semibold text-slate-400">{roadmapStatusLabel(stage.status)}</span>
+                            </div>
+                            <p className="mt-1 break-words text-[8px] leading-4 text-slate-500">{stage.detail}</p>
+                          </div>
+                          {stage.target && onNavigate && (
+                            <button
+                              type="button"
+                              onClick={() => onNavigate(stage.target!)}
+                              className="inline-flex shrink-0 items-center gap-1 rounded-lg border border-slate-200 bg-white px-2 py-1.5 text-[7px] font-semibold text-slate-600 hover:border-cyan-200 hover:text-cyan-800"
+                            >
+                              {stage.actionLabel || "Open"} <ArrowRight className="h-2.5 w-2.5" />
+                            </button>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )}
 
               <div className="flex-1 space-y-3 overflow-y-auto p-4">
                 {messages.length === 0 && (

@@ -5,6 +5,7 @@ import {
   useMemo,
   useRef,
   useState,
+  type DragEvent,
 } from "react";
 import {
   BarChart3,
@@ -27,16 +28,34 @@ import {
   RotateCcw,
   Save,
   Search,
+  ShieldCheck,
   Sparkles,
+  TriangleAlert,
+  Info,
   Trash2,
   Upload,
   X,
 } from "lucide-react";
+import ExcelJS from "exceljs";
+import AnalysisDataWorkspace, {
+  type AnalysisWorkspaceView,
+  type AnalysisWorkspaceVariableLevel,
+} from "@/components/AnalysisDataWorkspace";
+
+import {
+  computeAnalysisGuardrails,
+  type AnalysisGuardrail,
+  type AnalysisGuardrailAction,
+  type AnalysisGuardrailResultSnapshot,
+} from "@/lib/research/analysisGuardrails";
+
 import AnalysisAiAssistant, {
   type AnalysisAiContext,
   type AnalysisAiPreparationStep,
   type AnalysisAiSetupProposal,
   type AnalysisAiWorkflowProposal,
+  type AnalysisAiStudyRoadmapStage,
+  type AnalysisAiStudyNavigationTarget,
 } from "@/components/AnalysisAiAssistant";
 
 import {
@@ -57,7 +76,9 @@ import {
   computePowerAnalysis,
   computeModerationAnalysis,
   computeLinearMixedModel,
+  probeLinearMixedNumericInteraction,
   computeGeneralizedMixedModel,
+  probeGeneralizedMixedInteraction,
   computeBinaryLogisticRegression,
   computeMultinomialLogisticRegression,
   computeOrdinalLogisticRegression,
@@ -94,12 +115,16 @@ import {
   type IndependentTTestEstimator,
   type NumericDescriptives,
   type OneWayAnovaEstimator,
+  type MultipleComparisonAdjustment,
   type DistributionDiagnosticsResult,
   type VarianceTestCenter,
   type MixedModelEstimator,
   type MixedModelCentering,
+  type MixedModelInteraction,
+  type LinearMixedInteractionProbe,
   type GeneralizedMixedFamily,
   type GeneralizedMixedModelResult,
+  type GeneralizedMixedInteractionProbe,
   type MediationAnalysisResult,
   type ModerationAnalysisResult,
   type PowerAnalysisMode,
@@ -140,6 +165,23 @@ type AnalysisLabDatasetOption = {
   recommended?: boolean;
 };
 
+type AnalysisLabDatasetStructure = {
+  grain: "participant" | "participant_day" | "checkin" | "cognitive_session" | "trial" | "other";
+  unitLabel: string;
+  repeatedObservations: boolean;
+  clusterVariable: string | null;
+  clusterLabel: string | null;
+  observationCount: number;
+  clusterCount: number;
+  meanObservationsPerCluster: number;
+  maxObservationsPerCluster: number;
+  exactMatches: number;
+  timeWindowMatches: number;
+  derivedDateMatches: number;
+  unmatchedRows: number;
+  note: string;
+};
+
 type AnalysisLabProps = {
   rows: AnalysisRow[];
   codebook?: AnalysisCodebookVariable[];
@@ -155,6 +197,8 @@ type AnalysisLabProps = {
   includeTestData?: boolean;
   onIncludeTestDataChange?: (value: boolean) => void;
   identityModeLabel?: string;
+  datasetStructure?: AnalysisLabDatasetStructure;
+  onNavigateWorkspace?: (target: "builder" | "participants" | "explorer" | "exports" | "writing") => void;
 };
 
 type DescriptiveOptionKey =
@@ -196,6 +240,34 @@ const defaultOptions: Record<DescriptiveOptionKey, boolean> = {
   skewness: false,
   kurtosis: false,
 };
+
+function analysisWorkspaceRowKey(row: AnalysisRow, index: number) {
+  const identityParts = [
+    row.participant,
+    row.checkin_id,
+    row.cognitive_session_id,
+    row.participant_session_id,
+    row.response_id,
+    row.local_date,
+    row.trial_index,
+  ]
+    .filter((value) => value !== null && value !== undefined && value !== "")
+    .map((value) => String(value));
+
+  return identityParts.length > 0
+    ? `${identityParts.join("|")}#${index}`
+    : `row#${index}`;
+}
+
+function analysisWorkspaceLevelType(level: AnalysisWorkspaceVariableLevel) {
+  if (level === "continuous") return "Continuous numeric";
+  if (level === "ordinal") return "Ordinal";
+  if (level === "nominal") return "Nominal categorical";
+  if (level === "boolean") return "Boolean binary";
+  if (level === "datetime") return "Datetime";
+  if (level === "id") return "Identifier";
+  return "Text";
+}
 
 type AnalysisNavCategory = "explore" | "compare" | "model" | "scales" | "design";
 
@@ -439,6 +511,17 @@ function formatPValue(value: number | null) {
   if (value < 0.001) return "< .001";
   return value.toFixed(3).replace(/^0/, "");
 }
+
+function multipleComparisonLabel(value: MultipleComparisonAdjustment) {
+  if (value === "bonferroni") return "Bonferroni";
+  if (value === "fdr_bh") return "FDR · Benjamini–Hochberg";
+  return "Holm";
+}
+
+function sameStringArray(left: string[], right: string[]) {
+  return left.length === right.length && left.every((value, index) => value === right[index]);
+}
+
 
 function correlationStrengthLabel(value: number | null) {
   if (value === null) return "Unavailable";
@@ -1540,6 +1623,168 @@ function PairwiseAvailabilityHeatmap({ result }: { result: ReturnType<typeof com
   );
 }
 
+
+function correlationCellColor(value: number | null) {
+  if (value === null || !Number.isFinite(value)) return { fill: "#f8fafc", text: "#94a3b8" };
+  const intensity = Math.min(1, Math.abs(value));
+  if (value >= 0) {
+    const lightness = 96 - intensity * 43;
+    return { fill: `hsl(190 82% ${lightness}%)`, text: intensity > 0.58 ? "#ffffff" : "#164e63" };
+  }
+  const lightness = 97 - intensity * 42;
+  return { fill: `hsl(266 76% ${lightness}%)`, text: intensity > 0.58 ? "#ffffff" : "#5b21b6" };
+}
+
+function CorrelationHeatmapPlot({ matrix }: { matrix: ReturnType<typeof computeCorrelationMatrix> }) {
+  const variables = matrix.variables.slice(0, 14);
+  const cellSize = 46;
+  const left = 180;
+  const top = 138;
+  const right = 28;
+  const bottom = 34;
+  const width = Math.max(600, left + right + variables.length * cellSize);
+  const height = Math.max(380, top + bottom + variables.length * cellSize);
+  const byPair = new Map<string, number | null>();
+  matrix.cells.forEach((cell) => {
+    byPair.set(`${cell.x}\u0000${cell.y}`, cell.r);
+    byPair.set(`${cell.y}\u0000${cell.x}`, cell.r);
+  });
+
+  return (
+    <div className="overflow-hidden rounded-[22px] border border-slate-200 bg-white shadow-[0_2px_4px_rgba(15,23,42,.025),0_9px_22px_rgba(15,23,42,.04)]">
+      <div className="border-b border-slate-100 px-4 py-3.5 pr-28">
+        <p className="text-[10px] font-semibold text-slate-800">Correlation heatmap</p>
+        <p className="mt-0.5 text-[8px] leading-4 text-slate-400">Cyan indicates positive associations; violet indicates negative associations. Values are pairwise-complete.</p>
+      </div>
+      <div className="overflow-x-auto p-3 sm:p-4">
+        <svg data-analysis-visualization="true" viewBox={`0 0 ${width} ${height}`} className="h-auto min-w-[600px] w-full" role="img" aria-label={`${matrix.method} correlation heatmap`}>
+          {variables.map((variable, columnIndex) => {
+            const x = left + columnIndex * cellSize + cellSize / 2;
+            return <text key={`col-${variable.name}`} transform={`translate(${x - 5} ${top - 10}) rotate(-52)`} textAnchor="start" fill="#64748b" fontSize="8">{visualizationShortLabel(variable.label, 24)}</text>;
+          })}
+          {variables.map((rowVariable, rowIndex) => (
+            <g key={`row-${rowVariable.name}`}>
+              <text x={left - 10} y={top + rowIndex * cellSize + cellSize / 2 + 3} textAnchor="end" fill="#64748b" fontSize="8">{visualizationShortLabel(rowVariable.label, 28)}</text>
+              {variables.map((columnVariable, columnIndex) => {
+                const diagonal = rowVariable.name === columnVariable.name;
+                const value = diagonal ? 1 : (byPair.get(`${rowVariable.name}\u0000${columnVariable.name}`) ?? null);
+                const tone = correlationCellColor(value);
+                const x = left + columnIndex * cellSize;
+                const y = top + rowIndex * cellSize;
+                return <g key={`${rowVariable.name}-${columnVariable.name}`}>
+                  <rect x={x + 1} y={y + 1} width={cellSize - 2} height={cellSize - 2} rx="7" fill={tone.fill} />
+                  <text x={x + cellSize / 2} y={y + cellSize / 2 + 3} textAnchor="middle" fill={tone.text} fontSize="8.5" fontWeight="700">{value === null ? "—" : formatNumber(value, 2)}</text>
+                </g>;
+              })}
+            </g>
+          ))}
+        </svg>
+      </div>
+      {matrix.variables.length > variables.length ? <div className="border-t border-slate-100 px-4 py-2.5 text-[8px] text-slate-400">Heatmap preview shows the first {variables.length} selected variables. The numerical matrix still contains all selected variables.</div> : null}
+    </div>
+  );
+}
+
+type CoefficientPlotDatum = {
+  label: string;
+  estimate: number | null;
+  low: number | null;
+  high: number | null;
+};
+
+function CoefficientForestPlot({ rows, subtitle }: { rows: CoefficientPlotDatum[]; subtitle: string }) {
+  const plotted = rows.filter((row) => row.estimate !== null && Number.isFinite(row.estimate) && row.low !== null && row.high !== null && Number.isFinite(row.low) && Number.isFinite(row.high)).slice(0, 18);
+  const width = 720;
+  const left = 235;
+  const right = 45;
+  const top = 28;
+  const bottom = 36;
+  const rowHeight = 30;
+  const height = Math.max(190, top + bottom + Math.max(1, plotted.length) * rowHeight);
+  const values = plotted.flatMap((row) => [row.low as number, row.high as number, row.estimate as number, 0]);
+  const rawMin = values.length ? Math.min(...values) : -1;
+  const rawMax = values.length ? Math.max(...values) : 1;
+  const span = Math.max(1e-6, rawMax - rawMin);
+  const min = rawMin - span * 0.08;
+  const max = rawMax + span * 0.08;
+  const plotWidth = width - left - right;
+  const x = (value: number) => left + ((value - min) / Math.max(1e-9, max - min)) * plotWidth;
+  const zeroX = x(0);
+
+  return (
+    <div className="overflow-hidden rounded-[22px] border border-slate-200 bg-white shadow-[0_2px_4px_rgba(15,23,42,.025),0_9px_22px_rgba(15,23,42,.04)]">
+      <div className="border-b border-slate-100 px-4 py-3.5 pr-28">
+        <p className="text-[10px] font-semibold text-slate-800">Coefficient plot</p>
+        <p className="mt-0.5 text-[8px] leading-4 text-slate-400">{subtitle} · model-scale estimates with 95% confidence intervals.</p>
+      </div>
+      {plotted.length > 0 ? <div className="p-3 sm:p-4">
+        <svg data-analysis-visualization="true" viewBox={`0 0 ${width} ${height}`} className="h-auto w-full" role="img" aria-label="Coefficient forest plot">
+          <line x1={zeroX} x2={zeroX} y1={top - 8} y2={height - bottom + 4} stroke="#94a3b8" strokeWidth="1.2" strokeDasharray="4 4" />
+          {plotted.map((row, index) => {
+            const y = top + index * rowHeight + 10;
+            return <g key={`${row.label}-${index}`}>
+              <text x={left - 12} y={y + 3} textAnchor="end" fill="#475569" fontSize="8.4" fontWeight="600">{visualizationShortLabel(row.label, 34)}</text>
+              <line x1={x(row.low as number)} x2={x(row.high as number)} y1={y} y2={y} stroke="#64748b" strokeWidth="2" />
+              <line x1={x(row.low as number)} x2={x(row.low as number)} y1={y - 4} y2={y + 4} stroke="#64748b" />
+              <line x1={x(row.high as number)} x2={x(row.high as number)} y1={y - 4} y2={y + 4} stroke="#64748b" />
+              <circle cx={x(row.estimate as number)} cy={y} r="4" fill="#0891b2" />
+            </g>;
+          })}
+          {[0, .25, .5, .75, 1].map((fraction) => {
+            const value = min + (max - min) * fraction;
+            const xx = x(value);
+            return <g key={fraction}><line x1={xx} x2={xx} y1={height - bottom + 2} y2={height - bottom + 6} stroke="#cbd5e1" /><text x={xx} y={height - 10} textAnchor="middle" fill="#94a3b8" fontSize="8">{formatNumber(value, 2)}</text></g>;
+          })}
+        </svg>
+      </div> : <div className="px-4 py-10 text-center text-[9px] text-slate-400">Confidence intervals are not available for the current coefficient set.</div>}
+    </div>
+  );
+}
+
+function FactorLoadingHeatmap({ result, cutoff }: { result: { factorCount: number; items: Array<{ variable: string; label: string; loadings: number[] }> }; cutoff: number }) {
+  const items = result.items.slice(0, 28);
+  const cellWidth = 68;
+  const rowHeight = 30;
+  const left = 245;
+  const right = 28;
+  const top = 52;
+  const bottom = 26;
+  const width = Math.max(560, left + right + result.factorCount * cellWidth);
+  const height = Math.max(220, top + bottom + Math.max(1, items.length) * rowHeight);
+  const tone = (value: number) => {
+    const intensity = Math.min(1, Math.abs(value));
+    const visible = Math.abs(value) >= cutoff;
+    if (!visible) return { fill: "#f8fafc", text: "#cbd5e1" };
+    if (value >= 0) return { fill: `hsl(190 82% ${96 - intensity * 44}%)`, text: intensity > .6 ? "#ffffff" : "#164e63" };
+    return { fill: `hsl(266 76% ${97 - intensity * 43}%)`, text: intensity > .6 ? "#ffffff" : "#5b21b6" };
+  };
+  return (
+    <div className="overflow-hidden rounded-[22px] border border-slate-200 bg-white shadow-[0_2px_4px_rgba(15,23,42,.025),0_9px_22px_rgba(15,23,42,.04)]">
+      <div className="border-b border-slate-100 px-4 py-3.5 pr-28">
+        <p className="text-[10px] font-semibold text-slate-800">Factor-loading heatmap</p>
+        <p className="mt-0.5 text-[8px] leading-4 text-slate-400">Signed loadings from the current extracted solution. Cells below |{cutoff.toFixed(2)}| are muted.</p>
+      </div>
+      <div className="overflow-x-auto p-3 sm:p-4">
+        <svg data-analysis-visualization="true" viewBox={`0 0 ${width} ${height}`} className="h-auto min-w-[560px] w-full" role="img" aria-label="Factor loadings heatmap">
+          {Array.from({ length: result.factorCount }, (_, index) => <text key={index} x={left + index * cellWidth + cellWidth / 2} y={30} textAnchor="middle" fill="#64748b" fontSize="8.5" fontWeight="700">F{index + 1}</text>)}
+          {items.map((item, rowIndex) => <g key={item.variable}>
+            <text x={left - 10} y={top + rowIndex * rowHeight + rowHeight / 2 + 3} textAnchor="end" fill="#475569" fontSize="8.2" fontWeight="600">{visualizationShortLabel(item.label, 36)}</text>
+            {Array.from({ length: result.factorCount }, (_, factorIndex) => {
+              const value = item.loadings[factorIndex] ?? 0;
+              const cell = tone(value);
+              return <g key={factorIndex}>
+                <rect x={left + factorIndex * cellWidth + 2} y={top + rowIndex * rowHeight + 2} width={cellWidth - 4} height={rowHeight - 4} rx="7" fill={cell.fill} />
+                <text x={left + factorIndex * cellWidth + cellWidth / 2} y={top + rowIndex * rowHeight + rowHeight / 2 + 3} textAnchor="middle" fill={cell.text} fontSize="8.4" fontWeight="700">{Math.abs(value) >= cutoff ? formatNumber(value, 2) : "·"}</text>
+              </g>;
+            })}
+          </g>)}
+        </svg>
+      </div>
+      {result.items.length > items.length ? <div className="border-t border-slate-100 px-4 py-2.5 text-[8px] text-slate-400">Heatmap preview shows the first {items.length} items; the full loading table remains below.</div> : null}
+    </div>
+  );
+}
+
 function diagnosticFlag(result: DistributionDiagnosticsResult) {
   if (result.issue) return { label: "Unavailable", tone: "border-slate-200 bg-slate-50 text-slate-500" };
   const strongShape = Math.abs(result.skewness ?? 0) > 1 || Math.abs(result.kurtosisExcess ?? 0) > 2;
@@ -1586,6 +1831,172 @@ function SelectedVariableChip({
   );
 }
 
+function GeneralizedMixedInteractionProbePlot({ probe }: { probe: GeneralizedMixedInteractionProbe }) {
+  if (probe.plotSeries.length === 0) {
+    return (
+      <div className="flex min-h-[250px] items-center justify-center rounded-2xl border border-dashed border-slate-200 bg-slate-50/55 p-6 text-center">
+        <div>
+          <p className="text-[10px] font-semibold text-slate-700">Response-scale interaction plot unavailable</p>
+          <p className="mt-1 max-w-sm text-[8px] leading-4 text-slate-400">{probe.reason || "The selected generalized mixed-model interaction cannot be plotted."}</p>
+        </div>
+      </div>
+    );
+  }
+
+  const width = 600;
+  const height = 330;
+  const padding = { left: 62, right: 24, top: 24, bottom: 58 };
+  const plotWidth = width - padding.left - padding.right;
+  const plotHeight = height - padding.top - padding.bottom;
+  const allPoints = probe.plotSeries.flatMap((series) => series.points);
+  const yValues = allPoints.map((point) => point.predicted).filter(Number.isFinite);
+  const yMinRaw = probe.family === "binomial" ? 0 : (yValues.length ? Math.min(...yValues) : 0);
+  const yMaxRaw = probe.family === "binomial" ? 1 : (yValues.length ? Math.max(...yValues) : 1);
+  const yPad = probe.family === "binomial" ? 0 : Math.max(1e-9, (yMaxRaw - yMinRaw) * 0.08);
+  const yMin = probe.family === "binomial" ? 0 : Math.max(0, yMinRaw - yPad);
+  const yMax = probe.family === "binomial" ? 1 : yMaxRaw + yPad;
+  const yScale = (value: number) => padding.top + (1 - (value - yMin) / Math.max(1e-12, yMax - yMin)) * plotHeight;
+  const yTicks = Array.from({ length: 5 }, (_, index) => yMin + ((yMax - yMin) * index) / 4);
+  const colours = visualizationPalette;
+
+  const numericX = probe.plotXKind === "numeric";
+  const numericValues = numericX
+    ? allPoints.map((point) => typeof point.x === "number" ? point.x : Number(point.x)).filter(Number.isFinite)
+    : [];
+  const xMin = numericValues.length ? Math.min(...numericValues) : 0;
+  const xMax = numericValues.length ? Math.max(...numericValues) : 1;
+  const categories: string[] = numericX ? [] : Array.from(new Set(allPoints.map((point) => String(point.xLabel))));
+  const xScaleNumeric = (value: number) => padding.left + ((value - xMin) / Math.max(1e-12, xMax - xMin)) * plotWidth;
+  const xScaleCategory = (label: string) => {
+    const index = Math.max(0, categories.indexOf(label));
+    return categories.length <= 1
+      ? padding.left + plotWidth / 2
+      : padding.left + (index / (categories.length - 1)) * plotWidth;
+  };
+
+  return (
+    <div>
+      <svg data-analysis-visualization="true" viewBox={`0 0 ${width} ${height}`} className="h-auto w-full" role="img" aria-label={`${probe.focalLabel} by ${probe.moderatorLabel} generalized mixed-model interaction plot`}>
+        {yTicks.map((tick) => (
+          <g key={tick}>
+            <line x1={padding.left} x2={width - padding.right} y1={yScale(tick)} y2={yScale(tick)} stroke="#e2e8f0" strokeWidth="1" />
+            <text x={padding.left - 9} y={yScale(tick) + 3} textAnchor="end" fill="#94a3b8" fontSize="9">{probe.family === "binomial" ? formatNumber(tick, 2) : formatNumber(tick, 2)}</text>
+          </g>
+        ))}
+        <line x1={padding.left} x2={padding.left} y1={padding.top} y2={height - padding.bottom} stroke="#94a3b8" strokeWidth="1" />
+        <line x1={padding.left} x2={width - padding.right} y1={height - padding.bottom} y2={height - padding.bottom} stroke="#94a3b8" strokeWidth="1" />
+
+        {probe.plotSeries.map((series, seriesIndex) => {
+          const colour = colours[seriesIndex % colours.length];
+          const pointPairs = series.points.map((point) => ({
+            x: numericX ? xScaleNumeric(typeof point.x === "number" ? point.x : Number(point.x)) : xScaleCategory(point.xLabel),
+            y: yScale(point.predicted),
+            point,
+          })).filter((item) => Number.isFinite(item.x) && Number.isFinite(item.y));
+          const polyline = pointPairs.map((item) => `${item.x},${item.y}`).join(" ");
+          return (
+            <g key={series.label}>
+              {polyline ? <polyline points={polyline} fill="none" stroke={colour} strokeWidth="2.3" strokeLinejoin="round" strokeLinecap="round" /> : null}
+              {!numericX ? pointPairs.map((item) => <circle key={`${series.label}-${item.point.xLabel}`} cx={item.x} cy={item.y} r="4" fill={colour} stroke="#fff" strokeWidth="1.2" />) : null}
+            </g>
+          );
+        })}
+
+        {numericX ? [xMin, (xMin + xMax) / 2, xMax].map((value) => (
+          <g key={value}>
+            <line x1={xScaleNumeric(value)} x2={xScaleNumeric(value)} y1={height - padding.bottom} y2={height - padding.bottom + 4} stroke="#94a3b8" strokeWidth="1" />
+            <text x={xScaleNumeric(value)} y={height - padding.bottom + 18} textAnchor="middle" fill="#94a3b8" fontSize="9">{formatNumber(value, 2)}</text>
+          </g>
+        )) : categories.map((label) => (
+          <text key={label} x={xScaleCategory(label)} y={height - padding.bottom + 18} textAnchor="middle" fill="#64748b" fontSize="8.5">{visualizationShortLabel(label, 16)}</text>
+        ))}
+        <text x={padding.left + plotWidth / 2} y={height - 12} textAnchor="middle" fill="#475569" fontSize="10" fontWeight="600">{probe.plotXLabel}</text>
+        <text transform={`translate(15 ${padding.top + plotHeight / 2}) rotate(-90)`} textAnchor="middle" fill="#475569" fontSize="10" fontWeight="600">{probe.plotYLabel}</text>
+      </svg>
+      <div className="mt-2 flex flex-wrap gap-2">
+        {probe.plotSeries.map((series, index) => (
+          <span key={series.label} className="inline-flex items-center gap-1.5 rounded-full border border-slate-200 bg-white px-2.5 py-1 text-[8px] font-semibold text-slate-600">
+            <span className="h-1.5 w-4 rounded-full" style={{ backgroundColor: colours[index % colours.length] }} />
+            {series.label}
+          </span>
+        ))}
+      </div>
+      <p className="mt-2 text-[8px] leading-4 text-slate-400">{probe.note}</p>
+    </div>
+  );
+}
+
+function LinearMixedInteractionProbePlot({ probe }: { probe: LinearMixedInteractionProbe }) {
+  if (!probe.available || probe.series.length === 0) {
+    return (
+      <div className="flex min-h-[250px] items-center justify-center rounded-2xl border border-dashed border-slate-200 bg-slate-50/55 p-6 text-center">
+        <div>
+          <p className="text-[10px] font-semibold text-slate-700">Interaction plot unavailable</p>
+          <p className="mt-1 max-w-sm text-[8px] leading-4 text-slate-400">{probe.reason || "The selected interaction cannot be plotted."}</p>
+        </div>
+      </div>
+    );
+  }
+
+  const width = 560;
+  const height = 300;
+  const padding = { left: 56, right: 20, top: 20, bottom: 46 };
+  const plotWidth = width - padding.left - padding.right;
+  const plotHeight = height - padding.top - padding.bottom;
+  const allPoints = probe.series.flatMap((series) => series.points);
+  const xValues = allPoints.map((point) => point.xDisplay ?? point.x).filter(Number.isFinite);
+  const yValues = allPoints.map((point) => point.y).filter(Number.isFinite);
+  const xMin = xValues.length ? Math.min(...xValues) : 0;
+  const xMax = xValues.length ? Math.max(...xValues) : 1;
+  const yMinRaw = yValues.length ? Math.min(...yValues) : 0;
+  const yMaxRaw = yValues.length ? Math.max(...yValues) : 1;
+  const yPad = Math.max(1e-9, (yMaxRaw - yMinRaw) * 0.08);
+  const yMin = yMinRaw - yPad;
+  const yMax = yMaxRaw + yPad;
+  const xScale = (value: number) => padding.left + ((value - xMin) / Math.max(1e-12, xMax - xMin)) * plotWidth;
+  const yScale = (value: number) => padding.top + (1 - (value - yMin) / Math.max(1e-12, yMax - yMin)) * plotHeight;
+  const seriesClasses = ["text-cyan-700", "text-violet-700", "text-slate-700"];
+
+  return (
+    <div>
+      <svg viewBox={`0 0 ${width} ${height}`} className="h-auto w-full" role="img" aria-label={`${probe.focalLabel} by ${probe.moderatorLabel} mixed-model interaction plot`}>
+        {[0, 0.25, 0.5, 0.75, 1].map((fraction) => {
+          const y = padding.top + fraction * plotHeight;
+          const value = yMax - fraction * (yMax - yMin);
+          return (
+            <g key={fraction}>
+              <line x1={padding.left} x2={width - padding.right} y1={y} y2={y} stroke="currentColor" className="text-slate-100" strokeWidth="1" />
+              <text x={padding.left - 8} y={y + 3} textAnchor="end" className="fill-slate-400 text-[9px]">{formatNumber(value, 2)}</text>
+            </g>
+          );
+        })}
+        <line x1={padding.left} x2={padding.left} y1={padding.top} y2={height - padding.bottom} stroke="currentColor" className="text-slate-300" />
+        <line x1={padding.left} x2={width - padding.right} y1={height - padding.bottom} y2={height - padding.bottom} stroke="currentColor" className="text-slate-300" />
+        {[xMin, (xMin + xMax) / 2, xMax].map((value) => (
+          <g key={value}>
+            <line x1={xScale(value)} x2={xScale(value)} y1={height - padding.bottom} y2={height - padding.bottom + 4} stroke="currentColor" className="text-slate-300" />
+            <text x={xScale(value)} y={height - padding.bottom + 17} textAnchor="middle" className="fill-slate-400 text-[9px]">{formatNumber(value, 2)}</text>
+          </g>
+        ))}
+        {probe.series.map((series, seriesIndex) => {
+          const points = series.points.map((point) => `${xScale(point.xDisplay ?? point.x)},${yScale(point.y)}`).join(" ");
+          return <polyline key={series.label} points={points} fill="none" stroke="currentColor" className={seriesClasses[seriesIndex % seriesClasses.length]} strokeWidth="2.4" strokeLinejoin="round" strokeLinecap="round" />;
+        })}
+        <text x={padding.left + plotWidth / 2} y={height - 8} textAnchor="middle" className="fill-slate-500 text-[10px] font-semibold">{probe.focalLabel}</text>
+      </svg>
+      <div className="mt-2 flex flex-wrap gap-2">
+        {probe.series.map((series, index) => (
+          <span key={series.label} className="inline-flex items-center gap-1.5 rounded-full border border-slate-200 bg-white px-2.5 py-1 text-[8px] font-semibold text-slate-600">
+            <span className={`h-1.5 w-4 rounded-full ${index === 0 ? "bg-cyan-700" : index === 1 ? "bg-violet-700" : "bg-slate-700"}`} />
+            {series.label} {series.moderatorDisplayValue !== null ? `(${formatNumber(series.moderatorDisplayValue, 2)})` : `(${formatNumber(series.moderatorValue, 2)} centred)`}
+          </span>
+        ))}
+      </div>
+      <p className="mt-2 text-[8px] leading-4 text-slate-400">{probe.xAxisNote} {probe.moderatorNote} Lines are fixed-effect predictions with other numeric predictors held at their model means and categorical predictors at reference levels.</p>
+    </div>
+  );
+}
+
 export default function AnalysisLab({
   rows,
   codebook = [],
@@ -1601,6 +2012,8 @@ export default function AnalysisLab({
   includeTestData = false,
   onIncludeTestDataChange,
   identityModeLabel = "Pseudonymous · direct identifiers hidden",
+  datasetStructure,
+  onNavigateWorkspace,
 }: AnalysisLabProps) {
   const [activeAnalysis, setActiveAnalysis] = useState<ActiveAnalysis>("descriptives");
   const [analysisCategoryTab, setAnalysisCategoryTab] = useState<AnalysisNavCategory>("explore");
@@ -1625,6 +2038,7 @@ export default function AnalysisLab({
   const [categoricalColumnVariable, setCategoricalColumnVariable] = useState("");
   const [anovaMode, setAnovaMode] = useState<AnovaMode>("between");
   const [anovaEstimator, setAnovaEstimator] = useState<OneWayAnovaEstimator>("standard");
+  const [anovaAdjustment, setAnovaAdjustment] = useState<MultipleComparisonAdjustment>("holm");
   const [anovaOutcomeVariable, setAnovaOutcomeVariable] = useState("");
   const [anovaFactorVariable, setAnovaFactorVariable] = useState("");
   const [anovaRepeatedVariables, setAnovaRepeatedVariables] = useState<string[]>([]);
@@ -1650,6 +2064,11 @@ export default function AnalysisLab({
   const [mixedFamily, setMixedFamily] = useState<MixedOutcomeFamily>("gaussian");
   const [mixedPositiveClass, setMixedPositiveClass] = useState("");
   const [mixedExposureVariable, setMixedExposureVariable] = useState("");
+  const [mixedInteractions, setMixedInteractions] = useState<MixedModelInteraction[]>([]);
+  const [mixedInteractionLeft, setMixedInteractionLeft] = useState("");
+  const [mixedInteractionRight, setMixedInteractionRight] = useState("");
+  const [mixedProbeInteractionKey, setMixedProbeInteractionKey] = useState("");
+  const [mixedProbeFocalVariable, setMixedProbeFocalVariable] = useState("");
   const [logisticMode, setLogisticMode] = useState<LogisticMode>("binary");
   const [logisticOutcomeVariable, setLogisticOutcomeVariable] = useState("");
   const [logisticPositiveClass, setLogisticPositiveClass] = useState("");
@@ -1703,6 +2122,12 @@ export default function AnalysisLab({
   const [csvRows, setCsvRows] = useState<AnalysisRow[]>([]);
   const [csvName, setCsvName] = useState("");
   const [csvError, setCsvError] = useState("");
+  const [workspaceView, setWorkspaceView] = useState<AnalysisWorkspaceView>("data");
+  const [workspaceCellEdits, setWorkspaceCellEdits] = useState<Record<string, Record<string, string>>>({});
+  const [workspaceVariableLabels, setWorkspaceVariableLabels] = useState<Record<string, string>>({});
+  const [workspaceVariableLevels, setWorkspaceVariableLevels] = useState<Record<string, AnalysisWorkspaceVariableLevel>>({});
+  const [workspaceAddedVariables, setWorkspaceAddedVariables] = useState<Record<string, { label: string; level: AnalysisWorkspaceVariableLevel }>>({});
+  const [workspaceDeletedVariables, setWorkspaceDeletedVariables] = useState<string[]>([]);
   const [prepareDataOpen, setPrepareDataOpen] = useState(false);
   const [prepareDataTab, setPrepareDataTab] = useState<PrepareDataTab>("native");
   const [usePreparedData, setUsePreparedData] = useState(false);
@@ -1840,8 +2265,55 @@ export default function AnalysisLab({
     () => applyAnalysisFilters(variableOperationResult.rows, analysisFilters),
     [variableOperationResult.rows, analysisFilters]
   );
-  const activeRows = filterResult.rows;
-  const activeCodebook = variableOperationResult.codebook;
+  const filteredRows = filterResult.rows;
+  const activeRows = useMemo(() => {
+    const deleted = new Set(workspaceDeletedVariables);
+    const added = Object.keys(workspaceAddedVariables);
+
+    return filteredRows.map((row, index) => {
+      const key = analysisWorkspaceRowKey(row, index);
+      const edits = workspaceCellEdits[key];
+      const next: AnalysisRow = edits ? { ...row, ...edits } : { ...row };
+
+      for (const variable of workspaceDeletedVariables) {
+        delete next[variable];
+      }
+
+      for (const variable of added) {
+        if (!(variable in next)) next[variable] = "";
+      }
+
+      for (const variable of deleted) {
+        delete next[variable];
+      }
+
+      return next;
+    });
+  }, [filteredRows, workspaceCellEdits, workspaceAddedVariables, workspaceDeletedVariables]);
+
+  const activeCodebook = useMemo(() => {
+    const base = variableOperationResult.codebook;
+    const columns = Array.from(new Set(activeRows.flatMap((row) => Object.keys(row))));
+    const baseMap = new Map(base.map((entry) => [entry.variable, entry]));
+
+    return columns.map((variable) => {
+      const existing = baseMap.get(variable) || { variable };
+      const added = workspaceAddedVariables[variable];
+      const label = workspaceVariableLabels[variable] ?? added?.label;
+      const level = workspaceVariableLevels[variable] ?? added?.level;
+      return {
+        ...existing,
+        ...(label !== undefined ? { label } : {}),
+        ...(level ? { type: analysisWorkspaceLevelType(level) } : {}),
+      };
+    });
+  }, [
+    activeRows,
+    variableOperationResult.codebook,
+    workspaceVariableLabels,
+    workspaceVariableLevels,
+    workspaceAddedVariables,
+  ]);
   const sourceLabel = sourceMode === "csv"
     ? csvName || "Uploaded CSV"
     : preparedViewActive
@@ -1858,11 +2330,13 @@ export default function AnalysisLab({
 
   useEffect(() => {
     if (sourceMode !== "study") {
-      setUsePreparedData(false);
+      if (usePreparedData) setUsePreparedData(false);
       return;
     }
-    setUsePreparedData(preparation.canPrepare);
-  }, [sourceMode, selectedDatasetValue, datasetKey, preparation.family, preparation.canPrepare]);
+    if (usePreparedData !== preparation.canPrepare) {
+      setUsePreparedData(preparation.canPrepare);
+    }
+  }, [sourceMode, selectedDatasetValue, datasetKey, preparation.family, preparation.canPrepare, usePreparedData]);
 
   const workbenchDatasetIdentity = `${sourceMode}|${sourceDatasetKey}|${preparedViewActive ? "prepared" : "raw"}`;
 
@@ -1886,6 +2360,11 @@ export default function AnalysisLab({
     setRecodeOutput("");
     setRecodeMappingsText("");
     setRepeatedOutput("");
+    setWorkspaceCellEdits({});
+    setWorkspaceVariableLabels({});
+    setWorkspaceVariableLevels({});
+    setWorkspaceAddedVariables({});
+    setWorkspaceDeletedVariables([]);
   }, [workbenchDatasetIdentity]);
 
   const variables = useMemo(
@@ -2189,6 +2668,7 @@ export default function AnalysisLab({
   );
 
   useEffect(() => {
+    if (activeAnalysis !== "ttests") return;
     if (tTestNumericCandidates.length === 0) {
       if (tOutcomeVariable) setTOutcomeVariable("");
       if (pairedVariableA) setPairedVariableA("");
@@ -2209,6 +2689,7 @@ export default function AnalysisLab({
       );
     }
   }, [
+    activeAnalysis,
     datasetKey,
     sourceMode,
     tTestNumericCandidates,
@@ -2218,6 +2699,7 @@ export default function AnalysisLab({
   ]);
 
   useEffect(() => {
+    if (activeAnalysis !== "ttests") return;
     if (tTestGroupCandidates.length === 0) {
       if (tGroupVariable) setTGroupVariable("");
       return;
@@ -2230,7 +2712,7 @@ export default function AnalysisLab({
         tTestGroupCandidates[0];
       setTGroupVariable(preferred?.name || "");
     }
-  }, [datasetKey, sourceMode, tTestGroupCandidates, tGroupVariable, tOutcomeVariable]);
+  }, [activeAnalysis, datasetKey, sourceMode, tTestGroupCandidates, tGroupVariable, tOutcomeVariable]);
 
   const tOutcomeMeta = variables.find((variable) => variable.name === tOutcomeVariable) || null;
   const tGroupMeta = variables.find((variable) => variable.name === tGroupVariable) || null;
@@ -2243,6 +2725,7 @@ export default function AnalysisLab({
   );
 
   useEffect(() => {
+    if (activeAnalysis !== "ttests") return;
     if (tGroupLevels.length < 2) {
       if (tGroupA) setTGroupA("");
       if (tGroupB) setTGroupB("");
@@ -2258,7 +2741,7 @@ export default function AnalysisLab({
 
     if (nextA !== tGroupA) setTGroupA(nextA);
     if (nextB !== tGroupB) setTGroupB(nextB);
-  }, [tGroupLevels, tGroupA, tGroupB]);
+  }, [activeAnalysis, tGroupLevels, tGroupA, tGroupB]);
 
   const independentTTestResult = useMemo(
     () =>
@@ -2303,6 +2786,7 @@ export default function AnalysisLab({
   );
 
   useEffect(() => {
+    if (activeAnalysis !== "nonparametric") return;
     if (nonParametricNumericCandidates.length === 0) {
       if (npOutcomeVariable) setNpOutcomeVariable("");
       if (npPairedVariableA) setNpPairedVariableA("");
@@ -2329,12 +2813,14 @@ export default function AnalysisLab({
 
     setNpRepeatedVariables((current) => {
       const valid = current.filter((name) => numericNames.has(name));
-      if (valid.length >= 3) return valid;
-      return nonParametricNumericCandidates
+      if (valid.length >= 3) return sameStringArray(valid, current) ? current : valid;
+      const next = nonParametricNumericCandidates
         .slice(0, Math.min(3, nonParametricNumericCandidates.length))
         .map((variable) => variable.name);
+      return sameStringArray(next, current) ? current : next;
     });
   }, [
+    activeAnalysis,
     datasetKey,
     sourceMode,
     nonParametricNumericCandidates,
@@ -2345,6 +2831,7 @@ export default function AnalysisLab({
   ]);
 
   useEffect(() => {
+    if (activeAnalysis !== "nonparametric") return;
     if (nonParametricGroupCandidates.length === 0) {
       if (npGroupVariable) setNpGroupVariable("");
       return;
@@ -2356,7 +2843,7 @@ export default function AnalysisLab({
         nonParametricGroupCandidates[0];
       setNpGroupVariable(preferred?.name || "");
     }
-  }, [datasetKey, sourceMode, nonParametricGroupCandidates, npGroupVariable, npOutcomeVariable]);
+  }, [activeAnalysis, datasetKey, sourceMode, nonParametricGroupCandidates, npGroupVariable, npOutcomeVariable]);
 
   const npOutcomeMeta = variables.find((variable) => variable.name === npOutcomeVariable) || null;
   const npGroupMeta = variables.find((variable) => variable.name === npGroupVariable) || null;
@@ -2372,6 +2859,7 @@ export default function AnalysisLab({
   );
 
   useEffect(() => {
+    if (activeAnalysis !== "nonparametric") return;
     if (npGroupLevels.length < 2) {
       if (npGroupA) setNpGroupA("");
       if (npGroupB) setNpGroupB("");
@@ -2384,7 +2872,7 @@ export default function AnalysisLab({
       : npGroupLevels.find((level) => level.value !== nextA)?.value || "";
     if (nextA !== npGroupA) setNpGroupA(nextA);
     if (nextB !== npGroupB) setNpGroupB(nextB);
-  }, [npGroupLevels, npGroupA, npGroupB]);
+  }, [activeAnalysis, npGroupLevels, npGroupA, npGroupB]);
 
   const mannWhitneyResult = useMemo(
     () =>
@@ -2429,6 +2917,7 @@ export default function AnalysisLab({
   );
 
   useEffect(() => {
+    if (activeAnalysis !== "anova") return;
     if (anovaNumericCandidates.length === 0) {
       if (anovaOutcomeVariable) setAnovaOutcomeVariable("");
       if (anovaRepeatedVariables.length > 0) setAnovaRepeatedVariables([]);
@@ -2442,12 +2931,14 @@ export default function AnalysisLab({
 
     setAnovaRepeatedVariables((current) => {
       const valid = current.filter((name) => numericNames.has(name));
-      if (valid.length >= 2) return valid;
-      return anovaNumericCandidates.slice(0, Math.min(3, anovaNumericCandidates.length)).map((variable) => variable.name);
+      if (valid.length >= 2) return sameStringArray(valid, current) ? current : valid;
+      const next = anovaNumericCandidates.slice(0, Math.min(3, anovaNumericCandidates.length)).map((variable) => variable.name);
+      return sameStringArray(next, current) ? current : next;
     });
-  }, [datasetKey, sourceMode, anovaNumericCandidates, anovaOutcomeVariable, anovaRepeatedVariables.length]);
+  }, [activeAnalysis, datasetKey, sourceMode, anovaNumericCandidates, anovaOutcomeVariable, anovaRepeatedVariables.length]);
 
   useEffect(() => {
+    if (activeAnalysis !== "anova") return;
     if (anovaFactorCandidates.length === 0) {
       if (anovaFactorVariable) setAnovaFactorVariable("");
       if (anovaFactors.length > 0) setAnovaFactors([]);
@@ -2467,8 +2958,11 @@ export default function AnalysisLab({
         (name) => factorNames.has(name) && name !== anovaOutcomeVariable
       );
       const desired = anovaMode === "factorial" ? 2 : anovaMode === "ancova" ? 1 : valid.length;
-      if (anovaMode !== "factorial" && anovaMode !== "ancova") return valid;
-      if (valid.length >= desired) return valid.slice(0, 4);
+      if (anovaMode !== "factorial" && anovaMode !== "ancova") return sameStringArray(valid, current) ? current : valid;
+      if (valid.length >= desired) {
+        const next = valid.slice(0, 4);
+        return sameStringArray(next, current) ? current : next;
+      }
       const additions = anovaFactorCandidates
         .filter(
           (variable) =>
@@ -2476,11 +2970,13 @@ export default function AnalysisLab({
         )
         .slice(0, Math.max(0, desired - valid.length))
         .map((variable) => variable.name);
-      return [...valid, ...additions].slice(0, 4);
+      const next = [...valid, ...additions].slice(0, 4);
+      return sameStringArray(next, current) ? current : next;
     });
-  }, [datasetKey, sourceMode, anovaFactorCandidates, anovaFactorVariable, anovaOutcomeVariable, anovaMode, anovaFactors.length]);
+  }, [activeAnalysis, datasetKey, sourceMode, anovaFactorCandidates, anovaFactorVariable, anovaOutcomeVariable, anovaMode, anovaFactors.length]);
 
   useEffect(() => {
+    if (activeAnalysis !== "anova") return;
     const numericNames = new Set(anovaNumericCandidates.map((variable) => variable.name));
     setAnovaCovariates((current) => {
       const valid = current.filter(
@@ -2489,15 +2985,19 @@ export default function AnalysisLab({
           name !== anovaOutcomeVariable &&
           !anovaFactors.includes(name)
       );
-      if (anovaMode !== "ancova") return valid;
-      if (valid.length > 0) return valid.slice(0, 8);
+      if (anovaMode !== "ancova") return sameStringArray(valid, current) ? current : valid;
+      if (valid.length > 0) {
+        const next = valid.slice(0, 8);
+        return sameStringArray(next, current) ? current : next;
+      }
       const preferred = anovaNumericCandidates.find(
         (variable) =>
           variable.name !== anovaOutcomeVariable && !anovaFactors.includes(variable.name)
       );
-      return preferred ? [preferred.name] : [];
+      const next = preferred ? [preferred.name] : [];
+      return sameStringArray(next, current) ? current : next;
     });
-  }, [datasetKey, sourceMode, anovaNumericCandidates, anovaOutcomeVariable, anovaFactors, anovaMode]);
+  }, [activeAnalysis, datasetKey, sourceMode, anovaNumericCandidates, anovaOutcomeVariable, anovaFactors, anovaMode]);
 
   const anovaOutcomeMeta = variables.find((variable) => variable.name === anovaOutcomeVariable) || null;
   const anovaFactorMeta = variables.find((variable) => variable.name === anovaFactorVariable) || null;
@@ -2514,9 +3014,9 @@ export default function AnalysisLab({
   const oneWayAnovaResult = useMemo(
     () =>
       anovaOutcomeMeta && anovaFactorMeta && anovaOutcomeMeta.name !== anovaFactorMeta.name
-        ? computeOneWayAnova(activeRows, anovaOutcomeMeta, anovaFactorMeta, anovaEstimator)
+        ? computeOneWayAnova(activeRows, anovaOutcomeMeta, anovaFactorMeta, anovaEstimator, anovaAdjustment)
         : null,
-    [activeRows, anovaOutcomeMeta, anovaFactorMeta, anovaEstimator]
+    [activeRows, anovaOutcomeMeta, anovaFactorMeta, anovaEstimator, anovaAdjustment]
   );
 
   const oneWayVarianceDiagnostics = useMemo(
@@ -2538,6 +3038,7 @@ export default function AnalysisLab({
             {
               mode: anovaMode,
               includeInteractions: anovaIncludeInteractions,
+              adjustment: anovaAdjustment,
             }
           )
         : null,
@@ -2548,20 +3049,22 @@ export default function AnalysisLab({
       anovaFactorMetas,
       anovaCovariateMetas,
       anovaIncludeInteractions,
+      anovaAdjustment,
     ]
   );
 
   const repeatedMeasuresAnovaResult = useMemo(
     () =>
       anovaRepeatedMeta.length >= 2
-        ? computeRepeatedMeasuresAnova(activeRows, anovaRepeatedMeta)
+        ? computeRepeatedMeasuresAnova(activeRows, anovaRepeatedMeta, anovaAdjustment)
         : null,
-    [activeRows, anovaRepeatedMeta]
+    [activeRows, anovaRepeatedMeta, anovaAdjustment]
   );
 
   const regressionCandidates = tTestNumericCandidates;
 
   useEffect(() => {
+    if (activeAnalysis !== "regression") return;
     if (regressionCandidates.length === 0) {
       if (regressionOutcomeVariable) setRegressionOutcomeVariable("");
       if (regressionPredictors.length > 0) setRegressionPredictors([]);
@@ -2576,13 +3079,15 @@ export default function AnalysisLab({
 
     setRegressionPredictors((current) => {
       const valid = current.filter((name) => names.has(name) && name !== nextOutcome);
-      if (valid.length > 0) return valid;
-      return regressionCandidates
+      if (valid.length > 0) return sameStringArray(valid, current) ? current : valid;
+      const next = regressionCandidates
         .filter((variable) => variable.name !== nextOutcome)
         .slice(0, Math.min(2, Math.max(0, regressionCandidates.length - 1)))
         .map((variable) => variable.name);
+      return sameStringArray(next, current) ? current : next;
     });
   }, [
+    activeAnalysis,
     datasetKey,
     sourceMode,
     regressionCandidates,
@@ -2607,6 +3112,7 @@ export default function AnalysisLab({
   const processCandidates = tTestNumericCandidates;
 
   useEffect(() => {
+    if (activeAnalysis !== "process") return;
     if (processCandidates.length < 3) {
       if (processOutcomeVariable) setProcessOutcomeVariable("");
       if (processPredictorVariable) setProcessPredictorVariable("");
@@ -2637,8 +3143,12 @@ export default function AnalysisLab({
     if (nextModerator !== processModeratorVariable) setProcessModeratorVariable(nextModerator);
 
     const reserved = new Set([nextOutcome, nextPredictor, processMode === "mediation" ? nextMediator : nextModerator]);
-    setProcessCovariates((current) => current.filter((name) => names.has(name) && !reserved.has(name)));
+    setProcessCovariates((current) => {
+      const next = current.filter((name) => names.has(name) && !reserved.has(name));
+      return sameStringArray(next, current) ? current : next;
+    });
   }, [
+    activeAnalysis,
     datasetKey,
     sourceMode,
     processCandidates,
@@ -2720,6 +3230,7 @@ export default function AnalysisLab({
   );
 
   useEffect(() => {
+    if (activeAnalysis !== "visualizations") return;
     const numericNames = new Set(visualizationNumericCandidates.map((variable) => variable.name));
     const factorNames = new Set(visualizationFactorCandidates.map((variable) => variable.name));
 
@@ -2755,6 +3266,7 @@ export default function AnalysisLab({
       if (preferred) setVisualizationTraceVariable(preferred.name);
     }
   }, [
+    activeAnalysis,
     datasetKey,
     sourceMode,
     visualizationMode,
@@ -2800,6 +3312,7 @@ export default function AnalysisLab({
   );
 
   useEffect(() => {
+    if (activeAnalysis !== "categorical") return;
     const names = new Set(categoricalCandidates.map((variable) => variable.name));
     const nextRow = names.has(categoricalRowVariable)
       ? categoricalRowVariable
@@ -2809,7 +3322,7 @@ export default function AnalysisLab({
       : categoricalCandidates.find((variable) => variable.name !== nextRow)?.name || "";
     if (nextRow !== categoricalRowVariable) setCategoricalRowVariable(nextRow);
     if (nextColumn !== categoricalColumnVariable) setCategoricalColumnVariable(nextColumn);
-  }, [datasetKey, sourceMode, categoricalCandidates, categoricalRowVariable, categoricalColumnVariable]);
+  }, [activeAnalysis, datasetKey, sourceMode, categoricalCandidates, categoricalRowVariable, categoricalColumnVariable]);
 
   const categoricalRowMeta =
     variables.find((variable) => variable.name === categoricalRowVariable) || null;
@@ -2866,6 +3379,7 @@ export default function AnalysisLab({
   );
 
   useEffect(() => {
+    if (activeAnalysis !== "mixed") return;
     if (mixedOutcomeCandidates.length === 0) {
       if (mixedOutcomeVariable) setMixedOutcomeVariable("");
       if (mixedPredictors.length > 0) setMixedPredictors([]);
@@ -2889,13 +3403,15 @@ export default function AnalysisLab({
       const valid = current.filter(
         (name) => predictorNames.has(name) && name !== nextOutcome && name !== nextGroup
       );
-      if (valid.length > 0) return valid;
-      return mixedPredictorCandidates
+      if (valid.length > 0) return sameStringArray(valid, current) ? current : valid;
+      const next = mixedPredictorCandidates
         .filter((variable) => variable.name !== nextOutcome && variable.name !== nextGroup)
         .slice(0, Math.min(2, Math.max(0, mixedPredictorCandidates.length - 1)))
         .map((variable) => variable.name);
+      return sameStringArray(next, current) ? current : next;
     });
   }, [
+    activeAnalysis,
     datasetKey,
     sourceMode,
     mixedFamily,
@@ -2914,6 +3430,37 @@ export default function AnalysisLab({
   const mixedPredictorMeta = mixedPredictors
     .map((name) => variables.find((variable) => variable.name === name))
     .filter((variable): variable is AnalysisVariable => Boolean(variable));
+
+  useEffect(() => {
+    if (activeAnalysis !== "mixed") return;
+    const predictorNames = new Set(mixedPredictors);
+    setMixedInteractions((current) => {
+      const next = current.filter(
+        (term) =>
+          term.left !== term.right &&
+          predictorNames.has(term.left) &&
+          predictorNames.has(term.right)
+      );
+      const unchanged =
+        next.length === current.length &&
+        next.every((term, index) => term.left === current[index]?.left && term.right === current[index]?.right);
+      return unchanged ? current : next;
+    });
+
+    const first = mixedPredictors[0] || "";
+    const second = mixedPredictors.find((name) => name !== first) || "";
+    if (!mixedInteractionLeft || !predictorNames.has(mixedInteractionLeft)) {
+      setMixedInteractionLeft(first);
+    }
+    if (
+      !mixedInteractionRight ||
+      !predictorNames.has(mixedInteractionRight) ||
+      mixedInteractionRight === (mixedInteractionLeft || first)
+    ) {
+      setMixedInteractionRight(second);
+    }
+  }, [activeAnalysis, mixedPredictors, mixedInteractionLeft, mixedInteractionRight]);
+
   const mixedRandomSlopeMeta =
     mixedPredictorMeta.find(
       (variable) =>
@@ -2925,10 +3472,11 @@ export default function AnalysisLab({
   );
 
   useEffect(() => {
+    if (activeAnalysis !== "mixed") return;
     if (mixedRandomSlopeVariable && !mixedRandomSlopeCandidates.some((variable) => variable.name === mixedRandomSlopeVariable)) {
       setMixedRandomSlopeVariable("");
     }
-  }, [mixedRandomSlopeVariable, mixedRandomSlopeCandidates]);
+  }, [activeAnalysis, mixedRandomSlopeVariable, mixedRandomSlopeCandidates]);
 
   const mixedOutcomeLevels = useMemo(
     () => mixedOutcomeMeta ? getVariableLevels(activeRows, mixedOutcomeMeta.name, 20).map((level) => level.value) : [],
@@ -2936,6 +3484,7 @@ export default function AnalysisLab({
   );
 
   useEffect(() => {
+    if (activeAnalysis !== "mixed") return;
     if (mixedFamily !== "binomial") {
       if (mixedPositiveClass) setMixedPositiveClass("");
       return;
@@ -2944,7 +3493,7 @@ export default function AnalysisLab({
       ? mixedPositiveClass
       : mixedOutcomeLevels[1] || mixedOutcomeLevels[0] || "";
     if (next !== mixedPositiveClass) setMixedPositiveClass(next);
-  }, [mixedFamily, mixedOutcomeLevels, mixedPositiveClass]);
+  }, [activeAnalysis, mixedFamily, mixedOutcomeLevels, mixedPositiveClass]);
 
   const mixedExposureCandidates = useMemo(
     () => tTestNumericCandidates.filter((variable) => variable.name !== mixedOutcomeVariable && variable.name !== mixedGroupVariable),
@@ -2953,6 +3502,7 @@ export default function AnalysisLab({
   const mixedExposureMeta = variables.find((variable) => variable.name === mixedExposureVariable) || null;
 
   useEffect(() => {
+    if (activeAnalysis !== "mixed") return;
     if (mixedFamily !== "poisson") {
       if (mixedExposureVariable) setMixedExposureVariable("");
       return;
@@ -2960,7 +3510,7 @@ export default function AnalysisLab({
     if (mixedExposureVariable && !mixedExposureCandidates.some((variable) => variable.name === mixedExposureVariable)) {
       setMixedExposureVariable("");
     }
-  }, [mixedFamily, mixedExposureVariable, mixedExposureCandidates]);
+  }, [activeAnalysis, mixedFamily, mixedExposureVariable, mixedExposureCandidates]);
 
   const linearMixedModelResult = useMemo(
     () =>
@@ -2974,6 +3524,7 @@ export default function AnalysisLab({
               estimator: mixedEstimator,
               centering: mixedCentering,
               randomSlope: mixedRandomSlopeMeta,
+              interactions: mixedInteractions,
             }
           )
         : null,
@@ -2986,6 +3537,7 @@ export default function AnalysisLab({
       mixedEstimator,
       mixedCentering,
       mixedRandomSlopeMeta,
+      mixedInteractions,
     ]
   );
 
@@ -3001,6 +3553,7 @@ export default function AnalysisLab({
               family: mixedFamily,
               positiveClass: mixedFamily === "binomial" ? mixedPositiveClass || null : null,
               exposure: mixedFamily === "poisson" ? mixedExposureMeta : null,
+              interactions: mixedInteractions,
             }
           )
         : null,
@@ -3012,8 +3565,69 @@ export default function AnalysisLab({
       mixedPredictorMeta,
       mixedPositiveClass,
       mixedExposureMeta,
+      mixedInteractions,
     ]
   );
+
+  const mixedNumericInteractionCandidates = useMemo(() => {
+    if (!linearMixedModelResult || linearMixedModelResult.issue) return [] as MixedModelInteraction[];
+    return linearMixedModelResult.interactions
+      .filter((term) => {
+        const left = linearMixedModelResult.predictors.find((predictor) => predictor.name === term.left);
+        const right = linearMixedModelResult.predictors.find((predictor) => predictor.name === term.right);
+        return left?.kind === "numeric" && right?.kind === "numeric";
+      })
+      .map((term) => ({ left: term.left, right: term.right }));
+  }, [linearMixedModelResult]);
+
+  const selectedMixedProbeInteraction = useMemo(() => {
+    if (mixedNumericInteractionCandidates.length === 0) return null;
+    return mixedNumericInteractionCandidates.find((term) =>
+      [term.left, term.right].sort().join("::") === mixedProbeInteractionKey
+    ) || mixedNumericInteractionCandidates[0];
+  }, [mixedNumericInteractionCandidates, mixedProbeInteractionKey]);
+
+  const selectedMixedProbeFocal = selectedMixedProbeInteraction
+    ? ([selectedMixedProbeInteraction.left, selectedMixedProbeInteraction.right].includes(mixedProbeFocalVariable)
+        ? mixedProbeFocalVariable
+        : selectedMixedProbeInteraction.left)
+    : "";
+
+  const mixedInteractionProbe = useMemo(() => {
+    if (!linearMixedModelResult || !selectedMixedProbeInteraction) return null;
+    return probeLinearMixedNumericInteraction(linearMixedModelResult, selectedMixedProbeInteraction, {
+      focal: selectedMixedProbeFocal || selectedMixedProbeInteraction.left,
+    });
+  }, [linearMixedModelResult, selectedMixedProbeInteraction, selectedMixedProbeFocal]);
+
+  const generalizedMixedInteractionCandidates = useMemo(() => {
+    if (!generalizedMixedModelResult || generalizedMixedModelResult.issue) return [] as MixedModelInteraction[];
+    return generalizedMixedModelResult.interactions.map((term) => ({ left: term.left, right: term.right }));
+  }, [generalizedMixedModelResult]);
+
+  const selectedGeneralizedMixedProbeInteraction = useMemo(() => {
+    if (generalizedMixedInteractionCandidates.length === 0) return null;
+    return generalizedMixedInteractionCandidates.find((term) =>
+      [term.left, term.right].sort().join("::") === mixedProbeInteractionKey
+    ) || generalizedMixedInteractionCandidates[0];
+  }, [generalizedMixedInteractionCandidates, mixedProbeInteractionKey]);
+
+  const selectedGeneralizedMixedProbeFocal = selectedGeneralizedMixedProbeInteraction
+    ? ([selectedGeneralizedMixedProbeInteraction.left, selectedGeneralizedMixedProbeInteraction.right].includes(mixedProbeFocalVariable)
+        ? mixedProbeFocalVariable
+        : selectedGeneralizedMixedProbeInteraction.left)
+    : "";
+
+  const generalizedMixedInteractionProbe = useMemo(() => {
+    if (!generalizedMixedModelResult || !selectedGeneralizedMixedProbeInteraction) return null;
+    return probeGeneralizedMixedInteraction(
+      activeRows,
+      generalizedMixedModelResult,
+      selectedGeneralizedMixedProbeInteraction,
+      { focal: selectedGeneralizedMixedProbeFocal || selectedGeneralizedMixedProbeInteraction.left }
+    );
+  }, [activeRows, generalizedMixedModelResult, selectedGeneralizedMixedProbeInteraction, selectedGeneralizedMixedProbeFocal]);
+
 
   const logisticOutcomeCandidates = useMemo(
     () =>
@@ -3036,6 +3650,7 @@ export default function AnalysisLab({
   );
 
   useEffect(() => {
+    if (activeAnalysis !== "logistic") return;
     if (logisticOutcomeCandidates.length === 0) {
       if (logisticOutcomeVariable) setLogisticOutcomeVariable("");
       if (logisticPositiveClass) setLogisticPositiveClass("");
@@ -3084,13 +3699,15 @@ export default function AnalysisLab({
     const predictorNames = new Set(logisticPredictorCandidates.map((variable) => variable.name));
     setLogisticPredictors((current) => {
       const valid = current.filter((name) => predictorNames.has(name) && name !== nextOutcome);
-      if (valid.length > 0) return valid;
-      return logisticPredictorCandidates
+      if (valid.length > 0) return sameStringArray(valid, current) ? current : valid;
+      const next = logisticPredictorCandidates
         .filter((variable) => variable.name !== nextOutcome)
         .slice(0, Math.min(2, Math.max(0, logisticPredictorCandidates.length - 1)))
         .map((variable) => variable.name);
+      return sameStringArray(next, current) ? current : next;
     });
   }, [
+    activeAnalysis,
     datasetKey,
     sourceMode,
     activeRows,
@@ -3206,6 +3823,7 @@ export default function AnalysisLab({
   );
 
   useEffect(() => {
+    if (activeAnalysis !== "count") return;
     if (countOutcomeCandidates.length === 0) {
       if (countOutcomeVariable) setCountOutcomeVariable("");
       if (countPredictors.length > 0) setCountPredictors([]);
@@ -3221,17 +3839,19 @@ export default function AnalysisLab({
     const predictorNames = new Set(countPredictorCandidates.map((variable) => variable.name));
     setCountPredictors((current) => {
       const valid = current.filter((name) => predictorNames.has(name) && name !== nextOutcome && name !== countExposureVariable);
-      if (valid.length > 0) return valid;
-      return countPredictorCandidates
+      if (valid.length > 0) return sameStringArray(valid, current) ? current : valid;
+      const next = countPredictorCandidates
         .filter((variable) => variable.name !== nextOutcome && variable.name !== countExposureVariable)
         .slice(0, Math.min(2, Math.max(0, countPredictorCandidates.length - 1)))
         .map((variable) => variable.name);
+      return sameStringArray(next, current) ? current : next;
     });
 
     if (countExposureVariable && !countExposureCandidates.some((variable) => variable.name === countExposureVariable && variable.name !== nextOutcome)) {
       setCountExposureVariable("");
     }
   }, [
+    activeAnalysis,
     datasetKey,
     sourceMode,
     activeRows,
@@ -3266,6 +3886,7 @@ export default function AnalysisLab({
   );
 
   useEffect(() => {
+    if (activeAnalysis !== "cognitive") return;
     if (cognitiveTaskOptions.length === 0) {
       if (cognitiveTask) setCognitiveTask("");
       return;
@@ -3273,7 +3894,7 @@ export default function AnalysisLab({
     if (!cognitiveTaskOptions.some((option) => option.value === cognitiveTask)) {
       setCognitiveTask(cognitiveTaskOptions[0].value);
     }
-  }, [datasetKey, sourceMode, cognitiveTaskOptions, cognitiveTask]);
+  }, [activeAnalysis, datasetKey, sourceMode, cognitiveTaskOptions, cognitiveTask]);
 
   const cognitiveResult = useMemo(
     () =>
@@ -3303,12 +3924,13 @@ export default function AnalysisLab({
   );
 
   useEffect(() => {
+    if (activeAnalysis !== "cognitive") return;
     if (cognitiveResult.referenceCondition && cognitiveResult.referenceCondition !== cognitiveReferenceCondition) {
       setCognitiveReferenceCondition(cognitiveResult.referenceCondition);
     } else if (!cognitiveResult.referenceCondition && cognitiveReferenceCondition) {
       setCognitiveReferenceCondition("");
     }
-  }, [cognitiveResult.referenceCondition, cognitiveReferenceCondition]);
+  }, [activeAnalysis, cognitiveResult.referenceCondition, cognitiveReferenceCondition]);
 
   const cognitiveTrialDatasetOption = datasetOptions.find((option) => option.value === "cognitive_trials") || null;
   const cognitiveSummaryDatasetOption = datasetOptions.find((option) => option.value === "cognitive_participant_summary") || null;
@@ -3338,6 +3960,7 @@ export default function AnalysisLab({
   const reliabilityVariableKey = reliabilityVariables.map((variable) => variable.name).join("|");
 
   useEffect(() => {
+    if (activeAnalysis !== "reliability") return;
     const selected = new Set(reliabilityVariableKey ? reliabilityVariableKey.split("|") : []);
     setReliabilityReverseItems((current) => {
       const next = current.filter((name) => selected.has(name));
@@ -3345,7 +3968,7 @@ export default function AnalysisLab({
         ? current
         : next;
     });
-  }, [datasetKey, sourceMode, reliabilityVariableKey]);
+  }, [activeAnalysis, datasetKey, sourceMode, reliabilityVariableKey]);
 
   const reliabilityResult = useMemo(
     () => computeReliability(activeRows, reliabilityVariables, reliabilityReverseItems),
@@ -3367,9 +3990,10 @@ export default function AnalysisLab({
   const factorVariableKey = factorVariables.map((variable) => variable.name).join("|");
 
   useEffect(() => {
+    if (activeAnalysis !== "factor") return;
     const maximum = Math.max(1, factorVariables.length - 1);
     setFactorCount((current) => Math.min(Math.max(1, current), maximum));
-  }, [factorVariableKey, factorVariables.length]);
+  }, [activeAnalysis, factorVariableKey, factorVariables.length]);
 
   const factorResult = useMemo(
     () =>
@@ -3412,6 +4036,7 @@ export default function AnalysisLab({
   );
 
   useEffect(() => {
+    if (activeAnalysis !== "diagnostics") return;
     if (diagnosticsNumericCandidates.length === 0) {
       if (diagnosticsOutcomeVariable) setDiagnosticsOutcomeVariable("");
       return;
@@ -3420,9 +4045,10 @@ export default function AnalysisLab({
     if (!names.has(diagnosticsOutcomeVariable)) {
       setDiagnosticsOutcomeVariable(diagnosticsNumericCandidates[0]?.name || "");
     }
-  }, [datasetKey, sourceMode, diagnosticsNumericCandidates, diagnosticsOutcomeVariable]);
+  }, [activeAnalysis, datasetKey, sourceMode, diagnosticsNumericCandidates, diagnosticsOutcomeVariable]);
 
   useEffect(() => {
+    if (activeAnalysis !== "diagnostics") return;
     if (diagnosticsFactorCandidates.length === 0) {
       if (diagnosticsFactorVariable) setDiagnosticsFactorVariable("");
       return;
@@ -3434,7 +4060,7 @@ export default function AnalysisLab({
         diagnosticsFactorCandidates[0];
       setDiagnosticsFactorVariable(preferred?.name || "");
     }
-  }, [datasetKey, sourceMode, diagnosticsFactorCandidates, diagnosticsFactorVariable, diagnosticsOutcomeVariable]);
+  }, [activeAnalysis, datasetKey, sourceMode, diagnosticsFactorCandidates, diagnosticsFactorVariable, diagnosticsOutcomeVariable]);
 
   const diagnosticsOutcomeMeta =
     variables.find((variable) => variable.name === diagnosticsOutcomeVariable) || null;
@@ -3489,6 +4115,146 @@ export default function AnalysisLab({
     Math.min(100, Math.round(((totalCellCount - missingCellCount) / totalCellCount) * 100))
   );
 
+  const analysisGuardrailSubtype =
+    activeAnalysis === "ttests"
+      ? tTestMode
+      : activeAnalysis === "nonparametric"
+        ? nonParametricMode
+        : activeAnalysis === "anova"
+          ? anovaMode
+          : activeAnalysis === "mixed"
+            ? mixedFamily
+            : activeAnalysis === "logistic"
+              ? logisticMode
+              : undefined;
+
+  const analysisGuardrailOutcomeVariable =
+    activeAnalysis === "ttests"
+      ? tTestMode === "paired" ? pairedVariableA : tOutcomeVariable
+      : activeAnalysis === "nonparametric"
+        ? nonParametricMode === "wilcoxon" ? npPairedVariableA : nonParametricMode === "friedman" ? npRepeatedVariables[0] || "" : npOutcomeVariable
+        : activeAnalysis === "anova"
+          ? anovaMode === "repeated" ? anovaRepeatedVariables[0] || "" : anovaOutcomeVariable
+          : activeAnalysis === "regression"
+            ? regressionOutcomeVariable
+            : activeAnalysis === "process"
+              ? processOutcomeVariable
+              : activeAnalysis === "mixed"
+                ? mixedOutcomeVariable
+                : activeAnalysis === "logistic"
+                  ? logisticOutcomeVariable
+                  : activeAnalysis === "count"
+                    ? countOutcomeVariable
+                    : "";
+
+  const analysisGuardrailGroupVariable =
+    activeAnalysis === "ttests" && tTestMode === "independent"
+      ? tGroupVariable
+      : activeAnalysis === "nonparametric" && (nonParametricMode === "mannwhitney" || nonParametricMode === "kruskal")
+        ? npGroupVariable
+        : activeAnalysis === "anova"
+          ? anovaMode === "between" ? anovaFactorVariable : anovaFactors[0] || ""
+          : activeAnalysis === "categorical"
+            ? categoricalRowVariable
+            : "";
+
+  const analysisGuardrailResult: AnalysisGuardrailResultSnapshot | null = useMemo(() => {
+    if (activeAnalysis === "mixed") {
+      const result = mixedFamily === "gaussian" ? linearMixedModelResult : generalizedMixedModelResult;
+      if (!result) return null;
+      return {
+        issue: result.issue,
+        warning: result.warning,
+        converged: result.converged,
+        groupCount: result.groupCount,
+        minObservationsPerGroup: result.minObservationsPerGroup,
+        maxObservationsPerGroup: result.maxObservationsPerGroup,
+        meanObservationsPerGroup: result.meanObservationsPerGroup,
+      };
+    }
+    if (activeAnalysis === "regression" && linearRegressionResult) {
+      const vifs = linearRegressionResult.coefficients
+        .map((coefficient) => coefficient.vif)
+        .filter((value): value is number => value !== null && Number.isFinite(value));
+      return {
+        issue: linearRegressionResult.issue,
+        maxVif: vifs.length ? Math.max(...vifs) : null,
+        heteroscedasticP: linearRegressionResult.diagnostics.breuschPaganPValue,
+        influentialCount: linearRegressionResult.diagnostics.influentialCount,
+      };
+    }
+    if (activeAnalysis === "categorical" && categoricalAssociationResult) {
+      return {
+        issue: categoricalAssociationResult.issue,
+        categoricalAssumptionFlag: categoricalAssociationResult.assumptionFlag,
+      };
+    }
+    if (activeAnalysis === "logistic" && categoricalRegressionResult) {
+      return {
+        issue: categoricalRegressionResult.issue,
+        warning: categoricalRegressionResult.warning,
+        converged: categoricalRegressionResult.converged,
+      };
+    }
+    if (activeAnalysis === "count" && countRegressionResult) {
+      return {
+        issue: countRegressionResult.issue,
+        warning: countRegressionResult.warning,
+        converged: countRegressionResult.converged,
+      };
+    }
+    if (activeAnalysis === "factor" && factorResult) {
+      return {
+        issue: factorResult.issue,
+        warning: factorResult.warning,
+        converged: factorResult.converged,
+      };
+    }
+    return null;
+  }, [
+    activeAnalysis, mixedFamily, linearMixedModelResult, generalizedMixedModelResult,
+    linearRegressionResult, categoricalAssociationResult, categoricalRegressionResult,
+    countRegressionResult, factorResult,
+  ]);
+
+  const analysisGuardrails: AnalysisGuardrail[] = useMemo(() =>
+    computeAnalysisGuardrails({
+      rows: activeRows,
+      variables,
+      selectedVariables: currentAnalysisVariables,
+      completeRows: currentSetupCompleteRows,
+      activeAnalysis,
+      analysisSubtype: analysisGuardrailSubtype,
+      datasetStructure: datasetStructure
+        ? {
+            repeatedObservations: datasetStructure.repeatedObservations,
+            clusterVariable: datasetStructure.clusterVariable,
+            clusterLabel: datasetStructure.clusterLabel,
+            clusterCount: datasetStructure.clusterCount,
+            meanObservationsPerCluster: datasetStructure.meanObservationsPerCluster,
+            maxObservationsPerCluster: datasetStructure.maxObservationsPerCluster,
+          }
+        : undefined,
+      outcomeVariable: analysisGuardrailOutcomeVariable,
+      groupVariable: analysisGuardrailGroupVariable,
+      clusterVariable: activeAnalysis === "mixed" ? mixedGroupVariable : "",
+      predictorVariables: activeAnalysis === "mixed" ? mixedPredictors : [],
+      mixedFamily: activeAnalysis === "mixed" ? mixedFamily : undefined,
+      result: analysisGuardrailResult,
+    }),
+    [
+      activeRows, variables, currentAnalysisVariables, currentSetupCompleteRows, activeAnalysis,
+      analysisGuardrailSubtype, datasetStructure, analysisGuardrailOutcomeVariable, analysisGuardrailGroupVariable,
+      mixedGroupVariable, mixedPredictors, mixedFamily, analysisGuardrailResult,
+    ]
+  );
+
+  const analysisGuardrailCounts = useMemo(() => ({
+    block: analysisGuardrails.filter((item) => item.severity === "block").length,
+    review: analysisGuardrails.filter((item) => item.severity === "review").length,
+    info: analysisGuardrails.filter((item) => item.severity === "info").length,
+  }), [analysisGuardrails]);
+
   function toggleVariable(name: string) {
     const variable = variables.find((entry) => entry.name === name);
     if (!variable || !isDescriptiveSelectable(variable)) return;
@@ -3523,6 +4289,88 @@ export default function AnalysisLab({
       setCsvError(
         error instanceof Error ? error.message : "The CSV could not be read."
       );
+    }
+  }
+
+
+  async function readXlsx(file: File) {
+    setCsvError("");
+
+    try {
+      if (file.size > 25 * 1024 * 1024) {
+        throw new Error("This XLSX is larger than 25 MB. Use CSV or split the workbook before importing it into the browser workspace.");
+      }
+
+      const buffer = await file.arrayBuffer();
+      const workbook = new ExcelJS.Workbook();
+      await workbook.xlsx.load(buffer);
+
+      const worksheet = workbook.worksheets[0];
+      if (!worksheet) {
+        throw new Error("This workbook does not contain a readable worksheet.");
+      }
+
+      const headerRow = worksheet.getRow(1);
+      const headers: string[] = [];
+      const used = new Map<string, number>();
+
+      for (let columnIndex = 1; columnIndex <= worksheet.columnCount; columnIndex += 1) {
+        const raw = headerRow.getCell(columnIndex).value;
+        let base = String(
+          raw && typeof raw === "object" && "text" in raw
+            ? (raw as { text?: unknown }).text ?? ""
+            : raw ?? ""
+        ).trim();
+        if (!base) base = `column_${columnIndex}`;
+        const seen = used.get(base) || 0;
+        used.set(base, seen + 1);
+        headers.push(seen === 0 ? base : `${base}_${seen + 1}`);
+      }
+
+      const rows: AnalysisRow[] = [];
+      const maxRows = Math.min(worksheet.rowCount, 50_001);
+      for (let rowIndex = 2; rowIndex <= maxRows; rowIndex += 1) {
+        const excelRow = worksheet.getRow(rowIndex);
+        const row: AnalysisRow = {};
+        let hasAny = false;
+
+        headers.forEach((header, index) => {
+          const cell = excelRow.getCell(index + 1);
+          const value = cell.value;
+          let normalized: unknown = value;
+
+          if (value && typeof value === "object") {
+            if (value instanceof Date) normalized = value.toISOString();
+            else if ("result" in value && (value as { result?: unknown }).result !== undefined) normalized = (value as { result?: unknown }).result;
+            else if ("text" in value && (value as { text?: unknown }).text !== undefined) normalized = (value as { text?: unknown }).text;
+            else if ("richText" in value && Array.isArray((value as { richText?: unknown[] }).richText)) {
+              normalized = ((value as { richText: Array<{ text?: string }> }).richText || []).map((part) => part.text || "").join("");
+            } else normalized = String(cell.text || "");
+          }
+
+          if (normalized !== null && normalized !== undefined && String(normalized) !== "") hasAny = true;
+          row[header] = normalized ?? "";
+        });
+
+        if (hasAny) rows.push(row);
+      }
+
+      if (rows.length === 0) {
+        throw new Error("This XLSX needs a header row and at least one data row before it can be analysed.");
+      }
+
+      setCsvRows(rows);
+      setCsvName(`${file.name} · ${worksheet.name}`);
+      setSourceMode("csv");
+      setSelectedVariables([]);
+
+      if (worksheet.rowCount > 50_001) {
+        setCsvError("Imported the first 50,000 data rows from the first worksheet to keep the browser workspace responsive.");
+      }
+    } catch (error) {
+      setCsvRows([]);
+      setCsvName("");
+      setCsvError(error instanceof Error ? error.message : "The XLSX could not be read.");
     }
   }
 
@@ -3673,7 +4521,7 @@ export default function AnalysisLab({
             formatNumber(result.etaSquared, 3),
             formatNumber(result.omegaSquared, 3),
           ]],
-          note: "Welch's omnibus test is robust to unequal group variances. η² and ω² are reported from the conventional between/within sums-of-squares decomposition. Pairwise follow-ups use Welch t-tests with Holm adjustment.",
+          note: `Welch's omnibus test is robust to unequal group variances. η² and ω² are reported from the conventional between/within sums-of-squares decomposition. Pairwise follow-ups use Welch t-tests with ${multipleComparisonLabel(result.adjustment)} adjustment.`,
         };
       }
 
@@ -3688,7 +4536,7 @@ export default function AnalysisLab({
           ["Within groups", formatNumber(result.ssWithin, 3), formatNumber(result.df2, 0), formatNumber(msWithin, 3), "—", "—", "—", "—"],
           ["Total", formatNumber(result.ssTotal, 3), formatNumber(result.totalN - 1, 0), "—", "—", "—", "—", "—"],
         ],
-        note: "Classical one-way ANOVA. Pairwise follow-ups use pooled-variance t-tests with Holm adjustment for multiple comparisons.",
+        note: `Classical one-way ANOVA. Pairwise follow-ups use pooled-variance t-tests with ${multipleComparisonLabel(result.adjustment)} adjustment for multiple comparisons.`,
       };
     }
 
@@ -3762,7 +4610,7 @@ export default function AnalysisLab({
           formatNumber(result.generalizedEtaSquared, 3),
         ],
       ],
-      note: `Complete-case one-factor repeated-measures ANOVA. Mauchly's test: W = ${formatNumber(sphericity.mauchlyW, 3)}, χ²(${formatNumber(sphericity.mauchlyDf, 0)}) = ${formatNumber(sphericity.mauchlyChiSquare, 3)}, p = ${formatPValue(sphericity.mauchlyPValue)}. Greenhouse–Geisser and Huynh–Feldt rows retain the same F statistic and adjust the degrees of freedom used for inference. Pairwise follow-ups use paired t-tests with Holm adjustment.`,
+      note: `Complete-case one-factor repeated-measures ANOVA. Mauchly's test: W = ${formatNumber(sphericity.mauchlyW, 3)}, χ²(${formatNumber(sphericity.mauchlyDf, 0)}) = ${formatNumber(sphericity.mauchlyChiSquare, 3)}, p = ${formatPValue(sphericity.mauchlyPValue)}. Greenhouse–Geisser and Huynh–Feldt rows retain the same F statistic and adjust the degrees of freedom used for inference. Pairwise follow-ups use paired t-tests with ${multipleComparisonLabel(result.adjustment)} adjustment.`,
     };
   }
 
@@ -3784,6 +4632,29 @@ export default function AnalysisLab({
         `${formatNumber(mean.ci95Low, 3)}, ${formatNumber(mean.ci95High, 3)}`,
       ]),
       note: `Estimated marginal means average equally across the levels of the other selected factors.${result.covariates.length > 0 ? " Covariates are held at their sample means." : ""}`,
+    };
+  }
+
+  function anovaMarginalContrastsTableSpec(): FormattedTableSpec | null {
+    if (anovaMode !== "factorial" && anovaMode !== "ancova") return null;
+    const result = generalLinearAnovaResult;
+    if (!result || result.issue || result.marginalMeanContrasts.length === 0) return null;
+    return {
+      title: "Table · Estimated marginal mean contrasts",
+      subtitle: result.outcomeLabel,
+      headers: ["Factor", "Comparison", "Adjusted mean difference", "SE", "t", "df", "p", `${multipleComparisonLabel(result.adjustment)} p`, "95% CI"],
+      rows: result.marginalMeanContrasts.map((contrast) => [
+        contrast.factorLabel,
+        `${contrast.levelA} − ${contrast.levelB}`,
+        formatNumber(contrast.difference, 3),
+        formatNumber(contrast.se, 3),
+        formatNumber(contrast.t, 3),
+        formatNumber(contrast.df, 0),
+        formatPValue(contrast.pValue),
+        formatPValue(contrast.pAdjusted),
+        `${formatNumber(contrast.ci95Low, 3)}, ${formatNumber(contrast.ci95High, 3)}`,
+      ]),
+      note: `Pairwise contrasts among estimated marginal means. Other factor levels are averaged equally and covariates are held at their sample means. Multiplicity is controlled separately within each factor using ${multipleComparisonLabel(result.adjustment)} adjustment.`,
     };
   }
 
@@ -3815,7 +4686,7 @@ export default function AnalysisLab({
       return {
         title: "Table · ANOVA pairwise comparisons",
         subtitle: `${result.outcomeLabel} by ${result.factorLabel}`,
-        headers: ["Comparison", "n₁", "n₂", "Mean difference", "t", "df", "p", "Holm p", "Cohen's d"],
+        headers: ["Comparison", "n₁", "n₂", "Mean difference", "t", "df", "p", `${multipleComparisonLabel(result.adjustment)} p`, "Cohen's d"],
         rows: result.pairwise.map((comparison) => [
           `${comparison.groupA} − ${comparison.groupB}`,
           String(comparison.nA),
@@ -3827,7 +4698,7 @@ export default function AnalysisLab({
           formatPValue(comparison.pAdjusted),
           formatNumber(comparison.cohenD, 3),
         ]),
-        note: `${result.estimator === "welch" ? "Welch" : "Pooled-variance"} pairwise t-tests with Holm step-down adjustment across all reported pairwise comparisons.`,
+        note: `${result.estimator === "welch" ? "Welch" : "Pooled-variance"} pairwise t-tests with ${multipleComparisonLabel(result.adjustment)} adjustment across all reported pairwise comparisons.`,
       };
     }
 
@@ -3838,7 +4709,7 @@ export default function AnalysisLab({
     return {
       title: "Table · Repeated-measures pairwise comparisons",
       subtitle: "Selected within-participant conditions",
-      headers: ["Comparison", "N", "Mean difference", "t", "df", "p", "Holm p", "Cohen's dz"],
+      headers: ["Comparison", "N", "Mean difference", "t", "df", "p", `${multipleComparisonLabel(result.adjustment)} p`, "Cohen's dz"],
       rows: result.pairwise.map((comparison) => [
         `${comparison.variableALabel} − ${comparison.variableBLabel}`,
         String(comparison.n),
@@ -3849,7 +4720,7 @@ export default function AnalysisLab({
         formatPValue(comparison.pAdjusted),
         formatNumber(comparison.cohenDz, 3),
       ]),
-      note: "Paired t-tests computed on the same complete-case participants used by the repeated-measures omnibus test. Holm adjustment controls the family-wise error rate across reported comparisons.",
+      note: `Paired t-tests computed on the same complete-case participants used by the repeated-measures omnibus test. ${multipleComparisonLabel(result.adjustment)} adjustment is applied across reported comparisons.`,
     };
   }
 
@@ -4441,6 +5312,49 @@ export default function AnalysisLab({
     };
   }
 
+  function mixedSimpleSlopesTableSpec(): FormattedTableSpec | null {
+    const probe = mixedInteractionProbe;
+    if (!probe || probe.simpleSlopes.length === 0) return null;
+    return {
+      title: "Table · Mixed-model interaction simple slopes",
+      subtitle: `${probe.focalLabel} conditional effect across ${probe.moderatorLabel}`,
+      headers: ["Moderator probe", "Moderator value", "B", "SE", "z", "p", "95% CI"],
+      rows: probe.simpleSlopes.map((slope) => [
+        slope.label,
+        slope.moderatorDisplayValue !== null
+          ? formatNumber(slope.moderatorDisplayValue, 3)
+          : `${formatNumber(slope.moderatorValue, 3)} centred`,
+        formatNumber(slope.b, 3),
+        formatNumber(slope.se, 3),
+        formatNumber(slope.z, 3),
+        formatPValue(slope.pValue),
+        `${formatNumber(slope.ci95Low, 3)}, ${formatNumber(slope.ci95High, 3)}`,
+      ]),
+      note: `Conditional slopes are model-based Wald estimates for the numeric × numeric fixed-effect interaction. ${probe.moderatorNote} These are association estimates from the fitted mixed model, not automatic causal effects.`,
+    };
+  }
+
+  function generalizedMixedInteractionTableSpec(): FormattedTableSpec | null {
+    const probe = generalizedMixedInteractionProbe;
+    if (!probe || probe.simpleEffects.length === 0) return null;
+    return {
+      title: `Table · ${probe.family === "binomial" ? "Binary" : "Poisson"} mixed-model interaction probing`,
+      subtitle: `${probe.focalLabel} conditional on ${probe.moderatorLabel}`,
+      headers: ["Conditional effect", "Moderator condition", "B", "SE", "z", "p", probe.effectRatioLabel, `95% CI for ${probe.effectRatioLabel}`],
+      rows: probe.simpleEffects.map((effect) => [
+        effect.label,
+        `${effect.moderatorLabel}${effect.moderatorDisplay ? ` · ${effect.moderatorDisplay}` : ""}`,
+        formatNumber(effect.b, 3),
+        formatNumber(effect.se, 3),
+        formatNumber(effect.z, 3),
+        formatPValue(effect.pValue),
+        formatNumber(effect.effectRatio, 3),
+        `${formatNumber(effect.ci95Low, 3)}, ${formatNumber(effect.ci95High, 3)}`,
+      ]),
+      note: `${probe.note} Conditional-effect uncertainty uses the fitted fixed-effect covariance matrix. These are model-based association estimates and do not by themselves establish causal effects.`,
+    };
+  }
+
   function generalizedMixedCoefficientTableSpec(): FormattedTableSpec | null {
     const result = generalizedMixedModelResult;
     if (!result || result.issue || result.coefficients.length === 0) return null;
@@ -4965,7 +5879,7 @@ export default function AnalysisLab({
     } else if (activeAnalysis === "categorical") {
       specs.push(categoricalTestsTableSpec(), categoricalCellDiagnosticsTableSpec());
     } else if (activeAnalysis === "anova") {
-      specs.push(anovaMarginalMeansTableSpec(), anovaSphericityTableSpec(), anovaPairwiseTableSpec());
+      specs.push(anovaMarginalMeansTableSpec(), anovaMarginalContrastsTableSpec(), anovaSphericityTableSpec(), anovaPairwiseTableSpec());
       if (anovaMode === "between" && oneWayVarianceDiagnostics && !oneWayVarianceDiagnostics.issue && oneWayVarianceDiagnostics.f !== null) {
         specs.push({
           title: "Table · One-way ANOVA variance diagnostic",
@@ -4990,7 +5904,8 @@ export default function AnalysisLab({
       specs.push(processSimpleSlopesTableSpec());
     } else if (activeAnalysis === "mixed") {
       specs.push(mixedFamily === "gaussian" ? mixedModelTableSpec() : generalizedMixedModelTableSpec());
-      if (mixedFamily === "gaussian") specs.push(mixedStructureComparisonTableSpec());
+      if (mixedFamily === "gaussian") specs.push(mixedStructureComparisonTableSpec(), mixedSimpleSlopesTableSpec());
+      else specs.push(generalizedMixedInteractionTableSpec());
     } else if (activeAnalysis === "logistic") {
       specs.push(logisticModelTableSpec(), logisticClassificationTableSpec());
       if (logisticMode === "ordinal") specs.push(ordinalThresholdsTableSpec());
@@ -5014,10 +5929,10 @@ export default function AnalysisLab({
     if (activeAnalysis === "ttests") return { mode: tTestMode, estimator: tTestEstimator, outcome: tOutcomeVariable, group: tGroupVariable, groupA: tGroupA, groupB: tGroupB, pairedA: pairedVariableA, pairedB: pairedVariableB };
     if (activeAnalysis === "nonparametric") return { mode: nonParametricMode, outcome: npOutcomeVariable, group: npGroupVariable, groupA: npGroupA, groupB: npGroupB, pairedA: npPairedVariableA, pairedB: npPairedVariableB, repeated: [...npRepeatedVariables] };
     if (activeAnalysis === "categorical") return { row: categoricalRowVariable, column: categoricalColumnVariable };
-    if (activeAnalysis === "anova") return { mode: anovaMode, estimator: anovaEstimator, outcome: anovaOutcomeVariable, factor: anovaFactorVariable, repeated: [...anovaRepeatedVariables], factors: [...anovaFactors], covariates: [...anovaCovariates], includeInteractions: anovaIncludeInteractions };
+    if (activeAnalysis === "anova") return { mode: anovaMode, estimator: anovaEstimator, adjustment: anovaAdjustment, outcome: anovaOutcomeVariable, factor: anovaFactorVariable, repeated: [...anovaRepeatedVariables], factors: [...anovaFactors], covariates: [...anovaCovariates], includeInteractions: anovaIncludeInteractions };
     if (activeAnalysis === "regression") return { outcome: regressionOutcomeVariable, predictors: [...regressionPredictors] };
     if (activeAnalysis === "process") return { mode: processMode, outcome: processOutcomeVariable, predictor: processPredictorVariable, mediator: processMediatorVariable, moderator: processModeratorVariable, covariates: [...processCovariates], bootstrapSamples: processBootstrapSamples, centerPredictors: processCenterPredictors };
-    if (activeAnalysis === "mixed") return { family: mixedFamily, outcome: mixedOutcomeVariable, cluster: mixedGroupVariable, predictors: [...mixedPredictors], estimator: mixedEstimator, centering: mixedCentering, randomSlope: mixedRandomSlopeVariable, positiveClass: mixedPositiveClass, exposure: mixedExposureVariable };
+    if (activeAnalysis === "mixed") return { family: mixedFamily, outcome: mixedOutcomeVariable, cluster: mixedGroupVariable, predictors: [...mixedPredictors], interactions: mixedInteractions.map((term) => ({ ...term })), estimator: mixedEstimator, centering: mixedCentering, randomSlope: mixedRandomSlopeVariable, positiveClass: mixedPositiveClass, exposure: mixedExposureVariable };
     if (activeAnalysis === "logistic") return { mode: logisticMode, outcome: logisticOutcomeVariable, positiveClass: logisticPositiveClass, referenceClass: logisticReferenceClass, ordinalOrder: [...logisticOrdinalOrder], predictors: [...logisticPredictors], threshold: logisticThreshold };
     if (activeAnalysis === "count") return { family: countFamily, outcome: countOutcomeVariable, predictors: [...countPredictors], exposure: countExposureVariable };
     if (activeAnalysis === "reliability") return { ...common, reverseItems: [...reliabilityReverseItems] };
@@ -5153,10 +6068,10 @@ export default function AnalysisLab({
     else if (record.analysis === "ttests") { if (setup.mode) setTTestMode(setup.mode); if (setup.estimator) setTTestEstimator(setup.estimator); setTOutcomeVariable(setup.outcome || ""); setTGroupVariable(setup.group || ""); setTGroupA(setup.groupA || ""); setTGroupB(setup.groupB || ""); setPairedVariableA(setup.pairedA || ""); setPairedVariableB(setup.pairedB || ""); }
     else if (record.analysis === "nonparametric") { if (setup.mode) setNonParametricMode(setup.mode); setNpOutcomeVariable(setup.outcome || ""); setNpGroupVariable(setup.group || ""); setNpGroupA(setup.groupA || ""); setNpGroupB(setup.groupB || ""); setNpPairedVariableA(setup.pairedA || ""); setNpPairedVariableB(setup.pairedB || ""); setNpRepeatedVariables(strings(setup.repeated)); }
     else if (record.analysis === "categorical") { setCategoricalRowVariable(setup.row || ""); setCategoricalColumnVariable(setup.column || ""); }
-    else if (record.analysis === "anova") { if (setup.mode) setAnovaMode(setup.mode); if (setup.estimator) setAnovaEstimator(setup.estimator); setAnovaOutcomeVariable(setup.outcome || ""); setAnovaFactorVariable(setup.factor || ""); setAnovaRepeatedVariables(strings(setup.repeated)); setAnovaFactors(strings(setup.factors)); setAnovaCovariates(strings(setup.covariates)); if (typeof setup.includeInteractions === "boolean") setAnovaIncludeInteractions(setup.includeInteractions); }
+    else if (record.analysis === "anova") { if (setup.mode) setAnovaMode(setup.mode); if (setup.estimator) setAnovaEstimator(setup.estimator); if (["holm", "bonferroni", "fdr_bh"].includes(String(setup.adjustment))) setAnovaAdjustment(setup.adjustment); setAnovaOutcomeVariable(setup.outcome || ""); setAnovaFactorVariable(setup.factor || ""); setAnovaRepeatedVariables(strings(setup.repeated)); setAnovaFactors(strings(setup.factors)); setAnovaCovariates(strings(setup.covariates)); if (typeof setup.includeInteractions === "boolean") setAnovaIncludeInteractions(setup.includeInteractions); }
     else if (record.analysis === "regression") { setRegressionOutcomeVariable(setup.outcome || ""); setRegressionPredictors(strings(setup.predictors)); }
     else if (record.analysis === "process") { if (setup.mode) setProcessMode(setup.mode); setProcessOutcomeVariable(setup.outcome || ""); setProcessPredictorVariable(setup.predictor || ""); setProcessMediatorVariable(setup.mediator || ""); setProcessModeratorVariable(setup.moderator || ""); setProcessCovariates(strings(setup.covariates)); if (typeof setup.bootstrapSamples === "number") setProcessBootstrapSamples(setup.bootstrapSamples); if (typeof setup.centerPredictors === "boolean") setProcessCenterPredictors(setup.centerPredictors); }
-    else if (record.analysis === "mixed") { if (setup.family) setMixedFamily(setup.family); setMixedOutcomeVariable(setup.outcome || ""); setMixedGroupVariable(setup.cluster || ""); setMixedPredictors(strings(setup.predictors)); if (setup.estimator) setMixedEstimator(setup.estimator); if (setup.centering) setMixedCentering(setup.centering); setMixedRandomSlopeVariable(setup.randomSlope || ""); setMixedPositiveClass(setup.positiveClass || ""); setMixedExposureVariable(setup.exposure || ""); }
+    else if (record.analysis === "mixed") { if (setup.family) setMixedFamily(setup.family); setMixedOutcomeVariable(setup.outcome || ""); setMixedGroupVariable(setup.cluster || ""); setMixedPredictors(strings(setup.predictors)); setMixedInteractions(Array.isArray(setup.interactions) ? setup.interactions.filter((term: any) => term && typeof term.left === "string" && typeof term.right === "string").map((term: any) => ({ left: term.left, right: term.right })) : []); if (setup.estimator) setMixedEstimator(setup.estimator); if (setup.centering) setMixedCentering(setup.centering); setMixedRandomSlopeVariable(setup.randomSlope || ""); setMixedPositiveClass(setup.positiveClass || ""); setMixedExposureVariable(setup.exposure || ""); }
     else if (record.analysis === "logistic") { if (setup.mode) setLogisticMode(setup.mode); setLogisticOutcomeVariable(setup.outcome || ""); setLogisticPositiveClass(setup.positiveClass || ""); setLogisticReferenceClass(setup.referenceClass || ""); setLogisticOrdinalOrder(strings(setup.ordinalOrder)); setLogisticPredictors(strings(setup.predictors)); if (typeof setup.threshold === "number") setLogisticThreshold(setup.threshold); }
     else if (record.analysis === "count") { if (setup.family) setCountFamily(setup.family); setCountOutcomeVariable(setup.outcome || ""); setCountPredictors(strings(setup.predictors)); setCountExposureVariable(setup.exposure || ""); }
     else if (record.analysis === "reliability") { setSelectedVariables(strings(setup.selectedVariables)); setReliabilityReverseItems(strings(setup.reverseItems)); }
@@ -5404,6 +6319,7 @@ export default function AnalysisLab({
     } else if (analysisId === "anova") {
       if (["between", "factorial", "ancova", "repeated"].includes(String(setup.mode))) setAnovaMode(setup.mode as AnovaMode);
       if (["standard", "welch"].includes(String(setup.estimator))) setAnovaEstimator(setup.estimator as OneWayAnovaEstimator);
+      if (["holm", "bonferroni", "fdr_bh"].includes(String(setup.adjustment))) setAnovaAdjustment(setup.adjustment as MultipleComparisonAdjustment);
       setAnovaOutcomeVariable(variable(setup.outcome));
       setAnovaFactorVariable(variable(setup.factor));
       setAnovaRepeatedVariables(validVariables(setup.repeated));
@@ -5426,7 +6342,20 @@ export default function AnalysisLab({
       if (["gaussian", "binomial", "poisson"].includes(String(setup.family))) setMixedFamily(setup.family as MixedOutcomeFamily);
       setMixedOutcomeVariable(variable(setup.outcome));
       setMixedGroupVariable(variable(setup.cluster));
-      setMixedPredictors(validVariables(setup.predictors));
+      const nextMixedPredictors = validVariables(setup.predictors);
+      setMixedPredictors(nextMixedPredictors);
+      const nextPredictorSet = new Set(nextMixedPredictors);
+      const interactionSetup = Array.isArray(setup.interactions)
+        ? setup.interactions
+            .filter((term: unknown): term is { left: string; right: string } => {
+              if (!term || typeof term !== "object" || Array.isArray(term)) return false;
+              const row = term as Record<string, unknown>;
+              return typeof row.left === "string" && typeof row.right === "string";
+            })
+            .map((term) => ({ left: term.left, right: term.right }))
+            .filter((term) => term.left !== term.right && nextPredictorSet.has(term.left) && nextPredictorSet.has(term.right))
+        : [];
+      setMixedInteractions(interactionSetup);
       if (["reml", "ml"].includes(String(setup.estimator))) setMixedEstimator(setup.estimator as MixedModelEstimator);
       if (["none", "grand", "cluster"].includes(String(setup.centering))) setMixedCentering(setup.centering as MixedModelCentering);
       setMixedRandomSlopeVariable(variable(setup.randomSlope));
@@ -5584,6 +6513,169 @@ export default function AnalysisLab({
       : true;
     return sensitive ? { ...rule, value: "[hidden]" } : { ...rule };
   });
+  // Workspace edit count must be computed before the Analysis AI roadmap uses it.
+  // Keep this as a plain derived value (rather than a later hook) to avoid
+  // temporal-dead-zone runtime errors during render.
+  const workspaceEditCount =
+    Object.values(workspaceCellEdits).reduce(
+      (sum, row) => sum + Object.keys(row).length,
+      0
+    ) +
+    Object.keys(workspaceVariableLabels).length +
+    Object.keys(workspaceVariableLevels).length +
+    Object.keys(workspaceAddedVariables).length +
+    workspaceDeletedVariables.length;
+
+  const analysisAiRoadmap: AnalysisAiStudyRoadmapStage[] = (() => {
+    const hasRows = activeRows.length > 0;
+    const hasVariables = variables.length > 0;
+    const hasResult = Boolean(analysisAiPrimaryResult);
+    const hasSavedResult = analysisRecords.length > 0;
+    const hasPreparationEvidence =
+      analysisFilters.length > 0 ||
+      numericTransforms.length > 0 ||
+      computedVariables.length > 0 ||
+      recodeDefinitions.length > 0 ||
+      repeatedOperations.length > 0 ||
+      workspaceEditCount > 0;
+
+    return [
+      {
+        id: "design",
+        label: "Study design & protocol",
+        status: "available",
+        detail: "Return to Study Builder whenever you need to review measures, cognitive tasks, timing, follow-ups or protocol structure.",
+        target: "builder",
+        actionLabel: "Study Builder",
+      },
+      {
+        id: "collect",
+        label: "Participants & data collection",
+        status: hasRows ? "evidence" : "needs_data",
+        detail: hasRows
+          ? `${activeRows.length.toLocaleString()} rows are available in the current analysis view; this is evidence that analyzable data are present, not that recruitment is complete.`
+          : "No rows are available in the current analysis view. Review participant collection or import an external file before analysis.",
+        target: hasRows ? "participants" : "participants",
+        actionLabel: "Participants",
+      },
+      {
+        id: "inspect",
+        label: "Inspect & integrate data",
+        status: hasRows ? "evidence" : "next",
+        detail: hasRows
+          ? `Current dataset: ${sourceLabel}. Data Explorer remains available for raw, integrated and longitudinal frames.`
+          : "Inspect Data Explorer to choose an analysis-ready frame or verify why no rows are available.",
+        target: "explorer",
+        actionLabel: "Data Explorer",
+      },
+      {
+        id: "variables",
+        label: "Review variables",
+        status: workspaceView === "variables" ? "current" : hasVariables ? "available" : "needs_data",
+        detail: hasVariables
+          ? `${variables.length} variables are visible. Confirm measurement levels, labels, missingness and ID/cluster roles before modelling.`
+          : "Variable metadata will become available after data are loaded.",
+        target: "analysis_variables",
+        actionLabel: "Variable View",
+      },
+      {
+        id: "prepare",
+        label: "Prepare analysis data",
+        status: workspaceView === "data" ? "current" : hasPreparationEvidence ? "evidence" : hasRows ? "available" : "needs_data",
+        detail: hasPreparationEvidence
+          ? "The current workspace contains preparation edits, filters, transformations, recodes or repeated-data operations."
+          : datasetStructure?.repeatedObservations
+            ? "Repeated observations are detected. Review clustering, time variables, centering, missingness and any needed longitudinal derivations before final modelling."
+            : "Use Data View / Prepare data if filtering, recoding, transformations, computed variables or missingness review are needed.",
+        target: "analysis_data",
+        actionLabel: "Data View",
+      },
+      {
+        id: "analyse",
+        label: "Run & check analysis",
+        status: workspaceView === "analyses" && !hasResult ? "current" : hasResult || hasSavedResult ? "evidence" : hasRows ? "next" : "needs_data",
+        detail: hasResult
+          ? `The current ${activeAnalysisLabel()} has deterministic output available. Review estimates, assumptions, diagnostics and sensitivity to setup choices.`
+          : hasSavedResult
+            ? "Saved deterministic analysis records exist. Reopen or configure the analysis needed for the current research question."
+            : datasetStructure?.repeatedObservations
+              ? "Repeated observations are present; mixed-effects modelling may be a useful starting point when the research question targets within-person or clustered change."
+              : "Choose the analysis that matches the outcome, predictor/group structure and research question.",
+        target: "analysis_analyses",
+        actionLabel: "Analyses",
+      },
+      {
+        id: "report",
+        label: "Report, export & write",
+        status: hasResult ? "next" : "available",
+        detail: hasResult
+          ? "A deterministic result is available. Interpret it, review what must be reported, export the output and connect it to Thesis Builder when ready."
+          : "Reporting comes after the required deterministic analyses and checks are available.",
+        target: hasResult ? "writing" : "exports",
+        actionLabel: hasResult ? "Thesis Builder" : "Export Data",
+      },
+    ];
+  })();
+
+  function navigateFromAnalysisAi(target: AnalysisAiStudyNavigationTarget) {
+    if (target === "analysis_data") {
+      setWorkspaceView("data");
+      return;
+    }
+    if (target === "analysis_variables") {
+      setWorkspaceView("variables");
+      return;
+    }
+    if (target === "analysis_analyses") {
+      setWorkspaceView("analyses");
+      return;
+    }
+    setIsFullscreen(false);
+    onNavigateWorkspace?.(target);
+  }
+
+  const analysisAiAvailableFigures: Array<{ id: string; label: string; purpose: string; thesis_ready: boolean }> = [];
+  if (activeAnalysis === "correlations" && correlationVariables.length >= 2) {
+    analysisAiAvailableFigures.push({ id: "correlation_heatmap", label: `${correlationMethod === "pearson" ? "Pearson" : "Spearman"} correlation heatmap`, purpose: "Show the direction and relative magnitude of the selected correlation matrix at a glance.", thesis_ready: true });
+  }
+  if (activeAnalysis === "diagnostics" && diagnosticsMode === "distribution" && distributionDiagnostics.length > 0) {
+    analysisAiAvailableFigures.push(
+      { id: "distribution_histograms", label: "Distribution histograms", purpose: "Inspect distribution shape and outlying values for selected variables.", thesis_ready: true },
+      { id: "distribution_qq", label: "Q–Q plots", purpose: "Inspect departures from a normal reference distribution where relevant.", thesis_ready: true },
+    );
+  }
+  if (activeAnalysis === "anova" && generalLinearAnovaResult && !generalLinearAnovaResult.issue && generalLinearAnovaResult.marginalMeans.length > 0) {
+    analysisAiAvailableFigures.push({ id: "estimated_marginal_means", label: "Estimated marginal means plot", purpose: "Show adjusted group/factor means with 95% confidence intervals for factorial ANOVA or ANCOVA.", thesis_ready: true });
+  }
+  if (activeAnalysis === "regression" && linearRegressionResult && !linearRegressionResult.issue) {
+    analysisAiAvailableFigures.push(
+      { id: "regression_coefficients", label: "Regression coefficient plot", purpose: "Show model-scale coefficient estimates and 95% confidence intervals without the intercept.", thesis_ready: true },
+      { id: "regression_residual_fitted", label: "Residuals versus fitted", purpose: "Inspect residual pattern and variance structure.", thesis_ready: true },
+      { id: "regression_residual_qq", label: "Regression residual Q–Q plot", purpose: "Inspect residual distribution shape.", thesis_ready: true },
+      { id: "regression_influence", label: "Regression influence map", purpose: "Inspect leverage, standardized residuals and Cook's distance together.", thesis_ready: true },
+    );
+  }
+  if (activeAnalysis === "factor" && factorResult && !factorResult.issue) {
+    analysisAiAvailableFigures.push(
+      { id: "factor_scree", label: "Scree plot", purpose: "Review eigenvalue decay as one source of factor-retention evidence.", thesis_ready: true },
+      { id: "factor_loading_heatmap", label: "Factor-loading heatmap", purpose: "Communicate the signed loading pattern across extracted factors.", thesis_ready: true },
+    );
+  }
+  if (activeAnalysis === "mixed" && mixedFamily === "gaussian" && linearMixedModelResult && !linearMixedModelResult.issue) {
+    analysisAiAvailableFigures.push({ id: "mixed_fixed_effects", label: "Mixed-model fixed-effect coefficient plot", purpose: "Show fixed-effect estimates and 95% confidence intervals from the fitted linear mixed model.", thesis_ready: true });
+    if (mixedInteractionProbe?.series.length) analysisAiAvailableFigures.push({ id: "mixed_interaction", label: "Mixed-model interaction plot", purpose: "Show model-based fitted values across the probed two-way interaction.", thesis_ready: true });
+  }
+  if (activeAnalysis === "mixed" && mixedFamily !== "gaussian" && generalizedMixedInteractionProbe?.plotSeries.length) {
+    analysisAiAvailableFigures.push({ id: "glmm_interaction", label: mixedFamily === "binomial" ? "Binary mixed-model probability interaction plot" : "Count mixed-model rate interaction plot", purpose: mixedFamily === "binomial" ? "Show model-based predicted event probabilities across the fitted interaction." : "Show model-based predicted rates/count scale across the fitted interaction.", thesis_ready: true });
+  }
+  if (activeAnalysis === "power" && !powerResult.issue && powerResult.sampleSize !== null && powerResult.achievedPower !== null) {
+    analysisAiAvailableFigures.push({ id: "power_curve", label: "Power curve", purpose: "Show the deterministic relationship between sample size and estimated power for the configured planning model.", thesis_ready: true });
+  }
+
+  const analysisAiAvailableTables = [analysisAiPrimaryResult, ...analysisAiSupplementaryResults]
+    .filter((table): table is FormattedTableSpec => Boolean(table))
+    .map((table) => ({ title: table.title, subtitle: table.subtitle, note: table.note }));
+
   const analysisAiContext: AnalysisAiContext = {
     schema_version: "psylattice_analysis_ai_v3",
     source_policy: {
@@ -5648,6 +6740,19 @@ export default function AnalysisLab({
       data_fingerprint: analysisFingerprint,
       primary_result: analysisAiPrimaryResult,
       supplementary_results: analysisAiSupplementaryResults,
+      guardrails: analysisGuardrails.map((item) => ({
+        id: item.id,
+        severity: item.severity,
+        category: item.category,
+        title: item.title,
+        detail: item.detail,
+        action: item.action,
+        action_label: item.actionLabel,
+      })),
+    },
+    study_progress: {
+      basis: "Deterministic navigation hints derived from current PsyLattice workspace evidence. They do not certify that scientific, ethics, recruitment or reporting requirements are complete.",
+      stages: analysisAiRoadmap,
     },
     saved_analysis_records: analysisRecords.slice(0, 10).map((record) => ({
       id: record.id,
@@ -5661,23 +6766,29 @@ export default function AnalysisLab({
       setup: record.setup,
       primary_result: record.primaryTable,
     })),
+    reporting_artifacts: {
+      available_tables: analysisAiAvailableTables,
+      available_figures: analysisAiAvailableFigures,
+      handoff_note: "Tables and figures listed here are deterministic Analysis Lab artifacts currently available in the UI. Analysis AI may recommend which ones fit the research question and permitted Thesis Builder context. Copying into Thesis Builder remains an explicit researcher action.",
+    },
     capability_registry: [
+      { id: "guardrails", label: "Deterministic statistical guardrails", modes: ["Structure", "Sample", "Missingness", "Sparsity", "Model", "Diagnostics"], note: "Live deterministic blockers, review flags and information prompts derived from the current Analysis Lab setup and engine outputs." },
       { id: "prepare_data", label: "Prepare data", modes: ["Native preparation", "Sample", "Derive", "Repeated", "Missing data"], note: "Non-destructive filters, recodes, transformations, computed variables, longitudinal derivations and missingness/sample audit." },
       { id: "descriptives", label: "Descriptives", modes: ["Numeric summaries", "Frequencies"] },
       { id: "diagnostics", label: "Diagnostics", modes: ["Distribution", "Variance homogeneity"], controls: ["Histogram", "Q-Q plot", "Jarque-Bera", "Outliers", "Brown-Forsythe", "Levene"] },
-      { id: "visualizations", label: "Visualizations", modes: ["Scatter", "Box", "Violin", "Grouped means", "Interaction"] },
-      { id: "correlations", label: "Correlations", modes: ["Pearson", "Spearman"] },
+      { id: "visualizations", label: "Visualizations", modes: ["Scatter", "Box", "Violin", "Grouped means", "Interaction"], controls: ["Publication-ready Copy figure workflow", "Correlation heatmap", "Regression/mixed coefficient plots", "Factor-loading heatmap", "Estimated marginal means plots", "Diagnostics plots"] },
+      { id: "correlations", label: "Correlations", modes: ["Pearson", "Spearman"], controls: ["Correlation matrix", "Correlation heatmap", "Pairwise N", "p-values"] },
       { id: "ttests", label: "T-tests", modes: ["Independent", "Paired"], controls: ["Welch", "Student", "95% CI", "Effect sizes"] },
       { id: "nonparametric", label: "Non-parametric", modes: ["Mann-Whitney U", "Wilcoxon signed-rank", "Kruskal-Wallis", "Friedman"] },
       { id: "categorical", label: "Categorical", modes: ["Contingency table", "Pearson chi-square", "Fisher exact 2x2"], controls: ["Cramer's V", "Phi", "Adjusted standardized residuals", "Odds ratio 2x2"] },
-      { id: "anova", label: "ANOVA", modes: ["One-way", "Factorial", "ANCOVA", "Repeated measures"], controls: ["Standard", "Welch", "Type III-style tests", "Interactions", "Estimated marginal means", "Mauchly", "Greenhouse-Geisser", "Huynh-Feldt", "Post-hoc"] },
-      { id: "regression", label: "Regression", modes: ["Multiple linear regression"], controls: ["Standardized beta", "VIF", "Tolerance", "Residual diagnostics", "Breusch-Pagan/Koenker", "Influence"] },
+      { id: "anova", label: "ANOVA", modes: ["One-way", "Factorial", "ANCOVA", "Repeated measures"], controls: ["Standard", "Welch", "Type III-style tests", "Interactions", "Estimated marginal means", "EMM pairwise contrasts", "Holm", "Bonferroni", "FDR · Benjamini–Hochberg", "Mauchly", "Greenhouse-Geisser", "Huynh-Feldt", "Post-hoc"] },
+      { id: "regression", label: "Regression", modes: ["Multiple linear regression"], controls: ["Standardized beta", "VIF", "Tolerance", "Residual diagnostics", "Breusch-Pagan/Koenker", "Influence", "Coefficient plot"] },
       { id: "process", label: "Mediation & moderation", modes: ["Mediation", "Moderation"], controls: ["Bootstrap indirect effect", "Interaction", "Simple slopes", "Delta R-squared"] },
-      { id: "mixed", label: "Mixed models", modes: ["Continuous", "Binary", "Count"], controls: ["Random intercept", "Linear random slope", "ML", "REML", "Grand-mean centering", "Cluster-mean centering", "Exposure for count"] },
+      { id: "mixed", label: "Mixed models", modes: ["Continuous", "Binary", "Count"], controls: ["Random intercept", "Linear random slope", "Two-way interactions", "Numeric interaction simple slopes", "Categorical interaction contrasts", "Binary probability interaction plots", "Poisson rate interaction plots", "Response-scale GLMM probing", "ML", "REML", "Grand-mean centering", "Cluster-mean centering", "Exposure for count"] },
       { id: "logistic", label: "Categorical regression", modes: ["Binary logistic", "Multinomial logistic", "Ordinal logistic"] },
       { id: "count", label: "Count models", modes: ["Poisson", "Negative binomial"], controls: ["Exposure offset", "IRR", "Dispersion diagnostics"] },
       { id: "reliability", label: "Reliability", modes: ["Cronbach alpha"], controls: ["Standardized alpha", "Item-rest correlation", "Alpha if deleted", "Explicit reverse scoring"] },
-      { id: "factor", label: "Factor analysis", modes: ["Exploratory factor analysis"], controls: ["Principal-axis", "Principal-components", "Promax", "Varimax", "KMO", "Bartlett", "Scree plot"] },
+      { id: "factor", label: "Factor analysis", modes: ["Exploratory factor analysis"], controls: ["Principal-axis", "Principal-components", "Promax", "Varimax", "KMO", "Bartlett", "Scree plot", "Factor-loading heatmap"] },
       { id: "power", label: "Power & sample size", modes: ["A priori", "Achieved power"], controls: ["Independent t", "Paired/one-sample t", "Correlation", "One-way ANOVA", "Attrition inflation"] },
     ],
     apply_setup_schema: {
@@ -5690,10 +6801,10 @@ export default function AnalysisLab({
         ttests: { keys: ["mode", "estimator", "outcome", "group", "groupA", "groupB", "pairedA", "pairedB"], values: { mode: ["independent", "paired"], estimator: ["welch", "student"] } },
         nonparametric: { keys: ["mode", "outcome", "group", "groupA", "groupB", "pairedA", "pairedB", "repeated"], values: { mode: ["mannwhitney", "wilcoxon", "kruskal", "friedman"] } },
         categorical: { keys: ["row", "column"] },
-        anova: { keys: ["mode", "estimator", "outcome", "factor", "repeated", "factors", "covariates", "includeInteractions"], values: { mode: ["between", "factorial", "ancova", "repeated"], estimator: ["standard", "welch"] } },
+        anova: { keys: ["mode", "estimator", "adjustment", "outcome", "factor", "repeated", "factors", "covariates", "includeInteractions"], values: { mode: ["between", "factorial", "ancova", "repeated"], estimator: ["standard", "welch"], adjustment: ["holm", "bonferroni", "fdr_bh"] } },
         regression: { keys: ["outcome", "predictors"] },
         process: { keys: ["mode", "outcome", "predictor", "mediator", "moderator", "covariates", "bootstrapSamples", "centerPredictors"], values: { mode: ["mediation", "moderation"], bootstrapSamples: [1000, 2000, 5000] } },
-        mixed: { keys: ["family", "outcome", "cluster", "predictors", "estimator", "centering", "randomSlope", "positiveClass", "exposure"], values: { family: ["gaussian", "binomial", "poisson"], estimator: ["reml", "ml"], centering: ["none", "grand", "cluster"] } },
+        mixed: { keys: ["family", "outcome", "cluster", "predictors", "interactions", "estimator", "centering", "randomSlope", "positiveClass", "exposure"], values: { family: ["gaussian", "binomial", "poisson"], estimator: ["reml", "ml"], centering: ["none", "grand", "cluster"] } },
         logistic: { keys: ["mode", "outcome", "positiveClass", "referenceClass", "ordinalOrder", "predictors", "threshold"], values: { mode: ["binary", "multinomial", "ordinal"] } },
         count: { keys: ["family", "outcome", "predictors", "exposure"], values: { family: ["poisson", "negative_binomial"] } },
         reliability: { keys: ["selectedVariables", "reverseItems"] },
@@ -5714,6 +6825,266 @@ export default function AnalysisLab({
     },
   };
 
+  function updateWorkspaceCell(rowIndex: number, variableName: string, value: string) {
+    const baseRow = filteredRows[rowIndex];
+    if (!baseRow) return;
+    const key = analysisWorkspaceRowKey(baseRow, rowIndex);
+    setWorkspaceCellEdits((current) => ({
+      ...current,
+      [key]: { ...(current[key] || {}), [variableName]: value },
+    }));
+  }
+
+  function addWorkspaceVariable() {
+    const existing = new Set(activeRows.flatMap((row) => Object.keys(row)));
+    Object.keys(workspaceAddedVariables).forEach((name) => existing.add(name));
+
+    let index = 1;
+    let name = "new_variable_1";
+    while (existing.has(name)) {
+      index += 1;
+      name = `new_variable_${index}`;
+    }
+
+    setWorkspaceAddedVariables((current) => ({
+      ...current,
+      [name]: {
+        label: `New variable ${index}`,
+        level: "continuous",
+      },
+    }));
+  }
+
+  function deleteWorkspaceVariable(variableName: string) {
+    if (workspaceAddedVariables[variableName]) {
+      setWorkspaceAddedVariables((current) => {
+        const next = { ...current };
+        delete next[variableName];
+        return next;
+      });
+    } else {
+      setWorkspaceDeletedVariables((current) =>
+        current.includes(variableName) ? current : [...current, variableName]
+      );
+    }
+
+    setWorkspaceVariableLabels((current) => {
+      const next = { ...current };
+      delete next[variableName];
+      return next;
+    });
+    setWorkspaceVariableLevels((current) => {
+      const next = { ...current };
+      delete next[variableName];
+      return next;
+    });
+  }
+
+  function handleWorkspacePrepareAction(
+    action: "filter" | "transform" | "compute" | "analyse",
+    variableName: string
+  ) {
+    setWorkspaceView("analyses");
+
+    if (action === "analyse") {
+      setAnalysisCategoryTab("explore");
+      setActiveAnalysis("descriptives");
+      setSelectedVariables([variableName]);
+      return;
+    }
+
+    setPrepareDataOpen(true);
+
+    if (action === "filter") {
+      setPrepareDataTab("sample");
+      setFilterVariable(variableName);
+      return;
+    }
+
+    setPrepareDataTab("derive");
+
+    if (action === "transform") {
+      setTransformSource(variableName);
+      return;
+    }
+
+    setComputedLeft(variableName);
+  }
+
+  function resetWorkspaceEdits() {
+    setWorkspaceCellEdits({});
+    setWorkspaceVariableLabels({});
+    setWorkspaceVariableLevels({});
+    setWorkspaceAddedVariables({});
+    setWorkspaceDeletedVariables([]);
+  }
+
+  function setupMixedModelFromDatasetStructure() {
+    if (!datasetStructure?.repeatedObservations) return;
+
+    setSourceMode("study");
+    setAnalysisCategoryTab("model");
+    setActiveAnalysis("mixed");
+
+    if (
+      datasetStructure.clusterVariable &&
+      variables.some(
+        (variable) => variable.name === datasetStructure.clusterVariable
+      )
+    ) {
+      setMixedGroupVariable(datasetStructure.clusterVariable);
+    }
+  }
+
+  function handleAnalysisGuardrailAction(action: AnalysisGuardrailAction) {
+    if (action === "setup_mixed") {
+      setWorkspaceView("analyses");
+      setupMixedModelFromDatasetStructure();
+      return;
+    }
+    if (action === "open_missingness") {
+      setWorkspaceView("analyses");
+      setPrepareDataOpen(true);
+      setPrepareDataTab("missing");
+      return;
+    }
+    if (action === "open_variables") {
+      setWorkspaceView("variables");
+      return;
+    }
+    setWorkspaceView("analyses");
+    setAnalysisCategoryTab("explore");
+    setActiveAnalysis("diagnostics");
+    setDiagnosticsMode("distribution");
+  }
+
+  function setDraggedVariable(event: DragEvent<HTMLElement>, variableName: string) {
+    event.dataTransfer.effectAllowed = "copy";
+    event.dataTransfer.setData("text/plain", variableName);
+  }
+
+  function readDroppedVariable(event: DragEvent<HTMLElement>) {
+    event.preventDefault();
+    return event.dataTransfer.getData("text/plain");
+  }
+
+  function assignAnovaDrop(
+    event: DragEvent<HTMLElement>,
+    role: "outcome" | "factor" | "covariate"
+  ) {
+    const variableName = readDroppedVariable(event);
+    if (!variableName) return;
+
+    if (role === "outcome") {
+      if (!anovaNumericCandidates.some((variable) => variable.name === variableName)) return;
+      setAnovaOutcomeVariable(variableName);
+      setAnovaFactors((current) => current.filter((name) => name !== variableName));
+      setAnovaCovariates((current) => current.filter((name) => name !== variableName));
+      if (anovaFactorVariable === variableName) setAnovaFactorVariable("");
+      return;
+    }
+
+    if (role === "factor") {
+      if (!anovaFactorCandidates.some((variable) => variable.name === variableName)) return;
+      if (variableName === anovaOutcomeVariable) return;
+      if (anovaMode === "between") {
+        setAnovaFactorVariable(variableName);
+      } else {
+        setAnovaFactors((current) =>
+          current.includes(variableName) ? current : [...current, variableName].slice(0, 4)
+        );
+      }
+      setAnovaCovariates((current) => current.filter((name) => name !== variableName));
+      return;
+    }
+
+    if (anovaMode !== "ancova") return;
+    if (!anovaNumericCandidates.some((variable) => variable.name === variableName)) return;
+    if (variableName === anovaOutcomeVariable || anovaFactors.includes(variableName)) return;
+    setAnovaCovariates((current) => current.includes(variableName) ? current : [...current, variableName]);
+  }
+
+  function assignRegressionDrop(event: DragEvent<HTMLElement>, role: "outcome" | "predictor") {
+    const variableName = readDroppedVariable(event);
+    if (!variableName || !regressionCandidates.some((variable) => variable.name === variableName)) return;
+
+    if (role === "outcome") {
+      setRegressionOutcomeVariable(variableName);
+      setRegressionPredictors((current) => current.filter((name) => name !== variableName));
+      return;
+    }
+
+    if (variableName === regressionOutcomeVariable) return;
+    setRegressionPredictors((current) =>
+      current.includes(variableName) ? current : [...current, variableName]
+    );
+  }
+
+  function toggleMixedPredictor(variableName: string) {
+    setMixedPredictors((current) => {
+      if (!current.includes(variableName)) return [...current, variableName];
+      return current.filter((name) => name !== variableName);
+    });
+    setMixedInteractions((current) =>
+      current.filter((term) => term.left !== variableName && term.right !== variableName)
+    );
+    if (mixedRandomSlopeVariable === variableName) setMixedRandomSlopeVariable("");
+  }
+
+  function assignMixedDrop(
+    event: DragEvent<HTMLElement>,
+    role: "outcome" | "cluster" | "predictor"
+  ) {
+    const variableName = readDroppedVariable(event);
+    if (!variableName) return;
+
+    if (role === "outcome") {
+      if (!mixedOutcomeCandidates.some((variable) => variable.name === variableName)) return;
+      setMixedOutcomeVariable(variableName);
+      setMixedPredictors((current) => current.filter((name) => name !== variableName));
+      if (mixedGroupVariable === variableName) setMixedGroupVariable("");
+      return;
+    }
+
+    if (role === "cluster") {
+      if (!mixedGroupCandidates.some((variable) => variable.name === variableName)) return;
+      if (variableName === mixedOutcomeVariable) return;
+      setMixedGroupVariable(variableName);
+      setMixedPredictors((current) => current.filter((name) => name !== variableName));
+      return;
+    }
+
+    if (
+      variableName === mixedOutcomeVariable ||
+      variableName === mixedGroupVariable ||
+      !mixedPredictorCandidates.some((variable) => variable.name === variableName)
+    ) return;
+
+    setMixedPredictors((current) =>
+      current.includes(variableName) ? current : [...current, variableName]
+    );
+  }
+
+  function addMixedInteraction() {
+    const left = mixedInteractionLeft;
+    const right = mixedInteractionRight;
+    if (!left || !right || left === right) return;
+    if (!mixedPredictors.includes(left) || !mixedPredictors.includes(right)) return;
+
+    const key = [left, right].sort().join("\u0000");
+    setMixedInteractions((current) => {
+      if (current.some((term) => [term.left, term.right].sort().join("\u0000") === key)) return current;
+      return [...current, { left, right }];
+    });
+  }
+
+  function removeMixedInteraction(left: string, right: string) {
+    const key = [left, right].sort().join("\u0000");
+    setMixedInteractions((current) =>
+      current.filter((term) => [term.left, term.right].sort().join("\u0000") !== key)
+    );
+  }
+
   const workspaceGridClass = analysisSidebarCollapsed
     ? variablesSidebarCollapsed
       ? "xl:grid-cols-[54px_54px_minmax(0,1fr)]"
@@ -5722,14 +7093,86 @@ export default function AnalysisLab({
       ? "xl:grid-cols-[220px_54px_minmax(0,1fr)]"
       : "xl:grid-cols-[220px_360px_minmax(0,1fr)]";
 
+  const analysisAiDock = (
+    <AnalysisAiAssistant
+      key="analysis-ai-universal"
+      studyId={selectedStudyId}
+      studyTitle={studyTitle}
+      datasetLabel={sourceLabel}
+      context={analysisAiContext}
+      workingRows={analysisAiWorkingRows}
+      workingRowsTotal={activeRows.length}
+      onApplySetup={applyAnalysisAiSetupProposal}
+      onApplyWorkflow={applyAnalysisAiWorkflowProposal}
+      roadmap={analysisAiRoadmap}
+      onNavigate={navigateFromAnalysisAi}
+    />
+  );
+
+  if (workspaceView !== "analyses") {
+    return (
+      <>
+        <AnalysisDataWorkspace
+          view={workspaceView}
+          onViewChange={setWorkspaceView}
+          rows={activeRows}
+          variables={variables}
+          datasetLabel={datasetLabel}
+          studyTitle={studyTitle}
+          sourceMode={sourceMode}
+          onSourceModeChange={setSourceMode}
+          csvName={csvName}
+          onImportCsv={(file) => readCsv(file)}
+          onImportXlsx={(file) => readXlsx(file)}
+          csvError={csvError}
+          studyOptions={studyOptions}
+          selectedStudyId={selectedStudyId}
+          onStudyChange={onStudyChange}
+          datasetOptions={datasetOptions}
+          selectedDatasetValue={selectedDatasetValue}
+          onDatasetChange={onDatasetChange}
+          includeTestData={includeTestData}
+          onIncludeTestDataChange={onIncludeTestDataChange}
+          identityModeLabel={identityModeLabel}
+          onCellChange={updateWorkspaceCell}
+          onVariableLabelChange={(variableName, label) =>
+            setWorkspaceVariableLabels((current) => ({ ...current, [variableName]: label }))
+          }
+          onVariableLevelChange={(variableName, level) =>
+            setWorkspaceVariableLevels((current) => ({ ...current, [variableName]: level }))
+          }
+          onAddVariable={addWorkspaceVariable}
+          onDeleteVariable={deleteWorkspaceVariable}
+          onPrepareAction={handleWorkspacePrepareAction}
+          onResetWorkspaceEdits={resetWorkspaceEdits}
+          workspaceEditCount={workspaceEditCount}
+          isFullscreen={isFullscreen}
+          onToggleFullscreen={() => setIsFullscreen((current) => !current)}
+        />
+        {analysisAiDock}
+      </>
+    );
+  }
+
   return (
-    <div
+    <>
+      <div
       className={`overflow-hidden border border-slate-300/70 bg-white transition-all duration-200 ${
         isFullscreen
           ? "fixed inset-0 z-[200] flex h-screen flex-col rounded-none border-0 shadow-none"
           : "rounded-[30px] shadow-[0_2px_5px_rgba(15,23,42,.035),0_18px_46px_rgba(15,23,42,.075),0_46px_100px_rgba(15,23,42,.055)]"
       }`}
     >
+      <div className="shrink-0 border-b border-slate-200 bg-white px-4 py-2 sm:px-5">
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <div className="flex items-center gap-1 rounded-2xl bg-slate-100 p-1">
+            <button type="button" onClick={() => setWorkspaceView("data")} className="rounded-xl px-3 py-1.5 text-[9px] font-semibold text-slate-500 hover:text-slate-900">Data View</button>
+            <button type="button" onClick={() => setWorkspaceView("variables")} className="rounded-xl px-3 py-1.5 text-[9px] font-semibold text-slate-500 hover:text-slate-900">Variable View</button>
+            <button type="button" className="rounded-xl bg-white px-3 py-1.5 text-[9px] font-semibold text-slate-950 shadow-[0_3px_10px_rgba(15,23,42,.08)]">Analyses + live results</button>
+          </div>
+          <p className="text-[8px] text-slate-400">Results and figures update from the current analysis setup without leaving the dataset workspace.</p>
+        </div>
+      </div>
       {isFullscreen ? (
         <div className="shrink-0 border-b border-slate-200/80 bg-[linear-gradient(110deg,#ffffff_0%,#f7fcfd_55%,#faf8ff_100%)] px-3 py-2.5 sm:px-4">
           <div className="grid gap-2 xl:grid-cols-[auto_minmax(0,1fr)_auto] xl:items-center">
@@ -6072,6 +7515,50 @@ export default function AnalysisLab({
         </div>
       )}
 
+      {sourceMode === "study" && datasetStructure?.repeatedObservations ? (
+        <div className="shrink-0 border-b border-violet-200/80 bg-[linear-gradient(90deg,#faf7ff_0%,#ffffff_55%,#f2fdff_100%)] px-4 py-3 sm:px-5">
+          <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+            <div className="min-w-0">
+              <div className="flex flex-wrap items-center gap-2">
+                <span className="rounded-full border border-violet-200 bg-white px-2.5 py-1 text-[8px] font-semibold uppercase tracking-[.08em] text-violet-800">
+                  Repeated observations detected
+                </span>
+                <span className="rounded-full border border-cyan-200 bg-white px-2.5 py-1 text-[8px] font-semibold text-cyan-800">
+                  {datasetStructure.unitLabel}
+                </span>
+              </div>
+
+              <p className="mt-2 text-[10px] font-semibold text-slate-800">
+                {datasetStructure.clusterCount.toLocaleString()} {datasetStructure.clusterLabel?.toLowerCase() || "clusters"} contributed {datasetStructure.observationCount.toLocaleString()} observations.
+              </p>
+              <p className="mt-1 max-w-4xl text-[8.5px] leading-4 text-slate-500">
+                These rows are not statistically independent because multiple observations belong to the same {datasetStructure.clusterLabel?.toLowerCase() || "cluster"}. Ordinary regression and other independent-row procedures can understate uncertainty. {datasetStructure.note}
+              </p>
+
+              <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-[8px] text-slate-500">
+                <span>Mean rows / {datasetStructure.clusterLabel?.toLowerCase() || "cluster"}: <strong className="text-slate-700">{datasetStructure.meanObservationsPerCluster}</strong></span>
+                <span>Maximum: <strong className="text-slate-700">{datasetStructure.maxObservationsPerCluster}</strong></span>
+                {datasetStructure.exactMatches + datasetStructure.timeWindowMatches + datasetStructure.derivedDateMatches + datasetStructure.unmatchedRows > 0 ? (
+                  <>
+                    <span>Exact links: <strong className="text-slate-700">{datasetStructure.exactMatches}</strong></span>
+                    <span>Time-window links: <strong className="text-slate-700">{datasetStructure.timeWindowMatches}</strong></span>
+                    <span>Unmatched: <strong className="text-slate-700">{datasetStructure.unmatchedRows}</strong></span>
+                  </>
+                ) : null}
+              </div>
+            </div>
+
+            <button
+              type="button"
+              onClick={setupMixedModelFromDatasetStructure}
+              className="shrink-0 rounded-full bg-slate-950 px-4 py-2.5 text-[9px] font-semibold text-white shadow-[0_5px_16px_rgba(15,23,42,.16)] transition hover:-translate-y-px"
+            >
+              Set up mixed model →
+            </button>
+          </div>
+        </div>
+      ) : null}
+
       <div className="shrink-0 border-b border-slate-200/80 bg-white px-4 py-2.5 sm:px-5">
         <div className="grid gap-2.5 xl:grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] xl:items-center">
           <div className="flex min-w-0 items-center gap-2.5">
@@ -6109,13 +7596,30 @@ export default function AnalysisLab({
 
           <div className="flex min-w-0 justify-start xl:justify-center">
             <div className="flex max-w-full flex-wrap items-center gap-0.5 rounded-2xl border border-slate-800 bg-[linear-gradient(180deg,#111827_0%,#0f172a_100%)] p-1 shadow-[0_8px_20px_rgba(15,23,42,.16)] ring-1 ring-cyan-300/15">
+              <button
+                type="button"
+                onClick={() => setPrepareDataOpen((current) => !current)}
+                className={`relative shrink-0 whitespace-nowrap rounded-xl px-3.5 py-1.5 text-[9px] font-semibold transition-all duration-150 ${
+                  prepareDataOpen
+                    ? "bg-white text-slate-950 shadow-[0_4px_12px_rgba(0,0,0,.22)] ring-1 ring-violet-300"
+                    : "text-slate-300 hover:bg-white/10 hover:text-white"
+                }`}
+                title="Prepare, filter, transform, derive, review repeated data and inspect missingness"
+              >
+                Data tools
+                {prepareDataOpen ? <span className="absolute inset-x-3 bottom-0.5 h-px rounded-full bg-violet-500" /> : null}
+              </button>
+
               {analysisNavCategories.map((category) => {
-                const selected = analysisCategoryTab === category.id;
+                const selected = !prepareDataOpen && analysisCategoryTab === category.id;
                 return (
                   <button
                     key={category.id}
                     type="button"
-                    onClick={() => setAnalysisCategoryTab(category.id)}
+                    onClick={() => {
+                      setPrepareDataOpen(false);
+                      setAnalysisCategoryTab(category.id);
+                    }}
                     className={`relative shrink-0 whitespace-nowrap rounded-xl px-3.5 py-1.5 text-[9px] font-semibold transition-all duration-150 ${
                       selected
                         ? "bg-white text-slate-950 shadow-[0_4px_12px_rgba(0,0,0,.22)] ring-1 ring-cyan-300"
@@ -6641,6 +8145,36 @@ export default function AnalysisLab({
             </div>
           ) : (
             <>
+              {(["regression", "mixed", "anova"] as ActiveAnalysis[]).includes(activeAnalysis) ? (
+                <div className="mb-4 rounded-2xl border border-slate-200 bg-[linear-gradient(120deg,#ffffff_0%,#f7fcfd_55%,#faf8ff_100%)] p-3 shadow-[0_4px_16px_rgba(15,23,42,.035)]">
+                  <div className="flex items-center justify-between gap-2">
+                    <div>
+                      <p className="text-[9px] font-semibold text-slate-800">Variable tray</p>
+                      <p className="mt-0.5 text-[8px] leading-4 text-slate-400">Drag a variable into a highlighted role below, or keep using the click/select controls.</p>
+                    </div>
+                    <span className="rounded-full border border-slate-200 bg-white px-2 py-1 text-[7px] font-semibold text-slate-500">Drag + click</span>
+                  </div>
+                  <div className="mt-2 flex max-h-[112px] flex-wrap gap-1.5 overflow-y-auto pr-1">
+                    {variables
+                      .filter((variable) => !["text", "datetime"].includes(variable.level))
+                      .slice(0, 40)
+                      .map((variable) => (
+                        <button
+                          key={`drag-${variable.name}`}
+                          type="button"
+                          draggable
+                          onDragStart={(event) => setDraggedVariable(event, variable.name)}
+                          title={`Drag ${variable.label} to a model role`}
+                          className="inline-flex max-w-full cursor-grab items-center gap-1.5 rounded-full border border-slate-200 bg-white px-2 py-1.5 text-left text-[8px] font-semibold text-slate-600 shadow-[0_2px_7px_rgba(15,23,42,.035)] active:cursor-grabbing"
+                        >
+                          <span className="max-w-[190px] truncate">{variable.label}</span>
+                          <VariableTypePill variable={variable} />
+                        </button>
+                      ))}
+                  </div>
+                </div>
+              ) : null}
+
               {activeAnalysis === "cognitive" ? (
                 <div>
                   <div>
@@ -7402,8 +8936,15 @@ export default function AnalysisLab({
                   </div>
 
                   <div className="mt-4 space-y-4">
-                    <label className="block">
-                      <span className="text-[9px] font-semibold uppercase tracking-[.08em] text-slate-400">Outcome variable</span>
+                    <label
+                      className="block rounded-2xl border border-dashed border-cyan-200/80 bg-cyan-50/35 p-3"
+                      onDragOver={(event) => { event.preventDefault(); event.dataTransfer.dropEffect = "copy"; }}
+                      onDrop={(event) => assignRegressionDrop(event, "outcome")}
+                    >
+                      <span className="flex items-center justify-between gap-2 text-[9px] font-semibold uppercase tracking-[.08em] text-slate-400">
+                        <span>Outcome variable</span>
+                        <span className="normal-case tracking-normal text-[8px] font-medium text-cyan-700">Drop a numeric variable here</span>
+                      </span>
                       <select
                         value={regressionOutcomeVariable}
                         onChange={(event) => {
@@ -7420,9 +8961,13 @@ export default function AnalysisLab({
                       </select>
                     </label>
 
-                    <div className="border-t border-slate-100 pt-4">
+                    <div
+                      className="rounded-2xl border border-dashed border-slate-200 bg-slate-50/35 p-3"
+                      onDragOver={(event) => { event.preventDefault(); event.dataTransfer.dropEffect = "copy"; }}
+                      onDrop={(event) => assignRegressionDrop(event, "predictor")}
+                    >
                       <div className="flex items-center justify-between gap-2">
-                        <span className="text-[9px] font-semibold uppercase tracking-[.08em] text-slate-400">Predictors</span>
+                        <span className="text-[9px] font-semibold uppercase tracking-[.08em] text-slate-400">Predictors · click or drop</span>
                         <span className="text-[8px] font-semibold text-cyan-700">{regressionPredictors.length} selected</span>
                       </div>
                       <div className="relative mt-2">
@@ -7447,6 +8992,9 @@ export default function AnalysisLab({
                               <button
                                 key={variable.name}
                                 type="button"
+                                draggable
+                                onDragStart={(event) => setDraggedVariable(event, variable.name)}
+                                title="Click to toggle as predictor, or drag to a model role"
                                 onClick={() =>
                                   setRegressionPredictors((current) =>
                                     current.includes(variable.name)
@@ -7481,6 +9029,33 @@ export default function AnalysisLab({
                         </p>
                       </div>
                     )}
+                  </div>
+
+                  <div className="mt-5 rounded-2xl border border-violet-100 bg-violet-50/35 p-3">
+                    <div className="flex items-start justify-between gap-3">
+                      <div>
+                        <p className="text-[9px] font-semibold uppercase tracking-[.08em] text-violet-700">Pairwise adjustment</p>
+                        <p className="mt-1 text-[8px] leading-4 text-slate-500">Used for ANOVA follow-ups and estimated-marginal-mean contrasts. The omnibus test itself is unchanged.</p>
+                      </div>
+                      <span className="rounded-full border border-violet-200 bg-white px-2 py-1 text-[8px] font-semibold text-violet-700">{multipleComparisonLabel(anovaAdjustment)}</span>
+                    </div>
+                    <div className="mt-3 grid grid-cols-3 gap-1 rounded-xl border border-violet-100 bg-white p-1">
+                      {([
+                        ["holm", "Holm"],
+                        ["bonferroni", "Bonferroni"],
+                        ["fdr_bh", "FDR"],
+                      ] as Array<[MultipleComparisonAdjustment, string]>).map(([value, label]) => (
+                        <button
+                          key={value}
+                          type="button"
+                          onClick={() => setAnovaAdjustment(value)}
+                          className={`rounded-lg px-2 py-2 text-[8px] font-semibold ${anovaAdjustment === value ? "bg-violet-600 text-white shadow-sm" : "text-slate-500 hover:bg-violet-50"}`}
+                        >
+                          {label}
+                        </button>
+                      ))}
+                    </div>
+                    <p className="mt-2 text-[7.5px] leading-4 text-slate-400">Holm controls family-wise error with more power than plain Bonferroni. FDR controls the expected false-discovery proportion and is usually more permissive.</p>
                   </div>
 
                   <div className="mt-5 border-t border-slate-100 pt-4">
@@ -7535,8 +9110,15 @@ export default function AnalysisLab({
                   ) : null}
 
                   <div className="mt-4 space-y-4">
-                    <label className="block">
-                      <span className="text-[9px] font-semibold uppercase tracking-[.08em] text-slate-400">Outcome</span>
+                    <label
+                      className="block rounded-2xl border border-dashed border-cyan-200/80 bg-cyan-50/35 p-3"
+                      onDragOver={(event) => { event.preventDefault(); event.dataTransfer.dropEffect = "copy"; }}
+                      onDrop={(event) => assignMixedDrop(event, "outcome")}
+                    >
+                      <span className="flex items-center justify-between gap-2 text-[9px] font-semibold uppercase tracking-[.08em] text-slate-400">
+                        <span>Outcome</span>
+                        <span className="normal-case tracking-normal text-[8px] font-medium text-cyan-700">Drop compatible variable</span>
+                      </span>
                       <select
                         value={mixedOutcomeVariable}
                         onChange={(event) => {
@@ -7552,8 +9134,15 @@ export default function AnalysisLab({
                       </select>
                     </label>
 
-                    <label className="block">
-                      <span className="text-[9px] font-semibold uppercase tracking-[.08em] text-slate-400">Cluster / participant ID</span>
+                    <label
+                      className="block rounded-2xl border border-dashed border-violet-200/80 bg-violet-50/30 p-3"
+                      onDragOver={(event) => { event.preventDefault(); event.dataTransfer.dropEffect = "copy"; }}
+                      onDrop={(event) => assignMixedDrop(event, "cluster")}
+                    >
+                      <span className="flex items-center justify-between gap-2 text-[9px] font-semibold uppercase tracking-[.08em] text-slate-400">
+                        <span>Cluster / participant ID</span>
+                        <span className="normal-case tracking-normal text-[8px] font-medium text-violet-700">Drop participant / cluster variable</span>
+                      </span>
                       <select
                         value={mixedGroupVariable}
                         onChange={(event) => {
@@ -7618,9 +9207,13 @@ export default function AnalysisLab({
                       </div>
                     )}
 
-                    <div className="border-t border-slate-100 pt-4">
+                    <div
+                      className="rounded-2xl border border-dashed border-slate-200 bg-slate-50/35 p-3"
+                      onDragOver={(event) => { event.preventDefault(); event.dataTransfer.dropEffect = "copy"; }}
+                      onDrop={(event) => assignMixedDrop(event, "predictor")}
+                    >
                       <div className="flex items-center justify-between gap-2">
-                        <span className="text-[9px] font-semibold uppercase tracking-[.08em] text-slate-400">Fixed effects</span>
+                        <span className="text-[9px] font-semibold uppercase tracking-[.08em] text-slate-400">Fixed effects · click or drop</span>
                         <span className="text-[8px] font-semibold text-cyan-700">{mixedPredictors.length} selected</span>
                       </div>
                       <div className="relative mt-2">
@@ -7637,13 +9230,90 @@ export default function AnalysisLab({
                           .map((variable) => {
                             const checked = mixedPredictors.includes(variable.name);
                             return (
-                              <button key={variable.name} type="button" onClick={() => setMixedPredictors((current) => current.includes(variable.name) ? current.filter((name) => name !== variable.name) : [...current, variable.name])} className={`flex w-full items-center gap-2 rounded-xl border px-3 py-2.5 text-left ${checked ? "border-cyan-300 bg-cyan-50/70" : "border-transparent bg-white hover:border-slate-200 hover:bg-slate-50"}`}>
+                              <button
+                                key={variable.name}
+                                type="button"
+                                draggable
+                                onDragStart={(event) => setDraggedVariable(event, variable.name)}
+                                onClick={() => toggleMixedPredictor(variable.name)}
+                                title="Click to toggle as a fixed effect, or drag to Outcome / Cluster / Fixed effects"
+                                className={`flex w-full items-center gap-2 rounded-xl border px-3 py-2.5 text-left ${checked ? "border-cyan-300 bg-cyan-50/70" : "border-transparent bg-white hover:border-slate-200 hover:bg-slate-50"}`}
+                              >
                                 <span className={`flex h-5 w-5 shrink-0 items-center justify-center rounded-md border ${checked ? "border-cyan-600 bg-cyan-600 text-white" : "border-slate-200 bg-white text-transparent"}`}><Check className="h-3 w-3" /></span>
                                 <span className="min-w-0 flex-1"><span className="block truncate text-[10px] font-semibold text-slate-700">{variable.label}</span><span className="mt-0.5 flex items-center gap-1.5"><span className="truncate font-mono text-[8px] text-slate-400">{variable.name}</span><VariableTypePill variable={variable} /></span></span>
                               </button>
                             );
                           })}
                       </div>
+                    </div>
+
+                    <div className="rounded-2xl border border-violet-200/80 bg-[linear-gradient(120deg,#faf8ff_0%,#ffffff_100%)] p-3">
+                      <div className="flex items-start justify-between gap-3">
+                        <div>
+                          <p className="text-[9px] font-semibold text-violet-900">Fixed-effect interactions</p>
+                          <p className="mt-1 text-[8px] leading-4 text-violet-700/75">Add two-way interactions without creating product columns manually. Main effects remain in the model automatically.</p>
+                        </div>
+                        <span className="shrink-0 rounded-full border border-violet-200 bg-white px-2 py-1 text-[8px] font-semibold text-violet-700">{mixedInteractions.length} added</span>
+                      </div>
+
+                      {mixedPredictors.length >= 2 ? (
+                        <>
+                          <div className="mt-3 grid gap-2 sm:grid-cols-[1fr_auto_1fr_auto] sm:items-end">
+                            <label className="block">
+                              <span className="text-[7px] font-semibold uppercase tracking-[.08em] text-violet-700/70">First effect</span>
+                              <select
+                                value={mixedInteractionLeft}
+                                onChange={(event) => setMixedInteractionLeft(event.target.value)}
+                                className="mt-1.5 w-full border border-violet-200 bg-white px-2.5 py-2 text-[9px] font-semibold text-slate-700"
+                              >
+                                {mixedPredictorMeta.map((variable) => (
+                                  <option key={variable.name} value={variable.name}>{variable.label}</option>
+                                ))}
+                              </select>
+                            </label>
+                            <span className="hidden pb-2 text-[12px] font-semibold text-violet-400 sm:block">×</span>
+                            <label className="block">
+                              <span className="text-[7px] font-semibold uppercase tracking-[.08em] text-violet-700/70">Second effect</span>
+                              <select
+                                value={mixedInteractionRight}
+                                onChange={(event) => setMixedInteractionRight(event.target.value)}
+                                className="mt-1.5 w-full border border-violet-200 bg-white px-2.5 py-2 text-[9px] font-semibold text-slate-700"
+                              >
+                                {mixedPredictorMeta.filter((variable) => variable.name !== mixedInteractionLeft).map((variable) => (
+                                  <option key={variable.name} value={variable.name}>{variable.label}</option>
+                                ))}
+                              </select>
+                            </label>
+                            <button
+                              type="button"
+                              onClick={addMixedInteraction}
+                              disabled={!mixedInteractionLeft || !mixedInteractionRight || mixedInteractionLeft === mixedInteractionRight}
+                              className="rounded-xl bg-violet-950 px-3 py-2.5 text-[8px] font-semibold text-white shadow-[0_4px_14px_rgba(76,29,149,.14)] disabled:cursor-not-allowed disabled:opacity-40"
+                            >
+                              + Add interaction
+                            </button>
+                          </div>
+
+                          {mixedInteractions.length > 0 ? (
+                            <div className="mt-3 flex flex-wrap gap-1.5">
+                              {mixedInteractions.map((term) => {
+                                const left = variables.find((variable) => variable.name === term.left);
+                                const right = variables.find((variable) => variable.name === term.right);
+                                return (
+                                  <span key={[term.left, term.right].sort().join(":" )} className="inline-flex max-w-full items-center gap-1.5 rounded-full border border-violet-200 bg-white px-2.5 py-1.5 text-[8px] font-semibold text-violet-800">
+                                    <span className="truncate">{left?.label || term.left} × {right?.label || term.right}</span>
+                                    <button type="button" onClick={() => removeMixedInteraction(term.left, term.right)} className="rounded-full p-0.5 text-violet-400 hover:bg-violet-50 hover:text-violet-800" aria-label="Remove interaction">
+                                      <X className="h-2.5 w-2.5" />
+                                    </button>
+                                  </span>
+                                );
+                              })}
+                            </div>
+                          ) : null}
+                        </>
+                      ) : (
+                        <p className="mt-3 rounded-xl border border-violet-100 bg-white/75 px-3 py-2 text-[8px] leading-4 text-violet-700/70">Select at least two fixed effects to add an interaction.</p>
+                      )}
                     </div>
 
                     {mixedFamily === "gaussian" ? (
@@ -7682,8 +9352,8 @@ export default function AnalysisLab({
                     <p className="text-[9px] font-semibold uppercase tracking-[.08em] text-slate-400">Reported automatically</p>
                     <div className="mt-2 flex flex-wrap gap-1.5">
                       {(mixedFamily === "gaussian"
-                        ? ["Fixed effects + 95% CI", "Random intercept + optional slope", "Intercept–slope covariance", "ICC", "Marginal + conditional R²", "ML structure comparison"]
-                        : ["Fixed effects + 95% CI", mixedFamily === "binomial" ? "Odds ratios" : "Incidence-rate ratios", "Random-intercept variance", "Likelihood-ratio test", "AIC + BIC", "Cluster summary"]
+                        ? ["Fixed effects + 95% CI", "Native two-way interactions", "Random intercept + optional slope", "Intercept–slope covariance", "ICC", "Marginal + conditional R²", "ML structure comparison"]
+                        : ["Fixed effects + 95% CI", "Native two-way interactions", mixedFamily === "binomial" ? "Odds ratios" : "Incidence-rate ratios", "Random-intercept variance", "Likelihood-ratio test", "AIC + BIC", "Cluster summary"]
                       ).map((label) => <span key={label} className="rounded-full border border-slate-200 bg-slate-50 px-2 py-1 text-[8px] font-semibold text-slate-500">{label}</span>)}
                     </div>
                   </div>
@@ -8027,8 +9697,12 @@ export default function AnalysisLab({
 
                   {anovaMode === "between" ? (
                     <div className="mt-4 space-y-4">
-                      <label className="block">
-                        <span className="text-[9px] font-semibold uppercase tracking-[.08em] text-slate-400">Outcome variable</span>
+                      <label
+                        className="block rounded-2xl border border-dashed border-cyan-200/80 bg-cyan-50/30 p-3"
+                        onDragOver={(event) => { event.preventDefault(); event.dataTransfer.dropEffect = "copy"; }}
+                        onDrop={(event) => assignAnovaDrop(event, "outcome")}
+                      >
+                        <span className="flex items-center justify-between gap-2 text-[9px] font-semibold uppercase tracking-[.08em] text-slate-400"><span>Outcome variable</span><span className="normal-case tracking-normal text-[8px] font-medium text-cyan-700">Drop numeric variable</span></span>
                         <select
                           value={anovaOutcomeVariable}
                           onChange={(event) => setAnovaOutcomeVariable(event.target.value)}
@@ -8041,8 +9715,12 @@ export default function AnalysisLab({
                         </select>
                       </label>
 
-                      <label className="block">
-                        <span className="text-[9px] font-semibold uppercase tracking-[.08em] text-slate-400">Factor / grouping variable</span>
+                      <label
+                        className="block rounded-2xl border border-dashed border-violet-200/80 bg-violet-50/30 p-3"
+                        onDragOver={(event) => { event.preventDefault(); event.dataTransfer.dropEffect = "copy"; }}
+                        onDrop={(event) => assignAnovaDrop(event, "factor")}
+                      >
+                        <span className="flex items-center justify-between gap-2 text-[9px] font-semibold uppercase tracking-[.08em] text-slate-400"><span>Factor / grouping variable</span><span className="normal-case tracking-normal text-[8px] font-medium text-violet-700">Drop categorical variable</span></span>
                         <select
                           value={anovaFactorVariable}
                           onChange={(event) => setAnovaFactorVariable(event.target.value)}
@@ -8089,15 +9767,19 @@ export default function AnalysisLab({
                         <div className="rounded-2xl border border-cyan-100 bg-cyan-50/55 p-3">
                           <p className="text-[9px] font-semibold text-cyan-900">{oneWayAnovaResult.groups.length} groups · N = {oneWayAnovaResult.totalN}</p>
                           <p className="mt-1 text-[8px] leading-4 text-cyan-800/75">
-                            All non-missing factor levels enter the omnibus test. Pairwise follow-ups are Holm-adjusted automatically.
+                            All non-missing factor levels enter the omnibus test. Pairwise follow-ups use the selected multiplicity adjustment.
                           </p>
                         </div>
                       )}
                     </div>
                   ) : anovaMode === "factorial" || anovaMode === "ancova" ? (
                     <div className="mt-4 space-y-4">
-                      <label className="block">
-                        <span className="text-[9px] font-semibold uppercase tracking-[.08em] text-slate-400">Outcome variable</span>
+                      <label
+                        className="block rounded-2xl border border-dashed border-cyan-200/80 bg-cyan-50/30 p-3"
+                        onDragOver={(event) => { event.preventDefault(); event.dataTransfer.dropEffect = "copy"; }}
+                        onDrop={(event) => assignAnovaDrop(event, "outcome")}
+                      >
+                        <span className="flex items-center justify-between gap-2 text-[9px] font-semibold uppercase tracking-[.08em] text-slate-400"><span>Outcome variable</span><span className="normal-case tracking-normal text-[8px] font-medium text-cyan-700">Drop numeric variable</span></span>
                         <select
                           value={anovaOutcomeVariable}
                           onChange={(event) => setAnovaOutcomeVariable(event.target.value)}
@@ -8110,9 +9792,13 @@ export default function AnalysisLab({
                         </select>
                       </label>
 
-                      <div>
+                      <div
+                        className="rounded-2xl border border-dashed border-violet-200/80 bg-violet-50/25 p-3"
+                        onDragOver={(event) => { event.preventDefault(); event.dataTransfer.dropEffect = "copy"; }}
+                        onDrop={(event) => assignAnovaDrop(event, "factor")}
+                      >
                         <div className="flex items-center justify-between gap-2">
-                          <span className="text-[9px] font-semibold uppercase tracking-[.08em] text-slate-400">Factors</span>
+                          <span className="text-[9px] font-semibold uppercase tracking-[.08em] text-slate-400">Factors · click or drop</span>
                           <span className="text-[8px] font-semibold text-cyan-700">{anovaFactors.length} selected</span>
                         </div>
                         <p className="mt-1 text-[8px] leading-4 text-slate-400">
@@ -8128,6 +9814,8 @@ export default function AnalysisLab({
                                 <button
                                   key={variable.name}
                                   type="button"
+                                  draggable={!disabled}
+                                  onDragStart={(event) => setDraggedVariable(event, variable.name)}
                                   disabled={disabled}
                                   onClick={() => setAnovaFactors((current) =>
                                     current.includes(variable.name)
@@ -8147,9 +9835,13 @@ export default function AnalysisLab({
                       </div>
 
                       {anovaMode === "ancova" && (
-                        <div className="border-t border-slate-100 pt-4">
+                        <div
+                          className="rounded-2xl border border-dashed border-cyan-200/70 bg-cyan-50/20 p-3"
+                          onDragOver={(event) => { event.preventDefault(); event.dataTransfer.dropEffect = "copy"; }}
+                          onDrop={(event) => assignAnovaDrop(event, "covariate")}
+                        >
                           <div className="flex items-center justify-between gap-2">
-                            <span className="text-[9px] font-semibold uppercase tracking-[.08em] text-slate-400">Covariates</span>
+                            <span className="text-[9px] font-semibold uppercase tracking-[.08em] text-slate-400">Covariates · click or drop</span>
                             <span className="text-[8px] font-semibold text-violet-700">{anovaCovariates.length} selected</span>
                           </div>
                           <p className="mt-1 text-[8px] leading-4 text-slate-400">Numeric covariates are mean-centred before model fitting.</p>
@@ -8239,8 +9931,8 @@ export default function AnalysisLab({
                     <p className="text-[9px] font-semibold uppercase tracking-[.08em] text-slate-400">Reported automatically</p>
                     <div className="mt-2 flex flex-wrap gap-1.5">
                       {(anovaMode === "factorial" || anovaMode === "ancova"
-                        ? ["Partial F tests", "ηp²", "Model fit", "Marginal means"]
-                        : ["Omnibus F", "Effect size", "Descriptives", "Holm post-hoc"]
+                        ? ["Partial F tests", "ηp²", "Model fit", "Marginal means", "EMM contrasts"]
+                        : ["Omnibus F", "Effect size", "Descriptives", `${multipleComparisonLabel(anovaAdjustment)} post-hoc`]
                       ).map((label) => (
                         <span key={label} className="rounded-full border border-slate-200 bg-slate-50 px-2 py-1 text-[8px] font-semibold text-slate-500">{label}</span>
                       ))}
@@ -8876,7 +10568,7 @@ export default function AnalysisLab({
             isFullscreen ? "min-h-0 overflow-y-auto" : ""
           }`}
         >
-          <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+          <div className="sticky top-0 z-20 -mx-4 -mt-4 mb-4 flex flex-col gap-3 border-b border-slate-200/80 bg-[#fbfcfd]/95 px-4 pb-3 pt-4 backdrop-blur-xl sm:-mx-5 sm:-mt-5 sm:px-5 sm:pt-5 lg:-mx-6 lg:-mt-6 lg:px-6 lg:pt-6 sm:flex-row sm:items-start sm:justify-between">
             <div>
               <div className="flex flex-wrap items-center gap-2">
                 <p className="text-[9px] font-semibold uppercase tracking-[.13em] text-slate-400">
@@ -8960,12 +10652,12 @@ export default function AnalysisLab({
                         : "Contingency tables, χ², Fisher's exact testing and categorical effect sizes."
                     : activeAnalysis === "anova"
                       ? anovaMode === "between"
-                        ? `${anovaEstimator === "welch" ? "Welch" : "Standard"} one-way ANOVA with effect sizes and Holm-adjusted pairwise comparisons.`
+                        ? `${anovaEstimator === "welch" ? "Welch" : "Standard"} one-way ANOVA with effect sizes and ${multipleComparisonLabel(anovaAdjustment)}-adjusted pairwise comparisons.`
                         : anovaMode === "factorial"
-                          ? "Factorial general linear model with main effects, two-way interactions, Type III-style partial F tests and estimated marginal means."
+                          ? `Factorial general linear model with main effects, two-way interactions, Type III-style partial F tests, estimated marginal means and ${multipleComparisonLabel(anovaAdjustment)}-adjusted EMM contrasts.`
                           : anovaMode === "ancova"
-                            ? "Covariate-adjusted general linear model with mean-centred covariates, factor interactions and estimated marginal means."
-                            : "One-factor repeated-measures ANOVA with sphericity corrections, effect sizes and Holm-adjusted paired follow-ups."
+                            ? `Covariate-adjusted general linear model with mean-centred covariates, factor interactions, estimated marginal means and ${multipleComparisonLabel(anovaAdjustment)}-adjusted EMM contrasts.`
+                            : `One-factor repeated-measures ANOVA with sphericity corrections, effect sizes and ${multipleComparisonLabel(anovaAdjustment)}-adjusted paired follow-ups.`
                       : activeAnalysis === "regression"
                         ? "Ordinary least-squares multiple regression with standardized coefficients, collinearity checks and residual diagnostics."
                         : activeAnalysis === "process"
@@ -9091,6 +10783,66 @@ export default function AnalysisLab({
               </button>
             </div>
           </div>
+
+          {currentAnalysisVariables.length > 0 && (
+            analysisGuardrails.length > 0 ? (
+              <div className="mt-4 overflow-hidden rounded-[22px] border border-slate-200 bg-white shadow-[0_8px_24px_rgba(15,23,42,.045)]">
+                <div className="flex flex-col gap-3 border-b border-slate-100 bg-[linear-gradient(110deg,#ffffff_0%,#f7fcfd_55%,#fbf9ff_100%)] px-4 py-3.5 sm:flex-row sm:items-center sm:justify-between">
+                  <div className="flex min-w-0 items-start gap-2.5">
+                    <div className="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-xl border border-slate-200 bg-white text-slate-700 shadow-sm">
+                      <ShieldCheck className="h-4 w-4" />
+                    </div>
+                    <div className="min-w-0">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <p className="text-[10px] font-semibold text-slate-900">Statistical guardrails</p>
+                        <span className="rounded-full border border-slate-200 bg-white px-2 py-0.5 text-[7px] font-semibold uppercase tracking-[.07em] text-slate-500">Deterministic</span>
+                      </div>
+                      <p className="mt-1 max-w-3xl text-[8px] leading-4 text-slate-500">Live checks from the current rows, variable structure, model setup and PsyLattice engine output. Flags require scientific review; they do not automatically delete data or change the model.</p>
+                    </div>
+                  </div>
+                  <div className="flex flex-wrap gap-1.5">
+                    {analysisGuardrailCounts.block > 0 && <span className="rounded-full border border-rose-200 bg-rose-50 px-2.5 py-1 text-[8px] font-semibold text-rose-700">{analysisGuardrailCounts.block} blocker{analysisGuardrailCounts.block === 1 ? "" : "s"}</span>}
+                    {analysisGuardrailCounts.review > 0 && <span className="rounded-full border border-violet-200 bg-violet-50 px-2.5 py-1 text-[8px] font-semibold text-violet-700">{analysisGuardrailCounts.review} review</span>}
+                    {analysisGuardrailCounts.info > 0 && <span className="rounded-full border border-cyan-200 bg-cyan-50 px-2.5 py-1 text-[8px] font-semibold text-cyan-800">{analysisGuardrailCounts.info} info</span>}
+                  </div>
+                </div>
+                <div className="grid gap-2 p-3 sm:p-4 xl:grid-cols-2">
+                  {analysisGuardrails.slice(0, 8).map((item) => {
+                    const isBlock = item.severity === "block";
+                    const isReview = item.severity === "review";
+                    const Icon = isBlock || isReview ? TriangleAlert : Info;
+                    return (
+                      <div key={item.id} className={`rounded-[17px] border px-3.5 py-3 ${isBlock ? "border-rose-200 bg-rose-50/55" : isReview ? "border-violet-200 bg-violet-50/45" : "border-cyan-100 bg-cyan-50/35"}`}>
+                        <div className="flex items-start gap-2.5">
+                          <Icon className={`mt-0.5 h-3.5 w-3.5 shrink-0 ${isBlock ? "text-rose-600" : isReview ? "text-violet-600" : "text-cyan-700"}`} />
+                          <div className="min-w-0 flex-1">
+                            <div className="flex flex-wrap items-center gap-1.5">
+                              <p className="text-[9px] font-semibold text-slate-900">{item.title}</p>
+                              <span className={`rounded-full border bg-white px-1.5 py-0.5 text-[6.5px] font-semibold uppercase tracking-[.06em] ${isBlock ? "border-rose-200 text-rose-600" : isReview ? "border-violet-200 text-violet-600" : "border-cyan-200 text-cyan-700"}`}>{item.severity}</span>
+                            </div>
+                            <p className="mt-1 text-[8px] leading-4 text-slate-500">{item.detail}</p>
+                            {item.action && item.actionLabel ? (
+                              <button type="button" onClick={() => handleAnalysisGuardrailAction(item.action!)} className="mt-2 rounded-full border border-slate-200 bg-white px-2.5 py-1.5 text-[8px] font-semibold text-slate-700 shadow-sm hover:border-cyan-200 hover:text-cyan-800">
+                                {item.actionLabel}
+                              </button>
+                            ) : null}
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            ) : (
+              <div className="mt-4 flex items-start gap-2.5 rounded-[18px] border border-cyan-100 bg-cyan-50/35 px-4 py-3">
+                <ShieldCheck className="mt-0.5 h-4 w-4 shrink-0 text-cyan-700" />
+                <div>
+                  <p className="text-[9px] font-semibold text-slate-900">No deterministic blocker is currently detected</p>
+                  <p className="mt-1 text-[8px] leading-4 text-slate-500">This is not a certification that every scientific assumption is satisfied. Continue reviewing diagnostics, design appropriateness and the research question before interpretation.</p>
+                </div>
+              </div>
+            )
+          )}
 
           {recordsOpen && (
             <div className="mt-4 overflow-hidden rounded-[24px] border border-slate-200 bg-white shadow-[0_8px_28px_rgba(15,23,42,.06)]">
@@ -10147,6 +11899,10 @@ export default function AnalysisLab({
                 </div>
               </div>
 
+              <CopyableFigureSurface title="Figure · Factor-loading heatmap" caption={`Signed loadings from the current ${factorRotation === "promax" ? "promax pattern" : factorRotation === "varimax" ? "varimax-rotated" : "unrotated"} solution; cells below |${factorLoadingCutoff.toFixed(2)}| are muted.`}>
+                <FactorLoadingHeatmap result={factorResult} cutoff={factorLoadingCutoff} />
+              </CopyableFigureSurface>
+
               <div className="overflow-hidden rounded-[24px] border border-slate-200 bg-white shadow-[0_2px_5px_rgba(15,23,42,.025),0_12px_30px_rgba(15,23,42,.05)]">
                 <div className="flex flex-col gap-3 border-b border-slate-100 px-4 py-4 sm:flex-row sm:items-center sm:justify-between sm:px-5">
                   <div>
@@ -10378,6 +12134,10 @@ export default function AnalysisLab({
                 </div>
               </div>
 
+              <CopyableFigureSurface title="Figure · Regression coefficient plot" caption="Unstandardized regression coefficients with deterministic 95% confidence intervals; the intercept is omitted for readability.">
+                <CoefficientForestPlot rows={linearRegressionResult.coefficients.filter((coefficient) => !coefficient.isIntercept).map((coefficient) => ({ label: coefficient.label, estimate: coefficient.b, low: coefficient.ci95Low, high: coefficient.ci95High }))} subtitle="Multiple linear regression" />
+              </CopyableFigureSurface>
+
               <div className="overflow-hidden rounded-[24px] border border-slate-200 bg-white shadow-[0_2px_5px_rgba(15,23,42,.025),0_12px_30px_rgba(15,23,42,.05)]">
                 <div className="flex flex-col gap-2 border-b border-slate-100 px-4 py-4 sm:flex-row sm:items-center sm:justify-between sm:px-5">
                   <div>
@@ -10442,6 +12202,7 @@ export default function AnalysisLab({
                       {linearMixedModelResult.randomSlopeLabel ? <> · random slope = <span className="font-semibold text-slate-700">{linearMixedModelResult.randomSlopeLabel}</span></> : null}
                       {" · "}
                       {linearMixedModelResult.predictors.map((predictor) => predictor.label).join(" + ")}
+                      {linearMixedModelResult.interactions.length > 0 ? ` + ${linearMixedModelResult.interactions.map((term) => term.label).join(" + ")}` : ""}
                     </p>
                   </div>
                   <div className="flex flex-wrap items-center gap-2">
@@ -10494,6 +12255,10 @@ export default function AnalysisLab({
                 </div>
               </div>
 
+              <CopyableFigureSurface title="Figure · Mixed-model fixed effects" caption="Fixed-effect estimates with deterministic 95% confidence intervals from the current linear mixed model; the intercept is omitted for readability.">
+                <CoefficientForestPlot rows={linearMixedModelResult.coefficients.filter((coefficient) => coefficient.term !== "(Intercept)" && coefficient.term !== "Intercept").map((coefficient) => ({ label: coefficient.label, estimate: coefficient.b, low: coefficient.ci95Low, high: coefficient.ci95High }))} subtitle="Linear mixed model fixed effects" />
+              </CopyableFigureSurface>
+
               {linearMixedModelResult.structureComparison ? (
                 <div className="overflow-hidden rounded-[24px] border border-slate-200 bg-white shadow-[0_2px_5px_rgba(15,23,42,.025),0_12px_30px_rgba(15,23,42,.05)]">
                   <div className="flex flex-col gap-2 border-b border-slate-100 px-4 py-4 sm:flex-row sm:items-center sm:justify-between sm:px-5">
@@ -10545,6 +12310,88 @@ export default function AnalysisLab({
                 </div>
               </div>
 
+              {mixedNumericInteractionCandidates.length > 0 ? (
+                <div className="overflow-hidden rounded-[24px] border border-violet-200/80 bg-white shadow-[0_2px_5px_rgba(15,23,42,.025),0_12px_30px_rgba(76,29,149,.06)]">
+                  <div className="border-b border-violet-100 bg-[linear-gradient(120deg,#faf8ff_0%,#ffffff_100%)] px-4 py-4 sm:px-5">
+                    <div className="flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
+                      <div>
+                        <p className="text-[8px] font-semibold uppercase tracking-[.1em] text-violet-700">Interaction probing</p>
+                        <p className="mt-1 text-[12px] font-semibold text-slate-900">Simple slopes & model-based interaction figure</p>
+                        <p className="mt-1 max-w-2xl text-[9px] leading-4 text-slate-400">Probe a numeric × numeric interaction at the moderator mean and ±1 SD. The table uses the fitted fixed-effect covariance matrix for Wald uncertainty.</p>
+                      </div>
+                      <div className="flex flex-wrap items-end gap-2">
+                        <label className="block min-w-[180px]">
+                          <span className="text-[7px] font-semibold uppercase tracking-[.08em] text-slate-400">Interaction</span>
+                          <select
+                            value={selectedMixedProbeInteraction ? [selectedMixedProbeInteraction.left, selectedMixedProbeInteraction.right].sort().join("::") : ""}
+                            onChange={(event) => { setMixedProbeInteractionKey(event.target.value); setMixedProbeFocalVariable(""); }}
+                            className="mt-1.5 w-full rounded-xl border border-violet-200 bg-white px-3 py-2 text-[9px] font-semibold text-slate-700"
+                          >
+                            {mixedNumericInteractionCandidates.map((term) => {
+                              const key = [term.left, term.right].sort().join("::");
+                              const left = variables.find((variable) => variable.name === term.left)?.label || term.left;
+                              const right = variables.find((variable) => variable.name === term.right)?.label || term.right;
+                              return <option key={key} value={key}>{left} × {right}</option>;
+                            })}
+                          </select>
+                        </label>
+                        {selectedMixedProbeInteraction ? (
+                          <label className="block min-w-[160px]">
+                            <span className="text-[7px] font-semibold uppercase tracking-[.08em] text-slate-400">Focal predictor</span>
+                            <select
+                              value={selectedMixedProbeFocal}
+                              onChange={(event) => setMixedProbeFocalVariable(event.target.value)}
+                              className="mt-1.5 w-full rounded-xl border border-violet-200 bg-white px-3 py-2 text-[9px] font-semibold text-slate-700"
+                            >
+                              {[selectedMixedProbeInteraction.left, selectedMixedProbeInteraction.right].map((name) => (
+                                <option key={name} value={name}>{variables.find((variable) => variable.name === name)?.label || name}</option>
+                              ))}
+                            </select>
+                          </label>
+                        ) : null}
+                        <button type="button" onClick={() => void copyTableSpec(mixedSimpleSlopesTableSpec(), "Mixed-model simple slopes copied")} disabled={!mixedInteractionProbe?.simpleSlopes.length} className="flex items-center gap-1.5 rounded-full border border-slate-200 bg-white px-3 py-2 text-[8px] font-semibold text-slate-600 disabled:opacity-40"><Copy className="h-3 w-3" />Copy slopes</button>
+                      </div>
+                    </div>
+                  </div>
+
+                  {mixedInteractionProbe ? (
+                    mixedInteractionProbe.simpleSlopes.length > 0 ? (
+                      <div className="grid gap-0 xl:grid-cols-[.9fr_1.1fr]">
+                        <div className="border-b border-slate-100 p-4 xl:border-b-0 xl:border-r sm:p-5">
+                          <p className="text-[10px] font-semibold text-slate-800">Conditional effect of {mixedInteractionProbe.focalLabel}</p>
+                          <p className="mt-1 text-[8px] leading-4 text-slate-400">Moderator: {mixedInteractionProbe.moderatorLabel}</p>
+                          <div className="mt-3 overflow-x-auto rounded-2xl border border-slate-200">
+                            <table className="w-full min-w-max text-left text-[9px]">
+                              <thead className="border-b border-slate-100 bg-slate-50/75 text-[8px] uppercase tracking-[.06em] text-slate-400"><tr>{["Probe", "Moderator", "B", "SE", "p", "95% CI"].map((header) => <th key={header} className="px-3 py-2.5 font-semibold">{header}</th>)}</tr></thead>
+                              <tbody className="divide-y divide-slate-100">
+                                {mixedInteractionProbe.simpleSlopes.map((slope) => (
+                                  <tr key={slope.label}>
+                                    <td className="px-3 py-3 font-semibold text-slate-700">{slope.label}</td>
+                                    <td className="px-3 py-3 tabular-nums text-slate-500">{slope.moderatorDisplayValue !== null ? formatNumber(slope.moderatorDisplayValue, 2) : `${formatNumber(slope.moderatorValue, 2)} centred`}</td>
+                                    <td className="px-3 py-3 tabular-nums text-slate-600">{formatNumber(slope.b, 3)}</td>
+                                    <td className="px-3 py-3 tabular-nums text-slate-600">{formatNumber(slope.se, 3)}</td>
+                                    <td className="px-3 py-3 tabular-nums font-semibold text-slate-900">{formatPValue(slope.pValue)}</td>
+                                    <td className="whitespace-nowrap px-3 py-3 tabular-nums text-slate-500">{formatNumber(slope.ci95Low, 3)}, {formatNumber(slope.ci95High, 3)}</td>
+                                  </tr>
+                                ))}
+                              </tbody>
+                            </table>
+                          </div>
+                          <p className="mt-3 text-[8px] leading-4 text-slate-400">{mixedInteractionProbe.moderatorNote} Interpret these slopes together with the interaction coefficient, study design, measurement quality and substantive theory.</p>
+                        </div>
+                        <div className="p-4 sm:p-5">
+                          <p className="text-[10px] font-semibold text-slate-800">Figure · Conditional fixed-effect predictions</p>
+                          <p className="mt-1 text-[8px] leading-4 text-slate-400">Predicted outcome across the focal predictor at low, mean and high moderator values.</p>
+                          <div className="mt-3"><LinearMixedInteractionProbePlot probe={mixedInteractionProbe} /></div>
+                        </div>
+                      </div>
+                    ) : (
+                      <div className="p-5"><p className="rounded-2xl border border-violet-100 bg-violet-50/55 px-4 py-3 text-[8px] leading-4 text-violet-700">{mixedInteractionProbe.reason || "This interaction cannot be probed with the current V1 simple-slopes method."}</p></div>
+                    )
+                  ) : null}
+                </div>
+              ) : null}
+
               <div className="rounded-2xl border border-slate-200 bg-white px-4 py-3 text-[8px] leading-4 text-slate-400">
                 Linear Mixed Models now supports a random intercept plus one correlated numeric random slope. This covers common participant-specific longitudinal/time effects in ESM, ambulatory and trial-level data. More complex crossed random effects and residual autocorrelation structures remain future extensions rather than being silently approximated.
               </div>
@@ -10572,6 +12419,9 @@ export default function AnalysisLab({
                     <p className="text-[8px] font-semibold uppercase tracking-[.1em] text-cyan-700">{generalizedMixedModelResult.family === "binomial" ? "Binary generalized mixed model" : "Poisson generalized mixed model"}</p>
                     <p className="mt-1 truncate text-[12px] font-semibold text-slate-900">{generalizedMixedModelResult.outcomeLabel}</p>
                     <p className="mt-1 text-[9px] text-slate-500">Random intercept for <span className="font-semibold text-slate-700">{generalizedMixedModelResult.groupLabel}</span>{generalizedMixedModelResult.positiveClass ? <> · event = <span className="font-semibold text-slate-700">{generalizedMixedModelResult.positiveClass}</span></> : null}{generalizedMixedModelResult.exposureLabel ? <> · exposure = <span className="font-semibold text-slate-700">{generalizedMixedModelResult.exposureLabel}</span></> : null}</p>
+                    {generalizedMixedModelResult.interactions.length > 0 ? (
+                      <p className="mt-1 text-[8px] leading-4 text-violet-700">Interactions · {generalizedMixedModelResult.interactions.map((term) => term.label).join(" + ")}</p>
+                    ) : null}
                   </div>
                   <div className="flex flex-wrap items-center gap-2">
                     <span className={`rounded-full border px-3 py-1.5 text-[9px] font-semibold ${generalizedMixedModelResult.converged ? "border-cyan-200 bg-white text-cyan-900" : "border-violet-200 bg-violet-50 text-violet-700"}`}>{generalizedMixedModelResult.converged ? `Converged · ${generalizedMixedModelResult.iterations} steps` : "Review convergence"}</span>
@@ -10642,6 +12492,90 @@ export default function AnalysisLab({
                   </table>
                 </div>
               </div>
+
+              {generalizedMixedInteractionCandidates.length > 0 ? (
+                <div className="overflow-hidden rounded-[24px] border border-violet-200/80 bg-white shadow-[0_2px_5px_rgba(15,23,42,.025),0_12px_30px_rgba(76,29,149,.06)]">
+                  <div className="border-b border-violet-100 bg-[linear-gradient(120deg,#faf8ff_0%,#ffffff_100%)] px-4 py-4 sm:px-5">
+                    <div className="flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
+                      <div>
+                        <p className="text-[8px] font-semibold uppercase tracking-[.1em] text-violet-700">Interaction probing</p>
+                        <p className="mt-1 text-[12px] font-semibold text-slate-900">Conditional effects & response-scale predictions</p>
+                        <p className="mt-1 max-w-2xl text-[9px] leading-4 text-slate-400">Probe numeric or categorical two-way interactions without manually rebuilding product terms. Binary models show marginal event probabilities; Poisson models show marginal expected counts or unit-exposure rates.</p>
+                      </div>
+                      <div className="flex flex-wrap items-end gap-2">
+                        <label className="block min-w-[190px]">
+                          <span className="text-[7px] font-semibold uppercase tracking-[.08em] text-slate-400">Interaction</span>
+                          <select
+                            value={selectedGeneralizedMixedProbeInteraction ? [selectedGeneralizedMixedProbeInteraction.left, selectedGeneralizedMixedProbeInteraction.right].sort().join("::") : ""}
+                            onChange={(event) => setMixedProbeInteractionKey(event.target.value)}
+                            className="mt-1.5 w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-[9px] font-semibold text-slate-700"
+                          >
+                            {generalizedMixedInteractionCandidates.map((term) => {
+                              const key = [term.left, term.right].sort().join("::");
+                              const leftLabel = generalizedMixedModelResult.predictors.find((predictor) => predictor.name === term.left)?.label || term.left;
+                              const rightLabel = generalizedMixedModelResult.predictors.find((predictor) => predictor.name === term.right)?.label || term.right;
+                              return <option key={key} value={key}>{leftLabel} × {rightLabel}</option>;
+                            })}
+                          </select>
+                        </label>
+                        <label className="block min-w-[165px]">
+                          <span className="text-[7px] font-semibold uppercase tracking-[.08em] text-slate-400">Focal variable</span>
+                          <select
+                            value={selectedGeneralizedMixedProbeFocal}
+                            onChange={(event) => setMixedProbeFocalVariable(event.target.value)}
+                            className="mt-1.5 w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-[9px] font-semibold text-slate-700"
+                          >
+                            {selectedGeneralizedMixedProbeInteraction ? [selectedGeneralizedMixedProbeInteraction.left, selectedGeneralizedMixedProbeInteraction.right].map((name) => {
+                              const meta = generalizedMixedModelResult.predictors.find((predictor) => predictor.name === name);
+                              return <option key={name} value={name}>{meta?.label || name}</option>;
+                            }) : null}
+                          </select>
+                        </label>
+                        <button type="button" onClick={() => void copyTableSpec(generalizedMixedInteractionTableSpec(), "GLMM interaction effects copied")} disabled={!generalizedMixedInteractionProbe?.simpleEffects.length} className="flex items-center gap-1.5 rounded-full border border-slate-200 bg-white px-3 py-2 text-[8px] font-semibold text-slate-600 disabled:opacity-40"><Copy className="h-3 w-3" />Copy effects</button>
+                      </div>
+                    </div>
+                  </div>
+
+                  {generalizedMixedInteractionProbe ? (
+                    generalizedMixedInteractionProbe.simpleEffects.length > 0 || generalizedMixedInteractionProbe.plotSeries.length > 0 ? (
+                      <div className="grid gap-0 xl:grid-cols-[1.05fr_.95fr]">
+                        <div className="border-b border-slate-100 p-4 sm:p-5 xl:border-b-0 xl:border-r">
+                          <p className="text-[10px] font-semibold text-slate-800">Conditional effect of {generalizedMixedInteractionProbe.focalLabel}</p>
+                          <p className="mt-1 text-[8px] leading-4 text-slate-400">Moderator: {generalizedMixedInteractionProbe.moderatorLabel} · effects are tested on the {generalizedMixedInteractionProbe.family === "binomial" ? "log-odds" : "log-rate"} scale and exponentiated as {generalizedMixedInteractionProbe.effectRatioLabel === "Odds ratio" ? "odds ratios" : "incidence-rate ratios"}.</p>
+                          <div className="mt-3 overflow-x-auto rounded-2xl border border-slate-200">
+                            <table className="w-full min-w-max text-left text-[9px]">
+                              <thead className="border-b border-slate-100 bg-slate-50/75 text-[8px] uppercase tracking-[.06em] text-slate-400"><tr>{["Effect", "Moderator", "Value", "B", "SE", "z", "p", generalizedMixedInteractionProbe.effectRatioLabel, "95% CI"].map((header) => <th key={header} className="px-3 py-2.5 font-semibold">{header}</th>)}</tr></thead>
+                              <tbody className="divide-y divide-slate-100">
+                                {generalizedMixedInteractionProbe.simpleEffects.map((effect, index) => (
+                                  <tr key={`${effect.label}-${effect.moderatorLabel}-${index}`}>
+                                    <td className="px-3 py-3 font-semibold text-slate-700">{effect.label}</td>
+                                    <td className="px-3 py-3 text-slate-500">{effect.moderatorLabel}</td>
+                                    <td className="px-3 py-3 tabular-nums text-slate-500">{effect.moderatorDisplay || "—"}</td>
+                                    <td className="px-3 py-3 tabular-nums text-slate-600">{formatNumber(effect.b, 3)}</td>
+                                    <td className="px-3 py-3 tabular-nums text-slate-600">{formatNumber(effect.se, 3)}</td>
+                                    <td className="px-3 py-3 tabular-nums text-slate-600">{formatNumber(effect.z, 3)}</td>
+                                    <td className="px-3 py-3 tabular-nums font-semibold text-slate-900">{formatPValue(effect.pValue)}</td>
+                                    <td className="px-3 py-3 tabular-nums font-semibold text-cyan-900">{formatNumber(effect.effectRatio, 3)}</td>
+                                    <td className="whitespace-nowrap px-3 py-3 tabular-nums text-slate-500">{formatNumber(effect.ci95Low, 3)}, {formatNumber(effect.ci95High, 3)}</td>
+                                  </tr>
+                                ))}
+                              </tbody>
+                            </table>
+                          </div>
+                          <p className="mt-3 text-[8px] leading-4 text-slate-400">Conditional-effect uncertainty uses the fitted fixed-effect covariance matrix. A categorical focal variable is contrasted with its fitted reference level; a numeric focal variable is shown as a one-unit conditional slope.</p>
+                        </div>
+                        <div className="p-4 sm:p-5">
+                          <p className="text-[10px] font-semibold text-slate-800">Figure · Marginal response-scale predictions</p>
+                          <p className="mt-1 text-[8px] leading-4 text-slate-400">{generalizedMixedInteractionProbe.responseScaleLabel} across the focal variable, traced by the moderator.</p>
+                          <div className="mt-3"><GeneralizedMixedInteractionProbePlot probe={generalizedMixedInteractionProbe} /></div>
+                        </div>
+                      </div>
+                    ) : (
+                      <div className="p-5"><p className="rounded-2xl border border-violet-100 bg-violet-50/55 px-4 py-3 text-[8px] leading-4 text-violet-700">{generalizedMixedInteractionProbe.reason || "This interaction cannot be probed from the fitted generalized mixed model."}</p></div>
+                    )
+                  ) : null}
+                </div>
+              ) : null}
 
               <div className="rounded-2xl border border-slate-200 bg-white px-4 py-3 text-[8px] leading-4 text-slate-400">
                 Generalized Mixed Models V1 fits a random intercept with 15-point Gauss–Hermite quadrature. Use the continuous Mixed Models mode when the outcome is approximately continuous. Generalized random slopes, crossed random effects and zero-inflated mixed models remain future extensions rather than being silently approximated.
@@ -11073,8 +13007,8 @@ export default function AnalysisLab({
 
                   {oneWayAnovaResult.pairwise.length > 0 && (
                     <div className="overflow-hidden rounded-[24px] border border-slate-200 bg-white shadow-[0_2px_5px_rgba(15,23,42,.025),0_12px_30px_rgba(15,23,42,.05)]">
-                      <div className="flex flex-col gap-2 border-b border-slate-100 px-4 py-4 sm:flex-row sm:items-center sm:justify-between sm:px-5"><div><p className="text-[12px] font-semibold text-slate-900">Pairwise comparisons</p><p className="mt-1 text-[9px] leading-4 text-slate-400">Holm-adjusted follow-ups across every observed group pair.</p></div><button type="button" onClick={() => void copyTableSpec(anovaPairwiseTableSpec(), "Post-hoc table copied")} className="flex items-center gap-1.5 rounded-full border border-slate-200 bg-white px-3 py-1.5 text-[9px] font-semibold text-slate-600"><Copy className="h-3 w-3" />Copy post-hoc</button></div>
-                      <div className="overflow-x-auto"><table className="w-full min-w-max text-left text-[10px]"><thead className="border-b border-slate-100 bg-slate-50/75 text-[8px] uppercase tracking-[.07em] text-slate-400"><tr>{["Comparison", "ΔM", "t", "df", "p", "Holm p", "d"].map((header) => <th key={header} className="px-4 py-3 font-semibold">{header}</th>)}</tr></thead><tbody className="divide-y divide-slate-100">{oneWayAnovaResult.pairwise.map((comparison) => <tr key={`${comparison.groupA}-${comparison.groupB}`}><td className="px-4 py-3.5 font-semibold text-slate-800">{comparison.groupA} − {comparison.groupB}</td><td className="px-4 py-3.5 text-slate-600">{formatNumber(comparison.meanDifference, 3)}</td><td className="px-4 py-3.5 text-slate-600">{formatNumber(comparison.t, 3)}</td><td className="px-4 py-3.5 text-slate-600">{formatNumber(comparison.df, 2)}</td><td className="px-4 py-3.5 text-slate-600">{formatPValue(comparison.pValue)}</td><td className="px-4 py-3.5 font-semibold text-slate-900">{formatPValue(comparison.pAdjusted)}</td><td className="px-4 py-3.5 text-slate-600">{formatNumber(comparison.cohenD, 3)}</td></tr>)}</tbody></table></div>
+                      <div className="flex flex-col gap-2 border-b border-slate-100 px-4 py-4 sm:flex-row sm:items-center sm:justify-between sm:px-5"><div><p className="text-[12px] font-semibold text-slate-900">Pairwise comparisons</p><p className="mt-1 text-[9px] leading-4 text-slate-400">{multipleComparisonLabel(oneWayAnovaResult.adjustment)}-adjusted follow-ups across every observed group pair.</p></div><button type="button" onClick={() => void copyTableSpec(anovaPairwiseTableSpec(), "Post-hoc table copied")} className="flex items-center gap-1.5 rounded-full border border-slate-200 bg-white px-3 py-1.5 text-[9px] font-semibold text-slate-600"><Copy className="h-3 w-3" />Copy post-hoc</button></div>
+                      <div className="overflow-x-auto"><table className="w-full min-w-max text-left text-[10px]"><thead className="border-b border-slate-100 bg-slate-50/75 text-[8px] uppercase tracking-[.07em] text-slate-400"><tr>{["Comparison", "ΔM", "t", "df", "p", `${multipleComparisonLabel(oneWayAnovaResult.adjustment)} p`, "d"].map((header) => <th key={header} className="px-4 py-3 font-semibold">{header}</th>)}</tr></thead><tbody className="divide-y divide-slate-100">{oneWayAnovaResult.pairwise.map((comparison) => <tr key={`${comparison.groupA}-${comparison.groupB}`}><td className="px-4 py-3.5 font-semibold text-slate-800">{comparison.groupA} − {comparison.groupB}</td><td className="px-4 py-3.5 text-slate-600">{formatNumber(comparison.meanDifference, 3)}</td><td className="px-4 py-3.5 text-slate-600">{formatNumber(comparison.t, 3)}</td><td className="px-4 py-3.5 text-slate-600">{formatNumber(comparison.df, 2)}</td><td className="px-4 py-3.5 text-slate-600">{formatPValue(comparison.pValue)}</td><td className="px-4 py-3.5 font-semibold text-slate-900">{formatPValue(comparison.pAdjusted)}</td><td className="px-4 py-3.5 text-slate-600">{formatNumber(comparison.cohenD, 3)}</td></tr>)}</tbody></table></div>
                     </div>
                   )}
 
@@ -11158,6 +13092,24 @@ export default function AnalysisLab({
 
                   {generalLinearAnovaResult.marginalMeans.length > 0 ? <EstimatedMarginalMeansPlots result={generalLinearAnovaResult} /> : null}
 
+                  {generalLinearAnovaResult.marginalMeanContrasts.length > 0 && (
+                    <div className="overflow-hidden rounded-[24px] border border-slate-200 bg-white shadow-[0_2px_5px_rgba(15,23,42,.025),0_12px_30px_rgba(15,23,42,.05)]">
+                      <div className="flex flex-col gap-2 border-b border-slate-100 px-4 py-4 sm:flex-row sm:items-center sm:justify-between sm:px-5">
+                        <div>
+                          <p className="text-[12px] font-semibold text-slate-900">Estimated marginal mean contrasts</p>
+                          <p className="mt-1 text-[9px] leading-4 text-slate-400">Pairwise adjusted-mean comparisons within each factor · {multipleComparisonLabel(generalLinearAnovaResult.adjustment)} multiplicity correction.</p>
+                        </div>
+                        <button type="button" onClick={() => void copyTableSpec(anovaMarginalContrastsTableSpec(), "EMM contrasts copied")} className="flex items-center gap-1.5 rounded-full border border-slate-200 bg-white px-3 py-1.5 text-[9px] font-semibold text-slate-600"><Copy className="h-3 w-3" />Copy EMM contrasts</button>
+                      </div>
+                      <div className="overflow-x-auto">
+                        <table className="w-full min-w-max text-left text-[10px]">
+                          <thead className="border-b border-slate-100 bg-slate-50/75 text-[8px] uppercase tracking-[.07em] text-slate-400"><tr>{["Factor", "Comparison", "Δ adjusted mean", "SE", "t", "df", "p", `${multipleComparisonLabel(generalLinearAnovaResult.adjustment)} p`, "95% CI"].map((header) => <th key={header} className="px-4 py-3 font-semibold">{header}</th>)}</tr></thead>
+                          <tbody className="divide-y divide-slate-100">{generalLinearAnovaResult.marginalMeanContrasts.map((contrast) => <tr key={`${contrast.factor}-${contrast.levelA}-${contrast.levelB}`}><td className="px-4 py-3.5 font-semibold text-slate-800">{contrast.factorLabel}</td><td className="px-4 py-3.5 text-slate-600">{contrast.levelA} − {contrast.levelB}</td><td className="px-4 py-3.5 tabular-nums text-slate-600">{formatNumber(contrast.difference, 3)}</td><td className="px-4 py-3.5 tabular-nums text-slate-600">{formatNumber(contrast.se, 3)}</td><td className="px-4 py-3.5 tabular-nums text-slate-600">{formatNumber(contrast.t, 3)}</td><td className="px-4 py-3.5 tabular-nums text-slate-600">{formatNumber(contrast.df, 0)}</td><td className="px-4 py-3.5 tabular-nums text-slate-600">{formatPValue(contrast.pValue)}</td><td className="px-4 py-3.5 tabular-nums font-semibold text-slate-900">{formatPValue(contrast.pAdjusted)}</td><td className="whitespace-nowrap px-4 py-3.5 tabular-nums text-slate-600">{formatNumber(contrast.ci95Low, 3)}, {formatNumber(contrast.ci95High, 3)}</td></tr>)}</tbody>
+                        </table>
+                      </div>
+                    </div>
+                  )}
+
                   <p className="px-1 text-[8px] leading-4 text-slate-400">Factor coding uses sum-to-zero contrasts. Effect rows are partial tests from the full model. Empty cells or redundant terms can make a factorial design singular; PsyLattice reports that condition instead of returning unstable estimates.</p>
                 </>
               ) : repeatedMeasuresAnovaResult ? (
@@ -11225,7 +13177,7 @@ export default function AnalysisLab({
                     </tbody></table></div>
                   </div>
 
-                  {repeatedMeasuresAnovaResult.pairwise.length > 0 && <div className="overflow-hidden rounded-[24px] border border-slate-200 bg-white shadow-[0_2px_5px_rgba(15,23,42,.025),0_12px_30px_rgba(15,23,42,.05)]"><div className="flex flex-col gap-2 border-b border-slate-100 px-4 py-4 sm:flex-row sm:items-center sm:justify-between sm:px-5"><div><p className="text-[12px] font-semibold text-slate-900">Pairwise comparisons</p><p className="mt-1 text-[9px] leading-4 text-slate-400">Paired follow-ups with Holm-adjusted p-values.</p></div><button type="button" onClick={() => void copyTableSpec(anovaPairwiseTableSpec(), "Post-hoc table copied")} className="flex items-center gap-1.5 rounded-full border border-slate-200 bg-white px-3 py-1.5 text-[9px] font-semibold text-slate-600"><Copy className="h-3 w-3" />Copy post-hoc</button></div><div className="overflow-x-auto"><table className="w-full min-w-max text-left text-[10px]"><thead className="border-b border-slate-100 bg-slate-50/75 text-[8px] uppercase tracking-[.07em] text-slate-400"><tr>{["Comparison", "N", "ΔM", "t", "df", "p", "Holm p", "dz"].map((header) => <th key={header} className="px-4 py-3 font-semibold">{header}</th>)}</tr></thead><tbody className="divide-y divide-slate-100">{repeatedMeasuresAnovaResult.pairwise.map((comparison) => <tr key={`${comparison.variableA}-${comparison.variableB}`}><td className="px-4 py-3.5 font-semibold text-slate-800">{comparison.variableALabel} − {comparison.variableBLabel}</td><td className="px-4 py-3.5 text-slate-600">{comparison.n}</td><td className="px-4 py-3.5 text-slate-600">{formatNumber(comparison.meanDifference, 3)}</td><td className="px-4 py-3.5 text-slate-600">{formatNumber(comparison.t, 3)}</td><td className="px-4 py-3.5 text-slate-600">{formatNumber(comparison.df, 0)}</td><td className="px-4 py-3.5 text-slate-600">{formatPValue(comparison.pValue)}</td><td className="px-4 py-3.5 font-semibold text-slate-900">{formatPValue(comparison.pAdjusted)}</td><td className="px-4 py-3.5 text-slate-600">{formatNumber(comparison.cohenDz, 3)}</td></tr>)}</tbody></table></div></div>}
+                  {repeatedMeasuresAnovaResult.pairwise.length > 0 && <div className="overflow-hidden rounded-[24px] border border-slate-200 bg-white shadow-[0_2px_5px_rgba(15,23,42,.025),0_12px_30px_rgba(15,23,42,.05)]"><div className="flex flex-col gap-2 border-b border-slate-100 px-4 py-4 sm:flex-row sm:items-center sm:justify-between sm:px-5"><div><p className="text-[12px] font-semibold text-slate-900">Pairwise comparisons</p><p className="mt-1 text-[9px] leading-4 text-slate-400">Paired follow-ups with {multipleComparisonLabel(repeatedMeasuresAnovaResult.adjustment)}-adjusted p-values.</p></div><button type="button" onClick={() => void copyTableSpec(anovaPairwiseTableSpec(), "Post-hoc table copied")} className="flex items-center gap-1.5 rounded-full border border-slate-200 bg-white px-3 py-1.5 text-[9px] font-semibold text-slate-600"><Copy className="h-3 w-3" />Copy post-hoc</button></div><div className="overflow-x-auto"><table className="w-full min-w-max text-left text-[10px]"><thead className="border-b border-slate-100 bg-slate-50/75 text-[8px] uppercase tracking-[.07em] text-slate-400"><tr>{["Comparison", "N", "ΔM", "t", "df", "p", `${multipleComparisonLabel(repeatedMeasuresAnovaResult.adjustment)} p`, "dz"].map((header) => <th key={header} className="px-4 py-3 font-semibold">{header}</th>)}</tr></thead><tbody className="divide-y divide-slate-100">{repeatedMeasuresAnovaResult.pairwise.map((comparison) => <tr key={`${comparison.variableA}-${comparison.variableB}`}><td className="px-4 py-3.5 font-semibold text-slate-800">{comparison.variableALabel} − {comparison.variableBLabel}</td><td className="px-4 py-3.5 text-slate-600">{comparison.n}</td><td className="px-4 py-3.5 text-slate-600">{formatNumber(comparison.meanDifference, 3)}</td><td className="px-4 py-3.5 text-slate-600">{formatNumber(comparison.t, 3)}</td><td className="px-4 py-3.5 text-slate-600">{formatNumber(comparison.df, 0)}</td><td className="px-4 py-3.5 text-slate-600">{formatPValue(comparison.pValue)}</td><td className="px-4 py-3.5 font-semibold text-slate-900">{formatPValue(comparison.pAdjusted)}</td><td className="px-4 py-3.5 text-slate-600">{formatNumber(comparison.cohenDz, 3)}</td></tr>)}</tbody></table></div></div>}
 
                   <p className="px-1 text-[8px] leading-4 text-slate-400">Mauchly's test is an inferential diagnostic rather than a mechanical pass/fail gate. PsyLattice reports the uncorrected, Greenhouse–Geisser and Huynh–Feldt rows together so the researcher can document the chosen correction transparently.</p>
                 </>
@@ -11277,6 +13229,10 @@ export default function AnalysisLab({
                   </div>
                 </div>
               )}
+
+              <CopyableFigureSurface title={`Figure · ${correlationMethod === "pearson" ? "Pearson" : "Spearman"} correlation heatmap`} caption="Signed correlation heatmap using the deterministic pairwise-complete PsyLattice correlation matrix.">
+                <CorrelationHeatmapPlot matrix={correlationMatrix} />
+              </CopyableFigureSurface>
 
               <div className="overflow-hidden rounded-[24px] border border-slate-200 bg-white shadow-[0_2px_5px_rgba(15,23,42,.025),0_12px_30px_rgba(15,23,42,.05)]">
                 <div className="flex flex-col gap-2 border-b border-slate-100 px-4 py-4 sm:flex-row sm:items-center sm:justify-between sm:px-5">
@@ -11704,16 +13660,8 @@ export default function AnalysisLab({
         </section>
       </div>
 
-      <AnalysisAiAssistant
-        studyId={selectedStudyId}
-        studyTitle={studyTitle}
-        datasetLabel={sourceLabel}
-        context={analysisAiContext}
-        workingRows={analysisAiWorkingRows}
-        workingRowsTotal={activeRows.length}
-        onApplySetup={applyAnalysisAiSetupProposal}
-        onApplyWorkflow={applyAnalysisAiWorkflowProposal}
-      />
-    </div>
+      </div>
+      {analysisAiDock}
+    </>
   );
 }

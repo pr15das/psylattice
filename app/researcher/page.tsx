@@ -25,10 +25,12 @@ import PsyLatticeLogo from "@/components/PsyLatticeLogo";
 import AccountSwitcher from "@/components/AccountSwitcher";
 import SidebarAccountCard from "@/components/SidebarAccountCard";
 import FollowupManager from "@/components/PlanAwareFollowupManager";
-import ResearchAiAssistant from "@/components/ResearchAiAssistant";
+import ResearchExplorerAiDock from "@/components/ResearchExplorerAiDock";
 import ResearchWritingWorkspace from "@/components/ResearchWritingWorkspace";
 import ResearchStudyAssociations from "@/components/ResearchStudyAssociations";
 import AnalysisLab from "@/components/AnalysisLab";
+import IntegratedDatasetBuilder from "@/components/IntegratedDatasetBuilder";
+import { buildIntegratedDatasetPreview } from "@/lib/research/integratedDataset";
 import CognitiveLab from "../../components/CognitiveLab";
 import StudyBatteryPicker, { type StudyBatterySelection } from "@/components/StudyBatteryPicker";
 import { buildBatteryReporting, type BatteryAssignmentLike } from "@/lib/research/batteryReporting";
@@ -10602,6 +10604,10 @@ type ResearchDatasetType =
   | "ambulatory_responses"
   | "ambulatory_wide"
   | "ambulatory_participant_days"
+  | "integrated_participant"
+  | "integrated_participant_day"
+  | "integrated_checkin"
+  | "integrated_cognitive_session"
   | "analysis_wide";
 
 type ResearchIdentityMode = "pseudonymous" | "anonymous";
@@ -11105,8 +11111,133 @@ const researchDatasetLabels: Record<ResearchDatasetType, string> = {
   ambulatory_responses: "Ambulatory responses — one row per item response",
   ambulatory_wide: "Ambulatory check-ins — analysis wide / one row per check-in",
   ambulatory_participant_days: "Ambulatory participant-days — one row per participant per day",
+  integrated_participant: "Integrated analysis — one row per participant",
+  integrated_participant_day: "Integrated longitudinal — one row per participant × day",
+  integrated_checkin: "Integrated longitudinal — one row per participant × check-in",
+  integrated_cognitive_session: "Integrated longitudinal — one row per participant × cognitive session",
   analysis_wide: "Analysis dataset — one row per participant",
 };
+
+const researchIntegratedDatasetTypes = new Set<ResearchDatasetType>([
+  "integrated_participant",
+  "integrated_participant_day",
+  "integrated_checkin",
+  "integrated_cognitive_session",
+]);
+
+function researchUsesAnalysisQuestionnaireFields(
+  datasetType: ResearchDatasetType
+) {
+  return datasetType === "analysis_wide" || researchIntegratedDatasetTypes.has(datasetType);
+}
+
+type ResearchDatasetStructure = {
+  grain: "participant" | "participant_day" | "checkin" | "cognitive_session" | "trial" | "other";
+  unitLabel: string;
+  repeatedObservations: boolean;
+  clusterVariable: string | null;
+  clusterLabel: string | null;
+  observationCount: number;
+  clusterCount: number;
+  meanObservationsPerCluster: number;
+  maxObservationsPerCluster: number;
+  exactMatches: number;
+  timeWindowMatches: number;
+  derivedDateMatches: number;
+  unmatchedRows: number;
+  note: string;
+};
+
+function researchDatasetStructure(
+  rows: ResearchTableRow[],
+  datasetType: ResearchDatasetType
+): ResearchDatasetStructure | null {
+  const structureByDataset: Partial<Record<ResearchDatasetType, {
+    grain: ResearchDatasetStructure["grain"];
+    unitLabel: string;
+    note: string;
+  }>> = {
+    integrated_participant_day: {
+      grain: "participant_day",
+      unitLabel: "Participant × day",
+      note: "Person-level variables are repeated across daily rows. Cognitive day matching stays conservative unless a defensible participant-local date relationship is available.",
+    },
+    integrated_checkin: {
+      grain: "checkin",
+      unitLabel: "Participant × check-in",
+      note: "EMA / ESM occasions are repeated within participant. Cognitive links may be exact or transparent nearest-time matches; review the match columns before interpretation.",
+    },
+    integrated_cognitive_session: {
+      grain: "cognitive_session",
+      unitLabel: "Participant × cognitive session",
+      note: "Cognitive administrations are repeated within participant. Nearby EMA / ESM observations are linked transparently when they fall inside the configured time window.",
+    },
+    ambulatory_wide: {
+      grain: "checkin",
+      unitLabel: "Participant × check-in",
+      note: "Ambulatory check-ins are repeated within participant.",
+    },
+    ambulatory_participant_days: {
+      grain: "participant_day",
+      unitLabel: "Participant × day",
+      note: "Participant-day observations are repeated within participant.",
+    },
+    cognitive_trials: {
+      grain: "trial",
+      unitLabel: "Participant × cognitive trial",
+      note: "Cognitive trials are repeated within participant and often also within session.",
+    },
+  };
+
+  const definition = structureByDataset[datasetType];
+  if (!definition || rows.length === 0) return null;
+
+  const clusterCounts = new Map<string, number>();
+  for (const row of rows) {
+    const participant = researchValueText(row.participant).trim();
+    if (!participant) continue;
+    clusterCounts.set(participant, (clusterCounts.get(participant) || 0) + 1);
+  }
+
+  const counts = Array.from(clusterCounts.values());
+  const clusterCount = counts.length;
+  const observationCount = rows.length;
+  const meanObservationsPerCluster = clusterCount
+    ? Math.round((observationCount / clusterCount) * 100) / 100
+    : 0;
+  const maxObservationsPerCluster = counts.length ? Math.max(...counts) : 0;
+
+  let exactMatches = 0;
+  let timeWindowMatches = 0;
+  let derivedDateMatches = 0;
+  let unmatchedRows = 0;
+
+  for (const row of rows) {
+    const match = researchValueText(
+      row.integration_cognitive_match || row.integration_ema_match
+    );
+    if (match === "exact") exactMatches += 1;
+    else if (match === "time_window") timeWindowMatches += 1;
+    else if (match === "derived_date") derivedDateMatches += 1;
+    else if (match === "unmatched") unmatchedRows += 1;
+  }
+
+  return {
+    ...definition,
+    repeatedObservations:
+      clusterCount > 0 && observationCount > clusterCount,
+    clusterVariable: clusterCount > 0 ? "participant" : null,
+    clusterLabel: clusterCount > 0 ? "Participant" : null,
+    observationCount,
+    clusterCount,
+    meanObservationsPerCluster,
+    maxObservationsPerCluster,
+    exactMatches,
+    timeWindowMatches,
+    derivedDateMatches,
+    unmatchedRows,
+  };
+}
 
 function researchValueText(value: unknown) {
   if (value === null || value === undefined) return "";
@@ -13036,6 +13167,59 @@ function researchBuildRows(
     completed_at: participant.completed_at || "",
   });
 
+  if (researchIntegratedDatasetTypes.has(datasetType)) {
+    const sources = {
+      participantRows: researchBuildRows(
+        bundle,
+        "analysis_wide",
+        identityMode,
+        includeTestData,
+        includeDirectIdentifiers
+      ),
+      ambulatoryRows: researchBuildRows(
+        bundle,
+        "ambulatory_wide",
+        identityMode,
+        includeTestData,
+        false
+      ),
+      participantDayRows: researchBuildRows(
+        bundle,
+        "ambulatory_participant_days",
+        identityMode,
+        includeTestData,
+        false
+      ),
+      cognitiveRows: researchBuildRows(
+        bundle,
+        "cognitive_sessions",
+        identityMode,
+        includeTestData,
+        false
+      ),
+    };
+
+    const grain =
+      datasetType === "integrated_participant"
+        ? "participant"
+        : datasetType === "integrated_participant_day"
+          ? "participant_day"
+          : datasetType === "integrated_checkin"
+            ? "checkin"
+            : "cognitive_session";
+
+    return buildIntegratedDatasetPreview(sources, {
+      grain,
+      timeWindowMinutes: 30,
+      preventCognitiveReuse: true,
+      // Cognitive sessions currently expose timestamps rather than the EMA
+      // participant-local date. Day-level date derivation therefore remains
+      // off in the first-class dataset until the protocol stores a stronger
+      // local-date relationship.
+      allowDerivedDateMatching: false,
+    }).rows;
+  }
+
   if (datasetType === "participant_summary") {
     const questionnaireFields =
       researchParticipantSummaryQuestionnaireFields(bundle);
@@ -14456,6 +14640,122 @@ function researchBuildCodebook(
       notes: "TRUE identifies test participation.",
     },
   ];
+
+  if (researchIntegratedDatasetTypes.has(datasetType)) {
+    const baseDataset: ResearchDatasetType =
+      datasetType === "integrated_participant"
+        ? "analysis_wide"
+        : datasetType === "integrated_checkin"
+          ? "ambulatory_wide"
+          : datasetType === "integrated_cognitive_session"
+            ? "cognitive_sessions"
+            : "ambulatory_participant_days";
+
+    const baseCodebookRows = [
+      ...(datasetType === "integrated_participant"
+        ? []
+        : researchBuildCodebook(
+            bundle,
+            "analysis_wide",
+            includeDirectIdentifiers
+          )),
+      ...researchBuildCodebook(
+        bundle,
+        baseDataset,
+        includeDirectIdentifiers
+      ),
+    ];
+    const baseRows = Array.from(
+      new Map(
+        baseCodebookRows.map((row) => [row.variable, row])
+      ).values()
+    );
+    const integratedRows = researchBuildRows(
+      bundle,
+      datasetType,
+      "pseudonymous",
+      true,
+      includeDirectIdentifiers
+    );
+    const existing = new Set(baseRows.map((row) => row.variable));
+    const columns = Array.from(
+      new Set(integratedRows.flatMap((row) => Object.keys(row)))
+    );
+
+    const derivedRows = columns
+      .filter((variable) => !existing.has(variable))
+      .map((variable): ResearchCodebookRow => {
+        const observed = integratedRows
+          .map((row) => row[variable])
+          .filter(
+            (value) =>
+              value !== null &&
+              value !== undefined &&
+              value !== ""
+          );
+        const numeric =
+          observed.length > 0 &&
+          observed.every(
+            (value) =>
+              typeof value === "number" &&
+              Number.isFinite(value)
+          );
+        const boolean =
+          observed.length > 0 &&
+          observed.every((value) => typeof value === "boolean");
+
+        let source = "Integrated dataset";
+        let notes =
+          "Derived deterministically from the selected study's existing PsyLattice data.";
+
+        if (variable === "integration_grain") {
+          source = "PsyLattice integration metadata";
+          notes = `Declares the row unit for ${researchDatasetLabels[datasetType]}.`;
+        } else if (variable === "ema_checkins") {
+          source = "Ambulatory / EMA integration";
+          notes = "Count of available EMA / ESM check-ins represented in this integrated row.";
+        } else if (variable.startsWith("ema_mean_")) {
+          source = "Ambulatory / EMA integration";
+          notes = "Mean of the named numeric EMA / ESM variable inside the current row unit.";
+        } else if (variable === "cognitive_sessions") {
+          source = "Cognitive integration";
+          notes = "Count of cognitive-task sessions represented in this integrated row.";
+        } else if (variable === "cognitive_tasks_observed") {
+          source = "Cognitive integration";
+          notes = "Number of distinct cognitive tasks represented in the integrated row.";
+        } else if (variable.startsWith("cog_")) {
+          source = "Cognitive integration";
+          notes = "Deterministic descriptive aggregate from the named cognitive task's available session summaries.";
+        } else if (variable.startsWith("cognitive_")) {
+          source = "Matched cognitive session";
+          notes = "Value copied from the cognitive session linked to this EMA / ESM row. Inspect integration_cognitive_match and the time-difference variable before interpretation.";
+        } else if (variable.startsWith("ema_")) {
+          source = "Matched EMA / ESM observation";
+          notes = "Value copied from the EMA / ESM check-in linked to this cognitive session. Inspect integration_ema_match and the time-difference variable before interpretation.";
+        } else if (variable === "integration_cognitive_match" || variable === "integration_ema_match") {
+          source = "PsyLattice integration metadata";
+          notes = "Match quality: exact, transparent nearest-time window, derived date, unmatched, or not_evaluated when conservative matching is intentionally disabled. A time-window match is not presented as an exact protocol link.";
+        } else if (variable.includes("time_difference_minutes")) {
+          source = "PsyLattice integration metadata";
+          notes = "Absolute timestamp difference in minutes for a transparent nearest-time match.";
+        } else if (variable.startsWith("person_")) {
+          source = "Person-level covariate";
+          notes = "Participant-level field carried onto repeated rows. Repetition does not imply the variable was measured at every occasion.";
+        }
+
+        return {
+          variable,
+          label: variable
+            .replace(/_/g, " ")
+            .replace(/\b\w/g, (letter) => letter.toUpperCase()),
+          type: numeric ? "Numeric / derived" : boolean ? "Boolean" : "String / derived",
+          source,
+          notes,
+        };
+      });
+
+    return [...baseRows, ...derivedRows];
+  }
 
   if (datasetType === "participant_summary") {
     const questionnaireFields =
@@ -18256,6 +18556,7 @@ function ResearchCognitiveAnalysisPanel({
     attachments[0]?.id || ""
   );
   const [includeTestData, setIncludeTestData] = useState(false);
+
   const selectedAttachment =
     attachments.find((attachment) => attachment.id === selectedAttachmentId) ||
     attachments[0] ||
@@ -20707,7 +21008,7 @@ function ResearchParticipantUploadActions({
    DATA EXPLORER
    ========================================================= */
 
-function DataExplorer() {
+function DataExplorer({ changeScreen }: { changeScreen: (screen: Screen) => void }) {
   const {
     studies,
     selectedStudyId,
@@ -20763,6 +21064,40 @@ function DataExplorer() {
     showDirectIdentifiers
   );
 
+  const integratedDatasetSources = useMemo(
+    () => ({
+      participantRows: researchBuildRows(
+        bundle,
+        "analysis_wide",
+        "pseudonymous",
+        includeTestData,
+        false
+      ),
+      ambulatoryRows: researchBuildRows(
+        bundle,
+        "ambulatory_wide",
+        "pseudonymous",
+        includeTestData,
+        false
+      ),
+      participantDayRows: researchBuildRows(
+        bundle,
+        "ambulatory_participant_days",
+        "pseudonymous",
+        includeTestData,
+        false
+      ),
+      cognitiveRows: researchBuildRows(
+        bundle,
+        "cognitive_sessions",
+        "pseudonymous",
+        includeTestData,
+        false
+      ),
+    }),
+    [bundle, includeTestData]
+  );
+
   function researchClipboardCell(value: unknown) {
     return researchValueText(value)
       .replace(/\t/g, " ")
@@ -20803,6 +21138,22 @@ function DataExplorer() {
     }
 
     window.setTimeout(() => setCopyTableStatus(""), 2200);
+  }
+
+  function openCurrentDatasetInAnalysisLab() {
+    try {
+      window.sessionStorage.setItem(
+        "psylattice-analysis-handoff-v1",
+        JSON.stringify({
+          studyId: selectedStudyId,
+          datasetType,
+          includeTestData,
+        })
+      );
+    } catch {
+      // Navigation still works if session storage is unavailable.
+    }
+    changeScreen("analysis");
   }
 
   return (
@@ -20905,6 +21256,14 @@ function DataExplorer() {
         )}
       </Panel>
 
+      {selectedStudy && (
+        <IntegratedDatasetBuilder
+          key={`${selectedStudyId}:${includeTestData ? "test" : "live"}`}
+          studyTitle={selectedStudy.title}
+          sources={integratedDatasetSources}
+        />
+      )}
+
       {error && (
         <div className="border-l-2 border-rose-400 bg-transparent py-1 pl-3 pr-1">
           <p className="text-sm leading-6 text-red-700">{error}</p>
@@ -20929,6 +21288,14 @@ function DataExplorer() {
                 {copyTableStatus}
               </span>
             )}
+            <button
+              type="button"
+              onClick={openCurrentDatasetInAnalysisLab}
+              disabled={loading || filteredRows.length === 0}
+              className="rounded-lg border border-cyan-200 bg-cyan-50 px-3 py-1.5 text-xs font-semibold text-cyan-900 transition hover:bg-cyan-100 disabled:cursor-not-allowed disabled:opacity-40"
+            >
+              Open in Analysis Lab
+            </button>
             <button
               type="button"
               onClick={() => void copyEntireFilteredTable()}
@@ -21070,7 +21437,7 @@ function DataExplorer() {
       />
 
       {selectedStudy && (
-        <ResearchAiAssistant
+        <ResearchExplorerAiDock
           studyId={selectedStudy.id}
           studyTitle={selectedStudy.title}
         />
@@ -21090,7 +21457,7 @@ function DataExplorer() {
    ANALYSIS LAB — DEDICATED DATA ROUTE
    ========================================================= */
 
-function AnalysisLabWorkspace() {
+function AnalysisLabWorkspace({ changeScreen }: { changeScreen: (screen: Screen) => void }) {
   const {
     studies,
     selectedStudyId,
@@ -21104,6 +21471,24 @@ function AnalysisLabWorkspace() {
   const [datasetType, setDatasetType] =
     useState<ResearchDatasetType>("analysis_wide");
   const [includeTestData, setIncludeTestData] = useState(false);
+
+  useEffect(() => {
+    try {
+      const raw = window.sessionStorage.getItem("psylattice-analysis-handoff-v1");
+      if (!raw) return;
+      const handoff = JSON.parse(raw) as {
+        studyId?: string;
+        datasetType?: ResearchDatasetType;
+        includeTestData?: boolean;
+      };
+      if (handoff.studyId) setSelectedStudyId(handoff.studyId);
+      if (handoff.datasetType) setDatasetType(handoff.datasetType);
+      if (typeof handoff.includeTestData === "boolean") setIncludeTestData(handoff.includeTestData);
+      window.sessionStorage.removeItem("psylattice-analysis-handoff-v1");
+    } catch {
+      // Ignore malformed or unavailable handoff state.
+    }
+  }, [setSelectedStudyId]);
 
   const rows = useMemo(
     () =>
@@ -21122,6 +21507,11 @@ function AnalysisLabWorkspace() {
     [bundle, datasetType]
   );
 
+  const datasetStructure = useMemo(
+    () => researchDatasetStructure(rows, datasetType),
+    [rows, datasetType]
+  );
+
   const analysisDatasetOptions: Array<{
     value: ResearchDatasetType;
     eyebrow: string;
@@ -21129,11 +21519,90 @@ function AnalysisLabWorkspace() {
     recommended?: boolean;
   }> = [
     {
+      value: "integrated_participant",
+      eyebrow: "Integrated participant",
+      description:
+        "Questionnaires, demographics, participant-level EMA / ESM summaries and cognitive summaries together in one row per participant.",
+      recommended: true,
+    },
+    {
+      value: "integrated_participant_day",
+      eyebrow: "Integrated longitudinal",
+      description:
+        "One row per participant-day with person-level covariates carried onto daily EMA / ESM summaries. Repeated within participant.",
+    },
+    {
+      value: "integrated_checkin",
+      eyebrow: "Integrated intensive longitudinal",
+      description:
+        "One row per EMA / ESM check-in with person-level covariates and transparent nearby cognitive-session matching.",
+    },
+    {
+      value: "integrated_cognitive_session",
+      eyebrow: "Integrated cognitive longitudinal",
+      description:
+        "One row per cognitive administration with person-level covariates and transparent nearby EMA / ESM matching.",
+    },
+    {
+      value: "participant_summary",
+      eyebrow: "Participant raw",
+      description: "Participant status, consent/completion counts and participant-level questionnaire fields."
+    },
+    {
+      value: "demographics",
+      eyebrow: "Raw demographics",
+      description: "Long-format demographic responses for direct inspection or custom preparation."
+    },
+    {
+      value: "questionnaire_responses",
+      eyebrow: "Questionnaire raw",
+      description: "One row per questionnaire item response, including raw and numeric/text helper values."
+    },
+    {
+      value: "cognitive_sessions",
+      eyebrow: "Cognitive sessions",
+      description: "One row per cognitive task administration with summary performance and timing metadata."
+    },
+    {
+      value: "stop_signal_trials",
+      eyebrow: "Stop-Signal raw",
+      description: "Trial-level Stop-Signal data for custom trial analyses."
+    },
+    {
+      value: "corsi_trials",
+      eyebrow: "Corsi raw",
+      description: "Trial-level Corsi task data for custom trial analyses."
+    },
+    {
+      value: "card_sorting_trials",
+      eyebrow: "Card sorting raw",
+      description: "Trial-level card-sorting data for custom trial analyses."
+    },
+    {
+      value: "bart_decisions",
+      eyebrow: "BART raw",
+      description: "Decision-level BART data for custom analyses."
+    },
+    {
+      value: "mental_rotation_trials",
+      eyebrow: "Mental Rotation raw",
+      description: "Trial-level Mental Rotation data for custom analyses."
+    },
+    {
+      value: "ambulatory_checkins",
+      eyebrow: "EMA / ESM raw",
+      description: "One row per ambulatory check-in with schedule, trigger and timing metadata."
+    },
+    {
+      value: "ambulatory_responses",
+      eyebrow: "EMA / ESM item raw",
+      description: "One row per ambulatory item response for custom intensive-longitudinal preparation."
+    },
+    {
       value: "analysis_wide",
       eyebrow: "Participant level",
       description:
         "Questionnaires, demographics and cognitive summaries together in one row per participant.",
-      recommended: true,
     },
     {
       value: "questionnaire_scores",
@@ -21215,7 +21684,7 @@ function AnalysisLabWorkspace() {
             <div className="max-w-3xl">
               <div className="flex flex-wrap items-center gap-2">
                 <span className="rounded-full border border-cyan-200/80 bg-white/90 px-3 py-1 text-[10px] font-semibold uppercase tracking-[.1em] text-cyan-800 shadow-sm">
-                  Analysis Lab · V1
+                  Analysis Lab · V2
                 </span>
                 <span className="rounded-full border border-slate-200 bg-white/80 px-3 py-1 text-[10px] font-semibold text-slate-500 shadow-sm">
                   Statistics calculated deterministically
@@ -21369,6 +21838,8 @@ function AnalysisLabWorkspace() {
         includeTestData={includeTestData}
         onIncludeTestDataChange={setIncludeTestData}
         identityModeLabel="Pseudonymous · direct identifiers hidden"
+        datasetStructure={datasetStructure || undefined}
+        onNavigateWorkspace={(target) => changeScreen(target)}
       />
     </div>
   );
@@ -21622,7 +22093,8 @@ function ExportData() {
     ResearchParticipantSummaryQuestionnaireField |
     ResearchAnalysisQuestionnaireField
   > =
-    datasetType === "analysis_wide"
+    datasetType === "analysis_wide" ||
+    datasetType === "integrated_participant"
       ? analysisQuestionnaireFields
       : participantQuestionnaireFields;
 
@@ -21688,7 +22160,7 @@ function ExportData() {
             source,
             label:
               datasetType === "participant_summary" ||
-              datasetType === "analysis_wide"
+              researchUsesAnalysisQuestionnaireFields(datasetType)
                 ? questionnaireLabelMap.get(
                     source
                   ) || source
@@ -22819,7 +23291,7 @@ function ExportData() {
               )}
 
               <div className="mt-4 max-h-[420px] space-y-2 overflow-y-auto pr-1">
-                {datasetType === "analysis_wide" ? (
+                {researchUsesAnalysisQuestionnaireFields(datasetType) ? (
                   <>
                     {columnConfig
                       .filter(
@@ -23059,7 +23531,7 @@ function ExportData() {
               </div>
 
               <p className="mt-3 text-xs text-slate-400">
-                {datasetType === "analysis_wide"
+                {researchUsesAnalysisQuestionnaireFields(datasetType)
                   ? `${questionnaireGroupsForExport.filter((group) => {
                       const sources = new Set(
                         group.fields.map(
@@ -23528,10 +24000,10 @@ export default function ResearcherWorkspace() {
         return <DataDashboard changeScreen={setScreen} />;
 
       case "explorer":
-        return <DataExplorer />;
+        return <DataExplorer changeScreen={setScreen} />;
 
       case "analysis":
-        return <AnalysisLabWorkspace />;
+        return <AnalysisLabWorkspace changeScreen={setScreen} />;
 
       case "exports":
         return <ExportData />;
@@ -23895,7 +24367,7 @@ export default function ResearcherWorkspace() {
               <div className="flex flex-wrap items-center gap-2">
                 <Status type="accent">Researcher workspace</Status>
 
-                <span className="rounded-full border shadow-[0_5px_16px_rgba(15,23,42,0.075),0_1px_3px_rgba(15,23,42,0.04)] border-slate-300/70 bg-white px-3 py-1 text-[11px] font-medium text-slate-400 shadow-[0_2px_5px_rgba(15,23,42,0.03)]">
+                <span className="rounded-full border border-slate-300/70 bg-white px-3 py-1 text-[11px] font-medium text-slate-400 shadow-[0_5px_16px_rgba(15,23,42,0.075),0_1px_3px_rgba(15,23,42,0.04)]">
                   Live workspace data
                 </span>
               </div>

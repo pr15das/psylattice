@@ -186,6 +186,7 @@ export type PairedTTestResult = {
   cohenDz: number | null;
 };
 export type OneWayAnovaEstimator = "standard" | "welch";
+export type MultipleComparisonAdjustment = "holm" | "bonferroni" | "fdr_bh";
 
 export type AnovaGroupSummary = {
   value: string;
@@ -225,6 +226,7 @@ export type OneWayAnovaResult = {
   ssTotal: number | null;
   etaSquared: number | null;
   omegaSquared: number | null;
+  adjustment: MultipleComparisonAdjustment;
   pairwise: AnovaPairwiseComparison[];
 };
 
@@ -283,6 +285,7 @@ export type RepeatedMeasuresAnovaResult = {
   ssError: number | null;
   partialEtaSquared: number | null;
   generalizedEtaSquared: number | null;
+  adjustment: MultipleComparisonAdjustment;
   sphericity: RepeatedMeasuresSphericityResult;
   pairwise: RepeatedMeasuresPairwiseComparison[];
 };
@@ -314,6 +317,21 @@ export type EstimatedMarginalMean = {
   ci95High: number | null;
 };
 
+export type EstimatedMarginalMeanContrast = {
+  factor: string;
+  factorLabel: string;
+  levelA: string;
+  levelB: string;
+  difference: number | null;
+  se: number | null;
+  t: number | null;
+  df: number | null;
+  pValue: number | null;
+  pAdjusted: number | null;
+  ci95Low: number | null;
+  ci95High: number | null;
+};
+
 export type GeneralLinearModelAnovaResult = {
   mode: GeneralLinearModelMode;
   outcome: string;
@@ -334,7 +352,9 @@ export type GeneralLinearModelAnovaResult = {
   f: number | null;
   pValue: number | null;
   effects: GeneralLinearModelEffect[];
+  adjustment: MultipleComparisonAdjustment;
   marginalMeans: EstimatedMarginalMean[];
+  marginalMeanContrasts: EstimatedMarginalMeanContrast[];
   issue: string | null;
 };
 
@@ -410,12 +430,17 @@ export type MixedModelEstimator = "reml" | "ml";
 export type MixedModelCentering = "none" | "grand" | "cluster";
 export type MixedModelRandomStructure = "intercept" | "intercept_slope";
 
+export type MixedModelInteraction = {
+  left: string;
+  right: string;
+};
+
 export type MixedModelCoefficient = {
   term: string;
   label: string;
   predictor: string | null;
   predictorLabel: string | null;
-  kind: "intercept" | "numeric" | "categorical";
+  kind: "intercept" | "numeric" | "categorical" | "interaction";
   level: string | null;
   referenceLevel: string | null;
   b: number | null;
@@ -460,6 +485,19 @@ export type LinearMixedModelResult = {
     kind: "numeric" | "categorical";
     levels: string[];
     referenceLevel: string | null;
+    rawMean?: number | null;
+    rawSd?: number | null;
+    modelMean?: number | null;
+    modelSd?: number | null;
+    modelMin?: number | null;
+    modelMax?: number | null;
+  }>;
+  interactions: Array<{
+    left: string;
+    right: string;
+    leftLabel: string;
+    rightLabel: string;
+    label: string;
   }>;
   n: number;
   groupCount: number;
@@ -484,6 +522,7 @@ export type LinearMixedModelResult = {
   marginalR2: number | null;
   conditionalR2: number | null;
   coefficients: MixedModelCoefficient[];
+  fixedEffectCovariance: number[][] | null;
   structureComparison: MixedModelStructureComparison | null;
   warning: string | null;
   issue: string | null;
@@ -497,7 +536,7 @@ export type GeneralizedMixedCoefficient = {
   label: string;
   predictor: string | null;
   predictorLabel: string | null;
-  kind: "intercept" | "numeric" | "categorical";
+  kind: "intercept" | "numeric" | "categorical" | "interaction";
   level: string | null;
   referenceLevel: string | null;
   b: number | null;
@@ -525,6 +564,13 @@ export type GeneralizedMixedModelResult = {
     levels: string[];
     referenceLevel: string | null;
   }>;
+  interactions: Array<{
+    left: string;
+    right: string;
+    leftLabel: string;
+    rightLabel: string;
+    label: string;
+  }>;
   n: number;
   groupCount: number;
   minObservationsPerGroup: number;
@@ -546,6 +592,7 @@ export type GeneralizedMixedModelResult = {
   meanObserved: number | null;
   meanPredicted: number | null;
   coefficients: GeneralizedMixedCoefficient[];
+  fixedEffectCovariance: number[][] | null;
   warning: string | null;
   issue: string | null;
 };
@@ -2039,11 +2086,48 @@ function holmAdjustedPValues(values: Array<number | null>) {
   return output;
 }
 
+function bonferroniAdjustedPValues(values: Array<number | null>) {
+  const m = values.filter((value) => value !== null && Number.isFinite(value)).length;
+  return values.map((value) =>
+    value === null || !Number.isFinite(value) ? null : Math.min(1, value * Math.max(1, m))
+  );
+}
+
+function fdrBhAdjustedPValues(values: Array<number | null>) {
+  const valid = values
+    .map((value, index) => ({ value, index }))
+    .filter((item): item is { value: number; index: number } =>
+      item.value !== null && Number.isFinite(item.value)
+    )
+    .sort((a, b) => a.value - b.value);
+
+  const output = values.map(() => null as number | null);
+  const m = valid.length;
+  let running = 1;
+  for (let rank = m - 1; rank >= 0; rank -= 1) {
+    const item = valid[rank];
+    const adjusted = Math.min(1, (item.value * m) / (rank + 1));
+    running = Math.min(running, adjusted);
+    output[item.index] = running;
+  }
+  return output;
+}
+
+export function adjustPValues(
+  values: Array<number | null>,
+  method: MultipleComparisonAdjustment = "holm"
+) {
+  if (method === "bonferroni") return bonferroniAdjustedPValues(values);
+  if (method === "fdr_bh") return fdrBhAdjustedPValues(values);
+  return holmAdjustedPValues(values);
+}
+
 export function computeOneWayAnova(
   rows: AnalysisRow[],
   outcome: AnalysisVariable,
   factor: AnalysisVariable,
-  estimator: OneWayAnovaEstimator = "standard"
+  estimator: OneWayAnovaEstimator = "standard",
+  adjustment: MultipleComparisonAdjustment = "holm"
 ): OneWayAnovaResult {
   const grouped = new Map<string, number[]>();
 
@@ -2194,7 +2278,7 @@ export function computeOneWayAnova(
     }
   }
 
-  const adjusted = holmAdjustedPValues(rawPairwise.map((comparison) => comparison.pValue));
+  const adjusted = adjustPValues(rawPairwise.map((comparison) => comparison.pValue), adjustment);
   const pairwise = rawPairwise.map((comparison, index) => ({
     ...comparison,
     pAdjusted: adjusted[index],
@@ -2217,6 +2301,7 @@ export function computeOneWayAnova(
     ssTotal,
     etaSquared,
     omegaSquared,
+    adjustment,
     pairwise,
   };
 }
@@ -2425,7 +2510,8 @@ function computeRepeatedMeasuresSphericity(
 
 export function computeRepeatedMeasuresAnova(
   rows: AnalysisRow[],
-  variables: AnalysisVariable[]
+  variables: AnalysisVariable[],
+  adjustment: MultipleComparisonAdjustment = "holm"
 ): RepeatedMeasuresAnovaResult {
   const usableVariables = variables.filter(
     (variable) => variable.level === "continuous" || variable.level === "ordinal"
@@ -2514,7 +2600,7 @@ export function computeRepeatedMeasuresAnova(
     }
   }
 
-  const adjusted = holmAdjustedPValues(rawPairwise.map((comparison) => comparison.pValue));
+  const adjusted = adjustPValues(rawPairwise.map((comparison) => comparison.pValue), adjustment);
   const pairwise = rawPairwise.map((comparison, index) => ({
     ...comparison,
     pAdjusted: adjusted[index],
@@ -2533,6 +2619,7 @@ export function computeRepeatedMeasuresAnova(
     ssError,
     partialEtaSquared,
     generalizedEtaSquared,
+    adjustment,
     sphericity,
     pairwise,
   };
@@ -2619,11 +2706,13 @@ export function computeGeneralLinearModelAnova(
   options: {
     mode?: GeneralLinearModelMode;
     includeInteractions?: boolean;
+    adjustment?: MultipleComparisonAdjustment;
   } = {}
 ): GeneralLinearModelAnovaResult {
   const mode: GeneralLinearModelMode =
     options.mode ?? (covariates.length > 0 ? "ancova" : "factorial");
   const includeInteractions = options.includeInteractions ?? true;
+  const adjustment: MultipleComparisonAdjustment = options.adjustment ?? "holm";
 
   const uniqueFactors = factors
     .filter(
@@ -2652,6 +2741,7 @@ export function computeGeneralLinearModelAnova(
     covariates: [] as Array<{ name: string; label: string; mean: number }>,
     includeInteractions,
     interactionOrder: 2 as const,
+    adjustment,
   };
 
   if (uniqueFactors.length === 0) {
@@ -2670,6 +2760,7 @@ export function computeGeneralLinearModelAnova(
       pValue: null,
       effects: [],
       marginalMeans: [],
+      marginalMeanContrasts: [],
       issue: mode === "ancova"
         ? "Select at least one categorical factor for ANCOVA."
         : "Select at least two categorical factors for factorial ANOVA.",
@@ -2692,6 +2783,7 @@ export function computeGeneralLinearModelAnova(
       pValue: null,
       effects: [],
       marginalMeans: [],
+      marginalMeanContrasts: [],
       issue: "Factorial ANOVA requires at least two factors.",
     };
   }
@@ -2712,6 +2804,7 @@ export function computeGeneralLinearModelAnova(
       pValue: null,
       effects: [],
       marginalMeans: [],
+      marginalMeanContrasts: [],
       issue: "ANCOVA requires at least one continuous or ordinal covariate.",
     };
   }
@@ -2772,6 +2865,7 @@ export function computeGeneralLinearModelAnova(
       pValue: null,
       effects: [],
       marginalMeans: [],
+      marginalMeanContrasts: [],
       issue: `${invalidFactor.variable.label} has fewer than two observed levels among complete cases.`,
     };
   }
@@ -2898,6 +2992,7 @@ export function computeGeneralLinearModelAnova(
       pValue: null,
       effects: [],
       marginalMeans: [],
+      marginalMeanContrasts: [],
       issue:
         n <= coefficientCount
           ? `The model needs more complete observations than estimated coefficients. Complete N = ${n}; coefficients = ${coefficientCount}.`
@@ -2973,6 +3068,7 @@ export function computeGeneralLinearModelAnova(
 
   const tCritical = studentTCritical(0.975, dfResidual);
   const marginalMeans: EstimatedMarginalMean[] = [];
+  const marginalMeanVectors = new Map<string, number[]>();
 
   for (const target of factorEncodings) {
     const otherFactors = factorEncodings.filter(
@@ -2999,6 +3095,8 @@ export function computeGeneralLinearModelAnova(
         syntheticVectors.reduce((sum, vector) => sum + vector[index], 0) /
         syntheticVectors.length
       );
+      marginalMeanVectors.set(`${target.variable.name}\u0000${level}`, averageVector);
+
       const adjustedMean = averageVector.reduce(
         (sum, value, index) => sum + value * fullFit.beta[index],
         0
@@ -3037,6 +3135,67 @@ export function computeGeneralLinearModelAnova(
     }
   }
 
+  const marginalMeanContrasts: EstimatedMarginalMeanContrast[] = [];
+  for (const target of factorEncodings) {
+    const factorContrasts: EstimatedMarginalMeanContrast[] = [];
+    for (let i = 0; i < target.levels.length; i += 1) {
+      for (let j = i + 1; j < target.levels.length; j += 1) {
+        const levelA = target.levels[i];
+        const levelB = target.levels[j];
+        const vectorA = marginalMeanVectors.get(`${target.variable.name}\u0000${levelA}`);
+        const vectorB = marginalMeanVectors.get(`${target.variable.name}\u0000${levelB}`);
+        if (!vectorA || !vectorB) continue;
+        const contrast = vectorA.map((value, index) => value - vectorB[index]);
+        const difference = contrast.reduce(
+          (sum, value, index) => sum + value * fullFit.beta[index],
+          0
+        );
+        let se: number | null = null;
+        if (mse !== null && mse >= 0) {
+          const transformed = multiplyMatrixVector(fullFit.xtxInverse, contrast);
+          const varianceMultiplier = contrast.reduce(
+            (sum, value, index) => sum + value * transformed[index],
+            0
+          );
+          if (varianceMultiplier >= -1e-10) {
+            se = Math.sqrt(Math.max(0, mse * Math.max(0, varianceMultiplier)));
+          }
+        }
+        const t =
+          se === null
+            ? null
+            : se === 0
+              ? difference === 0 ? 0 : Number.POSITIVE_INFINITY
+              : difference / se;
+        const pValue =
+          t === null ? null : Number.isFinite(t) ? twoSidedTPValue(t, dfResidual) : 0;
+        factorContrasts.push({
+          factor: target.variable.name,
+          factorLabel: target.variable.label,
+          levelA,
+          levelB,
+          difference,
+          se,
+          t,
+          df: dfResidual,
+          pValue,
+          pAdjusted: null,
+          ci95Low:
+            se !== null && tCritical !== null ? difference - tCritical * se : null,
+          ci95High:
+            se !== null && tCritical !== null ? difference + tCritical * se : null,
+        });
+      }
+    }
+    const adjusted = adjustPValues(
+      factorContrasts.map((contrast) => contrast.pValue),
+      adjustment
+    );
+    factorContrasts.forEach((contrast, index) => {
+      marginalMeanContrasts.push({ ...contrast, pAdjusted: adjusted[index] });
+    });
+  }
+
   return {
     ...base,
     factors: factorMetadata,
@@ -3054,6 +3213,7 @@ export function computeGeneralLinearModelAnova(
     pValue: modelP,
     effects,
     marginalMeans,
+    marginalMeanContrasts,
     issue: null,
   };
 }
@@ -3495,6 +3655,7 @@ export function computeLinearMixedModel(
     estimator?: MixedModelEstimator;
     centering?: MixedModelCentering;
     randomSlope?: AnalysisVariable | null;
+    interactions?: MixedModelInteraction[];
   } = {}
 ): LinearMixedModelResult {
   const estimator: MixedModelEstimator = options.estimator ?? "reml";
@@ -3518,6 +3679,18 @@ export function computeLinearMixedModel(
       : null;
   const randomStructure: MixedModelRandomStructure = validRandomSlope ? "intercept_slope" : "intercept";
 
+  const predictorNameSet = new Set(uniquePredictors.map((variable) => variable.name));
+  const interactionSeen = new Set<string>();
+  const validInteractions = (options.interactions ?? [])
+    .filter((term) => term.left !== term.right && predictorNameSet.has(term.left) && predictorNameSet.has(term.right))
+    .filter((term) => {
+      const key = [term.left, term.right].sort().join("\u0000");
+      if (interactionSeen.has(key)) return false;
+      interactionSeen.add(key);
+      return true;
+    })
+    .slice(0, 12);
+
   const base = {
     estimator,
     centering,
@@ -3529,6 +3702,7 @@ export function computeLinearMixedModel(
     group: group.name,
     groupLabel: group.label,
     predictors: [] as LinearMixedModelResult["predictors"],
+    interactions: [] as LinearMixedModelResult["interactions"],
   };
 
   const blank = (issue: string): LinearMixedModelResult => ({
@@ -3556,6 +3730,7 @@ export function computeLinearMixedModel(
     marginalR2: null,
     conditionalR2: null,
     coefficients: [],
+    fixedEffectCovariance: null,
     structureComparison: null,
     warning: null,
     issue,
@@ -3644,6 +3819,55 @@ export function computeLinearMixedModel(
     levels: encoding.levels,
     referenceLevel: encoding.referenceLevel,
   }));
+
+  const encodingByName = new Map(encodings.map((encoding) => [encoding.variable.name, encoding]));
+  base.interactions = validInteractions.map((term) => {
+    const leftEncoding = encodingByName.get(term.left)!;
+    const rightEncoding = encodingByName.get(term.right)!;
+    return {
+      left: term.left,
+      right: term.right,
+      leftLabel: leftEncoding.variable.label,
+      rightLabel: rightEncoding.variable.label,
+      label: `${leftEncoding.variable.label} × ${rightEncoding.variable.label}`,
+    };
+  });
+
+  type MixedInteractionSpec = {
+    leftEncoding: MixedPredictorEncoding;
+    rightEncoding: MixedPredictorEncoding;
+    leftColumn: { term: string; label: string; level: string | null };
+    rightColumn: { term: string; label: string; level: string | null };
+    term: string;
+    label: string;
+    level: string | null;
+    predictor: string;
+    predictorLabel: string;
+  };
+
+  const interactionSpecs: MixedInteractionSpec[] = [];
+  for (const term of validInteractions) {
+    const leftEncoding = encodingByName.get(term.left);
+    const rightEncoding = encodingByName.get(term.right);
+    if (!leftEncoding || !rightEncoding) continue;
+
+    for (const leftColumn of leftEncoding.columns) {
+      for (const rightColumn of rightEncoding.columns) {
+        const levelParts = [leftColumn.level, rightColumn.level].filter((value): value is string => Boolean(value));
+        interactionSpecs.push({
+          leftEncoding,
+          rightEncoding,
+          leftColumn,
+          rightColumn,
+          term: `${leftColumn.term}:${rightColumn.term}`,
+          label: `${leftColumn.label} × ${rightColumn.label}`,
+          level: levelParts.length > 0 ? levelParts.join(" × ") : null,
+          predictor: `${term.left}:${term.right}`,
+          predictorLabel: `${leftEncoding.variable.label} × ${rightEncoding.variable.label}`,
+        });
+      }
+    }
+  }
 
   const emptyResult = (issue: string): LinearMixedModelResult => ({
     ...blank(issue),
@@ -3736,11 +3960,51 @@ export function computeLinearMixedModel(
     }
   }
 
+  for (const interaction of interactionSpecs) {
+    coefficientMetadata.push({
+      term: interaction.term,
+      label: interaction.label,
+      predictor: interaction.predictor,
+      predictorLabel: interaction.predictorLabel,
+      kind: "interaction",
+      level: interaction.level,
+      referenceLevel: null,
+    });
+  }
+
   const centeredNumericValue = (row: MixedPreliminaryRow, variableName: string) => {
     let value = Number(row.predictorValues[variableName]);
     if (centering === "grand") value -= grandMeans.get(variableName) ?? 0;
     else if (centering === "cluster") value -= clusterMeans.get(variableName)?.get(row.groupValue) ?? 0;
     return value;
+  };
+
+  const predictorMetadataWithScale = predictorMetadata.map((metadata) => {
+    if (metadata.kind !== "numeric") return metadata;
+    const rawValues = preliminaryRows
+      .map((row) => Number(row.predictorValues[metadata.name]))
+      .filter((value) => Number.isFinite(value));
+    const modelValues = preliminaryRows
+      .map((row) => centeredNumericValue(row, metadata.name))
+      .filter((value) => Number.isFinite(value));
+    return {
+      ...metadata,
+      rawMean: meanOf(rawValues),
+      rawSd: sampleVariance(rawValues) === null ? null : Math.sqrt(Math.max(0, sampleVariance(rawValues) as number)),
+      modelMean: meanOf(modelValues),
+      modelSd: sampleVariance(modelValues) === null ? null : Math.sqrt(Math.max(0, sampleVariance(modelValues) as number)),
+      modelMin: modelValues.length ? Math.min(...modelValues) : null,
+      modelMax: modelValues.length ? Math.max(...modelValues) : null,
+    };
+  });
+
+  const encodedColumnValue = (
+    row: MixedPreliminaryRow,
+    encoding: MixedPredictorEncoding,
+    column: { term: string; label: string; level: string | null }
+  ) => {
+    if (encoding.kind === "numeric") return centeredNumericValue(row, encoding.variable.name);
+    return String(row.predictorValues[encoding.variable.name]) === column.level ? 1 : 0;
   };
 
   const design: number[][] = [];
@@ -3757,6 +4021,12 @@ export function computeLinearMixedModel(
         const value = String(row.predictorValues[encoding.variable.name]);
         for (const column of encoding.columns) x.push(value === column.level ? 1 : 0);
       }
+    }
+    for (const interaction of interactionSpecs) {
+      x.push(
+        encodedColumnValue(row, interaction.leftEncoding, interaction.leftColumn) *
+        encodedColumnValue(row, interaction.rightEncoding, interaction.rightColumn)
+      );
     }
     design.push(x);
     y.push(row.y);
@@ -4087,6 +4357,10 @@ export function computeLinearMixedModel(
     };
   });
 
+  const fixedEffectCovariance = bestFit.xtAinvXInverse.map((row) =>
+    row.map((value) => value * residualVariance)
+  );
+
   const fixedFitted = design.map((row) =>
     row.reduce((sum, value, index) => sum + value * bestFit.beta[index], 0)
   );
@@ -4176,7 +4450,7 @@ export function computeLinearMixedModel(
 
   return {
     ...base,
-    predictors: predictorMetadata,
+    predictors: predictorMetadataWithScale,
     n,
     groupCount,
     minObservationsPerGroup,
@@ -4200,10 +4474,216 @@ export function computeLinearMixedModel(
     marginalR2,
     conditionalR2,
     coefficients,
+    fixedEffectCovariance,
     structureComparison,
     warning: warnings.length ? warnings.join(" ") : null,
     issue: null,
   };
+}
+
+export type LinearMixedSimpleSlope = {
+  moderatorValue: number;
+  moderatorDisplayValue: number | null;
+  label: string;
+  b: number | null;
+  se: number | null;
+  z: number | null;
+  pValue: number | null;
+  ci95Low: number | null;
+  ci95High: number | null;
+};
+
+export type LinearMixedInteractionPlotPoint = {
+  x: number;
+  xDisplay: number | null;
+  y: number;
+};
+
+export type LinearMixedInteractionPlotSeries = {
+  label: string;
+  moderatorValue: number;
+  moderatorDisplayValue: number | null;
+  points: LinearMixedInteractionPlotPoint[];
+};
+
+export type LinearMixedInteractionProbe = {
+  available: boolean;
+  reason: string | null;
+  focal: string;
+  focalLabel: string;
+  moderator: string;
+  moderatorLabel: string;
+  centering: MixedModelCentering;
+  xAxisNote: string;
+  moderatorNote: string;
+  simpleSlopes: LinearMixedSimpleSlope[];
+  series: LinearMixedInteractionPlotSeries[];
+};
+
+function mixedRawEquivalent(
+  result: LinearMixedModelResult,
+  predictorName: string,
+  modelValue: number
+): number | null {
+  const predictor = result.predictors.find((candidate) => candidate.name === predictorName);
+  if (!predictor || predictor.kind !== "numeric") return null;
+  if (result.centering === "cluster") return null;
+  if (result.centering === "grand") return (predictor.rawMean ?? 0) + modelValue;
+  return modelValue;
+}
+
+export function probeLinearMixedNumericInteraction(
+  result: LinearMixedModelResult,
+  interaction: MixedModelInteraction,
+  options?: { focal?: string }
+): LinearMixedInteractionProbe {
+  const focal = options?.focal === interaction.right ? interaction.right : interaction.left;
+  const moderator = focal === interaction.left ? interaction.right : interaction.left;
+  const focalMeta = result.predictors.find((candidate) => candidate.name === focal);
+  const moderatorMeta = result.predictors.find((candidate) => candidate.name === moderator);
+  const base = {
+    available: false,
+    reason: null as string | null,
+    focal,
+    focalLabel: focalMeta?.label || focal,
+    moderator,
+    moderatorLabel: moderatorMeta?.label || moderator,
+    centering: result.centering,
+    xAxisNote: result.centering === "cluster"
+      ? "X-axis uses within-cluster centred units."
+      : result.centering === "grand"
+        ? "X-axis is plotted on the original scale; the fitted model uses grand-mean centred values."
+        : "X-axis uses the observed predictor scale.",
+    moderatorNote: result.centering === "cluster"
+      ? "Moderator probe values are within-cluster centred mean and ±1 SD."
+      : result.centering === "grand"
+        ? "Moderator probe values are shown on the original scale while the fitted interaction uses grand-mean centred values."
+        : "Moderator probe values are the observed mean and ±1 SD.",
+    simpleSlopes: [] as LinearMixedSimpleSlope[],
+    series: [] as LinearMixedInteractionPlotSeries[],
+  };
+
+  if (result.issue) return { ...base, reason: result.issue };
+  if (!focalMeta || !moderatorMeta || focalMeta.kind !== "numeric" || moderatorMeta.kind !== "numeric") {
+    return { ...base, reason: "Simple slopes V1 is available for numeric × numeric mixed-model interactions." };
+  }
+  if (!result.fixedEffectCovariance || result.fixedEffectCovariance.length !== result.coefficients.length) {
+    return { ...base, reason: "The fixed-effect covariance matrix is unavailable for this fitted model." };
+  }
+
+  const focalIndex = result.coefficients.findIndex((coefficient) => coefficient.term === focal);
+  const moderatorIndex = result.coefficients.findIndex((coefficient) => coefficient.term === moderator);
+  const interactionIndex = result.coefficients.findIndex((coefficient) =>
+    coefficient.kind === "interaction" &&
+    (coefficient.term === `${focal}:${moderator}` || coefficient.term === `${moderator}:${focal}`)
+  );
+  const interceptIndex = result.coefficients.findIndex((coefficient) => coefficient.kind === "intercept");
+  if (focalIndex < 0 || moderatorIndex < 0 || interactionIndex < 0 || interceptIndex < 0) {
+    return { ...base, reason: "The numeric interaction coefficients could not be identified in the fitted model." };
+  }
+
+  const moderatorMean = moderatorMeta.modelMean ?? 0;
+  const moderatorSd = moderatorMeta.modelSd;
+  if (moderatorSd === null || moderatorSd === undefined || !(moderatorSd > 0)) {
+    return { ...base, reason: `${moderatorMeta.label} has insufficient variation for simple-slope probing.` };
+  }
+
+  const moderatorValues = [
+    { label: "Low (−1 SD)", value: moderatorMean - moderatorSd },
+    { label: "Mean", value: moderatorMean },
+    { label: "High (+1 SD)", value: moderatorMean + moderatorSd },
+  ];
+  const betaFocal = result.coefficients[focalIndex].b;
+  const betaInteraction = result.coefficients[interactionIndex].b;
+  if (betaFocal === null || betaInteraction === null) {
+    return { ...base, reason: "The interaction model did not return usable fixed-effect estimates." };
+  }
+  const covariance = result.fixedEffectCovariance;
+  const zCritical = 1.959963984540054;
+
+  const simpleSlopes: LinearMixedSimpleSlope[] = moderatorValues.map(({ label, value }) => {
+    const estimate = betaFocal + value * betaInteraction;
+    const variance =
+      (covariance[focalIndex]?.[focalIndex] ?? Number.NaN) +
+      value * value * (covariance[interactionIndex]?.[interactionIndex] ?? Number.NaN) +
+      2 * value * (covariance[focalIndex]?.[interactionIndex] ?? Number.NaN);
+    const se = Number.isFinite(variance) && variance >= 0 ? Math.sqrt(Math.max(0, variance)) : null;
+    const z = se === null ? null : se === 0 ? (estimate === 0 ? 0 : Math.sign(estimate) * Number.POSITIVE_INFINITY) : estimate / se;
+    const pValue = z === null ? null : Number.isFinite(z) ? twoSidedNormalPValue(z) : 0;
+    return {
+      moderatorValue: value,
+      moderatorDisplayValue: mixedRawEquivalent(result, moderator, value),
+      label,
+      b: estimate,
+      se,
+      z,
+      pValue,
+      ci95Low: se === null ? null : estimate - zCritical * se,
+      ci95High: se === null ? null : estimate + zCritical * se,
+    };
+  });
+
+  const focalMin = focalMeta.modelMin;
+  const focalMax = focalMeta.modelMax;
+  if (focalMin === null || focalMin === undefined || focalMax === null || focalMax === undefined || !(focalMax > focalMin)) {
+    return { ...base, simpleSlopes, reason: `${focalMeta.label} has insufficient range for an interaction plot.` };
+  }
+
+  const baselineValue = (predictorName: string) => {
+    if (predictorName === focal || predictorName === moderator) return null;
+    const predictor = result.predictors.find((candidate) => candidate.name === predictorName);
+    if (!predictor) return 0;
+    if (predictor.kind === "categorical") return 0;
+    return predictor.modelMean ?? 0;
+  };
+
+  const fixedPrediction = (focalValue: number, moderatorValue: number) => {
+    let predicted = result.coefficients[interceptIndex].b ?? 0;
+    const valueByPredictor = new Map<string, number>();
+    for (const predictor of result.predictors) {
+      if (predictor.name === focal) valueByPredictor.set(predictor.name, focalValue);
+      else if (predictor.name === moderator) valueByPredictor.set(predictor.name, moderatorValue);
+      else valueByPredictor.set(predictor.name, baselineValue(predictor.name) ?? 0);
+    }
+
+    result.coefficients.forEach((coefficient, index) => {
+      if (index === interceptIndex || coefficient.b === null) return;
+      if (coefficient.kind === "numeric" && coefficient.predictor) {
+        predicted += coefficient.b * (valueByPredictor.get(coefficient.predictor) ?? 0);
+        return;
+      }
+      if (coefficient.kind === "categorical") {
+        // Predictions hold categorical covariates at their reference level.
+        return;
+      }
+      if (coefficient.kind === "interaction" && coefficient.predictor) {
+        const parts = coefficient.predictor.split(":");
+        if (parts.length !== 2) return;
+        const leftMeta = result.predictors.find((candidate) => candidate.name === parts[0]);
+        const rightMeta = result.predictors.find((candidate) => candidate.name === parts[1]);
+        if (!leftMeta || !rightMeta || leftMeta.kind !== "numeric" || rightMeta.kind !== "numeric") return;
+        predicted += coefficient.b * (valueByPredictor.get(parts[0]) ?? 0) * (valueByPredictor.get(parts[1]) ?? 0);
+      }
+    });
+    return predicted;
+  };
+
+  const pointCount = 31;
+  const series = moderatorValues.map(({ label, value }) => ({
+    label,
+    moderatorValue: value,
+    moderatorDisplayValue: mixedRawEquivalent(result, moderator, value),
+    points: Array.from({ length: pointCount }, (_, index) => {
+      const x = focalMin + ((focalMax - focalMin) * index) / (pointCount - 1);
+      return {
+        x,
+        xDisplay: mixedRawEquivalent(result, focal, x),
+        y: fixedPrediction(x, value),
+      };
+    }),
+  }));
+
+  return { ...base, available: true, reason: null, simpleSlopes, series };
 }
 
 function cronbachAlphaFromMatrix(matrix: number[][]): number | null {
@@ -5842,6 +6322,7 @@ export function computeGeneralizedMixedModel(
     family?: GeneralizedMixedFamily;
     positiveClass?: string | null;
     exposure?: AnalysisVariable | null;
+    interactions?: MixedModelInteraction[];
   }
 ): GeneralizedMixedModelResult {
   const family = options?.family ?? "binomial";
@@ -5856,6 +6337,18 @@ export function computeGeneralizedMixedModel(
     )
     .slice(0, 10);
 
+  const predictorNameSet = new Set(uniquePredictors.map((variable) => variable.name));
+  const interactionSeen = new Set<string>();
+  const validInteractions = (options?.interactions ?? [])
+    .filter((term) => term.left !== term.right && predictorNameSet.has(term.left) && predictorNameSet.has(term.right))
+    .filter((term) => {
+      const key = [term.left, term.right].sort().join("\u0000");
+      if (interactionSeen.has(key)) return false;
+      interactionSeen.add(key);
+      return true;
+    })
+    .slice(0, 12);
+
   const base = {
     family,
     outcome: outcome.name,
@@ -5866,6 +6359,7 @@ export function computeGeneralizedMixedModel(
     exposure: exposure?.name ?? null,
     exposureLabel: exposure?.label ?? null,
     predictors: [] as GeneralizedMixedModelResult["predictors"],
+    interactions: [] as GeneralizedMixedModelResult["interactions"],
   };
 
   const fail = (issue: string): GeneralizedMixedModelResult => ({
@@ -5875,7 +6369,7 @@ export function computeGeneralizedMixedModel(
     quadraturePoints: glmmHermiteNodes.length, logLikelihood: null, nullLogLikelihood: null,
     likelihoodRatioChiSquare: null, dfModel: null, pValue: null, aic: null, bic: null,
     randomInterceptVariance: null, randomInterceptSd: null, latentIcc: null,
-    meanObserved: null, meanPredicted: null, coefficients: [], warning: null, issue,
+    meanObserved: null, meanPredicted: null, coefficients: [], fixedEffectCovariance: null, warning: null, issue,
   });
 
   if (uniquePredictors.length < 1) return fail("Select at least one fixed-effect predictor.");
@@ -5943,6 +6437,54 @@ export function computeGeneralizedMixedModel(
     referenceLevel: encoding.referenceLevel,
   }));
 
+  const encodingByName = new Map(encodings.map((encoding) => [encoding.variable.name, encoding]));
+  base.interactions = validInteractions.map((term) => {
+    const leftEncoding = encodingByName.get(term.left)!;
+    const rightEncoding = encodingByName.get(term.right)!;
+    return {
+      left: term.left,
+      right: term.right,
+      leftLabel: leftEncoding.variable.label,
+      rightLabel: rightEncoding.variable.label,
+      label: `${leftEncoding.variable.label} × ${rightEncoding.variable.label}`,
+    };
+  });
+
+  type GeneralizedInteractionSpec = {
+    leftEncoding: Encoding;
+    rightEncoding: Encoding;
+    leftColumn: { term: string; label: string; level: string | null };
+    rightColumn: { term: string; label: string; level: string | null };
+    term: string;
+    label: string;
+    level: string | null;
+    predictor: string;
+    predictorLabel: string;
+  };
+
+  const interactionSpecs: GeneralizedInteractionSpec[] = [];
+  for (const term of validInteractions) {
+    const leftEncoding = encodingByName.get(term.left);
+    const rightEncoding = encodingByName.get(term.right);
+    if (!leftEncoding || !rightEncoding) continue;
+    for (const leftColumn of leftEncoding.columns) {
+      for (const rightColumn of rightEncoding.columns) {
+        const levelParts = [leftColumn.level, rightColumn.level].filter((value): value is string => Boolean(value));
+        interactionSpecs.push({
+          leftEncoding,
+          rightEncoding,
+          leftColumn,
+          rightColumn,
+          term: `${leftColumn.term}:${rightColumn.term}`,
+          label: `${leftColumn.label} × ${rightColumn.label}`,
+          level: levelParts.length > 0 ? levelParts.join(" × ") : null,
+          predictor: `${term.left}:${term.right}`,
+          predictorLabel: `${leftEncoding.variable.label} × ${rightEncoding.variable.label}`,
+        });
+      }
+    }
+  }
+
   type Obs = { x: number[]; y: number; offset: number };
   const clusterMap = new Map<string, Obs[]>();
   for (const row of candidateRows) {
@@ -5956,6 +6498,21 @@ export function computeGeneralizedMixedModel(
       } else {
         const value = asStableText(row[encoding.variable.name]);
         for (const column of encoding.columns) vector.push(value === column.level ? 1 : 0);
+      }
+    }
+    if (valid) {
+      const encodedColumnValue = (
+        encoding: Encoding,
+        column: { term: string; label: string; level: string | null }
+      ) => {
+        if (encoding.kind === "numeric") return toFiniteNumber(row[encoding.variable.name]) ?? 0;
+        return asStableText(row[encoding.variable.name]) === column.level ? 1 : 0;
+      };
+      for (const interaction of interactionSpecs) {
+        vector.push(
+          encodedColumnValue(interaction.leftEncoding, interaction.leftColumn) *
+          encodedColumnValue(interaction.rightEncoding, interaction.rightColumn)
+        );
       }
     }
     if (!valid) continue;
@@ -6079,6 +6636,17 @@ export function computeGeneralizedMixedModel(
       referenceLevel: encoding.referenceLevel,
     });
   }
+  for (const interaction of interactionSpecs) {
+    columnMetadata.push({
+      term: interaction.term,
+      label: interaction.label,
+      predictor: interaction.predictor,
+      predictorLabel: interaction.predictorLabel,
+      kind: "interaction",
+      level: interaction.level,
+      referenceLevel: null,
+    });
+  }
 
   const covarianceApprox = fitted.inverseHessian;
   const zCritical = 1.959963984540054;
@@ -6134,8 +6702,401 @@ export function computeGeneralizedMixedModel(
     meanObserved,
     meanPredicted,
     coefficients,
+    fixedEffectCovariance: covarianceApprox
+      .slice(0, beta.length)
+      .map((row) => row.slice(0, beta.length)),
     warning: warnings.join(" "),
     issue: null,
+  };
+}
+
+export type GeneralizedMixedInteractionEffect = {
+  label: string;
+  moderatorLabel: string;
+  moderatorValue: number | string | null;
+  moderatorDisplay: string;
+  focalLevel: string | null;
+  referenceLevel: string | null;
+  b: number | null;
+  se: number | null;
+  z: number | null;
+  pValue: number | null;
+  effectRatio: number | null;
+  ci95Low: number | null;
+  ci95High: number | null;
+};
+
+export type GeneralizedMixedInteractionPlotPoint = {
+  x: number | string;
+  xLabel: string;
+  predicted: number;
+};
+
+export type GeneralizedMixedInteractionPlotSeries = {
+  label: string;
+  moderatorValue: number | string | null;
+  points: GeneralizedMixedInteractionPlotPoint[];
+};
+
+export type GeneralizedMixedInteractionProbe = {
+  family: GeneralizedMixedFamily;
+  interaction: MixedModelInteraction;
+  focal: string;
+  focalLabel: string;
+  focalKind: "numeric" | "categorical";
+  moderator: string;
+  moderatorLabel: string;
+  moderatorKind: "numeric" | "categorical";
+  responseScaleLabel: string;
+  effectRatioLabel: "Odds ratio" | "IRR";
+  simpleEffects: GeneralizedMixedInteractionEffect[];
+  plotSeries: GeneralizedMixedInteractionPlotSeries[];
+  plotXKind: "numeric" | "categorical";
+  plotXLabel: string;
+  plotYLabel: string;
+  note: string;
+  reason: string | null;
+};
+
+type GeneralizedMixedProbePredictor = GeneralizedMixedModelResult["predictors"][number];
+
+function generalizedProbeNumericSummary(rows: AnalysisRow[], name: string) {
+  const values = rows
+    .map((row) => toFiniteNumber(row[name]))
+    .filter((value): value is number => value !== null && Number.isFinite(value));
+  if (values.length === 0) {
+    return { mean: null as number | null, sd: null as number | null, min: null as number | null, max: null as number | null };
+  }
+  const mean = meanOf(values);
+  const variance = sampleVariance(values);
+  return {
+    mean,
+    sd: variance === null ? null : Math.sqrt(Math.max(0, variance)),
+    min: Math.min(...values),
+    max: Math.max(...values),
+  };
+}
+
+function generalizedProbeDefaultValues(
+  rows: AnalysisRow[],
+  predictors: GeneralizedMixedProbePredictor[]
+) {
+  const values: Record<string, number | string> = {};
+  for (const predictor of predictors) {
+    if (predictor.kind === "numeric") {
+      const summary = generalizedProbeNumericSummary(rows, predictor.name);
+      values[predictor.name] = summary.mean ?? 0;
+    } else {
+      values[predictor.name] = predictor.referenceLevel ?? predictor.levels[0] ?? "";
+    }
+  }
+  return values;
+}
+
+function generalizedProbeDesignVector(
+  result: GeneralizedMixedModelResult,
+  values: Record<string, number | string>
+) {
+  const vector: number[] = [1];
+
+  const encodingColumns = new Map<string, number[]>();
+  for (const predictor of result.predictors) {
+    if (predictor.kind === "numeric") {
+      const value = typeof values[predictor.name] === "number"
+        ? values[predictor.name] as number
+        : Number(values[predictor.name]);
+      const columns = [Number.isFinite(value) ? value : 0];
+      encodingColumns.set(predictor.name, columns);
+      vector.push(...columns);
+    } else {
+      const value = String(values[predictor.name] ?? predictor.referenceLevel ?? "");
+      const nonReferenceLevels = predictor.levels.filter((level) => level !== predictor.referenceLevel);
+      const columns = nonReferenceLevels.map((level) => value === level ? 1 : 0);
+      encodingColumns.set(predictor.name, columns);
+      vector.push(...columns);
+    }
+  }
+
+  for (const interaction of result.interactions) {
+    const left = encodingColumns.get(interaction.left) ?? [];
+    const right = encodingColumns.get(interaction.right) ?? [];
+    for (const leftValue of left) {
+      for (const rightValue of right) {
+        vector.push(leftValue * rightValue);
+      }
+    }
+  }
+
+  return vector;
+}
+
+function generalizedProbeContrastEstimate(
+  result: GeneralizedMixedModelResult,
+  contrast: number[]
+) {
+  const covariance = result.fixedEffectCovariance;
+  const beta = result.coefficients.map((coefficient) => coefficient.b ?? Number.NaN);
+  if (
+    !covariance ||
+    covariance.length < contrast.length ||
+    beta.length < contrast.length ||
+    beta.some((value) => !Number.isFinite(value))
+  ) {
+    return {
+      b: null as number | null,
+      se: null as number | null,
+      z: null as number | null,
+      pValue: null as number | null,
+      effectRatio: null as number | null,
+      ci95Low: null as number | null,
+      ci95High: null as number | null,
+    };
+  }
+
+  let estimate = 0;
+  for (let i = 0; i < contrast.length; i += 1) estimate += contrast[i] * beta[i];
+
+  let variance = 0;
+  for (let i = 0; i < contrast.length; i += 1) {
+    for (let j = 0; j < contrast.length; j += 1) {
+      variance += contrast[i] * (covariance[i]?.[j] ?? 0) * contrast[j];
+    }
+  }
+
+  const se = Number.isFinite(variance) && variance >= 0 ? Math.sqrt(Math.max(0, variance)) : null;
+  const z = se !== null && se > 0 ? estimate / se : null;
+  const pValue = z === null ? null : 2 * (1 - normalCdf(Math.abs(z)));
+  const zCritical = 1.959963984540054;
+  const low = se === null ? null : estimate - zCritical * se;
+  const high = se === null ? null : estimate + zCritical * se;
+
+  return {
+    b: estimate,
+    se,
+    z,
+    pValue,
+    effectRatio: safeExp(estimate),
+    ci95Low: safeExp(low),
+    ci95High: safeExp(high),
+  };
+}
+
+function generalizedProbeMarginalPrediction(
+  result: GeneralizedMixedModelResult,
+  design: number[]
+) {
+  const beta = result.coefficients.map((coefficient) => coefficient.b ?? Number.NaN);
+  if (beta.length < design.length || beta.some((value) => !Number.isFinite(value))) return null;
+
+  let eta = 0;
+  for (let i = 0; i < design.length; i += 1) eta += design[i] * beta[i];
+
+  const variance = Math.max(0, result.randomInterceptVariance ?? 0);
+  if (result.family === "poisson") {
+    const prediction = Math.exp(Math.max(-30, Math.min(30, eta + variance / 2)));
+    return Number.isFinite(prediction) ? prediction : null;
+  }
+
+  const sigma = Math.sqrt(variance);
+  const sqrt2 = Math.sqrt(2);
+  const probability = glmmHermiteNodes.reduce((sum, node, index) => {
+    const weight = glmmHermiteWeights[index] ?? 0;
+    return sum + weight * logisticSigmoid(eta + sqrt2 * sigma * node);
+  }, 0) / Math.sqrt(Math.PI);
+  return Number.isFinite(probability) ? probability : null;
+}
+
+function generalizedProbeNumericGrid(min: number, max: number, count = 25) {
+  if (!Number.isFinite(min) || !Number.isFinite(max)) return [] as number[];
+  if (Math.abs(max - min) < 1e-12) return [min];
+  return Array.from({ length: count }, (_, index) =>
+    min + (max - min) * (index / Math.max(1, count - 1))
+  );
+}
+
+export function probeGeneralizedMixedInteraction(
+  rows: AnalysisRow[],
+  result: GeneralizedMixedModelResult,
+  interaction: MixedModelInteraction,
+  options?: { focal?: string }
+): GeneralizedMixedInteractionProbe {
+  const focal = options?.focal === interaction.right ? interaction.right : interaction.left;
+  const moderator = focal === interaction.left ? interaction.right : interaction.left;
+  const focalMeta = result.predictors.find((predictor) => predictor.name === focal);
+  const moderatorMeta = result.predictors.find((predictor) => predictor.name === moderator);
+
+  const empty: GeneralizedMixedInteractionProbe = {
+    family: result.family,
+    interaction,
+    focal,
+    focalLabel: focalMeta?.label ?? focal,
+    focalKind: focalMeta?.kind ?? "numeric",
+    moderator,
+    moderatorLabel: moderatorMeta?.label ?? moderator,
+    moderatorKind: moderatorMeta?.kind ?? "numeric",
+    responseScaleLabel: result.family === "binomial"
+      ? `Predicted probability of ${result.positiveClass ?? "event"}`
+      : result.exposure
+        ? "Predicted rate per 1 exposure unit"
+        : "Predicted count",
+    effectRatioLabel: result.family === "binomial" ? "Odds ratio" : "IRR",
+    simpleEffects: [],
+    plotSeries: [],
+    plotXKind: focalMeta?.kind ?? "numeric",
+    plotXLabel: focalMeta?.label ?? focal,
+    plotYLabel: result.family === "binomial"
+      ? `Probability of ${result.positiveClass ?? "event"}`
+      : result.exposure
+        ? "Expected rate"
+        : "Expected count",
+    note: "",
+    reason: null,
+  };
+
+  if (result.issue) return { ...empty, reason: result.issue };
+  if (!focalMeta || !moderatorMeta) {
+    return { ...empty, reason: "The selected interaction variables are not present in the fitted generalized mixed model." };
+  }
+  if (!result.fixedEffectCovariance) {
+    return { ...empty, reason: "The fitted generalized mixed model does not expose a fixed-effect covariance matrix for interaction probing." };
+  }
+
+  const defaults = generalizedProbeDefaultValues(rows, result.predictors);
+  const moderatorConditions: Array<{ label: string; display: string; value: number | string }> = [];
+
+  if (moderatorMeta.kind === "numeric") {
+    const summary = generalizedProbeNumericSummary(rows, moderatorMeta.name);
+    if (summary.mean === null) {
+      return { ...empty, reason: `${moderatorMeta.label} has no usable numeric values for interaction probing.` };
+    }
+    const sd = summary.sd ?? 0;
+    moderatorConditions.push(
+      { label: "Mean − 1 SD", display: `${(summary.mean - sd).toFixed(3)}`, value: summary.mean - sd },
+      { label: "Mean", display: `${summary.mean.toFixed(3)}`, value: summary.mean },
+      { label: "Mean + 1 SD", display: `${(summary.mean + sd).toFixed(3)}`, value: summary.mean + sd },
+    );
+  } else {
+    const levels = moderatorMeta.levels.length > 0
+      ? moderatorMeta.levels
+      : [moderatorMeta.referenceLevel].filter((value): value is string => Boolean(value));
+    for (const level of levels.slice(0, 8)) {
+      moderatorConditions.push({ label: level, display: level, value: level });
+    }
+  }
+
+  const simpleEffects: GeneralizedMixedInteractionEffect[] = [];
+
+  if (focalMeta.kind === "numeric") {
+    const focalSummary = generalizedProbeNumericSummary(rows, focalMeta.name);
+    if (focalSummary.mean === null) {
+      return { ...empty, reason: `${focalMeta.label} has no usable numeric values for interaction probing.` };
+    }
+
+    for (const condition of moderatorConditions) {
+      const baselineValues = { ...defaults, [moderatorMeta.name]: condition.value, [focalMeta.name]: focalSummary.mean };
+      const plusOneValues = { ...baselineValues, [focalMeta.name]: focalSummary.mean + 1 };
+      const baseline = generalizedProbeDesignVector(result, baselineValues);
+      const plusOne = generalizedProbeDesignVector(result, plusOneValues);
+      const contrast = plusOne.map((value, index) => value - (baseline[index] ?? 0));
+      const estimate = generalizedProbeContrastEstimate(result, contrast);
+      simpleEffects.push({
+        label: `Slope of ${focalMeta.label}`,
+        moderatorLabel: condition.label,
+        moderatorValue: condition.value,
+        moderatorDisplay: condition.display,
+        focalLevel: null,
+        referenceLevel: null,
+        ...estimate,
+      });
+    }
+  } else {
+    const focalLevels = focalMeta.levels.length > 0
+      ? focalMeta.levels
+      : [focalMeta.referenceLevel].filter((value): value is string => Boolean(value));
+    const reference = focalMeta.referenceLevel ?? focalLevels[0] ?? null;
+    if (!reference) {
+      return { ...empty, reason: `${focalMeta.label} has no usable categorical reference level.` };
+    }
+
+    for (const condition of moderatorConditions) {
+      for (const level of focalLevels.filter((value) => value !== reference).slice(0, 8)) {
+        const referenceValues = { ...defaults, [moderatorMeta.name]: condition.value, [focalMeta.name]: reference };
+        const levelValues = { ...referenceValues, [focalMeta.name]: level };
+        const referenceDesign = generalizedProbeDesignVector(result, referenceValues);
+        const levelDesign = generalizedProbeDesignVector(result, levelValues);
+        const contrast = levelDesign.map((value, index) => value - (referenceDesign[index] ?? 0));
+        const estimate = generalizedProbeContrastEstimate(result, contrast);
+        simpleEffects.push({
+          label: `${level} vs ${reference}`,
+          moderatorLabel: condition.label,
+          moderatorValue: condition.value,
+          moderatorDisplay: condition.display,
+          focalLevel: level,
+          referenceLevel: reference,
+          ...estimate,
+        });
+      }
+    }
+  }
+
+  const plotSeries: GeneralizedMixedInteractionPlotSeries[] = [];
+  const focalValues: Array<number | string> = focalMeta.kind === "numeric"
+    ? (() => {
+        const summary = generalizedProbeNumericSummary(rows, focalMeta.name);
+        if (summary.min === null || summary.max === null) return [];
+        return generalizedProbeNumericGrid(summary.min, summary.max, 25);
+      })()
+    : focalMeta.levels.slice(0, 10);
+
+  for (const condition of moderatorConditions.slice(0, 8)) {
+    const points: GeneralizedMixedInteractionPlotPoint[] = [];
+    for (const focalValue of focalValues) {
+      const values = {
+        ...defaults,
+        [moderatorMeta.name]: condition.value,
+        [focalMeta.name]: focalValue,
+      };
+      const design = generalizedProbeDesignVector(result, values);
+      const predicted = generalizedProbeMarginalPrediction(result, design);
+      if (predicted === null) continue;
+      points.push({
+        x: focalValue,
+        xLabel: typeof focalValue === "number" ? `${focalValue}` : String(focalValue),
+        predicted,
+      });
+    }
+    if (points.length > 0) {
+      plotSeries.push({
+        label: moderatorMeta.kind === "numeric" ? condition.label : String(condition.value),
+        moderatorValue: condition.value,
+        points,
+      });
+    }
+  }
+
+  const noteParts = [
+    result.family === "binomial"
+      ? "Response-scale predictions marginalize over the fitted random-intercept distribution and are shown as event probabilities."
+      : result.exposure
+        ? "Response-scale predictions marginalize over the fitted random-intercept distribution and use an exposure of 1, so the figure is a rate plot."
+        : "Response-scale predictions marginalize over the fitted random-intercept distribution and are shown as expected counts.",
+    focalMeta.kind === "numeric"
+      ? `Conditional effects are one-unit slopes for ${focalMeta.label} on the ${result.family === "binomial" ? "log-odds" : "log-rate"} scale, exponentiated as ${result.family === "binomial" ? "odds ratios" : "incidence-rate ratios"}.`
+      : `Conditional effects compare each displayed ${focalMeta.label} level with the fitted reference level on the ${result.family === "binomial" ? "log-odds" : "log-rate"} scale.`,
+    moderatorMeta.kind === "numeric"
+      ? `${moderatorMeta.label} is probed at its observed mean and ±1 SD.`
+      : `${moderatorMeta.label} is probed across observed fitted levels.`,
+    "Other numeric predictors are held at their observed means and other categorical predictors at their fitted reference levels.",
+  ];
+
+  return {
+    ...empty,
+    simpleEffects,
+    plotSeries,
+    note: noteParts.join(" "),
+    reason: simpleEffects.length === 0 && plotSeries.length === 0
+      ? "The fitted interaction could not be converted into stable conditional effects or response-scale predictions."
+      : null,
   };
 }
 

@@ -49,14 +49,15 @@ import {
   type AnalysisGuardrailResultSnapshot,
 } from "@/lib/research/analysisGuardrails";
 
-import AnalysisAiAssistant, {
-  type AnalysisAiContext,
-  type AnalysisAiPreparationStep,
-  type AnalysisAiSetupProposal,
-  type AnalysisAiWorkflowProposal,
-  type AnalysisAiStudyRoadmapStage,
-  type AnalysisAiStudyNavigationTarget,
+import type {
+  AnalysisAiContext,
+  AnalysisAiPreparationStep,
+  AnalysisAiSetupProposal,
+  AnalysisAiWorkflowProposal,
+  AnalysisAiStudyRoadmapStage,
+  AnalysisAiStudyNavigationTarget,
 } from "@/components/AnalysisAiAssistant";
+import { publishCopilotContext, deactivateCopilotContext } from "@/lib/research/copilotBridge";
 
 import {
   analysisLevelLabel,
@@ -7085,6 +7086,28 @@ export default function AnalysisLab({
     );
   }
 
+  useEffect(() => {
+    publishCopilotContext({
+      surface: "analysis",
+      label: "Analysis Lab",
+      studyId: selectedStudyId || undefined,
+      studyTitle: studyTitle || undefined,
+      publicContext: {
+        dataset_label: sourceLabel,
+        analysis_context: analysisAiContext,
+        research_roadmap: analysisAiRoadmap,
+        working_rows_total: activeRows.length,
+        note: "Deterministic Analysis Lab state. Statistical values are authoritative only when present in the supplied result context.",
+      },
+      participantContext: {
+        working_rows: analysisAiWorkingRows,
+        working_rows_total: activeRows.length,
+        privacy_note: "Analysis Lab working rows. Included in Copilot requests only when participant-level row access is enabled.",
+      },
+    });
+    return () => deactivateCopilotContext("analysis");
+  }, [activeRows.length, analysisAiContext, analysisAiRoadmap, analysisAiWorkingRows, selectedStudyId, sourceLabel, studyTitle]);
+
   const workspaceGridClass = analysisSidebarCollapsed
     ? variablesSidebarCollapsed
       ? "xl:grid-cols-[54px_54px_minmax(0,1fr)]"
@@ -7093,25 +7116,8 @@ export default function AnalysisLab({
       ? "xl:grid-cols-[220px_54px_minmax(0,1fr)]"
       : "xl:grid-cols-[220px_360px_minmax(0,1fr)]";
 
-  const analysisAiDock = (
-    <AnalysisAiAssistant
-      key="analysis-ai-universal"
-      studyId={selectedStudyId}
-      studyTitle={studyTitle}
-      datasetLabel={sourceLabel}
-      context={analysisAiContext}
-      workingRows={analysisAiWorkingRows}
-      workingRowsTotal={activeRows.length}
-      onApplySetup={applyAnalysisAiSetupProposal}
-      onApplyWorkflow={applyAnalysisAiWorkflowProposal}
-      roadmap={analysisAiRoadmap}
-      onNavigate={navigateFromAnalysisAi}
-    />
-  );
-
   if (workspaceView !== "analyses") {
     return (
-      <>
         <AnalysisDataWorkspace
           view={workspaceView}
           onViewChange={setWorkspaceView}
@@ -7149,13 +7155,10 @@ export default function AnalysisLab({
           isFullscreen={isFullscreen}
           onToggleFullscreen={() => setIsFullscreen((current) => !current)}
         />
-        {analysisAiDock}
-      </>
     );
   }
 
   return (
-    <>
       <div
       className={`overflow-hidden border border-slate-300/70 bg-white transition-all duration-200 ${
         isFullscreen
@@ -13661,7 +13664,5 @@ export default function AnalysisLab({
       </div>
 
       </div>
-      {analysisAiDock}
-    </>
   );
 }

@@ -53,6 +53,7 @@ import {
   X,
 } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
+import { publishCopilotContext, deactivateCopilotContext } from "@/lib/research/copilotBridge";
 
 type FolderRow = {
   id: string;
@@ -532,10 +533,12 @@ function FolderTree({
 
 type ResearchWritingWorkspaceProps = {
   onFocusModeChange?: (focused: boolean) => void;
+  copilotBridge?: boolean;
 };
 
 export default function ResearchWritingWorkspace({
   onFocusModeChange,
+  copilotBridge = false,
 }: ResearchWritingWorkspaceProps) {
   // editorRef always points at the page the researcher most recently focused.
   // pageRefs holds every visible paper page so save/AI/export can reconstruct one
@@ -687,6 +690,35 @@ export default function ResearchWritingWorkspace({
     () => documents.find((document) => document.id === selectedDocumentId) || null,
     [documents, selectedDocumentId]
   );
+
+  useEffect(() => {
+    if (!copilotBridge) return;
+    publishCopilotContext({
+      surface: "thesis",
+      label: "Thesis Builder",
+      publicContext: {
+        selected_document: selectedDocument ? {
+          id: selectedDocument.id,
+          title,
+          document_type: selectedDocument.document_type,
+          format_style: formatStyle,
+          dirty,
+          content_text: contentText.slice(0, 140_000),
+          updated_at: selectedDocument.updated_at,
+        } : null,
+        document_index: documents.slice(0, 60).map((document) => ({
+          id: document.id,
+          title: document.title,
+          document_type: document.document_type,
+          format_style: document.format_style,
+          folder_id: document.folder_id,
+          updated_at: document.updated_at,
+        })),
+        note: "Current Thesis Builder workspace. Unsaved current-document text is included in this browser context and is sent only when Thesis permission is enabled in Unified Copilot.",
+      },
+    });
+    return () => deactivateCopilotContext("thesis");
+  }, [copilotBridge, contentText, dirty, documents, formatStyle, selectedDocument, title]);
 
   useEffect(() => {
     formattingSelectionRef.current = null;
@@ -2127,7 +2159,6 @@ export default function ResearchWritingWorkspace({
         document_id: selectedDocument.id,
         messages: nextMessages,
         document_title: title,
-        allow_document_access: chatUseDocument,
         document_text: chatUseDocument ? combinedEditorText() : undefined,
         format_style: formatStyle,
       });
@@ -2149,8 +2180,6 @@ export default function ResearchWritingWorkspace({
         action: "restructure",
         document_id: selectedDocument.id,
         document_title: title,
-        // Restructure is an explicit, consented document operation.
-        allow_document_access: true,
         document_text: combinedEditorText(),
         format_style: targetFormat,
       });
@@ -2371,7 +2400,7 @@ export default function ResearchWritingWorkspace({
                   >
                     {fullScreenMode ? <Minimize2 className="h-4 w-4" /> : <Maximize2 className="h-4 w-4" />}
                   </button>
-                  {chatUseDocument && <span className="rounded-full border border-cyan-200 bg-cyan-50 px-2.5 py-1.5 text-[9px] font-semibold text-cyan-900">AI paper access on</span>}
+                  {!copilotBridge && chatUseDocument && <span className="rounded-full border border-cyan-200 bg-cyan-50 px-2.5 py-1.5 text-[9px] font-semibold text-cyan-900">AI paper access on</span>}
                   <button type="button" onClick={() => void saveDocument()} disabled={saving} className="flex items-center gap-1.5 rounded-lg bg-slate-950 px-3 py-2 text-[10px] font-semibold text-white disabled:opacity-50"><Save className="h-3.5 w-3.5" /> {saving ? "Saving…" : dirty ? "Save" : "Saved"}</button>
                   <button type="button" onClick={() => void deleteDocument(selectedDocument)} title="Delete document" className="rounded-lg border border-red-100 bg-white p-2 text-red-500"><Trash2 className="h-4 w-4" /></button>
                 </div>
@@ -2985,7 +3014,7 @@ export default function ResearchWritingWorkspace({
         </div>
       )}
 
-      {aiToast && <div className="fixed right-5 top-5 z-[80] max-w-sm rounded-2xl border border-cyan-200 bg-white px-4 py-3 text-xs leading-5 text-cyan-950 shadow-xl"><div className="flex gap-2"><Sparkles className="mt-0.5 h-4 w-4 shrink-0 text-cyan-700" /><span>{aiToast}</span></div></div>}
+      {!copilotBridge && aiToast && <div className="fixed right-5 top-5 z-[80] max-w-sm rounded-2xl border border-cyan-200 bg-white px-4 py-3 text-xs leading-5 text-cyan-950 shadow-xl"><div className="flex gap-2"><Sparkles className="mt-0.5 h-4 w-4 shrink-0 text-cyan-700" /><span>{aiToast}</span></div></div>}
 
       {(navigatorCollapsed || fullScreenMode) && selectedDocument && (
         <div className="fixed bottom-6 left-1/2 z-50 flex -translate-x-1/2 items-center gap-1 rounded-full border border-slate-700/70 bg-slate-950/95 p-1.5 text-white shadow-[0_18px_45px_rgba(15,23,42,0.28)] backdrop-blur-xl">
@@ -3020,11 +3049,11 @@ export default function ResearchWritingWorkspace({
         </div>
       )}
 
-      {selectedDocument && !aiOpen && (
+      {!copilotBridge && selectedDocument && !aiOpen && (
         <button type="button" onClick={() => { setAiOpen(true); setAiMinimized(false); }} className="fixed bottom-6 right-6 z-40 flex items-center gap-2 rounded-full bg-slate-950 px-4 py-3 text-xs font-semibold text-white shadow-[0_16px_45px_rgba(15,23,42,0.28)]"><Sparkles className="h-4 w-4 text-cyan-300" /> Writing AI{chatUseDocument ? " · Paper access on" : ""}</button>
       )}
 
-      {selectedDocument && aiOpen && (
+      {!copilotBridge && selectedDocument && aiOpen && (
         <div className={`fixed bottom-5 right-5 z-50 overflow-hidden rounded-[24px] border border-slate-200 bg-white shadow-2xl transition-all ${aiMinimized ? "h-14 w-56" : "h-[620px] w-[390px] max-w-[calc(100vw-40px)]"}`}>
           <div className="flex h-14 items-center justify-between border-b border-slate-200 bg-slate-950 px-4 text-white">
             <div className="flex items-center gap-2"><Sparkles className="h-4 w-4 text-cyan-300" /><div><p className="text-xs font-semibold">PsyLattice Writing AI</p>{!aiMinimized && <p className={`text-[9px] ${chatUseDocument ? "text-cyan-300" : "text-slate-400"}`}>Document access {chatUseDocument ? "on" : "off"}</p>}</div></div>

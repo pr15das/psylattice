@@ -67,7 +67,7 @@ export default function ResearchExplorerAiDock({ studyId, studyTitle }: Props) {
             <ResearchAiAssistant
               studyId={studyId}
               studyTitle={studyTitle}
-              variant="dock"
+              bridgeOnly
             />
           </div>
         </aside>

@@ -25,7 +25,8 @@ import PsyLatticeLogo from "@/components/PsyLatticeLogo";
 import AccountSwitcher from "@/components/AccountSwitcher";
 import SidebarAccountCard from "@/components/SidebarAccountCard";
 import FollowupManager from "@/components/PlanAwareFollowupManager";
-import ResearchExplorerAiDock from "@/components/ResearchExplorerAiDock";
+import ResearchAiAssistant from "@/components/ResearchAiAssistant";
+import PsyLatticeCopilot from "@/components/PsyLatticeCopilot";
 import ResearchWritingWorkspace from "@/components/ResearchWritingWorkspace";
 import ResearchStudyAssociations from "@/components/ResearchStudyAssociations";
 import AnalysisLab from "@/components/AnalysisLab";
@@ -49,7 +50,7 @@ import {
   type AmbulatoryScheduleDraft,
   type AmbulatoryQuestionnaireOption,
 } from "@/components/AmbulatoryProtocolBuilder";
-import { AiBudgetIndicator, AiModelSwitcher, CurrentPlanBadge, PlansAndBilling } from "@/components/AiProductUi";
+import { AiBudgetIndicator, CurrentPlanBadge, PlansAndBilling } from "@/components/AiProductUi";
 
 type Screen =
   | "dashboard"
@@ -21437,9 +21438,10 @@ function DataExplorer({ changeScreen }: { changeScreen: (screen: Screen) => void
       />
 
       {selectedStudy && (
-        <ResearchExplorerAiDock
+        <ResearchAiAssistant
           studyId={selectedStudy.id}
           studyTitle={selectedStudy.title}
+          bridgeOnly
         />
       )}
 
@@ -21813,7 +21815,6 @@ function AnalysisLabWorkspace({ changeScreen }: { changeScreen: (screen: Screen)
         </div>
       )}
 
-      <div className="mb-3 flex justify-end"><AiModelSwitcher /></div>
       <AnalysisLab
         rows={rows}
         codebook={codebook}
@@ -23965,6 +23966,7 @@ export default function ResearcherWorkspace() {
         return (
           <ResearchWritingWorkspace
             onFocusModeChange={setThesisFocusMode}
+            copilotBridge
           />
         );
 
@@ -24205,7 +24207,6 @@ export default function ResearcherWorkspace() {
 
           <div className="hidden items-center gap-3 sm:flex">
             <AiBudgetIndicator />
-            <AiModelSwitcher />
             <CurrentPlanBadge />
 
             <AccountSwitcher currentWorkspace="researcher" />
@@ -24390,6 +24391,16 @@ export default function ResearcherWorkspace() {
           </div>
         </section>
       </div>
+
+      <PsyLatticeCopilot
+        currentScreen={screen}
+        preferredStudyId={editingStudyId}
+        onNavigate={(target) => {
+          if (navigation.some((item) => item.id === target)) {
+            setScreen(target as Screen);
+          }
+        }}
+      />
     </main>
   );
 }

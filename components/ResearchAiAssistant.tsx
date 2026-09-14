@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { BrainCircuit, Sparkles, ShieldCheck, RefreshCw } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
+import { publishCopilotContext, deactivateCopilotContext } from "@/lib/research/copilotBridge";
 import {
   buildCognitiveAttachmentAnalysis,
   compareConditions,
@@ -12,7 +13,7 @@ import {
 type Props = {
   studyId: string;
   studyTitle: string;
-  variant?: "page" | "dock";
+  bridgeOnly?: boolean;
 };
 
 type ChatMessage = {
@@ -1205,7 +1206,7 @@ async function loadStudyAiContext(
   };
 }
 
-export default function ResearchAiAssistant({ studyId, studyTitle, variant = "page" }: Props) {
+export default function ResearchAiAssistant({ studyId, studyTitle, bridgeOnly = false }: Props) {
   const [includeTestData, setIncludeTestData] = useState(false);
   const [includeParticipantLevel, setIncludeParticipantLevel] = useState(false);
   const [loaded, setLoaded] = useState<LoadedContext | null>(null);
@@ -1258,6 +1259,32 @@ export default function ResearchAiAssistant({ studyId, studyTitle, variant = "pa
     return fitContext(context);
   }, [loaded, includeParticipantLevel]);
 
+  // In bridge-only mode Data Explorer contributes its verified study context to
+  // the unified Copilot without rendering the legacy Research AI panel. Hooks
+  // must stay inside the component and before any conditional return.
+  useEffect(() => {
+    if (!bridgeOnly || !loaded) return;
+
+    publishCopilotContext({
+      surface: "data_explorer",
+      label: "Data Explorer",
+      studyId,
+      studyTitle,
+      publicContext: fitContext({
+        ...loaded.summary,
+        source_policy: {
+          ...((loaded.summary.source_policy || {}) as Record<string, unknown>),
+          participant_level_included: false,
+        },
+      }),
+      participantContext: loaded.participantLevel,
+    });
+
+    return () => deactivateCopilotContext("data_explorer");
+  }, [bridgeOnly, loaded, studyId, studyTitle]);
+
+  if (bridgeOnly) return null;
+
   async function send(questionOverride?: string) {
     const question = (questionOverride ?? draft).trim();
     if (!question || !effectiveContext || sending) return;
@@ -1302,172 +1329,6 @@ export default function ResearchAiAssistant({ studyId, studyTitle, variant = "pa
     } finally {
       setSending(false);
     }
-  }
-
-  if (variant === "dock") {
-    return (
-      <section className="flex h-full min-h-0 min-w-0 flex-col bg-white">
-        <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-3 py-3">
-          <div className="min-w-0 rounded-2xl border border-cyan-100 bg-cyan-50/55 p-3">
-            <div className="flex min-w-0 items-start gap-2.5">
-              <ShieldCheck className="mt-0.5 h-4 w-4 shrink-0 text-cyan-800" />
-              <div className="min-w-0 flex-1">
-                <p className="text-[10px] font-semibold text-cyan-950">Data boundary</p>
-                <p className="mt-1 break-words text-[9px] leading-4 text-cyan-900/70">
-                  Aggregate verified summaries are shared by default. Direct identifiers are never included. Participant-level derived summaries remain pseudonymous and require explicit permission.
-                </p>
-              </div>
-            </div>
-          </div>
-
-          <div className="mt-3 grid min-w-0 gap-2">
-            <label className="flex min-w-0 cursor-pointer items-start gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-[9px] leading-4 text-slate-600">
-              <input
-                type="checkbox"
-                checked={includeTestData}
-                onChange={(event) => setIncludeTestData(event.target.checked)}
-                className="mt-0.5 shrink-0"
-              />
-              <span className="min-w-0 break-words">Include TEST data</span>
-            </label>
-            <label className="flex min-w-0 cursor-pointer items-start gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-[9px] leading-4 text-slate-600">
-              <input
-                type="checkbox"
-                checked={includeParticipantLevel}
-                onChange={(event) => setIncludeParticipantLevel(event.target.checked)}
-                className="mt-0.5 shrink-0"
-              />
-              <span className="min-w-0 break-words">Include pseudonymous participant-level summaries</span>
-            </label>
-            <button
-              type="button"
-              onClick={() => void refreshContext()}
-              disabled={loadingContext}
-              className="flex min-w-0 items-center justify-center gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-[9px] font-semibold text-slate-600 disabled:opacity-50"
-            >
-              <RefreshCw className={`h-3.5 w-3.5 shrink-0 ${loadingContext ? "animate-spin" : ""}`} />
-              <span className="truncate">Refresh study context</span>
-            </button>
-          </div>
-
-          {loadingContext ? (
-            <div className="mt-3 rounded-2xl bg-slate-50 p-4 text-[10px] text-slate-500">
-              Preparing verified study context…
-            </div>
-          ) : contextError ? (
-            <div className="mt-3 min-w-0 rounded-2xl border border-red-200 bg-red-50 p-3 text-[9px] leading-4 text-red-700">
-              <p className="break-words">{contextError}</p>
-            </div>
-          ) : loaded ? (
-            <div className="mt-3 grid min-w-0 grid-cols-2 gap-2">
-              {[
-                ["Participants", loaded.includedParticipants],
-                ["Questionnaire summaries", loaded.questionnaireSummaries],
-                ["Cognitive administrations", loaded.cognitiveTasks],
-                ["Quality flags", loaded.qualityFlags],
-              ].map(([label, value]) => (
-                <div key={String(label)} className="min-w-0 overflow-hidden rounded-xl border border-slate-200 bg-slate-50/65 p-3">
-                  <p className="break-words text-[7px] font-semibold uppercase leading-3 tracking-[0.08em] text-slate-400">
-                    {label}
-                  </p>
-                  <p className="mt-1 text-[17px] font-semibold text-slate-900">{String(value)}</p>
-                </div>
-              ))}
-            </div>
-          ) : null}
-
-          {loaded && messages.length === 0 && (
-            <div className="mt-4 min-w-0">
-              <p className="text-[9px] font-semibold text-slate-700">Ask about this study</p>
-              <div className="mt-2 grid min-w-0 gap-2">
-                {suggestedPrompts.map((prompt) => (
-                  <button
-                    key={prompt}
-                    type="button"
-                    onClick={() => void send(prompt)}
-                    disabled={sending}
-                    className="min-w-0 rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-left text-[9px] leading-4 text-slate-600 transition hover:border-cyan-200 hover:bg-cyan-50 disabled:opacity-50"
-                  >
-                    <span className="block break-words">{prompt}</span>
-                  </button>
-                ))}
-              </div>
-            </div>
-          )}
-
-          {messages.length > 0 && (
-            <div className="mt-4 min-w-0 space-y-2.5">
-              {messages.map((message, index) => (
-                <div
-                  key={`${message.role}-${index}`}
-                  className={`min-w-0 max-w-[94%] overflow-hidden rounded-2xl px-3 py-2.5 text-[10px] leading-5 ${
-                    message.role === "user"
-                      ? "ml-auto bg-slate-950 text-white"
-                      : "mr-auto border border-slate-200 bg-slate-50 text-slate-700"
-                  }`}
-                >
-                  <div className="whitespace-pre-wrap break-words [overflow-wrap:anywhere]">{message.content}</div>
-                </div>
-              ))}
-              {sending && (
-                <div className="mr-auto inline-flex max-w-[94%] items-center gap-2 rounded-2xl border border-slate-200 bg-white px-3 py-2.5 text-[9px] text-slate-500">
-                  <BrainCircuit className="h-3.5 w-3.5 shrink-0 animate-pulse" />
-                  <span className="break-words">Interpreting verified results…</span>
-                </div>
-              )}
-            </div>
-          )}
-
-          {chatError && (
-            <div className="mt-3 min-w-0 rounded-xl border border-red-200 bg-red-50 px-3 py-2.5 text-[9px] leading-4 text-red-700">
-              <p className="break-words">{chatError}</p>
-            </div>
-          )}
-
-          <p className="mt-4 break-words px-1 text-[8px] leading-4 text-slate-400">
-            Explorer AI interprets the verified study context available here. Numerical conclusions must come from PsyLattice's deterministic analysis engine or an explicitly run statistical module.
-          </p>
-        </div>
-
-        <div className="shrink-0 border-t border-slate-200 bg-white p-3 shadow-[0_-8px_24px_rgba(15,23,42,.04)]">
-          <textarea
-            value={draft}
-            onChange={(event) => setDraft(event.target.value.slice(0, 4000))}
-            onKeyDown={(event) => {
-              if (event.key === "Enter" && !event.shiftKey) {
-                event.preventDefault();
-                void send();
-              }
-            }}
-            rows={3}
-            placeholder="Ask about this study, data quality, interpretation, or what analysis is still missing…"
-            className="max-h-32 min-h-[72px] w-full resize-none rounded-2xl border border-slate-200 bg-white px-3 py-2.5 text-[10px] leading-5 text-slate-700 outline-none focus:border-cyan-300"
-          />
-          <div className="mt-2 flex items-center gap-2">
-            <button
-              type="button"
-              onClick={() => void send()}
-              disabled={!draft.trim() || !effectiveContext || sending}
-              className="min-w-0 flex-1 rounded-xl bg-slate-950 px-4 py-2.5 text-[10px] font-semibold text-white disabled:opacity-40"
-            >
-              {sending ? "Thinking…" : "Ask"}
-            </button>
-            <button
-              type="button"
-              onClick={() => {
-                setMessages([]);
-                setDraft("");
-                setChatError("");
-              }}
-              disabled={sending || messages.length === 0}
-              className="shrink-0 rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-[9px] font-semibold text-slate-500 disabled:opacity-40"
-            >
-              New chat
-            </button>
-          </div>
-        </div>
-      </section>
-    );
   }
 
   return (
@@ -1660,3 +1521,5 @@ export default function ResearchAiAssistant({ studyId, studyTitle, variant = "pa
     </section>
   );
 }
+
+

@@ -286,6 +286,36 @@ export default function SignInPage() {
                 Clinician workspace.
               </p>
             </div>
+            <div className="mt-6 rounded-[26px] border border-slate-800 bg-slate-950 p-5 text-white shadow-[0_16px_34px_rgba(15,23,42,0.18)]">
+              <div className="flex flex-wrap items-start justify-between gap-3">
+                <div>
+                  <p className="text-sm font-semibold">Download Android Beta</p>
+                  <p className="mt-1 text-xs text-slate-300">PsyLattice Mobile Companion</p>
+                </div>
+                <span className="rounded-full border border-cyan-300/30 bg-cyan-300/10 px-3 py-1 text-[10px] font-semibold uppercase tracking-[0.12em] text-cyan-200">
+                  Android / Beta
+                </span>
+              </div>
+              <p className="mt-4 text-xs leading-5 text-slate-300">
+                Android beta build. After downloading the ZIP, extract the APK and install it on your Android device. Direct APK downloads can skip extraction.
+              </p>
+              <div className="mt-4 flex flex-wrap items-center gap-2">
+                <a
+                  href="https://github.com/pr15das/psylattice/releases/download/android-beta/psylattice-android-beta.zip"
+                  download
+                  className="rounded-full bg-cyan-300 px-4 py-2 text-xs font-semibold text-slate-950 transition hover:bg-cyan-200"
+                >
+                  Download Android Beta
+                </a>
+                <a
+                  href="https://github.com/pr15das/psylattice/releases/download/android-beta/psylattice-android-beta.apk"
+                  download
+                  className="rounded-full border border-white/20 px-4 py-2 text-xs font-semibold text-white transition hover:bg-white/10"
+                >
+                  Direct APK
+                </a>
+              </div>
+            </div>
           </div>
         </section>
 

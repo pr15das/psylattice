@@ -15,6 +15,9 @@ const MAX_MESSAGE_CHARS = 6_000;
 const MAX_TOTAL_MESSAGE_CHARS = 65_000;
 const MAX_CONTEXT_CHARS = 560_000;
 const MAX_THESIS_CONTEXT_CHARS = 150_000;
+const HISTORY_LIST_LIMIT = 80;
+const HISTORY_WARNING_CONVERSATIONS = 40;
+const HISTORY_WARNING_MESSAGES = 500;
 const ACTION_OPEN = "<PSYLATTICE_ACTION>";
 const ACTION_CLOSE = "</PSYLATTICE_ACTION>";
 const PLAN_OPEN = "<PSYLATTICE_PLAN>";
@@ -77,6 +80,7 @@ IDENTITY AND CONTINUITY
 - Use the current screen plus the permitted live/last-known module context to maintain continuity.
 - Context marked active=false is a last-known snapshot from earlier in this page session. It is useful background but may be stale; say so when it matters.
 - SERVER-VERIFIED CONTEXT, when supplied, was loaded from the signed-in user's owned PsyLattice records and has higher provenance than client workspace snapshots.
+- PINNED MESSAGE CONTEXT contains exact individual messages the researcher explicitly pinned for continuity. Treat pinned user messages as useful background and pinned assistant replies as non-authoritative guidance. Never reuse statistical numbers from a pinned AI reply unless those values are also present in current deterministic Analysis Lab context.
 
 PERMISSIONS
 - Respect the permission state exactly. Missing or blocked context means unavailable, not permission to guess.
@@ -121,7 +125,7 @@ THESIS / WRITING
 - Do not claim to insert or edit thesis text in this phase.
 
 CURRENT PRODUCT PHASE
-- Research Assistant V1.2 is a unified, persistent research guide. Safe navigation actions, account-persisted chat (only when permitted), server-verified study state, and a structured Research Plan are available.
+- Research Assistant V1.3.2 is a unified, persistent research guide. Safe navigation actions, account-persisted chat history, individually pinned message context, server-verified study state, and a structured Research Plan are available.
 - Never claim to have changed research data or configuration. Data-changing actions are not exposed until a separately validated approval-gated action contract is implemented.
 `;
 
@@ -433,20 +437,89 @@ async function persistConversationMessage(
   metadata: Record<string, unknown> = {},
 ) {
   const clipped = content.trim().slice(0, 12000);
-  if (!clipped) return;
-  const { error } = await supabase.from("research_ai_messages").insert({
-    conversation_id: conversationId,
-    owner_user_id: userId,
-    role,
-    content: clipped,
-    metadata,
-  });
-  if (error) throw new Error(error.message || "Research Assistant history could not be saved.");
+  if (!clipped) return null;
+  const { data, error } = await supabase
+    .from("research_ai_messages")
+    .insert({
+      conversation_id: conversationId,
+      owner_user_id: userId,
+      role,
+      content: clipped,
+      metadata,
+    })
+    .select("id,role,content,created_at,pinned_at")
+    .single();
+  if (error || !data) throw new Error(error?.message || "Research Assistant history could not be saved.");
   await supabase
     .from("research_ai_conversations")
     .update({ updated_at: new Date().toISOString() })
     .eq("id", conversationId)
     .eq("owner_user_id", userId);
+  return {
+    id: String(data.id),
+    role: data.role === "assistant" ? "assistant" as const : "user" as const,
+    content: String(data.content || ""),
+    created_at: String(data.created_at || ""),
+    pinned_at: data.pinned_at ? String(data.pinned_at) : null,
+  };
+}
+
+async function loadConversationBundle(
+  supabase: Awaited<ReturnType<typeof createClient>>,
+  userId: string,
+  conversation: { id: string; study_id?: string | null; title?: string; created_at?: string; updated_at?: string },
+) {
+  const { data: rows, error: messageError } = await supabase
+    .from("research_ai_messages")
+    .select("id,role,content,metadata,created_at,pinned_at")
+    .eq("conversation_id", conversation.id)
+    .eq("owner_user_id", userId)
+    .order("created_at", { ascending: true })
+    .limit(240);
+  if (messageError) throw new Error("Saved Research Assistant messages could not be loaded.");
+
+  let latestPlan: ResearchPlan | null = null;
+  const visibleMessages: Array<{ id: string; role: "user" | "assistant"; content: string; actions?: CopilotAction[]; created_at?: string; pinned_at?: string | null }> = [];
+  for (const row of rows || []) {
+    const metadata = plainObject(row.metadata) ? row.metadata : {};
+    if (metadata.kind === "research_plan_state") {
+      if (metadata.cleared === true) latestPlan = null;
+      else if (metadata.plan) latestPlan = validatePlan(metadata.plan, true);
+      continue;
+    }
+    if (metadata.plan) latestPlan = validatePlan(metadata.plan, true) || latestPlan;
+    if (row.role !== "user" && row.role !== "assistant") continue;
+    const actions = Array.isArray(metadata.actions)
+      ? metadata.actions
+          .map((item) => parsePlanAction(item, true))
+          .filter((item): item is CopilotAction => Boolean(item))
+      : [];
+    visibleMessages.push({
+      id: String(row.id),
+      role: row.role,
+      content: String(row.content || "").slice(0, 12000),
+      created_at: row.created_at ? String(row.created_at) : undefined,
+      pinned_at: row.pinned_at ? String(row.pinned_at) : null,
+      ...(actions.length ? { actions } : {}),
+    });
+  }
+
+  let verifiedState: Record<string, unknown> | null = null;
+  if (conversation.study_id) {
+    try {
+      const studyContext = await loadServerStudyContext(supabase, userId, String(conversation.study_id));
+      verifiedState = plainObject(studyContext?.workspace_state) ? studyContext.workspace_state : null;
+    } catch {
+      verifiedState = null;
+    }
+  }
+
+  return {
+    conversation,
+    messages: visibleMessages.slice(-80),
+    plan: latestPlan,
+    verifiedState,
+  };
 }
 
 export async function GET(request: NextRequest) {
@@ -459,6 +532,128 @@ export async function GET(request: NextRequest) {
     if (userError || !user) return jsonError("Your PsyLattice session has expired. Please sign in again.", 401);
 
     const mode = request.nextUrl.searchParams.get("mode") || "latest";
+
+    if (mode === "list") {
+      const { data: conversations, error: conversationError } = await supabase
+        .from("research_ai_conversations")
+        .select("id,study_id,title,created_at,updated_at")
+        .eq("owner_user_id", user.id)
+        .eq("surface", "research")
+        .is("archived_at", null)
+        .order("updated_at", { ascending: false })
+        .limit(HISTORY_LIST_LIMIT);
+
+      if (conversationError) {
+        return NextResponse.json(
+          { ok: true, conversations: [], pinnedMessages: [], stats: { conversationCount: 0, messageCount: 0, warning: false }, warning: "Saved Research Assistant history is unavailable right now." },
+          { headers: { "Cache-Control": "no-store" } },
+        );
+      }
+
+      const rows = conversations || [];
+      const ids = rows.map((row) => String(row.id));
+      const titleByConversation = new Map(rows.map((row) => [String(row.id), String(row.title || "Research Assistant conversation")]));
+      let totalMessages = 0;
+      const recentByConversation = new Map<string, Array<{ role: string; content: string; created_at: string; pinned_at?: string | null; metadata?: unknown }>>();
+      const pinnedCountByConversation = new Map<string, number>();
+      const pinnedMessages: Array<{ id: string; conversation_id: string; conversation_title: string; role: "user" | "assistant"; content: string; created_at: string; pinned_at: string }> = [];
+
+      if (ids.length) {
+        const { count } = await supabase
+          .from("research_ai_messages")
+          .select("id", { count: "exact", head: true })
+          .eq("owner_user_id", user.id)
+          .in("conversation_id", ids);
+        totalMessages = Number(count || 0);
+
+        const [{ data: recentMessages }, { data: pinnedRows }] = await Promise.all([
+          supabase
+            .from("research_ai_messages")
+            .select("conversation_id,role,content,created_at,metadata")
+            .eq("owner_user_id", user.id)
+            .in("conversation_id", ids)
+            .order("created_at", { ascending: false })
+            .limit(1200),
+          supabase
+            .from("research_ai_messages")
+            .select("id,conversation_id,role,content,created_at,pinned_at,metadata")
+            .eq("owner_user_id", user.id)
+            .in("conversation_id", ids)
+            .not("pinned_at", "is", null)
+            .order("pinned_at", { ascending: false })
+            .limit(500),
+        ]);
+
+        for (const message of recentMessages || []) {
+          const metadata = plainObject(message.metadata) ? message.metadata : {};
+          if (metadata.kind === "research_plan_state") continue;
+          const conversationId = String(message.conversation_id);
+          const list = recentByConversation.get(conversationId) || [];
+          if (list.length < 8) {
+            list.push({
+              role: String(message.role),
+              content: String(message.content || ""),
+              created_at: String(message.created_at || ""),
+              metadata,
+            });
+            recentByConversation.set(conversationId, list);
+          }
+        }
+
+        for (const message of pinnedRows || []) {
+          const metadata = plainObject(message.metadata) ? message.metadata : {};
+          if (metadata.kind === "research_plan_state") continue;
+          if (message.role !== "user" && message.role !== "assistant") continue;
+          const conversationId = String(message.conversation_id);
+          pinnedCountByConversation.set(conversationId, (pinnedCountByConversation.get(conversationId) || 0) + 1);
+          if (pinnedMessages.length < 100) {
+            pinnedMessages.push({
+              id: String(message.id),
+              conversation_id: conversationId,
+              conversation_title: titleByConversation.get(conversationId) || "Research Assistant conversation",
+              role: message.role,
+              content: String(message.content || "").slice(0, 12000),
+              created_at: String(message.created_at || ""),
+              pinned_at: String(message.pinned_at),
+            });
+          }
+        }
+      }
+
+      pinnedMessages.sort((a, b) => new Date(b.pinned_at).getTime() - new Date(a.pinned_at).getTime());
+
+      const enriched = rows.map((conversation) => {
+        const messages = recentByConversation.get(String(conversation.id)) || [];
+        const last = messages[0];
+        return {
+          ...conversation,
+          message_count: messages.length,
+          last_message: last?.content?.slice(0, 420) || "",
+          pinned_message_count: pinnedCountByConversation.get(String(conversation.id)) || 0,
+        };
+      });
+
+      const conversationCount = rows.length;
+      const warning = conversationCount >= HISTORY_WARNING_CONVERSATIONS || totalMessages >= HISTORY_WARNING_MESSAGES;
+      return NextResponse.json(
+        {
+          ok: true,
+          conversations: enriched,
+          pinnedMessages,
+          stats: { conversationCount, messageCount: totalMessages, warning },
+        },
+        { headers: { "Cache-Control": "no-store" } },
+      );
+    }
+
+    if (mode === "conversation") {
+      const id = clipString(request.nextUrl.searchParams.get("id"), 80);
+      const conversation = await verifyConversation(supabase, user.id, id);
+      if (!conversation) return jsonError("This saved Research Assistant chat is no longer available.", 404);
+      const bundle = await loadConversationBundle(supabase, user.id, conversation);
+      return NextResponse.json({ ok: true, ...bundle }, { headers: { "Cache-Control": "no-store" } });
+    }
+
     if (mode !== "latest") return jsonError("Unsupported Research Assistant history request.");
 
     const { data: conversation, error: conversationError } = await supabase
@@ -466,7 +661,6 @@ export async function GET(request: NextRequest) {
       .select("id,study_id,title,created_at,updated_at")
       .eq("owner_user_id", user.id)
       .eq("surface", "research")
-      .like("title", "Research Assistant ·%")
       .is("archived_at", null)
       .order("updated_at", { ascending: false })
       .limit(1)
@@ -485,62 +679,9 @@ export async function GET(request: NextRequest) {
       );
     }
 
-    const { data: rows, error: messageError } = await supabase
-      .from("research_ai_messages")
-      .select("id,role,content,metadata,created_at")
-      .eq("conversation_id", conversation.id)
-      .eq("owner_user_id", user.id)
-      .order("created_at", { ascending: true })
-      .limit(160);
-    if (messageError) {
-      return NextResponse.json(
-        { ok: true, historyAvailable: false, conversation: null, messages: [], plan: null, warning: "Saved Research Assistant messages could not be loaded; this tab will continue using session-only history." },
-        { headers: { "Cache-Control": "no-store" } },
-      );
-    }
-
-    let latestPlan: ResearchPlan | null = null;
-    const visibleMessages: Array<{ role: "user" | "assistant"; content: string; actions?: CopilotAction[] }> = [];
-    for (const row of rows || []) {
-      const metadata = plainObject(row.metadata) ? row.metadata : {};
-      if (metadata.kind === "research_plan_state") {
-        if (metadata.cleared === true) latestPlan = null;
-        else if (metadata.plan) latestPlan = validatePlan(metadata.plan, true);
-        continue;
-      }
-      if (metadata.plan) latestPlan = validatePlan(metadata.plan, true) || latestPlan;
-      if (row.role !== "user" && row.role !== "assistant") continue;
-      const actions = Array.isArray(metadata.actions)
-        ? metadata.actions
-            .map((item) => parsePlanAction(item, true))
-            .filter((item): item is CopilotAction => Boolean(item))
-        : [];
-      visibleMessages.push({
-        role: row.role,
-        content: String(row.content || "").slice(0, 12000),
-        ...(actions.length ? { actions } : {}),
-      });
-    }
-
-    let verifiedState: Record<string, unknown> | null = null;
-    if (conversation.study_id) {
-      try {
-        const studyContext = await loadServerStudyContext(supabase, user.id, String(conversation.study_id));
-        verifiedState = plainObject(studyContext?.workspace_state) ? studyContext.workspace_state : null;
-      } catch {
-        verifiedState = null;
-      }
-    }
-
+    const bundle = await loadConversationBundle(supabase, user.id, conversation);
     return NextResponse.json(
-      {
-        ok: true,
-        historyAvailable: true,
-        conversation,
-        messages: visibleMessages.slice(-80),
-        plan: latestPlan,
-        verifiedState,
-      },
+      { ok: true, historyAvailable: true, ...bundle },
       { headers: { "Cache-Control": "no-store" } },
     );
   } catch (error) {
@@ -565,11 +706,102 @@ export async function POST(request: NextRequest) {
 
     const body = (await request.json()) as Record<string, unknown>;
     const operation = clipString(body.operation, 40);
-    const saveHistory = body.save_history === true;
+    // Unified Research Assistant history is account-persistent by default in V1.3.
+    // Context permissions remain separate; only chat text/assistant replies and plan state are persisted.
+    const saveHistory = true;
     const requestedConversationId = clipString(body.conversation_id, 80);
 
+    if (operation === "pin_message" || operation === "unpin_message") {
+      const messageId = clipString(body.message_id, 80);
+      if (!messageId) return jsonError("Choose a saved Research Assistant message first.");
+      const { data: message, error: messageError } = await supabase
+        .from("research_ai_messages")
+        .select("id,conversation_id")
+        .eq("id", messageId)
+        .eq("owner_user_id", user.id)
+        .maybeSingle();
+      if (messageError || !message) return jsonError("That saved Research Assistant message is no longer available.", messageError ? 500 : 404);
+      const conversation = await verifyConversation(supabase, user.id, String(message.conversation_id));
+      if (!conversation) return jsonError("That saved Research Assistant message is no longer available.", 404);
+
+      const pinnedAt = operation === "pin_message" ? new Date().toISOString() : null;
+      const { error } = await supabase
+        .from("research_ai_messages")
+        .update({ pinned_at: pinnedAt })
+        .eq("id", messageId)
+        .eq("owner_user_id", user.id);
+      if (error) return jsonError("That Research Assistant message could not be updated.", 500);
+      return NextResponse.json({ ok: true, pinned_at: pinnedAt }, { headers: { "Cache-Control": "no-store" } });
+    }
+
+    if (operation === "delete_conversation") {
+      const conversation = await verifyConversation(supabase, user.id, requestedConversationId);
+      if (!conversation) return jsonError("This saved Research Assistant chat is no longer available.", 404);
+      const { count: pinnedCount, error: pinnedCountError } = await supabase
+        .from("research_ai_messages")
+        .select("id", { count: "exact", head: true })
+        .eq("conversation_id", conversation.id)
+        .eq("owner_user_id", user.id)
+        .not("pinned_at", "is", null);
+      if (pinnedCountError) return jsonError("This saved chat could not be checked for pinned messages.", 500);
+      if (Number(pinnedCount || 0) > 0) return jsonError("Unpin the pinned messages in this chat before deleting it.", 409);
+      const { error } = await supabase
+        .from("research_ai_conversations")
+        .delete()
+        .eq("id", conversation.id)
+        .eq("owner_user_id", user.id);
+      if (error) return jsonError("The saved chat could not be deleted.", 500);
+      return NextResponse.json({ ok: true, deleted: true }, { headers: { "Cache-Control": "no-store" } });
+    }
+
+    if (operation === "delete_unpinned_history") {
+      const { data: conversations, error: conversationError } = await supabase
+        .from("research_ai_conversations")
+        .select("id")
+        .eq("owner_user_id", user.id)
+        .eq("surface", "research")
+        .is("archived_at", null);
+      if (conversationError) return jsonError("Chat history could not be deleted.", 500);
+      const ids = (conversations || []).map((row) => String(row.id));
+      if (!ids.length) return NextResponse.json({ ok: true, deletedCount: 0 }, { headers: { "Cache-Control": "no-store" } });
+
+      const { data: pinnedRows, error: pinnedError } = await supabase
+        .from("research_ai_messages")
+        .select("conversation_id")
+        .eq("owner_user_id", user.id)
+        .in("conversation_id", ids)
+        .not("pinned_at", "is", null);
+      if (pinnedError) return jsonError("Chat history could not be checked for pinned messages.", 500);
+      const protectedConversationIds = new Set((pinnedRows || []).map((row) => String(row.conversation_id)));
+      const removableConversationIds = ids.filter((id) => !protectedConversationIds.has(id));
+      const protectedIds = ids.filter((id) => protectedConversationIds.has(id));
+      let deletedCount = 0;
+
+      if (removableConversationIds.length) {
+        const { data: deleted, error } = await supabase
+          .from("research_ai_conversations")
+          .delete()
+          .eq("owner_user_id", user.id)
+          .in("id", removableConversationIds)
+          .select("id");
+        if (error) return jsonError("Chat history could not be deleted.", 500);
+        deletedCount += deleted?.length || 0;
+      }
+
+      if (protectedIds.length) {
+        const { error } = await supabase
+          .from("research_ai_messages")
+          .delete()
+          .eq("owner_user_id", user.id)
+          .in("conversation_id", protectedIds)
+          .is("pinned_at", null);
+        if (error) return jsonError("Unpinned messages could not be deleted from protected chats.", 500);
+      }
+
+      return NextResponse.json({ ok: true, deletedCount, protectedConversationCount: protectedIds.length }, { headers: { "Cache-Control": "no-store" } });
+    }
+
     if (operation === "save_plan_state" || operation === "clear_plan_state") {
-      if (!saveHistory) return NextResponse.json({ ok: true, saved: false }, { headers: { "Cache-Control": "no-store" } });
       const conversation = await verifyConversation(supabase, user.id, requestedConversationId);
       if (!conversation) return jsonError("This saved Research Assistant conversation is no longer available.", 404);
       const plan = operation === "save_plan_state" ? validatePlan(body.plan, true) : null;
@@ -729,6 +961,8 @@ export async function POST(request: NextRequest) {
 
     let conversationId = requestedConversationId;
     let historyWarning = "";
+    let savedUserMessage: Awaited<ReturnType<typeof persistConversationMessage>> = null;
+    let savedAssistantMessage: Awaited<ReturnType<typeof persistConversationMessage>> = null;
     if (saveHistory) {
       try {
         const latestUser = [...messages].reverse().find((message) => message.role === "user");
@@ -740,13 +974,13 @@ export async function POST(request: NextRequest) {
           latestUser?.content || "Research workflow",
         );
         if (latestUser) {
-          await persistConversationMessage(supabase, user.id, conversationId, "user", latestUser.content, {
+          savedUserMessage = await persistConversationMessage(supabase, user.id, conversationId, "user", latestUser.content, {
             kind: "chat",
             unifiedResearchAssistant: true,
             currentScreen,
           });
         }
-        await persistConversationMessage(supabase, user.id, conversationId, "assistant", reply, {
+        savedAssistantMessage = await persistConversationMessage(supabase, user.id, conversationId, "assistant", reply, {
           kind: "chat",
           unifiedResearchAssistant: true,
           currentScreen,
@@ -769,6 +1003,8 @@ export async function POST(request: NextRequest) {
         actions: actionExtracted.actions,
         plan: planExtracted.plan,
         conversationId: conversationId || null,
+        savedUserMessage,
+        savedAssistantMessage,
         historyWarning: historyWarning || null,
         verifiedState: plainObject(serverContext.workspace_state) ? serverContext.workspace_state : null,
         aiRemainingPercent: reservation.remainingPercent,

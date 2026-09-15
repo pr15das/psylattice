@@ -338,15 +338,14 @@ const FORMAT_PRESETS: Record<FormatStyle, FormatPreset> = {
 };
 
 const FONT_FAMILIES = ["Times New Roman", "Arial", "Calibri", "Georgia", "Verdana", "Courier New"];
-const FONT_SIZE_COMMANDS = [
-  { label: "8", value: "1" },
-  { label: "10", value: "2" },
-  { label: "12", value: "3" },
-  { label: "14", value: "4" },
-  { label: "18", value: "5" },
-  { label: "24", value: "6" },
-  { label: "32", value: "7" },
-];
+const FONT_SIZE_COMMANDS = Array.from({ length: 25 }, (_, index) => {
+  const pointSize = index + 8;
+  return { label: String(pointSize), value: String(pointSize), pointSize };
+});
+const LINE_SPACING_OPTIONS = [1, 1.15, 1.5, 2] as const;
+const LINE_SPACING_BLOCK_SELECTOR = 'p,h1,h2,h3,h4,h5,h6,li,blockquote,pre,td,th,div:not(.research-image-frame):not(.research-table-frame):not([data-psylattice-page-break])';
+
+const MANUAL_PAGE_BREAK_SELECTOR = '[data-psylattice-page-break="true"]';
 
 function normalizeSettings(value: StoredEditorSettings | null | undefined, format: FormatStyle): EditorSettings {
   const preset = FORMAT_PRESETS[format].settings;
@@ -402,6 +401,95 @@ function stripHtml(html: string) {
   const node = document.createElement("div");
   node.innerHTML = html;
   return (node.innerText || node.textContent || "").replace(/\u00a0/g, " ").trim();
+}
+
+
+function escapeMarkdownHtml(value: string) {
+  return value
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;")
+    .replaceAll('"', "&quot;")
+    .replaceAll("'", "&#039;");
+}
+
+function markdownInlineToEditorHtml(value: string) {
+  let output = escapeMarkdownHtml(value);
+  output = output.replace(/`([^`\n]+)`/g, "<code>$1</code>");
+  output = output.replace(/\*\*([^*\n]+)\*\*/g, "<strong>$1</strong>");
+  output = output.replace(/__([^_\n]+)__/g, "<strong>$1</strong>");
+  output = output.replace(/\*([^*\n]+)\*/g, "<em>$1</em>");
+  output = output.replace(/_([^_\n]+)_/g, "<em>$1</em>");
+  return output;
+}
+
+function looksLikeMarkdownText(value: string) {
+  return /(^|\n)#{1,6}\s+\S/.test(value)
+    || /\*\*[^*\n]+\*\*/.test(value)
+    || /(^|\n)\s*[-*]\s+\S/.test(value)
+    || /(^|\n)\s*\d+[.)]\s+\S/.test(value)
+    || /(^|\n)>\s?\S/.test(value)
+    || /```/.test(value);
+}
+
+function markdownTextToEditorHtml(value: string) {
+  const lines = value.replace(/\r\n?/g, "\n").split("\n");
+  const blocks: string[] = [];
+  let listMode: "ul" | "ol" | null = null;
+  let listItems: string[] = [];
+  let inCode = false;
+  let codeLines: string[] = [];
+
+  const flushList = () => {
+    if (!listMode || !listItems.length) return;
+    blocks.push(`<${listMode}>${listItems.map((item) => `<li>${item}</li>`).join("")}</${listMode}>`);
+    listMode = null;
+    listItems = [];
+  };
+  const flushCode = () => {
+    if (!codeLines.length) return;
+    blocks.push(`<pre><code>${escapeMarkdownHtml(codeLines.join("\n"))}</code></pre>`);
+    codeLines = [];
+  };
+
+  for (const rawLine of lines) {
+    const line = rawLine.trimEnd();
+    if (line.trim().startsWith("```")) {
+      flushList();
+      if (inCode) flushCode();
+      inCode = !inCode;
+      continue;
+    }
+    if (inCode) { codeLines.push(rawLine); continue; }
+    if (!line.trim()) { flushList(); blocks.push("<p><br></p>"); continue; }
+
+    const heading = line.match(/^(#{1,6})\s+(.+)$/);
+    if (heading) {
+      flushList();
+      const level = Math.min(4, Math.max(1, heading[1].length));
+      blocks.push(`<h${level}>${markdownInlineToEditorHtml(heading[2])}</h${level}>`);
+      continue;
+    }
+    const bullet = line.match(/^[-*•]\s+(.+)$/);
+    if (bullet) {
+      if (listMode !== "ul") { flushList(); listMode = "ul"; }
+      listItems.push(markdownInlineToEditorHtml(bullet[1]));
+      continue;
+    }
+    const numbered = line.match(/^\d+[.)]\s+(.+)$/);
+    if (numbered) {
+      if (listMode !== "ol") { flushList(); listMode = "ol"; }
+      listItems.push(markdownInlineToEditorHtml(numbered[1]));
+      continue;
+    }
+    const quote = line.match(/^>\s?(.*)$/);
+    if (quote) { flushList(); blocks.push(`<blockquote>${markdownInlineToEditorHtml(quote[1])}</blockquote>`); continue; }
+    flushList();
+    blocks.push(`<p>${markdownInlineToEditorHtml(line)}</p>`);
+  }
+  flushList();
+  if (inCode || codeLines.length) flushCode();
+  return blocks.join("");
 }
 
 function relativeDate(value: string) {
@@ -546,6 +634,8 @@ export default function ResearchWritingWorkspace({
   const editorRef = useRef<HTMLDivElement | null>(null);
   const pageRefs = useRef<Record<number, HTMLDivElement | null>>({});
   const paginationTimerRef = useRef<number | null>(null);
+  const documentWideSelectionActiveRef = useRef(false);
+  const documentWideSelectionSnapshotRef = useRef<Array<{ page: HTMLDivElement; contentEditable: string | null }> | null>(null);
   // Selection used by toolbar popovers. Native colour inputs steal focus from a
   // contenteditable element, so we keep an exact cloned Range and restore it
   // before applying text colour/highlight commands.
@@ -553,6 +643,7 @@ export default function ResearchWritingWorkspace({
   const formattingColorInputActiveRef = useRef(false);
   const [paginationRevision, setPaginationRevision] = useState(0);
   const [pageHtml, setPageHtml] = useState<string[]>([""]);
+  const [documentSelectionRects, setDocumentSelectionRects] = useState<Record<number, Array<{ left: number; top: number; width: number; height: number }>>>({});
   const [navigatorCollapsed, setNavigatorCollapsed] = useState(false);
   const [fullScreenMode, setFullScreenMode] = useState(false);
   const [paperZoom, setPaperZoom] = useState(100);
@@ -577,8 +668,12 @@ export default function ResearchWritingWorkspace({
   const [marginMenuOpen, setMarginMenuOpen] = useState(false);
   const [textColorMenuOpen, setTextColorMenuOpen] = useState(false);
   const [highlightColorMenuOpen, setHighlightColorMenuOpen] = useState(false);
+  const [fontFamilyMenuOpen, setFontFamilyMenuOpen] = useState(false);
   const [fontSizeMenuOpen, setFontSizeMenuOpen] = useState(false);
-  const [selectionFontSizeValue, setSelectionFontSizeValue] = useState("3");
+  const [lineSpacingMenuOpen, setLineSpacingMenuOpen] = useState(false);
+  const [selectionFontFamilyValue, setSelectionFontFamilyValue] = useState("Times New Roman");
+  const [selectionFontSizeValue, setSelectionFontSizeValue] = useState("12");
+  const [selectionLineSpacingValue, setSelectionLineSpacingValue] = useState(1);
   const [textColorValue, setTextColorValue] = useState("#0f172a");
   const [highlightColorValue, setHighlightColorValue] = useState("#fff59d");
 
@@ -724,10 +819,16 @@ export default function ResearchWritingWorkspace({
     formattingSelectionRef.current = null;
     setTextColorMenuOpen(false);
     setHighlightColorMenuOpen(false);
+    setFontFamilyMenuOpen(false);
     setFontSizeMenuOpen(false);
+    setLineSpacingMenuOpen(false);
   }, [selectedDocumentId]);
 
   const currentPreset = FORMAT_PRESETS[formatStyle];
+
+  useEffect(() => {
+    setSelectionLineSpacingValue(settings.line_spacing);
+  }, [settings.line_spacing]);
 
   function folderPathLabel(folderId: string | null) {
     if (!folderId || folderId === "root") return "Unfiled";
@@ -892,20 +993,109 @@ export default function ResearchWritingWorkspace({
     }
   }
 
+  function isManualPageBreakNode(node: Node) {
+    return node instanceof HTMLElement && node.dataset.psylatticePageBreak === "true";
+  }
+
+  function isSplittablePageNode(node: Node): node is HTMLElement {
+    if (!(node instanceof HTMLElement)) return false;
+    if (isManualPageBreakNode(node)) return false;
+    if (node.matches("table,hr,img,pre,canvas,svg")) return false;
+    if (node.matches("[data-psylattice-image-id],[data-psylattice-table-id]")) return false;
+    if (node.querySelector("table,[data-psylattice-image-id],[data-psylattice-table-id]")) return false;
+    return /^(P|DIV|H1|H2|H3|H4|H5|H6|BLOCKQUOTE|UL|OL|LI)$/.test(node.tagName);
+  }
+
+  function logicalTextLength(root: Node) {
+    let total = 0;
+    const walker = document.createTreeWalker(
+      root,
+      NodeFilter.SHOW_TEXT | NodeFilter.SHOW_ELEMENT,
+      {
+        acceptNode(node) {
+          if (node.nodeType === Node.TEXT_NODE) return NodeFilter.FILTER_ACCEPT;
+          if (node instanceof HTMLBRElement) return NodeFilter.FILTER_ACCEPT;
+          return NodeFilter.FILTER_SKIP;
+        },
+      }
+    );
+    let node = walker.nextNode();
+    while (node) {
+      total += node.nodeType === Node.TEXT_NODE ? node.textContent?.length || 0 : 1;
+      node = walker.nextNode();
+    }
+    return total;
+  }
+
+  function logicalBoundary(root: Node, requestedOffset: number) {
+    let remaining = Math.max(0, requestedOffset);
+    const walker = document.createTreeWalker(
+      root,
+      NodeFilter.SHOW_TEXT | NodeFilter.SHOW_ELEMENT,
+      {
+        acceptNode(node) {
+          if (node.nodeType === Node.TEXT_NODE) return NodeFilter.FILTER_ACCEPT;
+          if (node instanceof HTMLBRElement) return NodeFilter.FILTER_ACCEPT;
+          return NodeFilter.FILTER_SKIP;
+        },
+      }
+    );
+    let node = walker.nextNode();
+    while (node) {
+      if (node.nodeType === Node.TEXT_NODE) {
+        const length = node.textContent?.length || 0;
+        if (remaining <= length) return { container: node, offset: remaining };
+        remaining -= length;
+      } else if (node instanceof HTMLBRElement) {
+        const parent = node.parentNode || root;
+        const index = Array.prototype.indexOf.call(parent.childNodes, node) as number;
+        if (remaining <= 0) return { container: parent, offset: Math.max(0, index) };
+        if (remaining === 1) return { container: parent, offset: Math.max(0, index + 1) };
+        remaining -= 1;
+      }
+      node = walker.nextNode();
+    }
+    return { container: root, offset: root.childNodes.length };
+  }
+
+  function cloneElementTextRange(element: HTMLElement, startOffset: number, endOffset: number) {
+    const total = logicalTextLength(element);
+    const safeStart = Math.max(0, Math.min(total, startOffset));
+    const safeEnd = Math.max(safeStart, Math.min(total, endOffset));
+    const range = document.createRange();
+    const start = logicalBoundary(element, safeStart);
+    const end = logicalBoundary(element, safeEnd);
+    try {
+      range.setStart(start.container, start.offset);
+      range.setEnd(end.container, end.offset);
+    } catch {
+      return element.cloneNode(true) as HTMLElement;
+    }
+    const shell = element.cloneNode(false) as HTMLElement;
+    shell.appendChild(range.cloneContents());
+    if (safeStart > 0) {
+      shell.style.marginTop = "0";
+      if (shell.tagName === "P") shell.style.textIndent = "0";
+    }
+    return shell;
+  }
+
   function paginateHtml(rawHtml: string, targetSettings: EditorSettings = settings) {
     const safe = sanitizeHtml(rawHtml || "");
     if (typeof document === "undefined" || !safe.trim()) return [safe];
 
     const source = document.createElement("div");
     source.innerHTML = safe;
-    const nodes = Array.from(source.childNodes).map((node) => {
-      if (node.nodeType === Node.TEXT_NODE && node.textContent?.trim()) {
-        const paragraph = document.createElement("p");
-        paragraph.textContent = node.textContent;
-        return paragraph;
-      }
-      return node;
-    }).filter((node) => !(node.nodeType === Node.TEXT_NODE && !node.textContent?.trim()));
+    const nodes = Array.from(source.childNodes)
+      .map((node) => {
+        if (node.nodeType === Node.TEXT_NODE && node.textContent?.trim()) {
+          const paragraph = document.createElement("p");
+          paragraph.textContent = node.textContent;
+          return paragraph;
+        }
+        return node;
+      })
+      .filter((node) => !(node.nodeType === Node.TEXT_NODE && !node.textContent?.trim()));
 
     if (nodes.length === 0) return [""];
 
@@ -930,6 +1120,7 @@ export default function ResearchWritingWorkspace({
     const maxFlowHeight = geometry.contentHeight * targetSettings.columns;
     const pages: string[] = [];
     let hasContent = false;
+    let trailingManualBreak = false;
 
     const finishPage = () => {
       pages.push(measure.innerHTML);
@@ -937,22 +1128,104 @@ export default function ResearchWritingWorkspace({
       hasContent = false;
     };
 
-    for (const sourceNode of nodes) {
-      const clone = sourceNode.cloneNode(true);
+    const fits = () => measure.scrollHeight <= maxFlowHeight + 2;
+
+    const appendUnsplittable = (node: Node) => {
+      const clone = node.cloneNode(true);
       measure.appendChild(clone);
-      const overflowed = measure.scrollHeight > maxFlowHeight + 2;
-      if (overflowed && hasContent) {
+      if (!fits() && hasContent) {
         measure.removeChild(clone);
         finishPage();
         measure.appendChild(clone);
-        hasContent = true;
-      } else {
-        hasContent = true;
       }
+      hasContent = true;
+      trailingManualBreak = false;
+    };
+
+    const appendSplittable = (element: HTMLElement) => {
+      let remainder = element.cloneNode(true) as HTMLElement;
+      let guard = 0;
+
+      while (remainder && guard < 200) {
+        guard += 1;
+        const whole = remainder.cloneNode(true) as HTMLElement;
+        measure.appendChild(whole);
+        if (fits()) {
+          hasContent = true;
+          trailingManualBreak = false;
+          return;
+        }
+        measure.removeChild(whole);
+
+        const totalLength = logicalTextLength(remainder);
+        if (totalLength <= 1) {
+          if (hasContent) finishPage();
+          measure.appendChild(remainder);
+          hasContent = true;
+          trailingManualBreak = false;
+          return;
+        }
+
+        let low = 1;
+        let high = totalLength - 1;
+        let best = 0;
+        while (low <= high) {
+          const middle = Math.floor((low + high) / 2);
+          const prefix = cloneElementTextRange(remainder, 0, middle);
+          measure.appendChild(prefix);
+          const prefixFits = fits();
+          measure.removeChild(prefix);
+          if (prefixFits) {
+            best = middle;
+            low = middle + 1;
+          } else {
+            high = middle - 1;
+          }
+        }
+
+        if (best <= 0) {
+          if (hasContent) {
+            finishPage();
+            continue;
+          }
+          // A single unbreakable token is taller than the writable area. Keep it
+          // intact rather than dropping content; the page itself remains editable.
+          measure.appendChild(remainder);
+          hasContent = true;
+          trailingManualBreak = false;
+          return;
+        }
+
+        const prefix = cloneElementTextRange(remainder, 0, best);
+        const suffix = cloneElementTextRange(remainder, best, totalLength);
+        measure.appendChild(prefix);
+        hasContent = true;
+        finishPage();
+        remainder = suffix;
+      }
+    };
+
+    for (const sourceNode of nodes) {
+      if (isManualPageBreakNode(sourceNode)) {
+        const marker = sourceNode.cloneNode(true);
+        measure.appendChild(marker);
+        // A manual break is authoritative even when the current page is otherwise
+        // empty. That is what lets an explicitly inserted blank page survive save,
+        // reopen, repagination and export.
+        finishPage();
+        trailingManualBreak = true;
+        continue;
+      }
+
+      if (isSplittablePageNode(sourceNode)) appendSplittable(sourceNode);
+      else appendUnsplittable(sourceNode);
     }
-    if (hasContent || pages.length === 0) finishPage();
+
+    if (hasContent) finishPage();
+    else if (trailingManualBreak) pages.push("");
+    if (pages.length === 0) pages.push("");
     measure.remove();
-    return pages.length ? pages : [""];
+    return pages;
   }
 
   function replaceVisiblePages(rawHtml: string, targetSettings: EditorSettings = settings, preserveCaret = false) {
@@ -964,6 +1237,9 @@ export default function ResearchWritingWorkspace({
     window.requestAnimationFrame(() => {
       editorRef.current = pageRefs.current[0] || null;
       if (preserveCaret) restoreCaretOffset(caret);
+      if (documentWideSelectionActiveRef.current) {
+        window.requestAnimationFrame(() => refreshDocumentSelectionRects());
+      }
     });
   }
 
@@ -972,7 +1248,123 @@ export default function ResearchWritingWorkspace({
     paginationTimerRef.current = window.setTimeout(() => {
       paginationTimerRef.current = null;
       replaceVisiblePages(combinedEditorHtml(), settings, true);
-    }, 180);
+    }, 220);
+  }
+
+  function createManualPageBreakNode() {
+    const marker = document.createElement("div");
+    marker.dataset.psylatticePageBreak = "true";
+    marker.className = "research-page-break";
+    marker.setAttribute("contenteditable", "false");
+    marker.setAttribute("aria-hidden", "true");
+    return marker;
+  }
+
+  function focusPageStart(pageIndex: number) {
+    window.requestAnimationFrame(() => {
+      window.requestAnimationFrame(() => {
+        const page = pageRefs.current[Math.max(0, Math.min(pageIndex, pageHtml.length))];
+        if (!page) return;
+        page.focus({ preventScroll: true });
+        editorRef.current = page;
+        const range = document.createRange();
+        range.selectNodeContents(page);
+        range.collapse(true);
+        const selection = window.getSelection();
+        selection?.removeAllRanges();
+        selection?.addRange(range);
+      });
+    });
+  }
+
+  function addManualPageAfter(pageIndex: number) {
+    const page = pageRefs.current[pageIndex];
+    if (!page) return;
+    page.appendChild(createManualPageBreakNode());
+    // If content already follows this auto-paginated page, a second break creates
+    // a genuinely blank manual page instead of merely reproducing the existing
+    // automatic boundary.
+    if (pageIndex < pageHtml.length - 1) page.appendChild(createManualPageBreakNode());
+    const html = combinedEditorHtml();
+    setContentHtml(html);
+    setContentText(combinedEditorText());
+    setDirty(true);
+    replaceVisiblePages(html, settings, false);
+    focusPageStart(pageIndex + 1);
+  }
+
+  function caretAtStartOfPage(page: HTMLElement) {
+    const selection = window.getSelection();
+    if (!selection || selection.rangeCount === 0 || !selection.isCollapsed) return false;
+    const range = selection.getRangeAt(0);
+    if (!page.contains(range.startContainer) && range.startContainer !== page) return false;
+    const before = document.createRange();
+    before.selectNodeContents(page);
+    try {
+      before.setEnd(range.startContainer, range.startOffset);
+    } catch {
+      return false;
+    }
+    return before.toString().length === 0;
+  }
+
+  function focusPageEnd(page: HTMLDivElement) {
+    page.focus({ preventScroll: true });
+    editorRef.current = page;
+    const range = document.createRange();
+    range.selectNodeContents(page);
+    range.collapse(false);
+    const selection = window.getSelection();
+    selection?.removeAllRanges();
+    selection?.addRange(range);
+  }
+
+  function ensureCaretStillVisible(pageIndex: number) {
+    window.requestAnimationFrame(() => {
+      const selection = window.getSelection();
+      const livePage = pageRefs.current[pageIndex];
+      const selectionInsideEditor = selection && selection.rangeCount > 0 && orderedPageElements().some((page) => {
+        const container = selection.getRangeAt(0).startContainer;
+        return page.contains(container) || container === page;
+      });
+      if (!selectionInsideEditor && livePage) focusPageEnd(livePage);
+    });
+  }
+
+  function handleEditorKeyDown(event: React.KeyboardEvent<HTMLDivElement>, pageIndex: number) {
+    if (documentWideSelectionActiveRef.current) documentWideSelectionActiveRef.current = false;
+    if (event.key !== "Backspace") return;
+    const page = pageRefs.current[pageIndex];
+    if (!page || pageIndex <= 0 || !caretAtStartOfPage(page)) return;
+
+    const previousPage = pageRefs.current[pageIndex - 1];
+    if (!previousPage) return;
+    event.preventDefault();
+
+    const manualBreaks = Array.from(previousPage.querySelectorAll<HTMLElement>(MANUAL_PAGE_BREAK_SELECTOR));
+    const lastBreak = manualBreaks.at(-1);
+    if (lastBreak) {
+      lastBreak.remove();
+      const html = combinedEditorHtml();
+      setContentHtml(html);
+      setContentText(combinedEditorText());
+      setDirty(true);
+      replaceVisiblePages(html, settings, true);
+      return;
+    }
+
+    focusPageEnd(previousPage);
+    document.execCommand("delete", false);
+    captureEditor(pageIndex - 1, false);
+    schedulePagination();
+  }
+
+  function handleEditorKeyUp(event: React.KeyboardEvent<HTMLDivElement>, pageIndex: number) {
+    captureFormattingSelection();
+    if (event.key === "Backspace" || event.key === "Delete") {
+      schedulePagination();
+      ensureCaretStillVisible(pageIndex);
+    }
   }
 
   const filteredDocuments = useMemo(() => {
@@ -1044,6 +1436,8 @@ export default function ResearchWritingWorkspace({
     setContentText(selectedDocument.content_text || "");
     setFormatStyle(nextFormat);
     setSettings(nextSettings);
+    setSelectionFontFamilyValue(nextSettings.font_family);
+    setSelectionFontSizeValue(String(nextSettings.font_size_pt));
     setExportPageSize(nextSettings.page_size);
     setSelectedImageId("");
     setSelectedTableCell(null);
@@ -1105,32 +1499,41 @@ export default function ResearchWritingWorkspace({
     }
   }
 
+  function pageForNode(node: Node | null) {
+    if (!node) return null;
+    return orderedPageElements().find((candidate) => candidate === node || candidate.contains(node)) || null;
+  }
+
   function captureFormattingSelection() {
     const selection = window.getSelection();
     if (!selection || selection.rangeCount === 0) return;
     const range = selection.getRangeAt(0);
-    const page = orderedPageElements().find((candidate) =>
-      candidate.contains(range.commonAncestorContainer)
-    );
-    if (!page) return;
-    editorRef.current = page;
+    const startPage = pageForNode(range.startContainer);
+    const endPage = pageForNode(range.endContainer);
+    if (!startPage || !endPage) return;
+    editorRef.current = startPage;
     formattingSelectionRef.current = range.cloneRange();
   }
 
   function restoreFormattingSelection() {
+    // Cmd/Ctrl+A uses a synthetic whole-document selection because Safari cannot
+    // keep one native Range painted across several independent contenteditable
+    // page roots. Never destroy that mode merely because a toolbar control asks
+    // to restore a normal text selection. Whole-document formatting handlers
+    // branch explicitly before calling this function.
+    if (documentWideSelectionActiveRef.current) return false;
     const stored = formattingSelectionRef.current;
     if (!stored) return false;
 
-    const page = orderedPageElements().find((candidate) =>
-      candidate.contains(stored.commonAncestorContainer)
-    );
-    if (!page) {
+    const startPage = pageForNode(stored.startContainer);
+    const endPage = pageForNode(stored.endContainer);
+    if (!startPage || !endPage) {
       formattingSelectionRef.current = null;
       return false;
     }
 
-    page.focus({ preventScroll: true });
-    editorRef.current = page;
+    startPage.focus({ preventScroll: true });
+    editorRef.current = startPage;
     const selection = window.getSelection();
     if (!selection) return false;
     try {
@@ -1143,7 +1546,211 @@ export default function ResearchWritingWorkspace({
     }
   }
 
+  function selectedRangeAfterRestore() {
+    restoreFormattingSelection();
+    const selection = window.getSelection();
+    if (!selection || selection.rangeCount === 0) return null;
+    const range = selection.getRangeAt(0);
+    return pageForNode(range.startContainer) && pageForNode(range.endContainer) ? range : null;
+  }
+
+  function restoreDocumentEditingHosts() {
+    // Kept as a no-op compatibility hook. Document-wide selection no longer
+    // mutates contenteditable state because Safari can collapse the selection
+    // when independent page editing hosts are toggled at runtime.
+    documentWideSelectionSnapshotRef.current = null;
+  }
+
+  function refreshDocumentSelectionRects() {
+    if (!documentWideSelectionActiveRef.current) return;
+    const scale = Math.max(0.01, paperZoom / 100);
+    const next: Record<number, Array<{ left: number; top: number; width: number; height: number }>> = {};
+
+    Object.entries(pageRefs.current).forEach(([indexText, page]) => {
+      if (!page) return;
+      const pageRect = page.getBoundingClientRect();
+      const range = document.createRange();
+      range.selectNodeContents(page);
+      const rects = Array.from(range.getClientRects())
+        .filter((rect) => rect.width > 1 && rect.height > 1)
+        .map((rect) => ({
+          left: Math.max(0, (rect.left - pageRect.left) / scale),
+          top: Math.max(0, (rect.top - pageRect.top) / scale),
+          width: Math.max(1, rect.width / scale),
+          height: Math.max(1, rect.height / scale),
+        }));
+      next[Number(indexText)] = rects;
+    });
+
+    setDocumentSelectionRects(next);
+  }
+
+  function clearDocumentWideSelectionMode({ clearSelection = false }: { clearSelection?: boolean } = {}) {
+    restoreDocumentEditingHosts();
+    documentWideSelectionActiveRef.current = false;
+    setDocumentSelectionRects({});
+    if (clearSelection) {
+      window.getSelection()?.removeAllRanges();
+      formattingSelectionRef.current = null;
+    }
+  }
+
+  function selectEntireWritingDocument() {
+    const pages = orderedPageElements();
+    const first = pages[0];
+    if (!first) return;
+    const selection = window.getSelection();
+    if (!selection) return;
+
+    // Safari does not reliably paint one native Selection across multiple
+    // independent contenteditable page roots. Instead, keep the page editors
+    // fully editable and use a deterministic document-selection mode. We draw
+    // native-looking selection rectangles for every page and intercept copy / 
+    // whole-document formatting actions while this mode is active.
+    documentWideSelectionActiveRef.current = true;
+    documentWideSelectionSnapshotRef.current = null;
+
+    // Keep keyboard focus anchored inside the paper without leaving a misleading
+    // one-page native selection behind.
+    const caret = document.createRange();
+    caret.selectNodeContents(first);
+    caret.collapse(true);
+    selection.removeAllRanges();
+    selection.addRange(caret);
+    editorRef.current = first;
+
+    window.requestAnimationFrame(() => refreshDocumentSelectionRects());
+  }
+
+  useEffect(() => {
+    const interceptDocumentSelectAll = (event: KeyboardEvent) => {
+      if (!(event.metaKey || event.ctrlKey) || event.key.toLowerCase() !== "a") return;
+
+      const target = event.target as Node | null;
+      const pages = orderedPageElements();
+      const insidePaper = Boolean(target && pages.some((page) => page === target || page.contains(target)));
+      if (!insidePaper && !documentWideSelectionActiveRef.current) return;
+
+      event.preventDefault();
+      event.stopPropagation();
+      event.stopImmediatePropagation();
+      selectEntireWritingDocument();
+    };
+
+    const copyDocumentSelection = (event: ClipboardEvent) => {
+      if (!documentWideSelectionActiveRef.current) return;
+      event.preventDefault();
+      event.clipboardData?.setData("text/plain", combinedEditorText());
+      event.clipboardData?.setData("text/html", sanitizeHtml(combinedEditorHtml()));
+    };
+
+    const exitDocumentSelectionOnPointer = (event: PointerEvent) => {
+      if (!documentWideSelectionActiveRef.current) return;
+      const target = event.target as Node | null;
+      const element = target instanceof Element ? target : target?.parentElement;
+      if (element?.closest('[data-preserve-writing-selection="true"]')) return;
+      clearDocumentWideSelectionMode({ clearSelection: true });
+    };
+
+    const refreshOnResize = () => {
+      if (!documentWideSelectionActiveRef.current) return;
+      window.requestAnimationFrame(() => refreshDocumentSelectionRects());
+    };
+
+    document.addEventListener("keydown", interceptDocumentSelectAll, true);
+    document.addEventListener("copy", copyDocumentSelection, true);
+    document.addEventListener("pointerdown", exitDocumentSelectionOnPointer, true);
+    window.addEventListener("resize", refreshOnResize);
+    return () => {
+      document.removeEventListener("keydown", interceptDocumentSelectAll, true);
+      document.removeEventListener("copy", copyDocumentSelection, true);
+      document.removeEventListener("pointerdown", exitDocumentSelectionOnPointer, true);
+      window.removeEventListener("resize", refreshOnResize);
+      restoreDocumentEditingHosts();
+    };
+  });
+
+  function restoreDocumentWideCaretAnchor() {
+    const first = orderedPageElements()[0];
+    const selection = window.getSelection();
+    if (!first || !selection) return;
+    const caret = document.createRange();
+    caret.selectNodeContents(first);
+    caret.collapse(true);
+    selection.removeAllRanges();
+    selection.addRange(caret);
+    editorRef.current = first;
+  }
+
+  function finishDocumentWideFormatting({ repaginate = true }: { repaginate?: boolean } = {}) {
+    documentWideSelectionActiveRef.current = true;
+    restoreDocumentWideCaretAnchor();
+    captureEditor();
+    if (repaginate) schedulePagination();
+    window.setTimeout(() => {
+      if (!documentWideSelectionActiveRef.current) return;
+      restoreDocumentWideCaretAnchor();
+      refreshDocumentSelectionRects();
+    }, repaginate ? 320 : 0);
+  }
+
+  function applyCommandToEntireDocument(command: string, value?: string) {
+    const pages = orderedPageElements();
+    const selection = window.getSelection();
+    if (!pages.length || !selection) return false;
+
+    // Apply the browser formatting command independently to each page editing
+    // host. This avoids Safari's cross-contenteditable Range limitation while
+    // preserving Word-like Cmd/Ctrl+A semantics for the researcher.
+    for (const page of pages) {
+      page.focus({ preventScroll: true });
+      editorRef.current = page;
+      const range = document.createRange();
+      range.selectNodeContents(page);
+      selection.removeAllRanges();
+      selection.addRange(range);
+      document.execCommand("styleWithCSS", false, "true");
+      document.execCommand(command, false, value);
+    }
+
+    finishDocumentWideFormatting();
+    return true;
+  }
+
+  function applyInlineStyleToEntireDocumentText(property: "fontSize" | "fontFamily", value: string) {
+    let changed = false;
+    for (const page of orderedPageElements()) {
+      const walker = document.createTreeWalker(page, NodeFilter.SHOW_TEXT);
+      const textNodes: Text[] = [];
+      let current = walker.nextNode();
+      while (current) {
+        if (current instanceof Text && current.data.length > 0) textNodes.push(current);
+        current = walker.nextNode();
+      }
+
+      for (const textNode of textNodes) {
+        const parent = textNode.parentElement;
+        if (!parent) continue;
+        if (parent.closest(".research-image-resize-handle,.research-table-resize-handle")) continue;
+        if (parent instanceof HTMLSpanElement && parent.childNodes.length === 1) {
+          parent.style[property] = value;
+        } else {
+          const span = document.createElement("span");
+          span.style[property] = value;
+          textNode.replaceWith(span);
+          span.appendChild(textNode);
+        }
+        changed = true;
+      }
+    }
+    return changed;
+  }
+
   function applyPreservedFormatting(command: "foreColor" | "hiliteColor", value: string) {
+    if (documentWideSelectionActiveRef.current) {
+      applyCommandToEntireDocument(command, value);
+      return;
+    }
     restoreFormattingSelection();
     if (!editorRef.current) return;
     document.execCommand("styleWithCSS", false, "true");
@@ -1152,19 +1759,187 @@ export default function ResearchWritingWorkspace({
     captureEditor();
   }
 
-  // Native <select> controls steal focus from contenteditable in Safari. Font
-  // size therefore uses the same saved-Range flow as colour/highlight so the
-  // exact selected text remains selected while the size menu is open.
-  function applyPreservedFontSize(value: string) {
+  function applyInlineStyleToSelectedText(property: "fontSize" | "lineHeight", value: string) {
+    const range = selectedRangeAfterRestore();
+    if (!range || range.collapsed) return false;
+    const segments: Array<{ node: Text; start: number; end: number }> = [];
+
+    for (const page of orderedPageElements()) {
+      let pageIntersects = false;
+      try { pageIntersects = range.intersectsNode(page); } catch { pageIntersects = false; }
+      if (!pageIntersects) continue;
+      const walker = document.createTreeWalker(page, NodeFilter.SHOW_TEXT);
+      let current = walker.nextNode();
+      while (current) {
+        if (current instanceof Text) {
+          let intersects = false;
+          try { intersects = range.intersectsNode(current); } catch { intersects = false; }
+          if (intersects) {
+            const length = current.data.length;
+            const start = current === range.startContainer ? Math.min(length, range.startOffset) : 0;
+            const end = current === range.endContainer ? Math.min(length, range.endOffset) : length;
+            if (end > start) segments.push({ node: current, start, end });
+          }
+        }
+        current = walker.nextNode();
+      }
+    }
+
+    // Work backwards so splitting later text cannot invalidate earlier offsets.
+    for (let index = segments.length - 1; index >= 0; index -= 1) {
+      const segment = segments[index];
+      const subRange = document.createRange();
+      try {
+        subRange.setStart(segment.node, segment.start);
+        subRange.setEnd(segment.node, segment.end);
+        const span = document.createElement("span");
+        span.style[property] = value;
+        subRange.surroundContents(span);
+      } catch {
+        // Keep the rest of the selection intact if one browser segment cannot be wrapped.
+      }
+    }
+    return segments.length > 0;
+  }
+
+  function lineSpacingBlocksForRange(range: Range) {
+    const blocks = new Set<HTMLElement>();
+    for (const page of orderedPageElements()) {
+      let pageIntersects = false;
+      try { pageIntersects = range.intersectsNode(page); } catch { pageIntersects = false; }
+      if (!pageIntersects) continue;
+
+      const candidates = Array.from(page.querySelectorAll<HTMLElement>(LINE_SPACING_BLOCK_SELECTOR));
+      for (const block of candidates) {
+        if (block.matches(MANUAL_PAGE_BREAK_SELECTOR) || block.closest('.research-image-frame,.research-table-frame')) continue;
+        let intersects = false;
+        try { intersects = range.intersectsNode(block); } catch { intersects = false; }
+        if (intersects) blocks.add(block);
+      }
+
+      if (range.collapsed) {
+        const node = range.startContainer instanceof Element ? range.startContainer : range.startContainer.parentElement;
+        const closest = node?.closest<HTMLElement>(LINE_SPACING_BLOCK_SELECTOR);
+        if (closest && page.contains(closest) && !closest.closest('.research-image-frame,.research-table-frame')) blocks.add(closest);
+      }
+    }
+    return Array.from(blocks);
+  }
+
+  function applyPreservedLineSpacing(spacing: number) {
+    const value = LINE_SPACING_OPTIONS.includes(spacing as (typeof LINE_SPACING_OPTIONS)[number]) ? spacing : 1;
+
+    if (documentWideSelectionActiveRef.current) {
+      const blocks = orderedPageElements().flatMap((page) =>
+        Array.from(page.querySelectorAll<HTMLElement>(LINE_SPACING_BLOCK_SELECTOR)).filter((block) =>
+          !block.matches(MANUAL_PAGE_BREAK_SELECTOR) && !block.closest('.research-image-frame,.research-table-frame')
+        )
+      );
+      blocks.forEach((block) => { block.style.lineHeight = String(value); });
+      setSelectionLineSpacingValue(value);
+      captureEditor();
+      schedulePagination();
+      window.setTimeout(() => {
+        if (documentWideSelectionActiveRef.current) refreshDocumentSelectionRects();
+      }, 280);
+      return;
+    }
+
+    const range = selectedRangeAfterRestore();
+    if (range) {
+      const blocks = lineSpacingBlocksForRange(range);
+      if (blocks.length) {
+        blocks.forEach((block) => { block.style.lineHeight = String(value); });
+        setSelectionLineSpacingValue(value);
+        captureFormattingSelection();
+        captureEditor();
+        schedulePagination();
+        return;
+      }
+      if (!range.collapsed && applyInlineStyleToSelectedText("lineHeight", String(value))) {
+        setSelectionLineSpacingValue(value);
+        captureFormattingSelection();
+        captureEditor();
+        schedulePagination();
+        return;
+      }
+    }
+
+    const nextSettings = { ...settings, line_spacing: value };
+    setSettings(nextSettings);
+    setSelectionLineSpacingValue(value);
+    setDirty(true);
+    replaceVisiblePages(combinedEditorHtml(), nextSettings, true);
+  }
+
+  // Exact 8–32pt sizing. When text is selected we apply real CSS point sizes to
+  // just that range. With only a caret, the control changes the document default.
+  function applyPreservedFontSize(pointSize: number) {
+    const size = Math.max(8, Math.min(32, Math.round(pointSize)));
+    if (documentWideSelectionActiveRef.current) {
+      applyInlineStyleToEntireDocumentText("fontSize", `${size}pt`);
+      setSelectionFontSizeValue(String(size));
+      setSettings((current) => ({ ...current, font_size_pt: size }));
+      finishDocumentWideFormatting();
+      return;
+    }
+    const range = selectedRangeAfterRestore();
+    if (range && !range.collapsed) {
+      applyInlineStyleToSelectedText("fontSize", `${size}pt`);
+      setSelectionFontSizeValue(String(size));
+      captureFormattingSelection();
+      captureEditor();
+      schedulePagination();
+      return;
+    }
+
+    const nextSettings = { ...settings, font_size_pt: size };
+    setSettings(nextSettings);
+    setSelectionFontSizeValue(String(size));
+    setDirty(true);
+    replaceVisiblePages(combinedEditorHtml(), nextSettings, true);
+  }
+
+  function applyPreservedFontFamily(fontFamily: string) {
+    if (documentWideSelectionActiveRef.current) {
+      applyInlineStyleToEntireDocumentText("fontFamily", fontFamily);
+      setSelectionFontFamilyValue(fontFamily);
+      setSettings((current) => ({ ...current, font_family: fontFamily }));
+      finishDocumentWideFormatting();
+      return;
+    }
+    const range = selectedRangeAfterRestore();
+    const hasSelectedText = Boolean(range && !range.collapsed);
+    if (!editorRef.current) return;
+    document.execCommand("styleWithCSS", false, "true");
+    document.execCommand("fontName", false, fontFamily);
+    setSelectionFontFamilyValue(fontFamily);
+    if (!hasSelectedText) {
+      setSettings((current) => ({ ...current, font_family: fontFamily }));
+    }
+    captureFormattingSelection();
+    captureEditor();
+    schedulePagination();
+  }
+
+  function applyPreservedCommand(command: string, value?: string) {
+    if (documentWideSelectionActiveRef.current) {
+      applyCommandToEntireDocument(command, value);
+      return;
+    }
     restoreFormattingSelection();
     if (!editorRef.current) return;
     document.execCommand("styleWithCSS", false, "true");
-    document.execCommand("fontSize", false, value);
+    document.execCommand(command, false, value);
     captureFormattingSelection();
     captureEditor();
   }
 
   function execCommand(command: string, value?: string) {
+    if (documentWideSelectionActiveRef.current) {
+      applyCommandToEntireDocument(command, value);
+      return;
+    }
     if (!editorRef.current) return;
     editorRef.current.focus();
     document.execCommand("styleWithCSS", false, "true");
@@ -1511,6 +2286,7 @@ export default function ResearchWritingWorkspace({
   }
 
   function handleEditorPointerDown(event: React.PointerEvent<HTMLDivElement>) {
+    clearDocumentWideSelectionMode();
     const target = event.target as HTMLElement;
     const imageHandle = target.closest<HTMLElement>(".research-image-resize-handle");
     const tableHandle = target.closest<HTMLElement>(".research-table-resize-handle");
@@ -1547,6 +2323,9 @@ export default function ResearchWritingWorkspace({
       document.addEventListener("pointerup", up, { once: true });
       return;
     }
+
+    // Keep browser-native text selection within each page. Cross-page drag selection
+    // is intentionally not synthesized because browser editing hosts handle it inconsistently.
 
     // Drag the image itself to move it. Flowing wrap modes are dropped at the
     // nearest text caret; front/behind modes are freely positioned on a page.
@@ -2407,7 +3186,7 @@ export default function ResearchWritingWorkspace({
               </div>
 
               <div className="border-b border-slate-200 bg-white/97 px-4 py-2.5 backdrop-blur-xl">
-                <div className="flex flex-wrap items-center gap-1.5">
+                <div className="flex flex-wrap items-center gap-1.5" data-preserve-writing-selection="true">
                   <ToolbarButton
                     title="Import existing work"
                     onClick={() => {
@@ -2516,32 +3295,76 @@ export default function ResearchWritingWorkspace({
                     )}
                   </div>
 
-                  <select value={settings.font_family} onChange={(event) => { setSettings((current) => ({ ...current, font_family: event.target.value })); setDirty(true); execCommand("fontName", event.target.value); window.setTimeout(schedulePagination, 0); }} className="h-8 rounded-lg border border-slate-200 bg-white px-2 text-[10px] text-slate-600" title="Font family">
-                    {FONT_FAMILIES.map((font) => <option key={font} value={font}>{font}</option>)}
-                  </select>
+                  <div className="relative">
+                    <ToolbarButton
+                      title="Font family"
+                      active={fontFamilyMenuOpen}
+                      onClick={() => {
+                        if (!documentWideSelectionActiveRef.current) captureFormattingSelection();
+                        setTextColorMenuOpen(false);
+                        setHighlightColorMenuOpen(false);
+                        setFontSizeMenuOpen(false);
+                        setLineSpacingMenuOpen(false);
+                        setFontFamilyMenuOpen((value) => !value);
+                      }}
+                    >
+                      <span className="max-w-[108px] truncate text-[10px] font-medium">{selectionFontFamilyValue || settings.font_family}</span>
+                      <ChevronDown className="ml-1 h-3 w-3 shrink-0" />
+                    </ToolbarButton>
+                    {fontFamilyMenuOpen && (
+                      <div
+                        className="absolute left-0 top-10 z-[80] w-[190px] rounded-2xl border border-slate-200 bg-white p-2 shadow-2xl"
+                        onMouseDown={(event) => event.preventDefault()}
+                      >
+                        <p className="px-2 pb-1.5 text-[9px] font-semibold text-slate-500">Font family</p>
+                        <div className="space-y-0.5">
+                          {FONT_FAMILIES.map((font) => (
+                            <button
+                              key={font}
+                              type="button"
+                              onMouseDown={(event) => {
+                                event.preventDefault();
+                                applyPreservedFontFamily(font);
+                                setFontFamilyMenuOpen(false);
+                              }}
+                              className={`flex w-full items-center justify-between rounded-lg px-2.5 py-2 text-left text-[10px] transition hover:bg-slate-50 ${
+                                selectionFontFamilyValue === font ? "bg-cyan-50 font-semibold text-cyan-900" : "text-slate-600"
+                              }`}
+                              style={{ fontFamily: font }}
+                            >
+                              <span>{font}</span>
+                              {selectionFontFamilyValue === font && <Check className="h-3 w-3" />}
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                  </div>
                   <div className="relative">
                     <ToolbarButton
                       title="Selection font size"
                       active={fontSizeMenuOpen}
                       onClick={() => {
-                        captureFormattingSelection();
+                        if (!documentWideSelectionActiveRef.current) captureFormattingSelection();
                         setTextColorMenuOpen(false);
                         setHighlightColorMenuOpen(false);
+                        setFontFamilyMenuOpen(false);
+                        setLineSpacingMenuOpen(false);
                         setFontSizeMenuOpen((value) => !value);
                       }}
                     >
                       <span className="whitespace-nowrap text-[10px] font-medium">
-                        {FONT_SIZE_COMMANDS.find((size) => size.value === selectionFontSizeValue)?.label || "12"} pt
+                        {selectionFontSizeValue || "12"} pt
                       </span>
                       <ChevronDown className="ml-1 h-3 w-3" />
                     </ToolbarButton>
                     {fontSizeMenuOpen && (
                       <div
-                        className="absolute left-0 top-10 z-[80] w-[118px] rounded-2xl border border-slate-200 bg-white p-2 shadow-2xl"
+                        className="absolute left-0 top-10 z-[80] w-[126px] rounded-2xl border border-slate-200 bg-white p-2 shadow-2xl"
                         onMouseDown={(event) => event.preventDefault()}
                       >
                         <p className="px-2 pb-1.5 text-[9px] font-semibold text-slate-500">Font size</p>
-                        <div className="space-y-0.5">
+                        <div className="max-h-[310px] space-y-0.5 overflow-y-auto pr-1">
                           {FONT_SIZE_COMMANDS.map((size) => (
                             <button
                               key={size.value}
@@ -2549,7 +3372,7 @@ export default function ResearchWritingWorkspace({
                               onMouseDown={(event) => {
                                 event.preventDefault();
                                 setSelectionFontSizeValue(size.value);
-                                applyPreservedFontSize(size.value);
+                                applyPreservedFontSize(size.pointSize);
                                 setFontSizeMenuOpen(false);
                               }}
                               className={`flex w-full items-center justify-between rounded-lg px-2.5 py-2 text-left text-[10px] transition hover:bg-slate-50 ${
@@ -2580,9 +3403,11 @@ export default function ResearchWritingWorkspace({
                       title="Text colour"
                       active={textColorMenuOpen}
                       onClick={() => {
-                        captureFormattingSelection();
+                        if (!documentWideSelectionActiveRef.current) captureFormattingSelection();
                         setHighlightColorMenuOpen(false);
+                        setFontFamilyMenuOpen(false);
                         setFontSizeMenuOpen(false);
+                        setLineSpacingMenuOpen(false);
                         setTextColorMenuOpen((value) => !value);
                       }}
                     >
@@ -2658,9 +3483,11 @@ export default function ResearchWritingWorkspace({
                       title="Highlight"
                       active={highlightColorMenuOpen}
                       onClick={() => {
-                        captureFormattingSelection();
+                        if (!documentWideSelectionActiveRef.current) captureFormattingSelection();
                         setTextColorMenuOpen(false);
+                        setFontFamilyMenuOpen(false);
                         setFontSizeMenuOpen(false);
+                        setLineSpacingMenuOpen(false);
                         setHighlightColorMenuOpen((value) => !value);
                       }}
                     >
@@ -2732,18 +3559,65 @@ export default function ResearchWritingWorkspace({
                   </div>
 
                   <span className="mx-1 h-6 w-px bg-slate-200" />
-                  <ToolbarButton title="Align left" onClick={() => execCommand("justifyLeft")}><AlignLeft className="h-3.5 w-3.5" /></ToolbarButton>
-                  <ToolbarButton title="Center" onClick={() => execCommand("justifyCenter")}><AlignCenter className="h-3.5 w-3.5" /></ToolbarButton>
-                  <ToolbarButton title="Align right" onClick={() => execCommand("justifyRight")}><AlignRight className="h-3.5 w-3.5" /></ToolbarButton>
-                  <ToolbarButton title="Justify" onClick={() => execCommand("justifyFull")}><AlignJustify className="h-3.5 w-3.5" /></ToolbarButton>
+                  <ToolbarButton title="Align left" onClick={() => applyPreservedCommand("justifyLeft")}><AlignLeft className="h-3.5 w-3.5" /></ToolbarButton>
+                  <ToolbarButton title="Center" onClick={() => applyPreservedCommand("justifyCenter")}><AlignCenter className="h-3.5 w-3.5" /></ToolbarButton>
+                  <ToolbarButton title="Align right" onClick={() => applyPreservedCommand("justifyRight")}><AlignRight className="h-3.5 w-3.5" /></ToolbarButton>
+                  <ToolbarButton title="Justify" onClick={() => applyPreservedCommand("justifyFull")}><AlignJustify className="h-3.5 w-3.5" /></ToolbarButton>
                   <ToolbarButton title="Bullets" onClick={() => execCommand("insertUnorderedList")}><ListIcon className="h-3.5 w-3.5" /></ToolbarButton>
                   <ToolbarButton title="Numbered list" onClick={() => execCommand("insertOrderedList")}><ListOrdered className="h-3.5 w-3.5" /></ToolbarButton>
                   <ToolbarButton title="Decrease indent" onClick={() => execCommand("outdent")}><IndentDecrease className="h-3.5 w-3.5" /></ToolbarButton>
                   <ToolbarButton title="Increase indent" onClick={() => execCommand("indent")}><IndentIncrease className="h-3.5 w-3.5" /></ToolbarButton>
 
-                  <select value={String(settings.line_spacing)} onChange={(event) => { setSettings((current) => ({ ...current, line_spacing: Number(event.target.value) })); setDirty(true); window.setTimeout(schedulePagination, 0); }} className="h-8 rounded-lg border border-slate-200 bg-white px-2 text-[10px] text-slate-600" title="Document line spacing">
-                    <option value="1">1.0</option><option value="1.15">1.15</option><option value="1.5">1.5</option><option value="2">2.0</option>
-                  </select>
+                  <div className="relative" data-preserve-writing-selection="true">
+                    <ToolbarButton
+                      title="Line spacing for selected paragraph(s)"
+                      active={lineSpacingMenuOpen}
+                      onClick={() => {
+                        const documentWide = documentWideSelectionActiveRef.current;
+                        if (!documentWide) captureFormattingSelection();
+                        setTextColorMenuOpen(false);
+                        setHighlightColorMenuOpen(false);
+                        setFontFamilyMenuOpen(false);
+                        setFontSizeMenuOpen(false);
+                        setLineSpacingMenuOpen((value) => !value);
+                        if (!documentWide) {
+                          window.requestAnimationFrame(() => restoreFormattingSelection());
+                        }
+                      }}
+                    >
+                      <span className="whitespace-nowrap text-[10px] font-medium">{selectionLineSpacingValue}×</span>
+                      <ChevronDown className="ml-1 h-3 w-3" />
+                    </ToolbarButton>
+                    {lineSpacingMenuOpen && (
+                      <div
+                        className="absolute left-0 top-10 z-[80] w-[132px] rounded-2xl border border-slate-200 bg-white p-2 shadow-2xl"
+                        onMouseDown={(event) => event.preventDefault()}
+                      >
+                        <p className="px-2 pb-1.5 text-[9px] font-semibold text-slate-500">Line spacing</p>
+                        <p className="px-2 pb-2 text-[8px] leading-3.5 text-slate-400">Applies to the selected paragraph(s) without losing your selection.</p>
+                        <div className="space-y-0.5">
+                          {LINE_SPACING_OPTIONS.map((spacing) => (
+                            <button
+                              key={spacing}
+                              type="button"
+                              onMouseDown={(event) => {
+                                event.preventDefault();
+                                setSelectionLineSpacingValue(spacing);
+                                applyPreservedLineSpacing(spacing);
+                                setLineSpacingMenuOpen(false);
+                              }}
+                              className={`flex w-full items-center justify-between rounded-lg px-2.5 py-2 text-left text-[10px] transition hover:bg-slate-50 ${
+                                selectionLineSpacingValue === spacing ? "bg-cyan-50 font-semibold text-cyan-900" : "text-slate-600"
+                              }`}
+                            >
+                              <span>{spacing.toFixed(spacing === 1 ? 1 : spacing === 1.15 ? 2 : 1)}×</span>
+                              {selectionLineSpacingValue === spacing && <Check className="h-3 w-3" />}
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                  </div>
 
                   <span className="mx-1 h-6 w-px bg-slate-200" />
                   <ToolbarButton title="Add link" onClick={createLink}><LinkIcon className="h-3.5 w-3.5" /></ToolbarButton>
@@ -2821,9 +3695,22 @@ export default function ResearchWritingWorkspace({
                 <div className="mx-auto flex w-max flex-col items-center gap-8 pb-16">
                   {pageHtml.map((html, pageIndex) => (
                     <div key={`${selectedDocument.id}-${paginationRevision}-${pageIndex}`} className="group/page">
-                      <div className="mb-2 flex items-center justify-between px-2 text-[10px] font-medium text-slate-400" style={{ width: `${Math.round(geometry.width * zoomScale)}px` }}>
+                      <div className="mb-2 flex select-none items-center justify-between px-2 text-[10px] font-medium text-slate-400" style={{ width: `${Math.round(geometry.width * zoomScale)}px` }}>
                         <span>Page {pageIndex + 1} of {pageHtml.length}</span>
-                        <span>{settings.page_size === "a4" ? "A4" : "Letter"} · {paperZoom}%</span>
+                        <div className="flex items-center gap-2">
+                          <button
+                            type="button"
+                            title="Add a new page after this page"
+                            onMouseDown={(event) => {
+                              event.preventDefault();
+                              addManualPageAfter(pageIndex);
+                            }}
+                            className="flex items-center gap-1 rounded-lg border border-slate-200 bg-white px-2 py-1 text-[9px] font-semibold text-slate-500 shadow-sm transition hover:border-cyan-200 hover:bg-cyan-50 hover:text-cyan-800"
+                          >
+                            <FilePlus2 className="h-3 w-3" /> Page
+                          </button>
+                          <span>{settings.page_size === "a4" ? "A4" : "Letter"} · {paperZoom}%</span>
+                        </div>
                       </div>
                       <div style={zoomedPageFrameStyle}>
                       <div
@@ -2843,20 +3730,41 @@ export default function ResearchWritingWorkspace({
                           suppressContentEditableWarning
                           onFocus={() => { editorRef.current = pageRefs.current[pageIndex] || null; }}
                           onClick={handleEditorClick}
-                          onPointerDown={handleEditorPointerDown}
+                          onPointerDown={(event) => {
+                            clearDocumentWideSelectionMode();
+                            handleEditorPointerDown(event);
+                          }}
                           onMouseUp={captureFormattingSelection}
-                          onKeyUp={captureFormattingSelection}
-                          onInput={() => captureEditor(pageIndex, false)}
+                          onKeyDown={(event) => handleEditorKeyDown(event, pageIndex)}
+                          onKeyUp={(event) => handleEditorKeyUp(event, pageIndex)}
+                          onCopy={(event) => {
+                            if (!documentWideSelectionActiveRef.current) return;
+                            event.preventDefault();
+                            event.clipboardData.setData("text/plain", combinedEditorText());
+                            event.clipboardData.setData("text/html", sanitizeHtml(combinedEditorHtml()));
+                          }}
+                          onInput={(event) => {
+                            captureEditor(pageIndex, false);
+                            const inputType = (event.nativeEvent as InputEvent).inputType || "";
+                            if (inputType.startsWith("delete")) schedulePagination();
+                          }}
                           onBlur={() => {
-                            if (formattingColorInputActiveRef.current) return;
+                            if (formattingColorInputActiveRef.current || documentWideSelectionActiveRef.current) return;
                             captureEditor(pageIndex, true);
                           }}
                           onPaste={(event) => {
+                            clearDocumentWideSelectionMode();
                             editorRef.current = pageRefs.current[pageIndex] || null;
                             const pastedHtml = event.clipboardData.getData("text/html");
-                            if (!pastedHtml) return;
+                            const pastedText = event.clipboardData.getData("text/plain");
+                            const htmlToInsert = pastedHtml
+                              ? sanitizeHtml(pastedHtml)
+                              : looksLikeMarkdownText(pastedText)
+                                ? sanitizeHtml(markdownTextToEditorHtml(pastedText))
+                                : "";
+                            if (!htmlToInsert) return;
 
-                            const safeHtml = sanitizeHtml(pastedHtml);
+                            const safeHtml = htmlToInsert;
                             const isAnalysisTable = safeHtml.includes(
                               'data-psylattice-analysis-table="true"'
                             );
@@ -2886,6 +3794,19 @@ export default function ResearchWritingWorkspace({
                           className="research-paper-editor"
                           style={pageContentStyle}
                         />
+                        {documentWideSelectionActiveRef.current && (documentSelectionRects[pageIndex] || []).map((rect, rectIndex) => (
+                          <span
+                            key={`document-selection-${pageIndex}-${rectIndex}`}
+                            aria-hidden="true"
+                            className="pointer-events-none absolute z-[12] rounded-[1px] bg-blue-300/55 mix-blend-multiply"
+                            style={{
+                              left: `${geometry.left + rect.left}px`,
+                              top: `${geometry.top + rect.top}px`,
+                              width: `${rect.width}px`,
+                              height: `${rect.height}px`,
+                            }}
+                          />
+                        ))}
                         {marginMenuOpen && (
                           <div
                             aria-hidden="true"
@@ -3077,6 +3998,7 @@ export default function ResearchWritingWorkspace({
 
       <style jsx global>{`
         .research-paper-editor { position: relative; }
+        .research-page-break { display: none !important; height: 0 !important; overflow: hidden !important; }
         .research-paper-editor:empty::before { content: attr(data-placeholder); color: #94a3b8; pointer-events: none; }
         .research-image-frame { box-sizing: border-box; border: 1px solid transparent; border-radius: 4px; cursor: grab; touch-action: none; user-select: none; }
         .research-image-frame:hover { border-color: #67e8f9; box-shadow: 0 0 0 2px rgba(103,232,249,.16); }

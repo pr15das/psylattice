@@ -4,22 +4,27 @@ import {
   ArrowRight,
   BrainCircuit,
   Check,
+  Copy,
   ChevronDown,
   Database,
   FileText,
+  History,
   ListChecks,
   Loader2,
   LockKeyhole,
   MessageCircle,
   Navigation,
+  Pin,
+  PinOff,
   RotateCcw,
-  Send,
   ShieldCheck,
   Sparkles,
+  Trash2,
+  TriangleAlert,
   X,
   type LucideIcon,
 } from "lucide-react";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import {
   clearCopilotContexts,
   getCopilotContextSnapshot,
@@ -34,9 +39,39 @@ type CopilotAction = {
 };
 
 type ChatMessage = {
+  id?: string;
   role: "user" | "assistant";
   content: string;
   actions?: CopilotAction[];
+  created_at?: string;
+  pinned_at?: string | null;
+};
+
+type SavedConversation = {
+  id: string;
+  study_id?: string | null;
+  title: string;
+  created_at: string;
+  updated_at: string;
+  message_count: number;
+  last_message?: string;
+  pinned_message_count?: number;
+};
+
+type PinnedMessage = {
+  id: string;
+  conversation_id: string;
+  conversation_title: string;
+  role: "user" | "assistant";
+  content: string;
+  created_at: string;
+  pinned_at: string;
+};
+
+type HistoryStats = {
+  conversationCount: number;
+  messageCount: number;
+  warning: boolean;
 };
 
 type ModelOption = {
@@ -121,6 +156,7 @@ type VerifiedWorkspaceState = {
 const PERMISSION_KEY = "psylattice.copilot.permissions.v2";
 const CHAT_KEY = "psylattice.copilot.chat.session.v1";
 const PLAN_KEY = "psylattice.research-assistant.plan.session.v1";
+const HISTORY_NUDGE_INTERVAL = 12;
 
 const TAB_OPTIONS: Array<{
   value: "chat" | "plan" | "context" | "permissions";
@@ -201,11 +237,6 @@ const ACTION_PERMISSION_OPTIONS: Array<{
     title: "Navigate me between PsyLattice sections",
     detail: "Allows safe Take me there buttons. Navigation never changes research data.",
   },
-  {
-    key: "saveHistory",
-    title: "Save this Research Assistant conversation",
-    detail: "Keeps the same unified chat and Research Plan available after refresh or sign-in. Stored in your own PsyLattice account.",
-  },
 ];
 
 const DEFAULT_PERMISSIONS: Permissions = {
@@ -219,7 +250,7 @@ const DEFAULT_PERMISSIONS: Permissions = {
   participantRows: false,
   directIdentifiers: false,
   navigationActions: true,
-  saveHistory: false,
+  saveHistory: true,
   applyAnalysisSetup: false,
   draftCreation: false,
 };
@@ -228,8 +259,8 @@ function readPermissions(): Permissions {
   if (typeof window === "undefined") return DEFAULT_PERMISSIONS;
   try {
     const stored = window.localStorage.getItem(PERMISSION_KEY);
-    if (!stored) return DEFAULT_PERMISSIONS;
-    return { ...DEFAULT_PERMISSIONS, ...(JSON.parse(stored) as Partial<Permissions>) };
+    if (!stored) return { ...DEFAULT_PERMISSIONS, saveHistory: true };
+    return { ...DEFAULT_PERMISSIONS, ...(JSON.parse(stored) as Partial<Permissions>), saveHistory: true };
   } catch {
     return DEFAULT_PERMISSIONS;
   }
@@ -361,9 +392,11 @@ function aiProviderLabel(provider: AiProviderKey) {
 function AiProviderMark({
   provider,
   size = "md",
+  bare = false,
 }: {
   provider: AiProviderKey;
   size?: "sm" | "md" | "lg";
+  bare?: boolean;
 }) {
   const boxClass =
     size === "lg" ? "h-10 w-10" : size === "sm" ? "h-7 w-7" : "h-8 w-8";
@@ -371,6 +404,14 @@ function AiProviderMark({
     size === "lg" ? "h-6 w-6" : size === "sm" ? "h-4 w-4" : "h-5 w-5";
 
   if (provider === "psylattice") {
+    if (bare) {
+      return (
+        <span className={`${boxClass} flex shrink-0 items-center justify-center`} aria-label="PsyLattice">
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img src="/brand/psylattice-mark.svg" alt="" aria-hidden="true" className={`${imageClass} object-contain drop-shadow-[0_0_2px_rgba(255,255,255,.55)]`} />
+        </span>
+      );
+    }
     return (
       <span
         className={`${boxClass} flex shrink-0 items-center justify-center overflow-hidden rounded-xl border border-cyan-100/80 bg-white shadow-sm`}
@@ -395,6 +436,20 @@ function AiProviderMark({
         ? "/ai-models/claude.svg"
         : "/ai-models/gemini.svg";
 
+  if (bare) {
+    return (
+      <span className={`${boxClass} flex shrink-0 items-center justify-center`} aria-label={aiProviderLabel(provider)}>
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        <img
+          src={src}
+          alt=""
+          aria-hidden="true"
+          className={`${imageClass} object-contain ${provider === "openai" ? "brightness-0 invert" : ""}`}
+        />
+      </span>
+    );
+  }
+
   return (
     <span
       className={`${boxClass} flex shrink-0 items-center justify-center rounded-xl border border-slate-200/80 bg-white shadow-sm`}
@@ -405,6 +460,112 @@ function AiProviderMark({
       <img src={src} alt="" aria-hidden="true" className={`${imageClass} object-contain`} />
     </span>
   );
+}
+
+
+function renderInlineMarkdown(value: string): ReactNode[] {
+  const parts: ReactNode[] = [];
+  const pattern = /(\*\*[^*\n]+\*\*|__[^_\n]+__|`[^`\n]+`|\*[^*\n]+\*|_[^_\n]+_)/g;
+  let lastIndex = 0;
+  let match: RegExpExecArray | null;
+  let key = 0;
+
+  while ((match = pattern.exec(value)) !== null) {
+    if (match.index > lastIndex) parts.push(value.slice(lastIndex, match.index));
+    const token = match[0];
+    if ((token.startsWith("**") && token.endsWith("**")) || (token.startsWith("__") && token.endsWith("__"))) {
+      parts.push(<strong key={`strong-${key++}`} className="font-semibold text-slate-950">{token.slice(2, -2)}</strong>);
+    } else if (token.startsWith("`") && token.endsWith("`")) {
+      parts.push(<code key={`code-${key++}`} className="rounded-md bg-slate-100 px-1.5 py-0.5 font-mono text-[.92em] text-slate-800">{token.slice(1, -1)}</code>);
+    } else {
+      parts.push(<em key={`em-${key++}`} className="italic">{token.slice(1, -1)}</em>);
+    }
+    lastIndex = pattern.lastIndex;
+  }
+  if (lastIndex < value.length) parts.push(value.slice(lastIndex));
+  return parts;
+}
+
+function MarkdownMessage({ content }: { content: string }) {
+  const lines = content.replace(/\r\n?/g, "\n").split("\n");
+  const output: ReactNode[] = [];
+  let inCodeBlock = false;
+  let codeLines: string[] = [];
+
+  const flushCode = (key: number) => {
+    if (!codeLines.length) return;
+    output.push(
+      <pre key={`codeblock-${key}`} className="my-3 overflow-x-auto rounded-xl border border-slate-200 bg-slate-950 px-4 py-3 text-[11px] leading-5 text-slate-100">
+        <code>{codeLines.join("\n")}</code>
+      </pre>
+    );
+    codeLines = [];
+  };
+
+  lines.forEach((rawLine, index) => {
+    const line = rawLine.trimEnd();
+    if (line.trim().startsWith("```")) {
+      if (inCodeBlock) flushCode(index);
+      inCodeBlock = !inCodeBlock;
+      return;
+    }
+    if (inCodeBlock) {
+      codeLines.push(rawLine);
+      return;
+    }
+    if (!line.trim()) {
+      output.push(<div key={`space-${index}`} className="h-2" />);
+      return;
+    }
+
+    const heading = line.match(/^(#{1,4})\s+(.+)$/);
+    if (heading) {
+      const level = heading[1].length;
+      output.push(
+        <div key={`heading-${index}`} className={`${level <= 2 ? "mt-4 text-[14px]" : "mt-3 text-[13px]"} font-semibold leading-6 text-slate-950 first:mt-0`}>
+          {renderInlineMarkdown(heading[2])}
+        </div>
+      );
+      return;
+    }
+
+    const bullet = line.match(/^[-*•]\s+(.+)$/);
+    if (bullet) {
+      output.push(
+        <div key={`bullet-${index}`} className="my-1.5 flex items-start gap-2.5">
+          <span className="mt-[9px] h-1.5 w-1.5 shrink-0 rounded-full bg-cyan-500" />
+          <span className="min-w-0">{renderInlineMarkdown(bullet[1])}</span>
+        </div>
+      );
+      return;
+    }
+
+    const numbered = line.match(/^(\d+)[.)]\s+(.+)$/);
+    if (numbered) {
+      output.push(
+        <div key={`number-${index}`} className="my-1.5 flex items-start gap-2.5">
+          <span className="min-w-[20px] shrink-0 pt-[1px] font-semibold text-slate-500">{numbered[1]}.</span>
+          <span className="min-w-0">{renderInlineMarkdown(numbered[2])}</span>
+        </div>
+      );
+      return;
+    }
+
+    const quote = line.match(/^>\s?(.*)$/);
+    if (quote) {
+      output.push(
+        <div key={`quote-${index}`} className="my-2 border-l-2 border-cyan-300 pl-3 text-slate-600">
+          {renderInlineMarkdown(quote[1])}
+        </div>
+      );
+      return;
+    }
+
+    output.push(<p key={`paragraph-${index}`} className="my-1.5 first:mt-0 last:mb-0">{renderInlineMarkdown(line)}</p>);
+  });
+  if (inCodeBlock || codeLines.length) flushCode(lines.length + 1);
+
+  return <div className="research-assistant-markdown text-[13px] leading-[1.72] text-slate-700">{output}</div>;
 }
 
 
@@ -434,8 +595,16 @@ export default function PsyLatticeCopilot({
   const [conversationId, setConversationId] = useState("");
   const [historyLoading, setHistoryLoading] = useState(false);
   const [historyNote, setHistoryNote] = useState("");
+  const [historyPanelOpen, setHistoryPanelOpen] = useState(false);
+  const [historyConversations, setHistoryConversations] = useState<SavedConversation[]>([]);
+  const [pinnedMessages, setPinnedMessages] = useState<PinnedMessage[]>([]);
+  const [historyStats, setHistoryStats] = useState<HistoryStats>({ conversationCount: 0, messageCount: 0, warning: false });
+  const [historyActionBusy, setHistoryActionBusy] = useState("");
+  const [historyNudgeDismissedAt, setHistoryNudgeDismissedAt] = useState(0);
+  const [copiedMessageKey, setCopiedMessageKey] = useState("");
   const [verifiedState, setVerifiedState] = useState<VerifiedWorkspaceState>({});
   const scrollRef = useRef<HTMLDivElement | null>(null);
+  const historyPanelRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
     const next = readPermissions();
@@ -446,7 +615,7 @@ export default function PsyLatticeCopilot({
       setTab("permissions");
       return;
     }
-    if (next.saveHistory) void resumeSavedConversation();
+    void resumeSavedConversation();
     // resumeSavedConversation is intentionally called only once from the persisted permission snapshot.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -523,6 +692,18 @@ export default function PsyLatticeCopilot({
       included[surface] = item;
     }
 
+    if (pinnedMessages.length) {
+      included.pinned_message_context = pinnedMessages.slice(0, 24).map((message) => ({
+        message_id: message.id,
+        conversation_id: message.conversation_id,
+        conversation_title: message.conversation_title,
+        role: message.role,
+        created_at: message.created_at,
+        content: message.content,
+        note: "Explicitly pinned by the researcher. Treat as background continuity, not authoritative statistical evidence.",
+      }));
+    }
+
     included.permissions = {
       study_structure: permissions.studyStructure,
       data_explorer: permissions.dataExplorer,
@@ -531,7 +712,7 @@ export default function PsyLatticeCopilot({
       cognitive: permissions.cognitive,
       ambulatory: permissions.ambulatory,
       navigation_actions: permissions.navigationActions,
-      save_history: permissions.saveHistory,
+      save_history: true,
       apply_analysis_setup: permissions.applyAnalysisSetup,
       draft_creation: permissions.draftCreation,
       participant_rows: permissions.participantRows,
@@ -540,7 +721,7 @@ export default function PsyLatticeCopilot({
     };
 
     return included;
-  }, [contexts, currentScreen, onNavigate, permissions]);
+  }, [contexts, currentScreen, onNavigate, permissions, pinnedMessages]);
 
   const primaryStudy = useMemo(() => {
     const values = Object.values(contexts) as PsyLatticeCopilotContextEnvelope[];
@@ -628,6 +809,30 @@ export default function PsyLatticeCopilot({
     ];
   }, [autoSignals, contexts.analysis, contexts.data_explorer]);
 
+  async function loadHistoryIndex() {
+    try {
+      const response = await fetch("/api/psylattice-copilot?mode=list", { method: "GET", cache: "no-store" });
+      const data = (await response.json()) as {
+        ok?: boolean;
+        conversations?: SavedConversation[];
+        pinnedMessages?: PinnedMessage[];
+        stats?: Partial<HistoryStats>;
+        warning?: string;
+      };
+      if (!response.ok || !data.ok) throw new Error(data.warning || "Saved Research Assistant chats could not be loaded.");
+      setHistoryConversations(Array.isArray(data.conversations) ? data.conversations : []);
+      setPinnedMessages(Array.isArray(data.pinnedMessages) ? data.pinnedMessages : []);
+      setHistoryStats({
+        conversationCount: Number(data.stats?.conversationCount || 0),
+        messageCount: Number(data.stats?.messageCount || 0),
+        warning: Boolean(data.stats?.warning),
+      });
+      if (data.warning) setHistoryNote(data.warning);
+    } catch (failure) {
+      setHistoryNote(failure instanceof Error ? failure.message : "Saved Research Assistant chats are temporarily unavailable.");
+    }
+  }
+
   async function resumeSavedConversation() {
     setHistoryLoading(true);
     setHistoryNote("");
@@ -651,6 +856,7 @@ export default function PsyLatticeCopilot({
         setExpandedPlanStage(data.plan.stages[0]?.id || "analysis");
       }
       if (data.verifiedState) setVerifiedState(data.verifiedState);
+      await loadHistoryIndex();
     } catch (failure) {
       setHistoryNote(failure instanceof Error ? failure.message : "Saved Research Assistant history is unavailable; this tab will continue using session-only history.");
     } finally {
@@ -658,8 +864,161 @@ export default function PsyLatticeCopilot({
     }
   }
 
+  async function openSavedConversation(targetConversationId: string) {
+    if (!targetConversationId || historyActionBusy) return;
+    setHistoryActionBusy(targetConversationId);
+    setError("");
+    try {
+      const response = await fetch(`/api/psylattice-copilot?mode=conversation&id=${encodeURIComponent(targetConversationId)}`, {
+        method: "GET",
+        cache: "no-store",
+      });
+      const data = (await response.json()) as {
+        ok?: boolean;
+        conversation?: { id?: string } | null;
+        messages?: ChatMessage[];
+        plan?: ResearchPlan | null;
+        verifiedState?: VerifiedWorkspaceState | null;
+        savedUserMessage?: ChatMessage | null;
+        savedAssistantMessage?: ChatMessage | null;
+        error?: string;
+      };
+      if (!response.ok || !data.ok || !data.conversation?.id) throw new Error(data.error || "That saved chat could not be opened.");
+      setConversationId(String(data.conversation.id));
+      setHistoryNudgeDismissedAt(0);
+      setMessages(Array.isArray(data.messages) ? data.messages.slice(-80) : []);
+      setResearchPlan(data.plan || null);
+      if (data.plan) setExpandedPlanStage(data.plan.stages[0]?.id || "analysis");
+      if (data.verifiedState) setVerifiedState(data.verifiedState);
+      setHistoryPanelOpen(false);
+      setTab("chat");
+    } catch (failure) {
+      setError(failure instanceof Error ? failure.message : "That saved chat could not be opened.");
+    } finally {
+      setHistoryActionBusy("");
+    }
+  }
+
+  async function copyMessageText(message: ChatMessage, fallbackKey: string) {
+    const key = message.id || fallbackKey;
+    try {
+      if (navigator.clipboard?.writeText) {
+        await navigator.clipboard.writeText(message.content);
+      } else {
+        const textarea = document.createElement("textarea");
+        textarea.value = message.content;
+        textarea.setAttribute("readonly", "");
+        textarea.style.position = "fixed";
+        textarea.style.opacity = "0";
+        document.body.appendChild(textarea);
+        textarea.select();
+        document.execCommand("copy");
+        textarea.remove();
+      }
+      setCopiedMessageKey(key);
+      window.setTimeout(() => setCopiedMessageKey((current) => current === key ? "" : current), 1600);
+    } catch {
+      setError("That message could not be copied. Try selecting the text manually.");
+    }
+  }
+
+  async function setMessagePinned(message: ChatMessage, pinned: boolean) {
+    if (!message.id || historyActionBusy) return;
+    setHistoryActionBusy(message.id);
+    setError("");
+    try {
+      const response = await fetch("/api/psylattice-copilot", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          operation: pinned ? "pin_message" : "unpin_message",
+          message_id: message.id,
+        }),
+      });
+      const data = (await response.json()) as { ok?: boolean; pinned_at?: string | null; error?: string };
+      if (!response.ok || !data.ok) throw new Error(data.error || "That message could not be updated.");
+      setMessages((current) => current.map((item) =>
+        item.id === message.id ? { ...item, pinned_at: pinned ? (data.pinned_at || new Date().toISOString()) : null } : item
+      ));
+      await loadHistoryIndex();
+    } catch (failure) {
+      setError(failure instanceof Error ? failure.message : "That message could not be updated.");
+    } finally {
+      setHistoryActionBusy("");
+    }
+  }
+
+  async function deleteSavedConversation(conversation: SavedConversation) {
+    if ((conversation.pinned_message_count || 0) > 0) {
+      setError("This chat contains pinned messages. Unpin those messages before deleting the entire chat.");
+      return;
+    }
+    if (!window.confirm(`Delete “${conversation.title}”? This cannot be undone.`)) return;
+    if (historyActionBusy) return;
+    setHistoryActionBusy(conversation.id);
+    setError("");
+    try {
+      const response = await fetch("/api/psylattice-copilot", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ operation: "delete_conversation", conversation_id: conversation.id }),
+      });
+      const data = (await response.json()) as { ok?: boolean; error?: string };
+      if (!response.ok || !data.ok) throw new Error(data.error || "The saved chat could not be deleted.");
+      if (conversation.id === conversationId) newChat();
+      await loadHistoryIndex();
+    } catch (failure) {
+      setError(failure instanceof Error ? failure.message : "The saved chat could not be deleted.");
+    } finally {
+      setHistoryActionBusy("");
+    }
+  }
+
+  function reviewSavedChats() {
+    setHistoryPanelOpen(true);
+    void loadHistoryIndex();
+    window.requestAnimationFrame(() => {
+      window.requestAnimationFrame(() => {
+        const container = scrollRef.current;
+        const target = historyPanelRef.current;
+        if (!container || !target) return;
+        const containerRect = container.getBoundingClientRect();
+        const targetRect = target.getBoundingClientRect();
+        const nextTop = Math.max(0, container.scrollTop + targetRect.top - containerRect.top - 12);
+        container.scrollTo({ top: nextTop, behavior: "smooth" });
+      });
+    });
+  }
+
+  async function deleteUnpinnedHistory() {
+    if (!window.confirm("Delete your unpinned Research Assistant history? Individually pinned messages will be kept. This cannot be undone.")) return;
+    if (historyActionBusy) return;
+    setHistoryActionBusy("delete-history");
+    setError("");
+    try {
+      const response = await fetch("/api/psylattice-copilot", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ operation: "delete_unpinned_history" }),
+      });
+      const data = (await response.json()) as { ok?: boolean; error?: string };
+      if (!response.ok || !data.ok) throw new Error(data.error || "Chat history could not be deleted.");
+      const currentHasPinned = pinnedMessages.some((message) => message.conversation_id === conversationId);
+      if (currentHasPinned && conversationId) {
+        await openSavedConversation(conversationId);
+      } else {
+        newChat();
+      }
+      await loadHistoryIndex();
+    } catch (failure) {
+      setError(failure instanceof Error ? failure.message : "Chat history could not be deleted.");
+    } finally {
+      setHistoryActionBusy("");
+    }
+  }
+
   async function syncResearchPlan(nextPlan: ResearchPlan, targetConversationId = conversationId) {
-    if (!permissions.saveHistory || !targetConversationId) return;
+    if (!targetConversationId) return;
     try {
       const response = await fetch("/api/psylattice-copilot", {
         method: "POST",
@@ -687,12 +1046,12 @@ export default function PsyLatticeCopilot({
     setPermissions(next);
     savePermissions(next);
     setTab("chat");
-    if (next.saveHistory) void resumeSavedConversation();
+    void resumeSavedConversation();
   }
 
   function persistPermissionChanges() {
     savePermissions(permissions);
-    if (permissions.saveHistory && !conversationId && !historyLoading) void resumeSavedConversation();
+    if (!conversationId && !historyLoading) void resumeSavedConversation();
   }
 
   async function chooseModel(model: ModelOption) {
@@ -742,7 +1101,7 @@ export default function PsyLatticeCopilot({
           messages: nextMessages.map(({ role, content }) => ({ role, content })),
           context: allowedContext,
           permissions,
-          save_history: permissions.saveHistory,
+          save_history: true,
           conversation_id: conversationId || undefined,
         }),
       });
@@ -753,18 +1112,30 @@ export default function PsyLatticeCopilot({
         conversationId?: string | null;
         historyWarning?: string | null;
         verifiedState?: VerifiedWorkspaceState | null;
+        savedUserMessage?: ChatMessage | null;
+        savedAssistantMessage?: ChatMessage | null;
         error?: string;
       };
       if (!response.ok || !data.ok || !data.reply) {
         throw new Error(data.error || "Research Assistant could not respond.");
       }
-      setMessages((current) => [
-        ...current,
-        { role: "assistant", content: data.reply as string, actions: data.actions || [] },
-      ]);
+      setMessages((current) => {
+        const next = [...current];
+        for (let index = next.length - 1; index >= 0; index -= 1) {
+          if (next[index].role === "user" && !next[index].id) {
+            next[index] = { ...next[index], ...(data.savedUserMessage || {}) };
+            break;
+          }
+        }
+        return [
+          ...next,
+          { role: "assistant", content: data.reply as string, actions: data.actions || [], ...(data.savedAssistantMessage || {}) },
+        ];
+      });
       if (data.conversationId) setConversationId(data.conversationId);
       if (data.historyWarning) setHistoryNote(data.historyWarning);
       if (data.verifiedState) setVerifiedState(data.verifiedState);
+      void loadHistoryIndex();
       window.dispatchEvent(new Event("psylattice-ai-budget-refresh"));
     } catch (failure) {
       setError(failure instanceof Error ? failure.message : "Research Assistant could not respond.");
@@ -800,7 +1171,7 @@ export default function PsyLatticeCopilot({
           context: allowedContext,
           permissions,
           request_plan: true,
-          save_history: permissions.saveHistory,
+          save_history: true,
           conversation_id: conversationId || undefined,
         }),
       });
@@ -812,16 +1183,27 @@ export default function PsyLatticeCopilot({
         conversationId?: string | null;
         historyWarning?: string | null;
         verifiedState?: VerifiedWorkspaceState | null;
+        savedUserMessage?: ChatMessage | null;
+        savedAssistantMessage?: ChatMessage | null;
         error?: string;
       };
       if (!response.ok || !data.ok || !data.reply) {
         throw new Error(data.error || "Research Assistant could not build the research plan.");
       }
 
-      setMessages((current) => [
-        ...current,
-        { role: "assistant", content: data.reply as string, actions: data.actions || [] },
-      ]);
+      setMessages((current) => {
+        const next = [...current];
+        for (let index = next.length - 1; index >= 0; index -= 1) {
+          if (next[index].role === "user" && !next[index].id) {
+            next[index] = { ...next[index], ...(data.savedUserMessage || {}) };
+            break;
+          }
+        }
+        return [
+          ...next,
+          { role: "assistant", content: data.reply as string, actions: data.actions || [], ...(data.savedAssistantMessage || {}) },
+        ];
+      });
       if (data.conversationId) setConversationId(data.conversationId);
       if (data.historyWarning) setHistoryNote(data.historyWarning);
       if (data.verifiedState) setVerifiedState(data.verifiedState);
@@ -835,7 +1217,7 @@ export default function PsyLatticeCopilot({
         };
         setResearchPlan(nextPlan);
         setExpandedPlanStage(data.plan.stages[0]?.id || "");
-        if (permissions.saveHistory && data.conversationId) void syncResearchPlan(nextPlan, data.conversationId);
+        if (data.conversationId) void syncResearchPlan(nextPlan, data.conversationId);
       } else {
         setError("Research Assistant replied, but no structured plan was returned. Try Refresh plan again.");
       }
@@ -851,6 +1233,10 @@ export default function PsyLatticeCopilot({
     [string, PsyLatticeCopilotContextEnvelope]
   >).filter(([surface]) => permissionForSurface(surface, permissions)).length;
 
+  const showHistoryNudge =
+    messages.length >= HISTORY_NUDGE_INTERVAL &&
+    messages.length - historyNudgeDismissedAt >= HISTORY_NUDGE_INTERVAL;
+
   function executeAction(action: CopilotAction) {
     if (action.type !== "navigate" || !permissions.navigationActions || !onNavigate) return;
     onNavigate(action.target);
@@ -863,6 +1249,7 @@ export default function PsyLatticeCopilot({
     setError("");
     setConversationId("");
     setHistoryNote("");
+    setHistoryNudgeDismissedAt(0);
     if (typeof window !== "undefined") window.sessionStorage.removeItem(CHAT_KEY);
   }
 
@@ -870,7 +1257,7 @@ export default function PsyLatticeCopilot({
     setResearchPlan(null);
     setExpandedPlanStage("analysis");
     savePlan(null);
-    if (permissions.saveHistory && conversationId) {
+    if (conversationId) {
       void fetch("/api/psylattice-copilot", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -936,36 +1323,34 @@ export default function PsyLatticeCopilot({
           setOpen(true);
           if (!permissions.confirmed) setTab("permissions");
         }}
-        className="group fixed bottom-5 right-5 z-[230] isolate rounded-[22px] bg-[linear-gradient(135deg,rgba(34,211,238,.72),rgba(99,102,241,.42)_52%,rgba(139,92,246,.58))] p-px shadow-[0_14px_36px_rgba(2,8,23,.22),0_4px_14px_rgba(6,182,212,.12)] transition-[transform,box-shadow] duration-300 ease-out hover:-translate-y-1 hover:shadow-[0_20px_48px_rgba(2,8,23,.28),0_8px_26px_rgba(6,182,212,.18)] active:translate-y-0 active:scale-[.985]"
-        aria-label="Open Research Assistant"
+        className="group fixed bottom-5 right-5 z-[230] isolate h-[52px] w-[52px] overflow-visible rounded-[18px] bg-black shadow-[0_12px_30px_rgba(2,8,23,.24)] transition-[width,transform,box-shadow] duration-[650ms] ease-[cubic-bezier(.22,.8,.25,1)] hover:w-[248px] hover:-translate-y-1 hover:shadow-[0_18px_44px_rgba(2,8,23,.31)] focus-visible:w-[248px] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-300/70 focus-visible:ring-offset-2 active:translate-y-0 active:scale-[.985]"
+        aria-label={`Open Research Assistant · ${selectedModelName}`}
       >
         <span
           aria-hidden="true"
-          className="pointer-events-none absolute -inset-3 -z-10 rounded-[30px] bg-[radial-gradient(circle_at_24%_48%,rgba(34,211,238,.24),transparent_42%),radial-gradient(circle_at_82%_52%,rgba(139,92,246,.18),transparent_40%)] opacity-0 blur-2xl transition-opacity duration-300 group-hover:opacity-100"
+          className="pointer-events-none absolute -inset-3 -z-10 rounded-[30px] bg-[radial-gradient(circle_at_28%_50%,rgba(34,211,238,.26),transparent_42%),radial-gradient(circle_at_82%_52%,rgba(139,92,246,.20),transparent_40%)] opacity-0 blur-2xl transition-opacity duration-500 group-hover:opacity-100 group-focus-visible:opacity-100"
         />
 
-        <span className="relative flex items-center gap-3 overflow-hidden rounded-[21px] bg-[linear-gradient(135deg,rgba(7,17,30,.98),rgba(15,23,42,.97)_58%,rgba(20,25,45,.98))] px-3 py-2.5 text-white backdrop-blur-xl">
+        <span className="relative flex h-full w-full items-center overflow-hidden rounded-[18px] bg-black px-[6px] pr-12 text-white">
           <span
             aria-hidden="true"
-            className="pointer-events-none absolute inset-y-0 -left-20 w-12 -skew-x-12 bg-gradient-to-r from-transparent via-white/35 to-transparent opacity-0 blur-md transition-all duration-700 ease-out group-hover:translate-x-[300px] group-hover:opacity-70 motion-reduce:hidden"
+            className="pointer-events-none absolute inset-y-0 -left-20 w-12 -skew-x-12 bg-gradient-to-r from-transparent via-white/30 to-transparent opacity-0 blur-md transition-all duration-700 ease-out group-hover:translate-x-[300px] group-hover:opacity-60 group-focus-visible:translate-x-[300px] group-focus-visible:opacity-60 motion-reduce:hidden"
           />
 
-          <span className="shrink-0 transition-transform duration-300 ease-out group-hover:-translate-y-0.5 group-hover:scale-[1.035]">
-            <AiProviderMark provider={selectedProvider} size="lg" />
-          </span>
+          <AiProviderMark provider={selectedProvider} size="lg" />
 
-          <span className="min-w-0 text-left">
+          <span className="min-w-0 max-w-0 overflow-hidden text-left opacity-0 transition-[max-width,opacity,margin] duration-[600ms] ease-[cubic-bezier(.22,.8,.25,1)] group-hover:ml-2.5 group-hover:max-w-[150px] group-hover:opacity-100 group-focus-visible:ml-2.5 group-focus-visible:max-w-[150px] group-focus-visible:opacity-100">
             <span className="block whitespace-nowrap text-[11px] font-semibold leading-none tracking-[-0.012em] text-white">
               Research Assistant
             </span>
             <span className="mt-1.5 flex min-w-0 items-center gap-1.5 text-[8px] font-medium text-slate-300">
-              <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-cyan-300 shadow-[0_0_0_3px_rgba(34,211,238,.10)] transition-transform duration-300 group-hover:scale-110" />
-              <span className="max-w-[126px] truncate">{selectedModelName}</span>
+              <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-cyan-300 shadow-[0_0_0_3px_rgba(34,211,238,.10)]" />
+              <span className="max-w-[112px] truncate">{selectedModelName}</span>
             </span>
           </span>
 
-          <span className="ml-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-xl border border-white/10 bg-white/[0.06] text-slate-300 shadow-sm transition-all duration-300 group-hover:border-cyan-300/40 group-hover:bg-cyan-300/10 group-hover:text-cyan-200">
-            <ArrowRight className="h-3.5 w-3.5 transition-transform duration-300 group-hover:translate-x-0.5" />
+          <span className="absolute right-2.5 top-1/2 flex h-8 w-8 -translate-y-1/2 items-center justify-center rounded-xl border border-white/10 bg-white/[0.06] text-slate-300 opacity-0 transition-[opacity,transform] duration-[520ms] ease-[cubic-bezier(.22,.8,.25,1)] group-hover:opacity-100 group-focus-visible:opacity-100">
+            <ArrowRight className="h-4 w-4 transition-transform duration-500 group-hover:translate-x-0.5" />
           </span>
         </span>
       </button>
@@ -991,6 +1376,28 @@ export default function PsyLatticeCopilot({
           from { opacity: 0; transform: translateY(3px); }
           to { opacity: 1; transform: translateY(0); }
         }
+        @keyframes researchAssistantHeaderMarkAmbient {
+          0%, 100% { transform: translateY(0) scale(1); box-shadow: 0 4px 14px rgba(8,145,178,.08); }
+          50% { transform: translateY(-1px) scale(1.012); box-shadow: 0 7px 20px rgba(8,145,178,.14); }
+        }
+        @keyframes researchAssistantThinkingDot {
+          0%, 80%, 100% { transform: translateY(0) scale(.82); opacity: .38; }
+          40% { transform: translateY(-4px) scale(1); opacity: 1; }
+        }
+        @keyframes researchAssistantAnswerIn {
+          0% { opacity: 0; transform: translateY(7px); filter: blur(1.5px); }
+          100% { opacity: 1; transform: translateY(0); filter: blur(0); }
+        }
+        @keyframes researchAssistantThinkingGlow {
+          0%, 100% { opacity: .35; transform: scale(.96); }
+          50% { opacity: .8; transform: scale(1.04); }
+        }
+        .research-assistant-thinking-dot { animation: researchAssistantThinkingDot 1.15s ease-in-out infinite; }
+        .research-assistant-thinking-dot:nth-child(2) { animation-delay: 140ms; }
+        .research-assistant-thinking-dot:nth-child(3) { animation-delay: 280ms; }
+        .research-assistant-answer { animation: researchAssistantAnswerIn 320ms cubic-bezier(.22,.8,.25,1) both; }
+        .research-assistant-thinking-glow { animation: researchAssistantThinkingGlow 1.8s ease-in-out infinite; }
+
         .research-assistant-drawer {
           animation: researchAssistantDrawerIn 260ms cubic-bezier(.22,.8,.25,1) both;
         }
@@ -1007,24 +1414,51 @@ export default function PsyLatticeCopilot({
         .research-assistant-soft-card {
           animation: researchAssistantSoftCardIn 220ms ease-out both;
         }
+        .research-assistant-header-mark {
+          animation: researchAssistantHeaderMarkAmbient 5.5s ease-in-out infinite;
+        }
+        @keyframes researchAssistantModelAura {
+          0%, 100% { transform: translate3d(0,-50%,0) scale(.92); opacity: .42; }
+          50% { transform: translate3d(12px,-50%,0) scale(1.08); opacity: .72; }
+        }
+        @keyframes researchAssistantModelAuraDelayed {
+          0%, 100% { transform: translate3d(0,-50%,0) scale(1.04); opacity: .34; }
+          50% { transform: translate3d(-10px,-50%,0) scale(.9); opacity: .64; }
+        }
+        .research-assistant-model-aura { animation: researchAssistantModelAura 5.8s ease-in-out infinite; }
+        .research-assistant-model-aura-delayed { animation: researchAssistantModelAuraDelayed 6.8s ease-in-out infinite; }
         .research-assistant-model-switcher::after {
           content: "";
           position: absolute;
           inset: 0;
           pointer-events: none;
           border-radius: inherit;
-          background: linear-gradient(110deg, transparent 18%, rgba(255,255,255,.08) 44%, transparent 70%);
-          transform: translateX(-120%);
-          transition: transform 650ms cubic-bezier(.2,.8,.2,1);
+          background: linear-gradient(108deg, transparent 18%, rgba(255,255,255,.78) 45%, transparent 72%);
+          transform: translateX(-125%);
+          transition: transform 850ms cubic-bezier(.2,.8,.2,1);
         }
         .research-assistant-model-switcher { position: relative; overflow: hidden; }
-        .research-assistant-model-switcher:hover::after { transform: translateX(120%); }
+        .research-assistant-model-switcher:hover::after { transform: translateX(125%); }
+        @keyframes researchAssistantHistoryNudgeIn {
+          from { opacity: 0; transform: translateY(10px) scale(.985); }
+          to { opacity: 1; transform: translateY(0) scale(1); }
+        }
+        .research-assistant-history-nudge {
+          animation: researchAssistantHistoryNudgeIn 240ms cubic-bezier(.22,.8,.25,1) both;
+        }
         @media (prefers-reduced-motion: reduce) {
           .research-assistant-drawer,
           .research-assistant-backdrop,
           .research-assistant-model-menu,
           .research-assistant-message,
-          .research-assistant-soft-card { animation: none !important; }
+          .research-assistant-soft-card,
+          .research-assistant-header-mark,
+          .research-assistant-thinking-dot,
+          .research-assistant-answer,
+          .research-assistant-thinking-glow,
+          .research-assistant-model-aura,
+          .research-assistant-model-aura-delayed,
+          .research-assistant-history-nudge { animation: none !important; }
           .research-assistant-model-switcher::after { display: none; }
         }
       `}</style>
@@ -1037,57 +1471,54 @@ export default function PsyLatticeCopilot({
             onClick={() => setOpen(false)}
             className="research-assistant-backdrop fixed inset-0 z-[239] bg-slate-950/20 backdrop-blur-[1px]"
           />
-          <aside className="research-assistant-drawer fixed bottom-0 right-0 top-0 z-[240] flex w-[min(490px,96vw)] flex-col border-l border-slate-200 bg-white shadow-[-28px_0_90px_rgba(15,23,42,.22)]">
-            <header className="shrink-0 border-b border-slate-200 bg-[radial-gradient(circle_at_0%_0%,rgba(34,211,238,.13),transparent_36%),radial-gradient(circle_at_100%_0%,rgba(139,92,246,.10),transparent_34%),#fff] px-4 pb-3 pt-4">
-              <div className="flex items-start justify-between gap-3">
+          <aside className="research-assistant-drawer fixed bottom-0 right-0 top-0 z-[240] flex w-[min(640px,100vw)] flex-col border-l border-slate-200 bg-white shadow-[-28px_0_90px_rgba(15,23,42,.22)]">
+            <header className="shrink-0 border-b border-slate-200 bg-white px-5 pt-4">
+              <div className="flex items-center justify-between gap-4 pb-3">
                 <div className="flex min-w-0 items-center gap-3">
-                  <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl border border-cyan-200 bg-white text-cyan-800 shadow-sm">
-                    <Sparkles className="h-5 w-5" />
+                  <div className="research-assistant-header-mark flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-cyan-100 bg-white shadow-sm">
+                    <AiProviderMark provider={selectedProvider} size="md" />
                   </div>
                   <div className="min-w-0">
-                    <p className="text-[9px] font-bold uppercase tracking-[.16em] text-cyan-700">
-                      Unified research assistant
-                    </p>
-                    <p className="mt-0.5 truncate text-[15px] font-semibold text-slate-950">Research Assistant</p>
-                    <div className="mt-0.5 flex flex-wrap items-center gap-1.5">
-                      <p className="truncate text-[9px] text-slate-500">
-                        {surfaceLabel(currentScreen)} · {connectedContextCount} permitted context source
-                        {connectedContextCount === 1 ? "" : "s"}
-                      </p>
-                      {permissions.saveHistory && (
-                        <span className="rounded-full border border-emerald-200 bg-emerald-50 px-1.5 py-0.5 text-[6.5px] font-bold uppercase tracking-[0.08em] text-emerald-700">
-                          {historyLoading ? "Syncing" : conversationId ? "Saved" : "History on"}
-                        </span>
-                      )}
+                    <p className="text-[8px] font-bold uppercase tracking-[.17em] text-cyan-700">Unified research assistant</p>
+                    <div className="mt-0.5 flex items-center gap-2">
+                      <p className="truncate text-[16px] font-semibold tracking-[-0.015em] text-slate-950">Research Assistant</p>
+                      <span className="rounded-full bg-emerald-50 px-2 py-0.5 text-[7px] font-bold uppercase tracking-[0.08em] text-emerald-700">
+                        {historyLoading ? "Syncing" : conversationId ? "Saved" : "History on"}
+                      </span>
                     </div>
+                    <p className="mt-0.5 truncate text-[9px] text-slate-500">{surfaceLabel(currentScreen)} · {connectedContextCount} permitted context source{connectedContextCount === 1 ? "" : "s"}</p>
                   </div>
                 </div>
-                <button
-                  type="button"
-                  onClick={() => setOpen(false)}
-                  className="flex h-9 w-9 items-center justify-center rounded-xl border border-slate-200 bg-white text-slate-400 hover:text-slate-800"
-                >
+                <button type="button" onClick={() => setOpen(false)} className="flex h-9 w-9 items-center justify-center rounded-xl text-slate-400 transition hover:bg-slate-100 hover:text-slate-800">
                   <X className="h-4 w-4" />
                 </button>
               </div>
 
-              <div className="relative mt-3">
+              <div className="relative pb-2">
                 <button
                   type="button"
                   onClick={() => setModelOpen((value) => !value)}
-                  className="research-assistant-model-switcher group/model flex w-full items-center gap-2.5 rounded-2xl border border-slate-700/80 bg-[linear-gradient(135deg,#0b1220_0%,#111c31_58%,#17213a_100%)] px-3 py-2.5 text-left shadow-[0_10px_26px_rgba(15,23,42,.18),0_0_0_1px_rgba(34,211,238,.06)] transition-all duration-300 hover:-translate-y-0.5 hover:border-cyan-400/45 hover:shadow-[0_14px_34px_rgba(15,23,42,.22),0_0_24px_rgba(34,211,238,.10)]"
+                  className="research-assistant-model-switcher group/model relative flex min-h-[56px] w-full items-center gap-3 rounded-2xl border border-cyan-200/80 bg-[linear-gradient(135deg,rgba(236,254,255,.96)_0%,rgba(255,255,255,.98)_46%,rgba(245,243,255,.96)_100%)] px-3.5 py-2.5 text-left shadow-[0_10px_28px_rgba(15,23,42,.08),0_0_0_1px_rgba(139,92,246,.04)] transition-all duration-300 hover:-translate-y-0.5 hover:border-violet-200 hover:shadow-[0_16px_38px_rgba(15,23,42,.11),0_0_22px_rgba(34,211,238,.10)]"
                 >
-                  <AiProviderMark provider={selectedProvider} size="md" />
-                  <span className="min-w-0 flex-1">
-                    <span className="block text-[8px] font-semibold uppercase tracking-[.08em] text-slate-400 group-hover/model:text-cyan-300/80">
-                      Current model
-                    </span>
-                    <span className="block truncate text-[10px] font-semibold text-white">{selectedModelName}</span>
+                  <span className="research-assistant-model-aura pointer-events-none absolute -left-8 top-1/2 h-16 w-24 -translate-y-1/2 rounded-full bg-cyan-300/20 blur-2xl" />
+                  <span className="research-assistant-model-aura-delayed pointer-events-none absolute -right-6 top-1/2 h-14 w-20 -translate-y-1/2 rounded-full bg-violet-300/20 blur-2xl" />
+                  <span className="relative z-10">
+                    <AiProviderMark provider={selectedProvider} size="md" />
                   </span>
-                  <ChevronDown className={`h-3.5 w-3.5 text-slate-300 transition-all duration-300 group-hover/model:text-cyan-200 ${modelOpen ? "rotate-180" : ""}`} />
+                  <span className="relative z-10 min-w-0 flex-1">
+                    <span className="flex items-center gap-1.5 text-[7px] font-bold uppercase tracking-[.11em] text-slate-400">
+                      Current model
+                      <span className="h-1.5 w-1.5 rounded-full bg-emerald-400 shadow-[0_0_0_3px_rgba(52,211,153,.10)]" />
+                    </span>
+                    <span className="mt-0.5 block truncate text-[11px] font-semibold tracking-[-0.01em] text-slate-900">{selectedModelName}</span>
+                    <span className="mt-0.5 block truncate text-[8px] text-slate-500">{aiProviderLabel(selectedProvider)} · click to switch</span>
+                  </span>
+                  <span className="relative z-10 flex h-8 w-8 shrink-0 items-center justify-center rounded-xl border border-white/80 bg-white/80 text-slate-500 shadow-sm transition group-hover/model:text-violet-600">
+                    <ChevronDown className={`h-3.5 w-3.5 transition-transform duration-300 ${modelOpen ? "rotate-180" : ""}`} />
+                  </span>
                 </button>
                 {modelOpen && (
-                  <div className="research-assistant-model-menu absolute left-0 right-0 top-[calc(100%+7px)] z-20 max-h-[300px] overflow-auto rounded-2xl border border-cyan-200/70 bg-white/95 p-2 shadow-[0_22px_54px_rgba(15,23,42,.24),0_0_0_1px_rgba(34,211,238,.05)] backdrop-blur-xl">
+                  <div className="research-assistant-model-menu absolute left-0 right-0 top-[calc(100%-1px)] z-20 max-h-[320px] overflow-auto rounded-2xl border border-slate-200 bg-white p-2 shadow-[0_24px_60px_rgba(15,23,42,.22)]">
                     {(modelState.models || []).map((model) => {
                       const locked = !model.allowed || !model.available;
                       return (
@@ -1096,26 +1527,15 @@ export default function PsyLatticeCopilot({
                           key={model.key}
                           disabled={modelSaving || locked}
                           onClick={() => void chooseModel(model)}
-                          className={`mb-1 flex w-full items-center gap-2 rounded-xl border px-3 py-2 text-left last:mb-0 ${
-                            model.key === modelState.selectedModel
-                              ? "border-cyan-200 bg-cyan-50"
-                              : "border-transparent hover:bg-slate-50"
-                          } disabled:opacity-50`}
+                          className={`mb-1 flex w-full items-center gap-2 rounded-xl border px-3 py-2.5 text-left last:mb-0 ${model.key === modelState.selectedModel ? "border-cyan-200 bg-cyan-50" : "border-transparent hover:bg-slate-50"} disabled:opacity-50`}
                         >
                           <span className="relative shrink-0">
-                            <AiProviderMark
-                              provider={aiProviderForModel(model.key, model.name) as AiProviderKey}
-                              size="md"
-                            />
-                            {locked && (
-                              <span className="absolute -bottom-1 -right-1 flex h-4 w-4 items-center justify-center rounded-full border border-white bg-slate-700 text-white">
-                                <LockKeyhole className="h-2.5 w-2.5" />
-                              </span>
-                            )}
+                            <AiProviderMark provider={aiProviderForModel(model.key, model.name) as AiProviderKey} size="md" />
+                            {locked && <span className="absolute -bottom-1 -right-1 flex h-4 w-4 items-center justify-center rounded-full border border-white bg-slate-700 text-white"><LockKeyhole className="h-2.5 w-2.5" /></span>}
                           </span>
                           <span className="min-w-0 flex-1">
-                            <span className="block truncate text-[10px] font-semibold text-slate-800">{model.name}</span>
-                            <span className="block truncate text-[8px] text-slate-400">{model.description}</span>
+                            <span className="block truncate text-[11px] font-semibold text-slate-800">{model.name}</span>
+                            <span className="block truncate text-[9px] text-slate-400">{model.description}</span>
                           </span>
                           {model.key === modelState.selectedModel && <Check className="h-3.5 w-3.5 text-cyan-700" />}
                         </button>
@@ -1125,17 +1545,16 @@ export default function PsyLatticeCopilot({
                 )}
               </div>
 
-              <nav className="mt-3 flex gap-1 rounded-2xl border border-slate-200/80 bg-slate-100/90 p-1 shadow-inner">
+              <nav className="flex border-b border-slate-200">
                 {TAB_OPTIONS.map(({ value, label, icon: Icon }) => (
                   <button
                     type="button"
                     key={value}
                     onClick={() => setTab(value)}
-                    className={`research-assistant-tab flex flex-1 items-center justify-center gap-1.5 rounded-xl px-2 py-2 text-[8px] font-semibold transition-all duration-200 ${
-                      tab === value ? "bg-white text-slate-950 shadow-sm" : "text-slate-500"
-                    }`}
+                    className={`relative flex flex-1 items-center justify-center gap-1.5 px-2 py-3 text-[9px] font-semibold transition-colors ${tab === value ? "text-slate-950" : "text-slate-400 hover:text-slate-700"}`}
                   >
-                    <Icon className="h-3 w-3" /> {label}
+                    <Icon className="h-3.5 w-3.5" /> {label}
+                    {tab === value && <span className="absolute inset-x-3 bottom-0 h-[2px] rounded-full bg-cyan-500" />}
                   </button>
                 ))}
               </nav>
@@ -1143,12 +1562,81 @@ export default function PsyLatticeCopilot({
 
             {tab === "chat" && (
               <>
-                <div ref={scrollRef} className="min-h-0 flex-1 overflow-y-auto px-4 py-4">
+                <div ref={scrollRef} className="min-h-0 flex-1 overflow-y-auto px-5 py-5 sm:px-6">
+                  <div className="mb-3 flex items-center justify-between gap-2">
+                    <button
+                      type="button"
+                      onClick={() => { setHistoryPanelOpen((value) => !value); if (!historyPanelOpen) void loadHistoryIndex(); }}
+                      className={`inline-flex items-center gap-1.5 rounded-xl border px-3 py-2 text-[9px] font-semibold transition ${historyPanelOpen ? "border-slate-950 bg-slate-950 text-white" : "border-slate-200 bg-white text-slate-600 hover:bg-slate-50"}`}
+                    >
+                      <History className="h-3 w-3" />
+                      Saved chats
+                      {historyStats.conversationCount > 0 && <span className="rounded-full bg-slate-100 px-1.5 py-0.5 text-[7px] text-slate-500">{historyStats.conversationCount}</span>}
+                    </button>
+                  </div>
+
+                  {historyPanelOpen && (
+                    <div ref={historyPanelRef} className="mb-4 overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
+                      <div className="flex items-center justify-between gap-3 border-b border-slate-100 px-3 py-2.5">
+                        <div>
+                          <p className="text-[9px] font-semibold text-slate-900">Chat history</p>
+                          <p className="mt-0.5 text-[8.5px] text-slate-400">Saved to your PsyLattice account · individually pinned messages stay protected</p>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => void deleteUnpinnedHistory()}
+                          disabled={historyActionBusy === "delete-history" || historyStats.messageCount === 0}
+                          className="inline-flex items-center gap-1 rounded-lg border border-slate-200 px-2 py-1.5 text-[7.5px] font-semibold text-slate-500 hover:text-rose-700 disabled:opacity-35"
+                        >
+                          <Trash2 className="h-3 w-3" /> Delete history
+                        </button>
+                      </div>
+                      <div className="max-h-64 overflow-y-auto p-2">
+                        {historyLoading && historyConversations.length === 0 ? (
+                          <div className="flex items-center gap-2 px-2 py-4 text-[8px] text-slate-400"><Loader2 className="h-3 w-3 animate-spin" /> Loading saved chats…</div>
+                        ) : historyConversations.length === 0 ? (
+                          <p className="px-2 py-4 text-[8px] text-slate-400">No saved chats yet. Your next Research Assistant conversation will appear here automatically.</p>
+                        ) : (
+                          <div className="space-y-1.5">
+                            {historyConversations.map((conversation) => {
+                              const active = conversation.id === conversationId;
+                              const pinnedCount = Number(conversation.pinned_message_count || 0);
+                              return (
+                                <div key={conversation.id} className={`group/history flex items-start gap-2 rounded-xl border p-2 ${active ? "border-cyan-200 bg-cyan-50/45" : pinnedCount > 0 ? "border-violet-200 bg-violet-50/30" : "border-slate-100 bg-slate-50/55"}`}>
+                                  <button type="button" onClick={() => void openSavedConversation(conversation.id)} className="min-w-0 flex-1 text-left">
+                                    <div className="flex items-center gap-1.5">
+                                      <p className="truncate text-[10px] font-semibold text-slate-800">{conversation.title.replace(/^Research Assistant ·\s*/, "")}</p>
+                                      {pinnedCount > 0 && (
+                                        <span className="inline-flex shrink-0 items-center gap-1 rounded-full bg-violet-100 px-1.5 py-0.5 text-[6.5px] font-semibold text-violet-700">
+                                          <Pin className="h-2.5 w-2.5" /> {pinnedCount}
+                                        </span>
+                                      )}
+                                    </div>
+                                    <p className="mt-0.5 line-clamp-2 text-[7.5px] leading-3.5 text-slate-400">{conversation.last_message || `${conversation.message_count} saved messages`}</p>
+                                  </button>
+                                  <button
+                                    type="button"
+                                    title={pinnedCount > 0 ? "Unpin the pinned messages in this chat before deleting it" : "Delete chat"}
+                                    onClick={() => void deleteSavedConversation(conversation)}
+                                    disabled={pinnedCount > 0 || historyActionBusy === conversation.id}
+                                    className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg border border-slate-200 bg-white text-slate-400 hover:text-rose-700 disabled:cursor-not-allowed disabled:opacity-30"
+                                  >
+                                    <Trash2 className="h-3 w-3" />
+                                  </button>
+                                </div>
+                              );
+                            })}
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  )}
+
                   {messages.length === 0 ? (
                     <div className="space-y-3">
-                      <div className="research-assistant-soft-card rounded-2xl border border-cyan-100 bg-cyan-50/50 p-4">
-                        <p className="text-[10px] font-semibold text-slate-900">One conversation across your research workflow.</p>
-                        <p className="mt-1 text-[9px] leading-4 text-slate-500">
+                      <div className="research-assistant-soft-card rounded-2xl bg-cyan-50/60 p-4">
+                        <p className="text-[12px] font-semibold text-slate-900">One conversation across your research workflow.</p>
+                        <p className="mt-1 text-[11px] leading-5 text-slate-500">
                           Research Assistant follows the permitted study, data, analysis and thesis context as you move through PsyLattice. Last-known module context stays available for this page session and is marked as a snapshot when it is no longer live.
                         </p>
                       </div>
@@ -1162,7 +1650,7 @@ export default function PsyLatticeCopilot({
                           type="button"
                           key={prompt}
                           onClick={() => void send(prompt)}
-                          className="group/prompt flex w-full items-center justify-between rounded-2xl border border-slate-200 bg-white px-3 py-3 text-left text-[9px] font-medium text-slate-700 transition-all duration-200 hover:-translate-y-0.5 hover:border-cyan-200 hover:bg-cyan-50/30 hover:shadow-[0_8px_22px_rgba(15,23,42,.07)]"
+                          className="group/prompt flex w-full items-center justify-between rounded-2xl border border-slate-200 bg-white px-4 py-3.5 text-left text-[11px] font-medium text-slate-700 transition-all duration-200 hover:-translate-y-0.5 hover:border-cyan-200 hover:bg-cyan-50/30 hover:shadow-[0_8px_22px_rgba(15,23,42,.07)]"
                         >
                           <span>{prompt}</span>
                           <ArrowRight className="h-3.5 w-3.5 text-slate-400 transition-transform duration-200 group-hover/prompt:translate-x-0.5 group-hover/prompt:text-cyan-600" />
@@ -1170,54 +1658,155 @@ export default function PsyLatticeCopilot({
                       ))}
                     </div>
                   ) : (
-                    <div className="space-y-3">
-                      {messages.map((message, index) => (
-                        <div
-                          key={`${message.role}-${index}`}
-                          className={`research-assistant-message ${message.role === "user" ? "ml-auto max-w-[88%]" : "mr-auto max-w-[94%]"}`}
-                        >
-                          <div
-                            className={`whitespace-pre-wrap rounded-2xl px-3.5 py-3 text-[10px] leading-5 ${
-                              message.role === "user"
-                                ? "bg-slate-950 text-white"
-                                : "border border-slate-200 bg-slate-50 text-slate-700"
-                            }`}
-                          >
-                            {message.content}
-                          </div>
-                          {message.role === "assistant" && message.actions?.length ? (
-                            <div className="mt-2 flex flex-wrap gap-2">
-                              {message.actions.map((action) => (
+                    <div className="space-y-5">
+                      {messages.map((message, index) => {
+                        const pinned = Boolean(message.pinned_at);
+                        if (message.role === "user") {
+                          return (
+                            <div key={message.id || `${message.role}-${index}`} className="group/message research-assistant-message ml-auto max-w-[82%]">
+                              <div className={`rounded-[18px] bg-slate-950 px-4 py-3 text-[13px] leading-[1.65] text-white shadow-sm ${pinned ? "ring-2 ring-violet-300/80" : ""}`}>
+                                {message.content}
+                              </div>
+                              <div className="mt-1 flex justify-end gap-1">
                                 <button
                                   type="button"
-                                  key={`${action.target}-${action.label}`}
-                                  disabled={!permissions.navigationActions || !onNavigate}
-                                  onClick={() => executeAction(action)}
-                                  className="inline-flex items-center gap-1.5 rounded-xl border border-cyan-200 bg-cyan-50 px-3 py-2 text-[8px] font-semibold text-cyan-900 disabled:opacity-40"
+                                  onClick={() => void copyMessageText(message, `user-${index}`)}
+                                  title="Copy message"
+                                  className={`inline-flex items-center gap-1 rounded-lg px-2 py-1 text-[8px] font-semibold transition ${copiedMessageKey === (message.id || `user-${index}`) ? "bg-cyan-50 text-cyan-700 opacity-100" : "text-slate-400 opacity-0 hover:bg-slate-100 hover:text-slate-700 group-hover/message:opacity-100 group-focus-within/message:opacity-100"}`}
                                 >
-                                  <Navigation className="h-3 w-3" />
-                                  {action.label}
+                                  {copiedMessageKey === (message.id || `user-${index}`) ? <Check className="h-2.5 w-2.5" /> : <Copy className="h-2.5 w-2.5" />}
+                                  {copiedMessageKey === (message.id || `user-${index}`) ? "Copied" : "Copy"}
                                 </button>
-                              ))}
+                                {message.id && (
+                                  <button
+                                    type="button"
+                                    onClick={() => void setMessagePinned(message, !pinned)}
+                                    disabled={historyActionBusy === message.id}
+                                    title={pinned ? "Unpin this message" : "Pin this message"}
+                                    className={`inline-flex items-center gap-1 rounded-lg px-2 py-1 text-[8px] font-semibold transition ${pinned ? "bg-violet-50 text-violet-700 opacity-100" : "text-slate-400 opacity-0 hover:bg-slate-100 hover:text-slate-700 group-hover/message:opacity-100 group-focus-within/message:opacity-100"} disabled:opacity-35`}
+                                  >
+                                    {pinned ? <PinOff className="h-2.5 w-2.5" /> : <Pin className="h-2.5 w-2.5" />}
+                                    {pinned ? "Pinned" : "Pin"}
+                                  </button>
+                                )}
+                              </div>
                             </div>
-                          ) : null}
-                        </div>
-                      ))}
+                          );
+                        }
+
+                        return (
+                          <div key={message.id || `${message.role}-${index}`} className="group/message research-assistant-answer w-full">
+                            <div className="flex items-start gap-3">
+                              <div className="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-xl border border-slate-200 bg-white shadow-sm">
+                                <AiProviderMark provider={selectedProvider} size="sm" />
+                              </div>
+                              <div className="min-w-0 flex-1">
+                                <div className={`rounded-xl px-1 py-0.5 ${pinned ? "bg-violet-50/60 ring-1 ring-violet-200" : ""}`}>
+                                  <MarkdownMessage content={message.content} />
+                                </div>
+                                <div className="mt-1.5 flex items-center gap-1">
+                                  <button
+                                    type="button"
+                                    onClick={() => void copyMessageText(message, `assistant-${index}`)}
+                                    title="Copy message"
+                                    className={`inline-flex items-center gap-1 rounded-lg px-2 py-1 text-[8px] font-semibold transition ${copiedMessageKey === (message.id || `assistant-${index}`) ? "bg-cyan-50 text-cyan-700 opacity-100" : "text-slate-400 opacity-0 hover:bg-slate-100 hover:text-slate-700 group-hover/message:opacity-100 group-focus-within/message:opacity-100"}`}
+                                  >
+                                    {copiedMessageKey === (message.id || `assistant-${index}`) ? <Check className="h-2.5 w-2.5" /> : <Copy className="h-2.5 w-2.5" />}
+                                    {copiedMessageKey === (message.id || `assistant-${index}`) ? "Copied" : "Copy"}
+                                  </button>
+                                  {message.id && (
+                                    <button
+                                      type="button"
+                                      onClick={() => void setMessagePinned(message, !pinned)}
+                                      disabled={historyActionBusy === message.id}
+                                      title={pinned ? "Unpin this message" : "Pin this message"}
+                                      className={`inline-flex items-center gap-1 rounded-lg px-2 py-1 text-[8px] font-semibold transition ${pinned ? "bg-violet-50 text-violet-700 opacity-100" : "text-slate-400 opacity-0 hover:bg-slate-100 hover:text-slate-700 group-hover/message:opacity-100 group-focus-within/message:opacity-100"} disabled:opacity-35`}
+                                    >
+                                      {pinned ? <PinOff className="h-2.5 w-2.5" /> : <Pin className="h-2.5 w-2.5" />}
+                                      {pinned ? "Pinned" : "Pin"}
+                                    </button>
+                                  )}
+                                </div>
+                                {message.actions?.length ? (
+                                  <div className="mt-2 flex flex-wrap gap-2">
+                                    {message.actions.map((action) => (
+                                      <button
+                                        type="button"
+                                        key={`${action.target}-${action.label}`}
+                                        disabled={!permissions.navigationActions || !onNavigate}
+                                        onClick={() => executeAction(action)}
+                                        className="inline-flex items-center gap-1.5 rounded-xl border border-cyan-200 bg-cyan-50 px-3 py-2 text-[9px] font-semibold text-cyan-900 transition hover:bg-cyan-100 disabled:opacity-40"
+                                      >
+                                        <Navigation className="h-3 w-3" />
+                                        {action.label}
+                                      </button>
+                                    ))}
+                                  </div>
+                                ) : null}
+                              </div>
+                            </div>
+                          </div>
+                        );
+                      })}
                       {sending && (
-                        <div className="mr-auto flex items-center gap-2 rounded-2xl border border-slate-200 bg-slate-50 px-3.5 py-3 text-[10px] text-slate-400">
-                          <Loader2 className="h-3.5 w-3.5 animate-spin" /> Research Assistant is thinking…
+                        <div className="flex w-full items-start gap-3 py-1">
+                          <div className="research-assistant-thinking-glow mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-xl border border-cyan-100 bg-white shadow-sm">
+                            <AiProviderMark provider={selectedProvider} size="sm" />
+                          </div>
+                          <div className="pt-1">
+                            <div className="flex h-5 items-center gap-1.5">
+                              <span className="research-assistant-thinking-dot h-1.5 w-1.5 rounded-full bg-cyan-500" />
+                              <span className="research-assistant-thinking-dot h-1.5 w-1.5 rounded-full bg-cyan-500" />
+                              <span className="research-assistant-thinking-dot h-1.5 w-1.5 rounded-full bg-cyan-500" />
+                            </div>
+                            <p className="mt-0.5 text-[9px] font-medium text-slate-400">Research Assistant is working…</p>
+                          </div>
                         </div>
                       )}
                     </div>
                   )}
                   {error && (
-                    <div className="mt-3 rounded-2xl border border-rose-200 bg-rose-50 p-3 text-[9px] leading-4 text-rose-700">
+                    <div className="pl-inline-error mt-4 border-l-2 border-rose-400 px-3 py-2 text-[10px] leading-5 text-slate-600">
                       {error}
                     </div>
                   )}
                 </div>
-                <div className="shrink-0 border-t border-slate-200 bg-white p-3">
-                  <div className="flex items-end gap-2 rounded-2xl border border-slate-200 bg-slate-50 p-2 focus-within:border-cyan-300 focus-within:bg-white">
+                {showHistoryNudge && (
+                  <div className="shrink-0 px-4 pt-2 sm:px-5">
+                    <div className="research-assistant-history-nudge relative overflow-hidden rounded-2xl border border-rose-200 bg-white shadow-[0_14px_36px_rgba(15,23,42,.14)]">
+                      <span className="absolute inset-y-0 left-0 w-[3px] bg-rose-500" />
+                      <div className="flex items-start gap-3 px-4 py-3.5 pl-5">
+                        <div className="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-xl border border-rose-100 bg-rose-50 text-rose-600">
+                          <TriangleAlert className="h-4 w-4" />
+                        </div>
+                        <div className="min-w-0 flex-1 pr-7">
+                          <p className="text-[11px] font-semibold text-slate-900">Keep Research Assistant running smoothly</p>
+                          <p className="mt-1 text-[10px] leading-5 text-slate-600">
+                            For the best experience, delete chats you no longer need. Pin important messages first — pinned messages stay protected and remain available from Context and saved chat history.
+                          </p>
+                          <button
+                            type="button"
+                            onClick={reviewSavedChats}
+                            className="mt-2 inline-flex items-center gap-1 text-[9px] font-semibold text-rose-700 transition hover:text-rose-900"
+                          >
+                            Review saved chats <ArrowRight className="h-3 w-3" />
+                          </button>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => setHistoryNudgeDismissedAt(messages.length)}
+                          aria-label="Dismiss chat history reminder"
+                          title="Dismiss"
+                          className="absolute right-3 top-3 flex h-7 w-7 items-center justify-center rounded-lg border border-slate-200 bg-white text-slate-400 transition hover:border-rose-200 hover:bg-rose-50 hover:text-rose-600"
+                        >
+                          <X className="h-3.5 w-3.5" />
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                )}
+                <div className="shrink-0 border-t border-slate-200 bg-white px-4 pb-3 pt-3 sm:px-5">
+                  <div className="rounded-[24px] border border-slate-200 bg-white px-3 py-2.5 shadow-[0_10px_30px_rgba(15,23,42,.08)] transition focus-within:border-cyan-300 focus-within:shadow-[0_14px_34px_rgba(8,145,178,.10)]">
                     <textarea
                       value={draft}
                       onChange={(event) => setDraft(event.target.value)}
@@ -1228,24 +1817,29 @@ export default function PsyLatticeCopilot({
                         }
                       }}
                       rows={2}
-                      placeholder="Ask Research Assistant…"
-                      className="max-h-28 min-h-[44px] flex-1 resize-none bg-transparent px-1 py-1 text-[10px] leading-5 text-slate-800 outline-none"
+                      placeholder="Message Research Assistant…"
+                      className="max-h-44 min-h-[54px] w-full resize-none bg-transparent px-1 py-1 text-[13px] leading-6 text-slate-900 outline-none placeholder:text-slate-400"
                     />
-                    <button
-                      type="button"
-                      disabled={sending || !draft.trim()}
-                      onClick={() => void send()}
-                      className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-slate-950 text-white disabled:opacity-35"
-                    >
-                      <Send className="h-4 w-4" />
-                    </button>
+                    <div className="mt-1 flex items-center justify-between gap-3">
+                      <div className="flex min-w-0 items-center gap-3">
+                        <span className="hidden text-[8px] text-slate-400 sm:inline">Enter to send · Shift + Enter for new line</span>
+                        <button type="button" onClick={() => { setHistoryPanelOpen(true); void loadHistoryIndex(); }} className="inline-flex items-center gap-1 text-[9px] font-semibold text-slate-400 hover:text-slate-700">
+                          <History className="h-3 w-3" /> History
+                        </button>
+                        <button type="button" onClick={newChat} className="text-[9px] font-semibold text-slate-400 hover:text-slate-700">New chat</button>
+                      </div>
+                      <button
+                        type="button"
+                        disabled={sending || !draft.trim()}
+                        onClick={() => void send()}
+                        className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-slate-950 text-white shadow-sm transition hover:scale-[1.03] hover:bg-slate-800 active:scale-[.97] disabled:cursor-not-allowed disabled:opacity-30"
+                        aria-label="Send message"
+                      >
+                        <ArrowRight className="h-4 w-4" />
+                      </button>
+                    </div>
                   </div>
-                  <div className="mt-2 flex items-center justify-between gap-3">
-                    <p className="text-[7px] text-slate-400">Statistics remain deterministic. Research Assistant guides from permitted context and server-verified study state.</p>
-                    <button type="button" onClick={newChat} className="shrink-0 text-[8px] font-semibold text-slate-400 hover:text-slate-700">
-                      New chat
-                    </button>
-                  </div>
+                  <p className="mt-2 px-1 text-[8.5px] text-slate-400">Statistics remain deterministic. Research Assistant uses only permitted context and server-verified study state.</p>
                 </div>
               </>
             )}
@@ -1440,6 +2034,46 @@ export default function PsyLatticeCopilot({
                   <p className="text-[9px] font-semibold text-slate-900">Current location</p>
                   <p className="mt-1 text-[9px] text-slate-500">{surfaceLabel(currentScreen)}</p>
                 </div>
+                {pinnedMessages.length > 0 && (
+                  <div className="mt-3 rounded-2xl border border-violet-200 bg-[linear-gradient(180deg,rgba(250,245,255,.72),rgba(255,255,255,.94))] p-3.5">
+                    <div className="flex items-center gap-2">
+                      <Pin className="h-3.5 w-3.5 text-violet-700" />
+                      <p className="text-[10px] font-semibold text-violet-950">Pinned messages</p>
+                    </div>
+                    <p className="mt-1 text-[8.5px] leading-4 text-violet-800/70">Pinned messages keep the same appearance they had in Chat, stay protected from bulk deletion, and remain available as background continuity.</p>
+                    <div className="mt-4 space-y-5">
+                      {pinnedMessages.slice(0, 24).map((message) => (
+                        <div key={message.id} className="research-assistant-soft-card">
+                          {message.role === "user" ? (
+                            <div className="ml-auto max-w-[82%]">
+                              <div className="rounded-[18px] bg-slate-950 px-4 py-3 text-[13px] leading-[1.65] text-white shadow-sm ring-2 ring-violet-300/60">
+                                {message.content}
+                              </div>
+                              <div className="mt-1 flex justify-end">
+                                <span className="inline-flex items-center gap-1 rounded-lg bg-violet-50 px-2 py-1 text-[8px] font-semibold text-violet-700"><Pin className="h-2.5 w-2.5" />Pinned</span>
+                              </div>
+                            </div>
+                          ) : (
+                            <div className="w-full">
+                              <div className="flex items-start gap-3">
+                                <div className="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-xl border border-slate-200 bg-white shadow-sm">
+                                  <AiProviderMark provider={selectedProvider} size="sm" />
+                                </div>
+                                <div className="min-w-0 flex-1">
+                                  <div className="rounded-xl bg-violet-50/60 px-1 py-0.5 ring-1 ring-violet-200">
+                                    <MarkdownMessage content={message.content} />
+                                  </div>
+                                  <div className="mt-1.5"><span className="inline-flex items-center gap-1 rounded-lg bg-violet-50 px-2 py-1 text-[8px] font-semibold text-violet-700"><Pin className="h-2.5 w-2.5" />Pinned</span></div>
+                                </div>
+                              </div>
+                            </div>
+                          )}
+                          <button type="button" onClick={() => { setTab("chat"); setHistoryPanelOpen(true); void openSavedConversation(message.conversation_id); }} className="mt-2 text-[8px] font-semibold text-slate-400 hover:text-slate-700">Open in chat · {message.conversation_title.replace(/^Research Assistant ·\s*/, "")}</button>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
                 <div className="mt-3 space-y-2">
                   {(Object.values(contexts) as PsyLatticeCopilotContextEnvelope[]).length === 0 && (
                     <p className="rounded-2xl border border-slate-200 bg-white p-4 text-[9px] text-slate-500">
@@ -1486,7 +2120,7 @@ export default function PsyLatticeCopilot({
                     <div>
                       <p className="text-[10px] font-semibold text-slate-900">Choose what Research Assistant can use</p>
                       <p className="mt-1 text-[9px] leading-4 text-slate-500">
-                        Grant this once and change it whenever you want. Participant-level rows and direct identifiers remain off by default. Enable saved history if you want this same unified chat and Research Plan to resume across browser sessions.
+                        Grant this once and change it whenever you want. Participant-level rows and direct identifiers remain off by default. Research Assistant chat history is saved to your PsyLattice account automatically; you can delete chats and pin individual messages from the Chat tab.
                       </p>
                     </div>
                   </div>

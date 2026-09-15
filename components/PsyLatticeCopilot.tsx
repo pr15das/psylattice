@@ -154,7 +154,6 @@ type VerifiedWorkspaceState = {
 };
 
 const PERMISSION_KEY = "psylattice.copilot.permissions.v2";
-const CHAT_KEY = "psylattice.copilot.chat.session.v1";
 const PLAN_KEY = "psylattice.research-assistant.plan.session.v1";
 const HISTORY_NUDGE_INTERVAL = 12;
 
@@ -179,7 +178,7 @@ const READ_PERMISSION_OPTIONS: Array<{
   {
     key: "studyStructure",
     title: "Study structure",
-    detail: "Owned study design, measures, phases and high-level status.",
+    detail: "Study Builder drafts, Questionnaire Library/catalogue, custom questionnaire design, measures, phases and high-level status.",
     icon: BrainCircuit,
   },
   {
@@ -203,7 +202,7 @@ const READ_PERMISSION_OPTIONS: Array<{
   {
     key: "cognitive",
     title: "Cognitive Lab",
-    detail: "Study task structure and verified task context when available.",
+    detail: "Cognitive Lab templates, task library, live Task Builder configuration, versions, pilots and batteries when available.",
     icon: BrainCircuit,
   },
   {
@@ -271,27 +270,6 @@ function savePermissions(value: Permissions) {
   window.localStorage.setItem(PERMISSION_KEY, JSON.stringify(value));
 }
 
-function readChat(): ChatMessage[] {
-  if (typeof window === "undefined") return [];
-  try {
-    const raw = window.sessionStorage.getItem(CHAT_KEY);
-    if (!raw) return [];
-    const parsed = JSON.parse(raw) as ChatMessage[];
-    return Array.isArray(parsed) ? parsed.slice(-40) : [];
-  } catch {
-    return [];
-  }
-}
-
-function saveChat(messages: ChatMessage[]) {
-  if (typeof window === "undefined") return;
-  try {
-    window.sessionStorage.setItem(CHAT_KEY, JSON.stringify(messages.slice(-40)));
-  } catch {
-    // Session persistence is a convenience only; chat still works in memory.
-  }
-}
-
 function readPlan(): ResearchPlan | null {
   if (typeof window === "undefined") return null;
   try {
@@ -317,10 +295,10 @@ function savePlan(plan: ResearchPlan | null) {
 function permissionForSurface(surface: string, permissions: Permissions) {
   if (surface === "analysis") return permissions.analysis;
   if (surface === "thesis") return permissions.thesis;
-  if (surface === "cognitive") return permissions.cognitive;
+  if (surface === "cognitive" || surface === "cognitive_builder") return permissions.cognitive;
   if (surface === "ambulatory") return permissions.ambulatory;
   if (surface === "data_explorer") return permissions.dataExplorer;
-  if (surface === "research" || surface === "study_builder") return permissions.studyStructure;
+  if (surface === "research" || surface === "study_builder" || surface === "questionnaire") return permissions.studyStructure;
   return true;
 }
 
@@ -609,20 +587,22 @@ export default function PsyLatticeCopilot({
   useEffect(() => {
     const next = readPermissions();
     setPermissions(next);
-    setMessages(readChat());
     setResearchPlan(readPlan());
-    if (!next.confirmed) {
-      setTab("permissions");
-      return;
-    }
+    if (!next.confirmed) setTab("permissions");
+
+    // Saved Research Assistant history belongs to the signed-in PsyLattice account,
+    // not to the browser session. Always restore it after mount, including after
+    // sign-out -> sign-in. Permissions govern what NEW context may be sent to AI;
+    // they must never gate access to the user's own saved chat history.
     void resumeSavedConversation();
-    // resumeSavedConversation is intentionally called only once from the persisted permission snapshot.
+
+    // Auth/session hydration can finish just after the client mounts on Safari.
+    // A small retry makes account history restoration resilient without creating
+    // a second persistence layer in sessionStorage.
+    const retry = window.setTimeout(() => void resumeSavedConversation(true), 900);
+    return () => window.clearTimeout(retry);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
-
-  useEffect(() => {
-    saveChat(messages);
-  }, [messages]);
 
   useEffect(() => {
     savePlan(researchPlan);
@@ -640,6 +620,15 @@ export default function PsyLatticeCopilot({
       scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: "smooth" });
     });
   }, [messages, open, sending]);
+
+  useEffect(() => {
+    if (!open) return;
+    // Re-read account history when the drawer opens. This catches sign-in/session
+    // changes without making the user refresh the Research workspace.
+    void loadHistoryIndex();
+    if (!conversationId && messages.length === 0) void resumeSavedConversation(true);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open]);
 
   async function loadModels() {
     try {
@@ -833,9 +822,9 @@ export default function PsyLatticeCopilot({
     }
   }
 
-  async function resumeSavedConversation() {
+  async function resumeSavedConversation(silentRetry = false) {
     setHistoryLoading(true);
-    setHistoryNote("");
+    if (!silentRetry) setHistoryNote("");
     try {
       const response = await fetch("/api/psylattice-copilot?mode=latest", { method: "GET", cache: "no-store" });
       const data = (await response.json()) as {
@@ -848,9 +837,15 @@ export default function PsyLatticeCopilot({
         warning?: string;
       };
       if (!response.ok || !data.ok) throw new Error(data.warning || "Saved Research Assistant history could not be loaded.");
-      if (data.warning) setHistoryNote(data.warning);
-      if (data.conversation?.id) setConversationId(String(data.conversation.id));
-      if (Array.isArray(data.messages) && data.messages.length) setMessages(data.messages.slice(-80));
+      if (data.warning && !silentRetry) setHistoryNote(data.warning);
+      if (data.conversation?.id) {
+        setConversationId(String(data.conversation.id));
+        setMessages(Array.isArray(data.messages) ? data.messages : []);
+      } else if (data.historyAvailable) {
+        // Database history is authoritative for the signed-in account.
+        setConversationId("");
+        setMessages([]);
+      }
       if (data.plan) {
         setResearchPlan(data.plan);
         setExpandedPlanStage(data.plan.stages[0]?.id || "analysis");
@@ -858,7 +853,9 @@ export default function PsyLatticeCopilot({
       if (data.verifiedState) setVerifiedState(data.verifiedState);
       await loadHistoryIndex();
     } catch (failure) {
-      setHistoryNote(failure instanceof Error ? failure.message : "Saved Research Assistant history is unavailable; this tab will continue using session-only history.");
+      if (!silentRetry) {
+        setHistoryNote(failure instanceof Error ? failure.message : "Saved Research Assistant history is temporarily unavailable. Your account history has not been deleted.");
+      }
     } finally {
       setHistoryLoading(false);
     }
@@ -949,11 +946,11 @@ export default function PsyLatticeCopilot({
   }
 
   async function deleteSavedConversation(conversation: SavedConversation) {
-    if ((conversation.pinned_message_count || 0) > 0) {
-      setError("This chat contains pinned messages. Unpin those messages before deleting the entire chat.");
-      return;
-    }
-    if (!window.confirm(`Delete “${conversation.title}”? This cannot be undone.`)) return;
+    const pinnedCount = Number(conversation.pinned_message_count || 0);
+    const prompt = pinnedCount > 0
+      ? `Delete the unpinned history from “${conversation.title}”? ${pinnedCount} pinned message${pinnedCount === 1 ? "" : "s"} will stay saved and remain available in this chat and the Context tab.`
+      : `Delete “${conversation.title}”? This cannot be undone.`;
+    if (!window.confirm(prompt)) return;
     if (historyActionBusy) return;
     setHistoryActionBusy(conversation.id);
     setError("");
@@ -963,9 +960,12 @@ export default function PsyLatticeCopilot({
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ operation: "delete_conversation", conversation_id: conversation.id }),
       });
-      const data = (await response.json()) as { ok?: boolean; error?: string };
+      const data = (await response.json()) as { ok?: boolean; preservedPinned?: boolean; error?: string };
       if (!response.ok || !data.ok) throw new Error(data.error || "The saved chat could not be deleted.");
-      if (conversation.id === conversationId) newChat();
+      if (conversation.id === conversationId) {
+        if (data.preservedPinned) await openSavedConversation(conversation.id);
+        else newChat();
+      }
       await loadHistoryIndex();
     } catch (failure) {
       setError(failure instanceof Error ? failure.message : "The saved chat could not be deleted.");
@@ -991,7 +991,7 @@ export default function PsyLatticeCopilot({
   }
 
   async function deleteUnpinnedHistory() {
-    if (!window.confirm("Delete your unpinned Research Assistant history? Individually pinned messages will be kept. This cannot be undone.")) return;
+    if (!window.confirm("Delete your unpinned Research Assistant history? Pinned messages will stay saved exactly as they are and remain available in Context and saved chats. This cannot be undone.")) return;
     if (historyActionBusy) return;
     setHistoryActionBusy("delete-history");
     setError("");
@@ -1250,7 +1250,6 @@ export default function PsyLatticeCopilot({
     setConversationId("");
     setHistoryNote("");
     setHistoryNudgeDismissedAt(0);
-    if (typeof window !== "undefined") window.sessionStorage.removeItem(CHAT_KEY);
   }
 
   function resetPlan() {
@@ -1580,7 +1579,7 @@ export default function PsyLatticeCopilot({
                       <div className="flex items-center justify-between gap-3 border-b border-slate-100 px-3 py-2.5">
                         <div>
                           <p className="text-[9px] font-semibold text-slate-900">Chat history</p>
-                          <p className="mt-0.5 text-[8.5px] text-slate-400">Saved to your PsyLattice account · individually pinned messages stay protected</p>
+                          <p className="mt-0.5 text-[8.5px] text-slate-400">Saved to your PsyLattice account until you delete it · signing out does not remove chats · pinned messages stay protected</p>
                         </div>
                         <button
                           type="button"
@@ -1616,9 +1615,9 @@ export default function PsyLatticeCopilot({
                                   </button>
                                   <button
                                     type="button"
-                                    title={pinnedCount > 0 ? "Unpin the pinned messages in this chat before deleting it" : "Delete chat"}
+                                    title={pinnedCount > 0 ? "Delete unpinned history; pinned messages will stay saved" : "Delete chat"}
                                     onClick={() => void deleteSavedConversation(conversation)}
-                                    disabled={pinnedCount > 0 || historyActionBusy === conversation.id}
+                                    disabled={historyActionBusy === conversation.id}
                                     className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg border border-slate-200 bg-white text-slate-400 hover:text-rose-700 disabled:cursor-not-allowed disabled:opacity-30"
                                   >
                                     <Trash2 className="h-3 w-3" />

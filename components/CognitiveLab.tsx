@@ -32,6 +32,7 @@ import { createClient } from "@/lib/supabase/client";
 import CognitiveTaskBuilder from "./CognitiveTaskBuilder";
 import CognitiveLearningHub from "./CognitiveLearningHub";
 import CognitiveBatteryBuilder from "./CognitiveBatteryBuilder";
+import { deactivateCopilotContext, publishCopilotContext } from "@/lib/research/copilotBridge";
 
 type CognitiveTab = "overview" | "learn" | "library" | "tasks" | "batteries" | "pilots";
 
@@ -464,6 +465,124 @@ export default function CognitiveLab() {
   const selectedTemplate = templates.find((task) => task.id === selectedTemplateId) || null;
   const completedPilots = pilotSessions.filter((session) => session.status === "completed").length;
   const activePilotLinks = pilotLinks.filter((link) => link.status === "active" && (!link.expires_at || new Date(link.expires_at).getTime() > Date.now())).length;
+
+  useEffect(() => {
+    const latestVersionByTask = new Map<string, CognitiveVersion>();
+    [...versions]
+      .sort((a, b) => b.version_number - a.version_number)
+      .forEach((item) => {
+        if (!latestVersionByTask.has(item.task_id)) latestVersionByTask.set(item.task_id, item);
+      });
+
+    const templateContext = templates.map((item) => ({
+      id: item.id,
+      template_key: item.template_key,
+      title: item.title,
+      short_title: item.short_title,
+      description: item.description,
+      domain: item.domain,
+      tags: item.tags || [],
+      template_stage: item.template_stage,
+      default_device_support: item.default_device_support || {},
+      library_metadata: item.library_metadata || {},
+      latest_version: latestVersionByTask.get(item.id) || null,
+    }));
+
+    const ownedTaskContext = tasks.map((item) => ({
+      id: item.id,
+      source_type: item.source_type,
+      source_template_id: item.source_template_id,
+      template_key: item.template_key,
+      title: item.title,
+      short_title: item.short_title,
+      description: item.description,
+      domain: item.domain,
+      tags: item.tags || [],
+      status: item.status,
+      template_stage: item.template_stage,
+      default_device_support: item.default_device_support || {},
+      library_metadata: item.library_metadata || {},
+      latest_version: latestVersionByTask.get(item.id) || null,
+    }));
+
+    publishCopilotContext({
+      surface: "cognitive",
+      label: builderTaskId ? "Cognitive Lab · Task Builder open" : `Cognitive Lab · ${tab}`,
+      publicContext: {
+        module: "Cognitive Lab",
+        current_tab: tab,
+        builder_task_id: builderTaskId || null,
+        selected_template_id: selectedTemplateId || null,
+        selected_task_id: selectedTaskId || null,
+        selected_template: selectedTemplate ? templateContext.find((item) => item.id === selectedTemplate.id) || null : null,
+        selected_task: selectedTask ? ownedTaskContext.find((item) => item.id === selectedTask.id) || null : null,
+        capabilities: {
+          overview: true,
+          learn: true,
+          task_templates: true,
+          clone_template_to_editable_task: true,
+          create_blank_task: true,
+          task_builder: true,
+          browser_preview: true,
+          pilot_links: true,
+          versioning_and_publish: true,
+          batteries: true,
+          study_builder_attachment: true,
+        },
+        workflow: [
+          "Choose a task family or template",
+          "Clone/create an editable task",
+          "Configure and save the task in Task Builder",
+          "Preview the task and review timing/behavior",
+          "Pilot when needed",
+          "Mark a tested version Ready for studies",
+          "Attach the frozen version in Study Builder",
+        ],
+        template_catalogue: templateContext,
+        owned_tasks: ownedTaskContext,
+        pilot_summary: {
+          pilot_session_count: pilotSessions.length,
+          completed_pilot_sessions: completedPilots,
+          pilot_link_count: pilotLinks.length,
+          active_pilot_links: activePilotLinks,
+          links: pilotLinks.slice(0, 50).map((link) => ({
+            id: link.id,
+            task_id: link.task_id,
+            version_id: link.version_id,
+            label: link.label,
+            status: link.status,
+            max_completions: link.max_completions,
+            completion_count: link.completion_count,
+            expires_at: link.expires_at,
+            last_used_at: link.last_used_at,
+            created_at: link.created_at,
+          })),
+        },
+        scientific_boundaries: [
+          "Published/locked task versions are frozen for reproducibility; later edits belong in a new draft version.",
+          "Cognitive batteries orchestrate tasks; they do not replace each child task's scoring/runtime.",
+          "PsyLattice Card Sorting is a PsyLattice WCST-style paradigm, not the proprietary standardized WCST/Heaton scoring system.",
+          "Dedicated paradigms such as Stop-Signal, Corsi, Card Sorting, BART and Mental Rotation must be explained using their task-specific runtime/configuration rather than forced into a generic trial model.",
+        ],
+      },
+    });
+
+    return () => deactivateCopilotContext("cognitive");
+  }, [
+    activePilotLinks,
+    builderTaskId,
+    completedPilots,
+    pilotLinks,
+    pilotSessions.length,
+    selectedTask,
+    selectedTaskId,
+    selectedTemplate,
+    selectedTemplateId,
+    tab,
+    tasks,
+    templates,
+    versions,
+  ]);
 
   function pilotUrl(token: string) {
     // Pilot and study links intentionally share the existing public /study/[token]

@@ -43,10 +43,10 @@ function WorkshopTeaserIllustration() {
       />
 
       {[
-        [164, 232, "01"],
-        [300, 246, "02"],
-        [438, 226, "03"],
-        [586, 202, "04"],
+        [164, 232, "07"],
+        [300, 246, "14"],
+        [438, 226, "21"],
+        [586, 202, "28"],
       ].map(([x, y, label]) => (
         <g key={String(label)}>
           <circle cx={Number(x)} cy={Number(y)} r="28" fill="#ffffff" stroke="#0e7490" strokeWidth="3" />
@@ -76,10 +76,10 @@ function WorkshopTeaserIllustration() {
       </g>
 
       <text x="380" y="74" textAnchor="middle" fontSize="13" fontWeight="700" fill="#0e7490" letterSpacing="2">
-        FOUR WEEKENDS · ONE CONNECTED RESEARCH JOURNEY
+        7 · 14 · 21 · 28 NOVEMBER 2026
       </text>
       <text x="380" y="392" textAnchor="middle" fontSize="12" fill="#64748b">
-        Live workshop · PsyLattice workflows · certificate on verified completion
+        Live workshop · PsyLattice workflows · certificate with complete attendance
       </text>
     </svg>
   );
@@ -100,13 +100,13 @@ export default function WorkshopTeaser() {
           </h2>
 
           <p className="mt-4 max-w-xl text-sm leading-7 text-slate-600">
-            Join a one-month PsyLattice workshop built around practical research design, modern psychological methods and connected research workflows.
+            Join a one-month PsyLattice workshop that moves from research fundamentals to ambulatory assessment, cognitive tasks and statistical measurement through one connected workflow.
           </p>
 
           <div className="mt-6 flex flex-wrap gap-2">
             <span className="inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-[#f5f9f8] px-3 py-2 text-xs font-semibold text-slate-700">
               <CalendarDays className="h-4 w-4 text-cyan-700" />
-              Starts first weekend of November
+              Starts 7 November 2026
             </span>
             <span className="inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-[#f5f9f8] px-3 py-2 text-xs font-semibold text-slate-700">
               <Clock3 className="h-4 w-4 text-cyan-700" />

@@ -14,6 +14,7 @@ import MarketingPricing from "@/components/marketing/MarketingPricing";
 import DynamicProductStage from "@/components/marketing/DynamicProductStage";
 import FeatureDeck from "@/components/marketing/FeatureDeck";
 import ScrollWorkflowStory from "@/components/marketing/ScrollWorkflowStory";
+import WorkshopTeaser from "@/components/marketing/WorkshopTeaser";
 
 const ANDROID_APP_FILE_ID = "1hzWlv_JGRLd047m0dd2pqoSmjKlQ9Mha";
 const ANDROID_APP_URL = `https://drive.google.com/uc?export=download&id=${ANDROID_APP_FILE_ID}`;
@@ -131,6 +132,7 @@ export default function MarketingHome() {
         </div>
       </section>
 
+      <WorkshopTeaser />
       <MarketingPricing />
 
       <section className="px-5 py-18 sm:px-6 sm:py-20 lg:px-8">

@@ -265,8 +265,7 @@ function CertificatePreview() {
         </div>
       </div>
 
-      <div className="relative mt-3 flex items-center justify-between gap-3 px-1 text-[10px] text-slate-500">
-        <span>A4 landscape certificate preview</span>
+      <div className="relative mt-3 flex items-center justify-end gap-3 px-1 text-[10px] text-slate-500">
         <span className="inline-flex items-center gap-1.5 font-semibold text-slate-700">
           <Download className="h-3.5 w-3.5" />
           PDF download after verified completion
@@ -506,14 +505,14 @@ export default function WorkshopLanding() {
               Complete the workshop. Earn a verifiable certificate.
             </h2>
             <p className="mt-4 max-w-xl text-sm leading-7 text-slate-600">
-              Attend all four live sessions to earn your PsyLattice Workshop certificate. After an admin marks the workshop as completed for you, the certificate is issued as an A4 landscape PDF and becomes publicly verifiable by its Workshop Reference.
+              Attend all four live sessions to earn your PsyLattice Workshop certificate. After an admin marks the workshop as completed for you, the certificate is issued as a downloadable PDF and becomes publicly verifiable by its Workshop Reference.
             </p>
 
             <div className="mt-6 space-y-3">
               {[
                 ["Registration", "Verified workshop payment"],
                 ["Attendance", "Complete attendance to earn your certificate"],
-                ["Certificate", "A4 landscape PDF with participant name + Workshop Reference"],
+                ["Certificate", "Downloadable certificate with participant name + Workshop Reference"],
                 ["Public access", "Anyone with a completed Workshop Reference can verify and download it"],
               ].map(([label, value]) => (
                 <div key={label} className="flex items-start justify-between gap-5 rounded-2xl border border-slate-200 bg-white px-4 py-3">
@@ -535,7 +534,7 @@ export default function WorkshopLanding() {
             <p className="mt-5 text-[10px] font-bold uppercase tracking-[.15em] text-cyan-800">Certificate verification & download</p>
             <h2 className="mt-3 text-4xl font-semibold tracking-[-.045em] sm:text-[48px]">Enter a Workshop Reference. Verify it. Download the certificate.</h2>
             <p className="mt-4 max-w-xl text-sm leading-7 text-slate-600">
-              Once a participant has been marked as having completed the workshop, their certificate becomes a public credential. Anyone with the Workshop Reference can verify the recipient and download the issued A4 landscape certificate. Registration and payment details remain private.
+              Once a participant has been marked as having completed the workshop, their certificate becomes a public credential. Anyone with the Workshop Reference can verify the recipient and download the issued certificate. Registration and payment details remain private.
             </p>
           </div>
 
@@ -565,7 +564,7 @@ export default function WorkshopLanding() {
               className="mt-3 inline-flex w-full items-center justify-center gap-2 rounded-xl border border-slate-200 bg-white px-5 py-3 text-sm font-semibold text-slate-400"
             >
               <Download className="h-4 w-4" />
-              Download A4 landscape certificate
+              Download certificate
             </button>
             <p id="verification-status" className="mt-3 text-xs leading-5 text-slate-500">
               Public verification and download will activate for a reference only after a PsyLattice admin records complete workshop attendance and the certificate is issued.

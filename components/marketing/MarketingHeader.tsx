@@ -13,6 +13,7 @@ export default function MarketingHeader() {
     ["Workflow", "/#workflow"],
     ["Mobile", "/#mobile"],
     ["AI", "/#trusted-ai"],
+    ["Workshops", "/workshops"],
     ["Pricing", "/#pricing"],
   ] as const;
 
@@ -25,9 +26,9 @@ export default function MarketingHeader() {
 
         <nav className="hidden items-center gap-7 text-[12px] font-semibold text-slate-500 lg:flex">
           {nav.map(([label, href]) => (
-            <a key={label} href={href} className="transition hover:text-cyan-900">
+            <Link key={label} href={href} className="transition hover:text-cyan-900">
               {label}
-            </a>
+            </Link>
           ))}
           <Link href="/security" className="transition hover:text-cyan-900">
             Security
@@ -68,14 +69,14 @@ export default function MarketingHeader() {
         <div className="mx-auto mt-2 max-w-[1380px] rounded-[20px] border border-slate-200 bg-white p-3 shadow-[0_18px_45px_rgba(15,23,42,.12)] lg:hidden">
           <div className="grid gap-1">
             {nav.map(([label, href]) => (
-              <a
+              <Link
                 key={label}
                 href={href}
                 onClick={() => setOpen(false)}
                 className="rounded-xl px-4 py-3 text-sm font-semibold text-slate-700 hover:bg-slate-50"
               >
                 {label}
-              </a>
+              </Link>
             ))}
             <Link href="/security" onClick={() => setOpen(false)} className="rounded-xl px-4 py-3 text-sm font-semibold text-slate-700 hover:bg-slate-50">
               Security

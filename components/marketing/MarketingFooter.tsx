@@ -42,6 +42,7 @@ export default function MarketingFooter() {
               <Link href="/signin" className="block hover:text-slate-950">Researcher</Link>
               <Link href="/signin" className="block hover:text-slate-950">Self</Link>
               <Link href="/signin" className="block hover:text-slate-950">Clinical</Link>
+              <Link href="/workshops" className="block hover:text-slate-950">Workshops</Link>
               <Link href="/security" className="block hover:text-slate-950">Security</Link>
               <Link href="/contact" className="block hover:text-slate-950">Contact</Link>
             </div>

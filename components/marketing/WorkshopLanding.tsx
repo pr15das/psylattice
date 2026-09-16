@@ -164,7 +164,7 @@ function WorkshopHeroVisual() {
       </g>
 
       <text x="410" y="530" textAnchor="middle" fontSize="12" fontWeight="700" fill="#475569" letterSpacing="1">
-        7 · 14 · 21 · 28 NOVEMBER 2026
+        POSSIBLE START · 7 NOVEMBER 2026
       </text>
     </svg>
   );
@@ -300,7 +300,7 @@ export default function WorkshopLanding() {
               <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-[0_12px_30px_rgba(15,23,42,.055)]">
                 <div className="flex items-center gap-2 text-cyan-800">
                   <CalendarDays className="h-4 w-4" />
-                  <p className="text-xs font-bold uppercase tracking-[.12em]">Begins</p>
+                  <p className="text-xs font-bold uppercase tracking-[.12em]">Possible start date</p>
                 </div>
                 <p className="mt-2 text-sm font-semibold text-slate-950">7 November 2026</p>
               </div>
@@ -352,13 +352,13 @@ export default function WorkshopLanding() {
                 One month. Four weekends. One connected research journey.
               </h2>
               <p className="mt-4 max-w-xl text-sm leading-7 text-slate-600">
-                The cohort runs across four November weekends. Exact session timings and the detailed workshop brochure are shared privately with registered participants.
+                The workshop is planned as a one-month programme with one live session each weekend. The final schedule and exact timings are shared privately with registered participants.
               </p>
             </div>
 
             <div className="grid gap-3 sm:grid-cols-2">
               {[
-                { icon: CalendarDays, label: "Session dates", value: "7 · 14 · 21 · 28 November 2026" },
+                { icon: CalendarDays, label: "Possible start date", value: "7 November 2026" },
                 { icon: Clock3, label: "Session length", value: "1 hour each weekend" },
                 { icon: UsersRound, label: "Live format", value: "4 sessions across one month" },
                 { icon: MessageCircleMore, label: "Private channel", value: "Timings + brochure via WhatsApp" },
@@ -405,7 +405,7 @@ export default function WorkshopLanding() {
               ))}
             </div>
             <p className="mt-5 text-center text-xs leading-5 text-slate-500">
-              Final registration remains open through 7 November 2026, the day the workshop begins.
+              Final registration remains open through 7 November 2026.
             </p>
           </div>
         </div>
@@ -581,7 +581,7 @@ export default function WorkshopLanding() {
               Registration unlocks the operational details.
             </h2>
             <p className="mt-4 max-w-xl text-sm leading-7 text-slate-600">
-              The public page shows the workshop dates and format, while exact session timings, meeting links and the detailed brochure remain private.
+              The public page shows the workshop format and possible start date, while the final schedule, exact session timings, meeting links and detailed brochure remain private.
             </p>
           </div>
 

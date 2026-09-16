@@ -1,127 +1,99 @@
 /* Workshop certificate presentation.
-   This stylesheet is route-scoped to /workshops and is intentionally written
-   around the certificate canvas so the same ornamental treatment can be reused
-   by the issued/downloadable certificate renderer later. */
+   Route-scoped to /workshops. The certificate stays flat and academic:
+   one restrained frame, light geometric accents, no stacked borders or 3D effects. */
+
+/* Remove the card-like 3D treatment around the certificate preview. */
+div:has(> [class*="aspect-[297/210]"]) {
+  box-shadow: none !important;
+}
 
 [class*="aspect-[297/210]"] {
   padding: 0 !important;
-  border-color: rgba(34, 211, 238, 0.34) !important;
+  border-color: transparent !important;
   background:
-    radial-gradient(circle at 7% 10%, rgba(6, 182, 212, 0.07), transparent 22%),
-    radial-gradient(circle at 93% 88%, rgba(124, 58, 237, 0.055), transparent 23%),
-    linear-gradient(145deg, #ffffff 0%, #fbffff 54%, #f8f7ff 100%) !important;
-  box-shadow:
-    inset 0 0 0 1px rgba(255, 255, 255, 0.9),
-    inset 0 0 42px rgba(8, 145, 178, 0.028);
+    radial-gradient(circle at 8% 9%, rgba(6, 182, 212, 0.045), transparent 21%),
+    radial-gradient(circle at 92% 90%, rgba(124, 58, 237, 0.035), transparent 22%),
+    linear-gradient(145deg, #ffffff 0%, #fcffff 58%, #faf9ff 100%) !important;
+  box-shadow: none !important;
 }
 
-/* Formal inner frame + restrained geometric corner flourishes. */
+/* Flat corner accents only — no second frame. */
 [class*="aspect-[297/210]"]::before {
   content: "";
   position: absolute;
-  inset: 1rem;
+  inset: 1.15rem;
   z-index: 3;
   pointer-events: none;
-  border: 1px solid rgba(148, 163, 184, 0.34);
-  border-radius: 1.15rem;
+  border: 0;
+  border-radius: 0;
   background:
-    linear-gradient(90deg, rgba(8, 145, 178, 0.9), rgba(34, 211, 238, 0.28)) left top / 3.25rem 1.5px no-repeat,
-    linear-gradient(180deg, rgba(8, 145, 178, 0.9), rgba(34, 211, 238, 0.28)) left top / 1.5px 3.25rem no-repeat,
-    linear-gradient(270deg, rgba(8, 145, 178, 0.9), rgba(34, 211, 238, 0.28)) right top / 3.25rem 1.5px no-repeat,
-    linear-gradient(180deg, rgba(8, 145, 178, 0.9), rgba(34, 211, 238, 0.28)) right top / 1.5px 3.25rem no-repeat,
-    linear-gradient(90deg, rgba(124, 58, 237, 0.65), rgba(167, 139, 250, 0.18)) left bottom / 3.25rem 1.5px no-repeat,
-    linear-gradient(0deg, rgba(124, 58, 237, 0.65), rgba(167, 139, 250, 0.18)) left bottom / 1.5px 3.25rem no-repeat,
-    linear-gradient(270deg, rgba(8, 145, 178, 0.78), rgba(34, 211, 238, 0.2)) right bottom / 3.25rem 1.5px no-repeat,
-    linear-gradient(0deg, rgba(8, 145, 178, 0.78), rgba(34, 211, 238, 0.2)) right bottom / 1.5px 3.25rem no-repeat;
-  box-shadow:
-    inset 0 0 0 4px rgba(255, 255, 255, 0.52),
-    0 0 0 1px rgba(255, 255, 255, 0.82);
+    linear-gradient(90deg, rgba(8, 145, 178, 0.72), rgba(34, 211, 238, 0.12)) left top / 2.8rem 1px no-repeat,
+    linear-gradient(180deg, rgba(8, 145, 178, 0.72), rgba(34, 211, 238, 0.12)) left top / 1px 2.8rem no-repeat,
+    linear-gradient(270deg, rgba(124, 58, 237, 0.52), rgba(167, 139, 250, 0.10)) right bottom / 2.8rem 1px no-repeat,
+    linear-gradient(0deg, rgba(124, 58, 237, 0.52), rgba(167, 139, 250, 0.10)) right bottom / 1px 2.8rem no-repeat;
+  box-shadow: none;
 }
 
-/* Small research-lattice inspired ornament beneath the heading area. */
+/* Small, flat research-lattice accent beneath the certificate heading. */
 [class*="aspect-[297/210]"]::after {
   content: "";
   position: absolute;
   left: 50%;
   top: 24.5%;
   z-index: 2;
-  width: 5.75rem;
-  height: 0.75rem;
+  width: 5rem;
+  height: 0.55rem;
   transform: translateX(-50%);
   pointer-events: none;
-  opacity: 0.58;
+  opacity: 0.48;
   background:
-    radial-gradient(circle, rgba(8, 145, 178, 0.95) 0 1.5px, transparent 2px) center / 0.75rem 0.75rem no-repeat,
-    linear-gradient(90deg, transparent, rgba(8, 145, 178, 0.42), transparent) center / 100% 1px no-repeat;
+    radial-gradient(circle, rgba(8, 145, 178, 0.85) 0 1.25px, transparent 1.75px) center / 0.65rem 0.65rem no-repeat,
+    linear-gradient(90deg, transparent, rgba(8, 145, 178, 0.32), transparent) center / 100% 1px no-repeat;
 }
 
-/* The decorative border already present in the component becomes a double frame. */
+/* This is the only full frame visible on the certificate. */
 [class*="aspect-[297/210]"] > .pointer-events-none.absolute.inset-3 {
-  border-color: rgba(148, 163, 184, 0.26) !important;
-  box-shadow:
-    inset 0 0 0 1px rgba(255, 255, 255, 0.72),
-    0 0 0 1px rgba(34, 211, 238, 0.055);
+  border-color: rgba(148, 163, 184, 0.34) !important;
+  box-shadow: none !important;
 }
 
-/* Keep certificate content inside the visible canvas. */
-[class*="aspect-[297/210]"] > .relative.flex.h-full.flex-col.justify-between {
-  position: absolute;
-  inset: 0;
-  z-index: 4;
-  height: auto !important;
-  padding: 1.35rem 1.45rem 1.3rem;
-}
-
-/* Make the credential metadata feel like an intentional certificate footer. */
+/* Keep the credential row flat: a simple ruled footer instead of a raised panel. */
 [class*="aspect-[297/210]"] [class*="grid-cols-3"] {
-  max-width: 95% !important;
-  border: 1px solid rgba(148, 163, 184, 0.26) !important;
-  border-radius: 0.9rem;
-  background:
-    linear-gradient(90deg, rgba(236, 254, 255, 0.58), rgba(255, 255, 255, 0.78) 46%, rgba(245, 243, 255, 0.64));
-  padding: 0.72rem 0.6rem !important;
-  box-shadow:
-    inset 0 1px 0 rgba(255, 255, 255, 0.92),
-    0 8px 22px rgba(15, 23, 42, 0.028);
+  max-width: 92% !important;
+  border: 0 !important;
+  border-top: 1px solid rgba(148, 163, 184, 0.34) !important;
+  border-radius: 0 !important;
+  background: transparent !important;
+  padding: 1rem 0.25rem 0 !important;
+  box-shadow: none !important;
 }
 
 [class*="aspect-[297/210]"] [class*="grid-cols-3"] > div {
   position: relative;
-  padding-inline: 0.35rem;
+  padding-inline: 0.45rem;
 }
 
 [class*="aspect-[297/210]"] [class*="grid-cols-3"] > div + div::before {
   content: "";
   position: absolute;
   left: -0.25rem;
-  top: 12%;
+  top: 18%;
   bottom: 12%;
   width: 1px;
-  background: linear-gradient(
-    to bottom,
-    transparent,
-    rgba(148, 163, 184, 0.32) 24%,
-    rgba(148, 163, 184, 0.32) 76%,
-    transparent
-  );
+  background: rgba(148, 163, 184, 0.20);
 }
 
 @media (min-width: 640px) {
   [class*="aspect-[297/210]"]::before {
-    inset: 1.2rem;
-    border-radius: 1.35rem;
-  }
-
-  [class*="aspect-[297/210]"] > .relative.flex.h-full.flex-col.justify-between {
-    padding: 1.7rem 2rem 1.55rem;
+    inset: 1.35rem;
   }
 
   [class*="aspect-[297/210]"] [class*="grid-cols-3"] {
-    padding: 0.9rem 0.8rem !important;
+    padding-top: 1.15rem !important;
   }
 }
 
-/* Preserve decorative colors when the same certificate canvas is rendered for print/PDF. */
+/* Preserve the same flat styling when the certificate canvas is rendered for print/PDF. */
 @media print {
   [class*="aspect-[297/210]"],
   [class*="aspect-[297/210]"] * {

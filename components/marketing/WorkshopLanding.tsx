@@ -9,6 +9,7 @@ import {
   BrainCircuit,
   CalendarDays,
   Clock3,
+  Download,
   FlaskConical,
   GraduationCap,
   LockKeyhole,
@@ -206,60 +207,70 @@ function PricingTimelineVisual() {
 
 function CertificatePreview() {
   return (
-    <div className="relative overflow-hidden rounded-[34px] border border-slate-200 bg-white p-4 shadow-[0_28px_80px_rgba(15,23,42,.11)] sm:p-6">
+    <div className="relative overflow-hidden rounded-[34px] border border-slate-200 bg-white p-4 shadow-[0_28px_80px_rgba(15,23,42,.11)] sm:p-5">
       <div className="pointer-events-none absolute -right-20 -top-20 h-56 w-56 rounded-full bg-cyan-100/70 blur-3xl" />
       <div className="pointer-events-none absolute -bottom-20 -left-16 h-52 w-52 rounded-full bg-violet-100/70 blur-3xl" />
 
-      <div className="relative overflow-hidden rounded-[28px] border border-cyan-100 bg-[linear-gradient(145deg,#ffffff_0%,#fbffff_55%,#f7f5ff_100%)] px-7 py-8 text-center sm:px-10 sm:py-10">
-        <div className="pointer-events-none absolute inset-3 rounded-[22px] border border-slate-200/80" />
-        <div className="pointer-events-none absolute -right-10 top-7 h-32 w-32 rounded-full border-[18px] border-cyan-100/60" />
-        <div className="pointer-events-none absolute -left-10 bottom-7 h-28 w-28 rounded-full border-[16px] border-violet-100/65" />
+      <div className="relative aspect-[297/210] overflow-hidden rounded-[26px] border border-cyan-100 bg-[linear-gradient(145deg,#ffffff_0%,#fbffff_55%,#f7f5ff_100%)] p-5 text-center sm:p-7">
+        <div className="pointer-events-none absolute inset-3 rounded-[20px] border border-slate-200/80" />
+        <div className="pointer-events-none absolute -right-8 top-5 h-24 w-24 rounded-full border-[14px] border-cyan-100/60 sm:h-28 sm:w-28" />
+        <div className="pointer-events-none absolute -left-8 bottom-5 h-20 w-20 rounded-full border-[12px] border-violet-100/65 sm:h-24 sm:w-24" />
         <Image
           src="/psylattice-mark.svg"
           alt=""
           width={190}
           height={190}
-          className="pointer-events-none absolute left-1/2 top-1/2 w-44 -translate-x-1/2 -translate-y-1/2 opacity-[.025]"
+          className="pointer-events-none absolute left-1/2 top-1/2 w-36 -translate-x-1/2 -translate-y-1/2 opacity-[.025] sm:w-44"
         />
 
-        <div className="relative">
-          <div className="flex items-center justify-center gap-2.5">
-            <Image src="/psylattice-mark.svg" alt="PsyLattice" width={34} height={34} className="h-8.5 w-8.5" />
-            <span className="text-lg font-semibold tracking-[-.03em]">
-              <span className="text-slate-950">Psy</span>
-              <span className="text-cyan-600">L</span>
-              <span className="text-slate-950">attice</span>
-            </span>
+        <div className="relative flex h-full flex-col justify-between">
+          <div>
+            <div className="flex items-center justify-center gap-2">
+              <Image src="/psylattice-mark.svg" alt="PsyLattice" width={32} height={32} className="h-7 w-7 sm:h-8 sm:w-8" />
+              <span className="text-base font-semibold tracking-[-.03em] sm:text-lg">
+                <span className="text-slate-950">Psy</span>
+                <span className="text-cyan-600">L</span>
+                <span className="text-slate-950">attice</span>
+              </span>
+            </div>
+
+            <div className="mx-auto mt-3 h-px w-24 bg-gradient-to-r from-transparent via-cyan-500 to-transparent sm:mt-4" />
+            <p className="mt-3 text-[7px] font-bold uppercase tracking-[.24em] text-cyan-800 sm:text-[9px]">Certificate of Completion</p>
+            <p className="mt-3 text-[9px] text-slate-500 sm:mt-4 sm:text-[11px]">This certifies that</p>
+            <p className="mt-1 text-xl font-semibold tracking-[-.04em] text-slate-950 sm:text-2xl">Participant Name</p>
+
+            <p className="mt-3 text-[9px] leading-4 text-slate-500 sm:text-[11px]">successfully completed the PsyLattice Workshop on</p>
+            <p className="mx-auto mt-1 max-w-[520px] text-[11px] font-semibold leading-4 text-slate-900 sm:text-sm sm:leading-5">
+              “{WORKSHOP_TITLE}”
+            </p>
+            <p className="mx-auto mt-2 max-w-[520px] text-[8px] leading-4 text-slate-500 sm:text-[10px] sm:leading-4">
+              Covering research design, ambulatory assessment, cognitive tasks and statistical measurement techniques using PsyLattice.
+            </p>
           </div>
 
-          <div className="mx-auto mt-5 h-px w-24 bg-gradient-to-r from-transparent via-cyan-500 to-transparent" />
-          <p className="mt-5 text-[9px] font-bold uppercase tracking-[.26em] text-cyan-800">Certificate of Completion</p>
-          <p className="mt-5 text-xs text-slate-500">This certifies that</p>
-          <p className="mt-2 text-3xl font-semibold tracking-[-.04em] text-slate-950">Participant Name</p>
-
-          <p className="mt-5 text-xs leading-5 text-slate-500">successfully completed the PsyLattice Workshop on</p>
-          <p className="mx-auto mt-2 max-w-[520px] text-base font-semibold leading-6 text-slate-900">
-            “{WORKSHOP_TITLE}”
-          </p>
-          <p className="mx-auto mt-4 max-w-[500px] text-[11px] leading-5 text-slate-500">
-            Covering research design, ambulatory assessment, cognitive tasks and statistical measurement techniques using PsyLattice.
-          </p>
-
-          <div className="mx-auto mt-7 grid max-w-[520px] gap-3 border-t border-slate-200 pt-5 sm:grid-cols-3">
+          <div className="mx-auto grid w-full max-w-[560px] grid-cols-3 gap-2 border-t border-slate-200 pt-3 sm:gap-3 sm:pt-4">
             <div>
-              <p className="text-[8px] font-bold uppercase tracking-[.14em] text-slate-400">Cohort</p>
-              <p className="mt-1 text-[11px] font-semibold text-slate-700">November 2026</p>
+              <p className="text-[6px] font-bold uppercase tracking-[.12em] text-slate-400 sm:text-[8px]">Cohort</p>
+              <p className="mt-1 text-[8px] font-semibold text-slate-700 sm:text-[10px]">November 2026</p>
             </div>
             <div>
-              <p className="text-[8px] font-bold uppercase tracking-[.14em] text-slate-400">Workshop Reference</p>
-              <p className="mt-1 font-mono text-[11px] font-semibold text-slate-700">PSY-W26-XXXXXX</p>
+              <p className="text-[6px] font-bold uppercase tracking-[.12em] text-slate-400 sm:text-[8px]">Workshop Reference</p>
+              <p className="mt-1 font-mono text-[8px] font-semibold text-slate-700 sm:text-[10px]">PSY-W26-XXXXXX</p>
             </div>
             <div>
-              <p className="text-[8px] font-bold uppercase tracking-[.14em] text-slate-400">Status</p>
-              <p className="mt-1 text-[11px] font-semibold text-emerald-700">Verified completion</p>
+              <p className="text-[6px] font-bold uppercase tracking-[.12em] text-slate-400 sm:text-[8px]">Status</p>
+              <p className="mt-1 text-[8px] font-semibold text-emerald-700 sm:text-[10px]">Verified completion</p>
             </div>
           </div>
         </div>
+      </div>
+
+      <div className="relative mt-3 flex items-center justify-between gap-3 px-1 text-[10px] text-slate-500">
+        <span>A4 landscape certificate preview</span>
+        <span className="inline-flex items-center gap-1.5 font-semibold text-slate-700">
+          <Download className="h-3.5 w-3.5" />
+          PDF download after verified completion
+        </span>
       </div>
     </div>
   );
@@ -486,7 +497,7 @@ export default function WorkshopLanding() {
       </section>
 
       <section className="px-5 py-20 sm:px-6 lg:px-8">
-        <div className="mx-auto grid max-w-[1320px] gap-10 lg:grid-cols-[.95fr_1.05fr] lg:items-center">
+        <div className="mx-auto grid max-w-[1320px] gap-10 lg:grid-cols-[1.08fr_.92fr] lg:items-center">
           <CertificatePreview />
 
           <div>
@@ -495,15 +506,15 @@ export default function WorkshopLanding() {
               Complete the workshop. Earn a verifiable certificate.
             </h2>
             <p className="mt-4 max-w-xl text-sm leading-7 text-slate-600">
-              Attend all four live sessions to earn your PsyLattice Workshop certificate. Once complete attendance is recorded, your certificate becomes available with a unique Workshop Reference for public verification.
+              Attend all four live sessions to earn your PsyLattice Workshop certificate. After an admin marks the workshop as completed for you, the certificate is issued as an A4 landscape PDF and becomes publicly verifiable by its Workshop Reference.
             </p>
 
             <div className="mt-6 space-y-3">
               {[
                 ["Registration", "Verified workshop payment"],
                 ["Attendance", "Complete attendance to earn your certificate"],
-                ["Certificate", `Participant name + “${WORKSHOP_TITLE}”`],
-                ["Verification", "Public lookup using the Workshop Reference"],
+                ["Certificate", "A4 landscape PDF with participant name + Workshop Reference"],
+                ["Public access", "Anyone with a completed Workshop Reference can verify and download it"],
               ].map(([label, value]) => (
                 <div key={label} className="flex items-start justify-between gap-5 rounded-2xl border border-slate-200 bg-white px-4 py-3">
                   <p className="text-xs font-semibold text-slate-500">{label}</p>
@@ -521,10 +532,10 @@ export default function WorkshopLanding() {
             <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-slate-950 text-cyan-200">
               <BadgeCheck className="h-5 w-5" />
             </div>
-            <p className="mt-5 text-[10px] font-bold uppercase tracking-[.15em] text-cyan-800">Certificate verification</p>
-            <h2 className="mt-3 text-4xl font-semibold tracking-[-.045em] sm:text-[48px]">Check a PsyLattice workshop reference.</h2>
+            <p className="mt-5 text-[10px] font-bold uppercase tracking-[.15em] text-cyan-800">Certificate verification & download</p>
+            <h2 className="mt-3 text-4xl font-semibold tracking-[-.045em] sm:text-[48px]">Enter a Workshop Reference. Verify it. Download the certificate.</h2>
             <p className="mt-4 max-w-xl text-sm leading-7 text-slate-600">
-              Anyone will be able to verify whether a workshop certificate was issued and who it was granted to. Personal registration and payment information stays private.
+              Once a participant has been marked as having completed the workshop, their certificate becomes a public credential. Anyone with the Workshop Reference can verify the recipient and download the issued A4 landscape certificate. Registration and payment details remain private.
             </p>
           </div>
 
@@ -545,11 +556,19 @@ export default function WorkshopLanding() {
                 />
               </div>
               <button type="button" disabled className="rounded-xl bg-slate-300 px-5 py-3 text-sm font-semibold text-white">
-                Verify
+                Verify certificate
               </button>
             </div>
+            <button
+              type="button"
+              disabled
+              className="mt-3 inline-flex w-full items-center justify-center gap-2 rounded-xl border border-slate-200 bg-white px-5 py-3 text-sm font-semibold text-slate-400"
+            >
+              <Download className="h-4 w-4" />
+              Download A4 landscape certificate
+            </button>
             <p id="verification-status" className="mt-3 text-xs leading-5 text-slate-500">
-              Public verification will activate when the first workshop certificates are issued.
+              Public verification and download will activate for a reference only after a PsyLattice admin records complete workshop attendance and the certificate is issued.
             </p>
           </div>
         </div>

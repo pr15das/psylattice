@@ -1,13 +1,15 @@
+import Image from "next/image";
 import Link from "next/link";
 import {
   ArrowRight,
   Award,
   BadgeCheck,
+  BarChart3,
   BookOpenCheck,
+  BrainCircuit,
   CalendarDays,
-  Check,
-  CircleUserRound,
   Clock3,
+  FlaskConical,
   GraduationCap,
   LockKeyhole,
   MapPin,
@@ -15,25 +17,14 @@ import {
   Microscope,
   Network,
   Search,
-  ShieldCheck,
   Sparkles,
   UsersRound,
+  Waves,
 } from "lucide-react";
 import MarketingHeader from "@/components/marketing/MarketingHeader";
 import MarketingFooter from "@/components/marketing/MarketingFooter";
 
-const registrationFields = [
-  "Full name for the certificate",
-  "Age",
-  "Email ID",
-  "Contact number",
-  "Current city / town",
-  "State / region",
-  "Country",
-  "Current institution / organization",
-  "Educational qualification",
-  "Current programme / course",
-];
+const WORKSHOP_TITLE = "Foundations of Modern Psychological Research with PsyLattice";
 
 const benefits = [
   {
@@ -48,13 +39,40 @@ const benefits = [
   },
   {
     title: "Build with PsyLattice",
-    text: "Use a connected research environment instead of learning methods as disconnected theory.",
+    text: "Use PsyLattice to turn research concepts into studies, assessments, cognitive tasks and analysis workflows.",
     icon: BookOpenCheck,
   },
   {
-    title: "Leave with a verifiable record",
-    text: "Participants whose completion is confirmed receive a PsyLattice workshop certificate with a public reference ID.",
+    title: "Earn a verifiable certificate",
+    text: "Complete attendance across the workshop and receive a PsyLattice certificate with a public Workshop Reference.",
     icon: Award,
+  },
+];
+
+const learningPath = [
+  {
+    week: "Week 1",
+    title: "Research foundations",
+    text: "Move from a research question to constructs, variables, hypotheses, operational definitions, sampling and a defensible study design.",
+    icon: FlaskConical,
+  },
+  {
+    week: "Week 2",
+    title: "Longitudinal & ambulatory research",
+    text: "Understand repeated measurement, follow-up designs, EMA / ESM and how to capture psychological processes in daily life.",
+    icon: Waves,
+  },
+  {
+    week: "Week 3",
+    title: "Cognitive & experimental methods",
+    text: "Learn how manipulations, cognitive tasks, reaction-time measures and batteries extend research beyond questionnaires.",
+    icon: BrainCircuit,
+  },
+  {
+    week: "Week 4",
+    title: "Statistical measurement & analysis",
+    text: "Connect measurement to descriptives, reliability, effect sizes, relationships, model selection and interpretation inside PsyLattice.",
+    icon: BarChart3,
   },
 ];
 
@@ -137,7 +155,7 @@ function WorkshopHeroVisual() {
       <g transform="translate(438 370)">
         <rect width="238" height="86" rx="24" fill="#fafafa" stroke="#e2e8f0" />
         <text x="22" y="31" fontSize="11" fontWeight="800" fill="#6d28d9" letterSpacing="1.4">
-          COMPLETION
+          COMPLETE PATH
         </text>
         <circle cx="40" cy="57" r="11" fill="#ede9fe" />
         <path d="M35 57l4 4 8-10" fill="none" stroke="#7c3aed" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" />
@@ -145,7 +163,7 @@ function WorkshopHeroVisual() {
       </g>
 
       <text x="410" y="530" textAnchor="middle" fontSize="12" fontWeight="700" fill="#475569" letterSpacing="1">
-        ONE MONTH · FOUR LIVE WEEKENDS · ONE CONNECTED WORKFLOW
+        7 · 14 · 21 · 28 NOVEMBER 2026
       </text>
     </svg>
   );
@@ -153,31 +171,31 @@ function WorkshopHeroVisual() {
 
 function PricingTimelineVisual() {
   return (
-    <svg viewBox="0 0 900 250" aria-hidden="true" className="h-auto w-full">
+    <svg viewBox="0 0 900 270" aria-hidden="true" className="h-auto w-full">
       <defs>
         <linearGradient id="wk-price-line" x1="0" y1="0" x2="1" y2="0">
           <stop offset="0%" stopColor="#06b6d4" />
           <stop offset="100%" stopColor="#7c3aed" />
         </linearGradient>
       </defs>
-      <path d="M105 128H795" stroke="#cbd5e1" strokeWidth="5" strokeLinecap="round" />
-      <path d="M105 128H795" stroke="url(#wk-price-line)" strokeWidth="5" strokeLinecap="round" opacity=".55" />
+      <path d="M105 136H795" stroke="#cbd5e1" strokeWidth="5" strokeLinecap="round" />
+      <path d="M105 136H795" stroke="url(#wk-price-line)" strokeWidth="5" strokeLinecap="round" opacity=".55" />
 
       {[
-        [140, "SEPTEMBER", "₹300", "Early registration"],
-        [450, "OCTOBER", "₹400", "Through the third week"],
-        [760, "FINAL WEEK", "₹600", "Before the workshop"],
+        [140, "EARLY", "₹299", "1–30 Sep 2026"],
+        [450, "STANDARD", "₹399", "1–24 Oct 2026"],
+        [760, "FINAL", "₹599", "25 Oct–7 Nov 2026"],
       ].map(([x, top, price, caption]) => (
         <g key={String(top)}>
-          <circle cx={Number(x)} cy="128" r="18" fill="#ffffff" stroke="#0e7490" strokeWidth="4" />
-          <circle cx={Number(x)} cy="128" r="7" fill="#06b6d4" />
-          <text x={Number(x)} y="52" textAnchor="middle" fontSize="11" fontWeight="800" fill="#0f172a" letterSpacing="1.4">
+          <circle cx={Number(x)} cy="136" r="18" fill="#ffffff" stroke="#0e7490" strokeWidth="4" />
+          <circle cx={Number(x)} cy="136" r="7" fill="#06b6d4" />
+          <text x={Number(x)} y="48" textAnchor="middle" fontSize="11" fontWeight="800" fill="#0f172a" letterSpacing="1.4">
             {top}
           </text>
-          <text x={Number(x)} y="88" textAnchor="middle" fontSize="28" fontWeight="800" fill="#0f172a">
+          <text x={Number(x)} y="88" textAnchor="middle" fontSize="30" fontWeight="800" fill="#0f172a">
             {price}
           </text>
-          <text x={Number(x)} y="185" textAnchor="middle" fontSize="11" fill="#64748b">
+          <text x={Number(x)} y="198" textAnchor="middle" fontSize="11" fontWeight="700" fill="#475569">
             {caption}
           </text>
         </g>
@@ -188,23 +206,60 @@ function PricingTimelineVisual() {
 
 function CertificatePreview() {
   return (
-    <div className="relative overflow-hidden rounded-[30px] border border-slate-200 bg-white p-5 shadow-[0_24px_70px_rgba(15,23,42,.09)] sm:p-7">
-      <div className="pointer-events-none absolute -right-14 -top-14 h-44 w-44 rounded-full bg-cyan-100/60 blur-2xl" />
-      <div className="pointer-events-none absolute -bottom-14 -left-14 h-44 w-44 rounded-full bg-violet-100/60 blur-2xl" />
-      <div className="relative rounded-[24px] border border-slate-200 bg-[#fbfdfd] p-7 text-center sm:p-10">
-        <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-2xl bg-slate-950 text-cyan-200">
-          <Award className="h-5 w-5" />
+    <div className="relative overflow-hidden rounded-[34px] border border-slate-200 bg-white p-4 shadow-[0_28px_80px_rgba(15,23,42,.11)] sm:p-6">
+      <div className="pointer-events-none absolute -right-20 -top-20 h-56 w-56 rounded-full bg-cyan-100/70 blur-3xl" />
+      <div className="pointer-events-none absolute -bottom-20 -left-16 h-52 w-52 rounded-full bg-violet-100/70 blur-3xl" />
+
+      <div className="relative overflow-hidden rounded-[28px] border border-cyan-100 bg-[linear-gradient(145deg,#ffffff_0%,#fbffff_55%,#f7f5ff_100%)] px-7 py-8 text-center sm:px-10 sm:py-10">
+        <div className="pointer-events-none absolute inset-3 rounded-[22px] border border-slate-200/80" />
+        <div className="pointer-events-none absolute -right-10 top-7 h-32 w-32 rounded-full border-[18px] border-cyan-100/60" />
+        <div className="pointer-events-none absolute -left-10 bottom-7 h-28 w-28 rounded-full border-[16px] border-violet-100/65" />
+        <Image
+          src="/psylattice-mark.svg"
+          alt=""
+          width={190}
+          height={190}
+          className="pointer-events-none absolute left-1/2 top-1/2 w-44 -translate-x-1/2 -translate-y-1/2 opacity-[.025]"
+        />
+
+        <div className="relative">
+          <div className="flex items-center justify-center gap-2.5">
+            <Image src="/psylattice-mark.svg" alt="PsyLattice" width={34} height={34} className="h-8.5 w-8.5" />
+            <span className="text-lg font-semibold tracking-[-.03em]">
+              <span className="text-slate-950">Psy</span>
+              <span className="text-cyan-600">L</span>
+              <span className="text-slate-950">attice</span>
+            </span>
+          </div>
+
+          <div className="mx-auto mt-5 h-px w-24 bg-gradient-to-r from-transparent via-cyan-500 to-transparent" />
+          <p className="mt-5 text-[9px] font-bold uppercase tracking-[.26em] text-cyan-800">Certificate of Completion</p>
+          <p className="mt-5 text-xs text-slate-500">This certifies that</p>
+          <p className="mt-2 text-3xl font-semibold tracking-[-.04em] text-slate-950">Participant Name</p>
+
+          <p className="mt-5 text-xs leading-5 text-slate-500">successfully completed the PsyLattice Workshop on</p>
+          <p className="mx-auto mt-2 max-w-[520px] text-base font-semibold leading-6 text-slate-900">
+            “{WORKSHOP_TITLE}”
+          </p>
+          <p className="mx-auto mt-4 max-w-[500px] text-[11px] leading-5 text-slate-500">
+            Covering research design, ambulatory assessment, cognitive tasks and statistical measurement techniques using PsyLattice.
+          </p>
+
+          <div className="mx-auto mt-7 grid max-w-[520px] gap-3 border-t border-slate-200 pt-5 sm:grid-cols-3">
+            <div>
+              <p className="text-[8px] font-bold uppercase tracking-[.14em] text-slate-400">Cohort</p>
+              <p className="mt-1 text-[11px] font-semibold text-slate-700">November 2026</p>
+            </div>
+            <div>
+              <p className="text-[8px] font-bold uppercase tracking-[.14em] text-slate-400">Workshop Reference</p>
+              <p className="mt-1 font-mono text-[11px] font-semibold text-slate-700">PSY-W26-XXXXXX</p>
+            </div>
+            <div>
+              <p className="text-[8px] font-bold uppercase tracking-[.14em] text-slate-400">Status</p>
+              <p className="mt-1 text-[11px] font-semibold text-emerald-700">Verified completion</p>
+            </div>
+          </div>
         </div>
-        <p className="mt-5 text-[10px] font-bold uppercase tracking-[.2em] text-cyan-800">PsyLattice</p>
-        <p className="mt-2 text-2xl font-semibold tracking-[-.035em] text-slate-950">Certificate of Completion</p>
-        <p className="mt-6 text-xs text-slate-500">This certifies that</p>
-        <p className="mt-2 text-2xl font-semibold text-slate-950">Participant Name</p>
-        <p className="mx-auto mt-4 max-w-md text-xs leading-5 text-slate-500">
-          successfully completed the PsyLattice Research Workshop.
-        </p>
-        <div className="mx-auto mt-7 h-px max-w-[260px] bg-slate-200" />
-        <p className="mt-5 text-[10px] font-bold uppercase tracking-[.14em] text-slate-400">Workshop Reference</p>
-        <p className="mt-1 font-mono text-sm font-semibold text-slate-700">PSY-W26-XXXXXX</p>
       </div>
     </div>
   );
@@ -228,7 +283,7 @@ export default function WorkshopLanding() {
             </h1>
 
             <p className="mt-6 max-w-xl text-base leading-8 text-slate-600 sm:text-lg">
-              A one-month live workshop for students and researchers who want to move from isolated methods to a connected research workflow.
+              A one-month live workshop that takes you from research fundamentals to ambulatory assessments, cognitive tasks and statistical measurement — all built through PsyLattice.
             </p>
 
             <div className="mt-7 grid max-w-xl gap-3 sm:grid-cols-2">
@@ -237,7 +292,7 @@ export default function WorkshopLanding() {
                   <CalendarDays className="h-4 w-4" />
                   <p className="text-xs font-bold uppercase tracking-[.12em]">Begins</p>
                 </div>
-                <p className="mt-2 text-sm font-semibold text-slate-950">First weekend of November</p>
+                <p className="mt-2 text-sm font-semibold text-slate-950">7 November 2026</p>
               </div>
               <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-[0_12px_30px_rgba(15,23,42,.055)]">
                 <div className="flex items-center gap-2 text-violet-700">
@@ -265,7 +320,7 @@ export default function WorkshopLanding() {
             </div>
 
             <p className="mt-4 max-w-xl text-xs leading-5 text-slate-500">
-              Registration requires a PsyLattice account. Exact timings, meeting information and the detailed brochure are shared privately after confirmed registration.
+              Registration requires a PsyLattice account. Exact session timings, meeting information and the detailed brochure are shared privately after confirmed registration.
             </p>
           </div>
 
@@ -287,32 +342,16 @@ export default function WorkshopLanding() {
                 One month. Four weekends. One connected research journey.
               </h2>
               <p className="mt-4 max-w-xl text-sm leading-7 text-slate-600">
-                The public page gives you the format, registration windows and broad outcomes. The exact timings and the detailed workshop brochure remain private to registered participants.
+                The cohort runs across four November weekends. Exact session timings and the detailed workshop brochure are shared privately with registered participants.
               </p>
             </div>
 
             <div className="grid gap-3 sm:grid-cols-2">
               {[
-                {
-                  icon: CalendarDays,
-                  label: "Start",
-                  value: "First weekend of November",
-                },
-                {
-                  icon: Clock3,
-                  label: "Session length",
-                  value: "1 hour each weekend",
-                },
-                {
-                  icon: UsersRound,
-                  label: "Live format",
-                  value: "4 sessions across one month",
-                },
-                {
-                  icon: MessageCircleMore,
-                  label: "Private channel",
-                  value: "Timings + brochure via WhatsApp",
-                },
+                { icon: CalendarDays, label: "Session dates", value: "7 · 14 · 21 · 28 November 2026" },
+                { icon: Clock3, label: "Session length", value: "1 hour each weekend" },
+                { icon: UsersRound, label: "Live format", value: "4 sessions across one month" },
+                { icon: MessageCircleMore, label: "Private channel", value: "Timings + brochure via WhatsApp" },
               ].map((item) => {
                 const Icon = item.icon;
                 return (
@@ -336,7 +375,7 @@ export default function WorkshopLanding() {
             <p className="text-[10px] font-bold uppercase tracking-[.15em] text-cyan-800">Registration pricing</p>
             <h2 className="mt-3 text-4xl font-semibold tracking-[-.045em] sm:text-[48px]">Register earlier. Pay less.</h2>
             <p className="mt-4 text-sm leading-7 text-slate-600">
-              The fee is based on when your registration payment is successfully completed.
+              The fee is determined by the date your registration payment is successfully completed.
             </p>
           </div>
 
@@ -344,21 +383,9 @@ export default function WorkshopLanding() {
             <PricingTimelineVisual />
             <div className="grid gap-3 md:grid-cols-3">
               {[
-                {
-                  price: "₹300",
-                  title: "September registration",
-                  text: "Lowest workshop fee for anyone who completes registration during September.",
-                },
-                {
-                  price: "₹400",
-                  title: "October registration",
-                  text: "Applies through the third week of October.",
-                },
-                {
-                  price: "₹600",
-                  title: "Final registration week",
-                  text: "Applies during the final week before the workshop begins.",
-                },
+                { price: "₹299", title: "Early registration", text: "1 September – 30 September 2026" },
+                { price: "₹399", title: "Standard registration", text: "1 October – 24 October 2026" },
+                { price: "₹599", title: "Final registration", text: "25 October – 7 November 2026" },
               ].map((item) => (
                 <div key={item.price} className="rounded-2xl border border-slate-200 bg-[#f8fbfb] p-5">
                   <p className="text-3xl font-semibold tracking-[-.04em] text-slate-950">{item.price}</p>
@@ -367,6 +394,9 @@ export default function WorkshopLanding() {
                 </div>
               ))}
             </div>
+            <p className="mt-5 text-center text-xs leading-5 text-slate-500">
+              Final registration remains open through 7 November 2026, the day the workshop begins.
+            </p>
           </div>
         </div>
       </section>
@@ -383,7 +413,7 @@ export default function WorkshopLanding() {
                 Build research thinking, not just software familiarity.
               </h2>
               <p className="mt-4 max-w-xl text-sm leading-7 text-slate-400">
-                The workshop is designed around transferable research reasoning. PsyLattice is the environment used to make those ideas tangible.
+                The workshop is designed around transferable research reasoning. PsyLattice is the environment used to make those ideas tangible from design through analysis.
               </p>
             </div>
 
@@ -406,42 +436,50 @@ export default function WorkshopLanding() {
       </section>
 
       <section className="border-b border-slate-200 bg-white px-5 py-20 sm:px-6 lg:px-8">
-        <div className="mx-auto grid max-w-[1320px] gap-10 lg:grid-cols-[.9fr_1.1fr] lg:items-center">
-          <div>
-            <p className="text-[10px] font-bold uppercase tracking-[.15em] text-cyan-800">Registration profile</p>
+        <div className="mx-auto max-w-[1320px]">
+          <div className="mx-auto max-w-3xl text-center">
+            <p className="text-[10px] font-bold uppercase tracking-[.15em] text-cyan-800">What you will learn</p>
             <h2 className="mt-3 text-4xl font-semibold tracking-[-.045em] sm:text-[48px]">
-              One PsyLattice account. One workshop identity.
+              From a research question to a modern psychological study.
             </h2>
-            <p className="mt-4 max-w-xl text-sm leading-7 text-slate-600">
-              Registration is tied to a PsyLattice account so payment, workshop access, completion and certificates can stay connected to the same participant.
+            <p className="mt-4 text-sm leading-7 text-slate-600">
+              Each weekend advances the same connected workflow, so the methods build on one another rather than feeling like isolated topics.
             </p>
-
-            <div className="mt-6 rounded-2xl border border-cyan-200 bg-cyan-50/70 p-4">
-              <div className="flex items-start gap-3">
-                <CircleUserRound className="mt-0.5 h-5 w-5 shrink-0 text-cyan-800" />
-                <div>
-                  <p className="text-sm font-semibold text-cyan-950">Use your certificate name carefully.</p>
-                  <p className="mt-1 text-xs leading-5 text-cyan-900/70">
-                    The full name supplied during workshop registration is the name intended for your completion certificate.
-                  </p>
-                </div>
-              </div>
-            </div>
           </div>
 
-          <div className="rounded-[30px] border border-slate-200 bg-[#f8fbfb] p-6 shadow-[0_22px_60px_rgba(15,23,42,.06)] sm:p-8">
-            <p className="text-sm font-semibold text-slate-950">Information collected during registration</p>
-            <div className="mt-5 grid gap-2 sm:grid-cols-2">
-              {registrationFields.map((field) => (
-                <div key={field} className="flex items-center gap-2 rounded-xl bg-white px-3 py-2.5 text-xs text-slate-600">
-                  <Check className="h-3.5 w-3.5 shrink-0 text-cyan-700" />
-                  {field}
+          <div className="mt-10 grid gap-4 lg:grid-cols-4">
+            {learningPath.map((item, index) => {
+              const Icon = item.icon;
+              return (
+                <div key={item.week} className="relative overflow-hidden rounded-[28px] border border-slate-200 bg-[#f8fbfb] p-6 shadow-[0_16px_44px_rgba(15,23,42,.05)]">
+                  <div className="absolute right-4 top-3 text-[56px] font-semibold leading-none tracking-[-.08em] text-cyan-950/[.035]">
+                    0{index + 1}
+                  </div>
+                  <span className="relative flex h-11 w-11 items-center justify-center rounded-2xl bg-white text-cyan-800 shadow-[0_8px_22px_rgba(15,23,42,.07)]">
+                    <Icon className="h-5 w-5" />
+                  </span>
+                  <p className="relative mt-5 text-[10px] font-bold uppercase tracking-[.14em] text-cyan-700">{item.week}</p>
+                  <h3 className="relative mt-2 text-base font-semibold text-slate-950">{item.title}</h3>
+                  <p className="relative mt-3 text-xs leading-5 text-slate-500">{item.text}</p>
                 </div>
-              ))}
-            </div>
-            <div className="mt-5 flex items-start gap-3 border-t border-slate-200 pt-5 text-xs leading-5 text-slate-500">
-              <ShieldCheck className="mt-0.5 h-4 w-4 shrink-0 text-cyan-700" />
-              Workshop registration details are used for cohort administration, payment records and certificate issuance.
+              );
+            })}
+          </div>
+
+          <div className="mt-6 rounded-[28px] border border-cyan-200 bg-cyan-50/70 p-6 sm:p-7">
+            <div className="grid gap-5 lg:grid-cols-[.72fr_1.28fr] lg:items-center">
+              <div>
+                <p className="text-[10px] font-bold uppercase tracking-[.15em] text-cyan-800">The connecting thread</p>
+                <h3 className="mt-2 text-2xl font-semibold tracking-[-.035em] text-slate-950">You build the ideas through PsyLattice.</h3>
+              </div>
+              <div className="grid gap-2 sm:grid-cols-5">
+                {["Question", "Study design", "Ambulatory", "Cognition", "Analysis"].map((label, index) => (
+                  <div key={label} className="relative rounded-2xl bg-white px-3 py-3 text-center text-xs font-semibold text-slate-700 shadow-[0_8px_22px_rgba(15,23,42,.05)]">
+                    {label}
+                    {index < 4 && <span className="absolute -right-2 top-1/2 hidden -translate-y-1/2 text-cyan-500 sm:block">→</span>}
+                  </div>
+                ))}
+              </div>
             </div>
           </div>
         </div>
@@ -454,22 +492,22 @@ export default function WorkshopLanding() {
           <div>
             <p className="text-[10px] font-bold uppercase tracking-[.15em] text-violet-700">Completion certificate</p>
             <h2 className="mt-3 text-4xl font-semibold tracking-[-.045em] sm:text-[48px]">
-              Completion becomes verifiable.
+              Complete the workshop. Earn a verifiable certificate.
             </h2>
             <p className="mt-4 max-w-xl text-sm leading-7 text-slate-600">
-              Payment confirms registration. After the workshop, completion is confirmed by a PsyLattice admin. Only then is the participant&apos;s workshop certificate issued.
+              Attend all four live sessions to earn your PsyLattice Workshop certificate. Once complete attendance is recorded, your certificate becomes available with a unique Workshop Reference for public verification.
             </p>
 
             <div className="mt-6 space-y-3">
               {[
                 ["Registration", "Verified workshop payment"],
-                ["Completion", "Confirmed manually after the workshop"],
-                ["Certificate", "Participant name + PsyLattice Workshop Reference"],
+                ["Attendance", "Complete attendance to earn your certificate"],
+                ["Certificate", `Participant name + “${WORKSHOP_TITLE}”`],
                 ["Verification", "Public lookup using the Workshop Reference"],
               ].map(([label, value]) => (
                 <div key={label} className="flex items-start justify-between gap-5 rounded-2xl border border-slate-200 bg-white px-4 py-3">
                   <p className="text-xs font-semibold text-slate-500">{label}</p>
-                  <p className="text-right text-xs font-semibold text-slate-900">{value}</p>
+                  <p className="max-w-[70%] text-right text-xs font-semibold text-slate-900">{value}</p>
                 </div>
               ))}
             </div>
@@ -506,11 +544,7 @@ export default function WorkshopLanding() {
                   aria-describedby="verification-status"
                 />
               </div>
-              <button
-                type="button"
-                disabled
-                className="rounded-xl bg-slate-300 px-5 py-3 text-sm font-semibold text-white"
-              >
+              <button type="button" disabled className="rounded-xl bg-slate-300 px-5 py-3 text-sm font-semibold text-white">
                 Verify
               </button>
             </div>
@@ -529,32 +563,16 @@ export default function WorkshopLanding() {
               Registration unlocks the operational details.
             </h2>
             <p className="mt-4 max-w-xl text-sm leading-7 text-slate-600">
-              The workshop page intentionally does not publish exact session timings, meeting links or the detailed brochure.
+              The public page shows the workshop dates and format, while exact session timings, meeting links and the detailed brochure remain private.
             </p>
           </div>
 
           <div className="grid gap-3 sm:grid-cols-2">
             {[
-              {
-                icon: LockKeyhole,
-                title: "After verified payment",
-                text: "Your registration becomes confirmed and your Workshop Reference is created.",
-              },
-              {
-                icon: MessageCircleMore,
-                title: "WhatsApp group",
-                text: "The official group invitation becomes available only to confirmed participants.",
-              },
-              {
-                icon: MapPin,
-                title: "Exact logistics",
-                text: "Dates, timings and any live-session logistics are shared through the private group.",
-              },
-              {
-                icon: BookOpenCheck,
-                title: "Detailed brochure",
-                text: "The full session-wise brochure is distributed through private participant channels.",
-              },
+              { icon: LockKeyhole, title: "After verified payment", text: "Your registration becomes confirmed and your Workshop Reference is created." },
+              { icon: MessageCircleMore, title: "WhatsApp group", text: "The official group invitation becomes available only to confirmed participants." },
+              { icon: MapPin, title: "Exact timings", text: "Session timings and live-session logistics are shared through the private group." },
+              { icon: BookOpenCheck, title: "Detailed brochure", text: "The full session-wise brochure is distributed through private participant channels." },
             ].map((item) => {
               const Icon = item.icon;
               return (
@@ -578,19 +596,16 @@ export default function WorkshopLanding() {
 
           <div className="relative flex flex-col justify-between gap-8 lg:flex-row lg:items-end">
             <div className="max-w-3xl">
-              <p className="text-[10px] font-bold uppercase tracking-[.15em] text-cyan-300">First cohort · November</p>
+              <p className="text-[10px] font-bold uppercase tracking-[.15em] text-cyan-300">First cohort · November 2026</p>
               <h2 className="mt-3 text-4xl font-semibold tracking-[-.045em] sm:text-[48px]">
-                Create your PsyLattice account before registration opens.
+                Create your PsyLattice account to register.
               </h2>
               <p className="mt-4 max-w-2xl text-sm leading-7 text-slate-300">
-                Workshop registration, payment, your Workshop Reference, private participant access and certificate status will all be connected to the same account.
+                Workshop registration, payment, your Workshop Reference, private participant access and certificate status will all be connected to the same PsyLattice account.
               </p>
             </div>
 
-            <Link
-              href="/signin"
-              className="inline-flex w-fit items-center gap-2 rounded-xl bg-white px-5 py-3 text-sm font-semibold text-slate-950 transition hover:-translate-y-px"
-            >
+            <Link href="/signin" className="inline-flex w-fit items-center gap-2 rounded-xl bg-white px-5 py-3 text-sm font-semibold text-slate-950 transition hover:-translate-y-px">
               Create PsyLattice account
               <ArrowRight className="h-4 w-4" />
             </Link>

@@ -29,6 +29,15 @@ const workspaces = [
   },
 ];
 
+function currentSafeNextPath() {
+  if (typeof window === "undefined") return "/workspace";
+  const value = new URLSearchParams(window.location.search).get("next");
+  if (!value || !value.startsWith("/") || value.startsWith("//")) {
+    return "/workspace";
+  }
+  return value;
+}
+
 export default function SignInPage() {
   const router = useRouter();
 
@@ -50,7 +59,7 @@ export default function SignInPage() {
       } = await supabase.auth.getUser();
 
       if (user) {
-        router.replace("/workspace");
+        router.replace(currentSafeNextPath());
       }
     }
 
@@ -152,7 +161,7 @@ export default function SignInPage() {
 
     await ensureProfile(data.user.id, metadataName);
 
-    router.replace("/workspace");
+    router.replace(currentSafeNextPath());
     router.refresh();
   }
 
@@ -187,11 +196,13 @@ export default function SignInPage() {
     setSubmitting(true);
 
     const supabase = createClient();
+    const nextPath = currentSafeNextPath();
 
     const { data, error } = await supabase.auth.signUp({
       email: normalizedEmail,
       password,
       options: {
+        emailRedirectTo: `${window.location.origin}/auth/callback?next=${encodeURIComponent(nextPath)}`,
         data: {
           full_name: normalizedName,
           workspace_access: ["self", "researcher", "clinician"],
@@ -208,13 +219,15 @@ export default function SignInPage() {
     if (data.session) {
       await ensureProfile(data.user.id, normalizedName);
 
-      router.replace("/workspace");
+      router.replace(nextPath);
       router.refresh();
       return;
     }
 
     setAuthMessage(
-      "Your PsyLattice account was created with access to Self, Researcher and Clinician workspaces. Confirm your email address, then sign in."
+      nextPath === "/workshops/register"
+        ? "Your PsyLattice account was created. Confirm your email address, then sign in to continue workshop registration."
+        : "Your PsyLattice account was created with access to Self, Researcher and Clinician workspaces. Confirm your email address, then sign in."
     );
 
     setMode("signin");

@@ -211,7 +211,7 @@ function CertificatePreview() {
       <div className="pointer-events-none absolute -right-20 -top-20 h-56 w-56 rounded-full bg-cyan-100/70 blur-3xl" />
       <div className="pointer-events-none absolute -bottom-20 -left-16 h-52 w-52 rounded-full bg-violet-100/70 blur-3xl" />
 
-      <div className="relative aspect-[297/210] overflow-hidden rounded-[26px] border border-cyan-100 bg-[linear-gradient(145deg,#ffffff_0%,#fbffff_55%,#f7f5ff_100%)] p-5 text-center sm:p-7">
+      <div className="relative aspect-[297/210] overflow-hidden rounded-[26px] border border-cyan-100 bg-[linear-gradient(145deg,#ffffff_0%,#fbffff_55%,#f7f5ff_100%)] p-5 sm:p-7">
         <div className="pointer-events-none absolute inset-3 rounded-[20px] border border-slate-200/80" />
         <div className="pointer-events-none absolute -right-8 top-5 h-24 w-24 rounded-full border-[14px] border-cyan-100/60 sm:h-28 sm:w-28" />
         <div className="pointer-events-none absolute -left-8 bottom-5 h-20 w-20 rounded-full border-[12px] border-violet-100/65 sm:h-24 sm:w-24" />
@@ -223,43 +223,44 @@ function CertificatePreview() {
           className="pointer-events-none absolute left-1/2 top-1/2 w-36 -translate-x-1/2 -translate-y-1/2 opacity-[.025] sm:w-44"
         />
 
-        <div className="relative flex h-full flex-col justify-between">
-          <div>
-            <div className="flex items-center justify-center gap-2">
-              <Image src="/psylattice-mark.svg" alt="PsyLattice" width={32} height={32} className="h-7 w-7 sm:h-8 sm:w-8" />
-              <span className="text-base font-semibold tracking-[-.03em] sm:text-lg">
-                <span className="text-slate-950">Psy</span>
-                <span className="text-cyan-600">L</span>
-                <span className="text-slate-950">attice</span>
-              </span>
-            </div>
+        <div className="relative flex h-full flex-col items-center justify-center px-3 text-center">
+          <div className="flex items-center justify-center gap-2">
+            <Image src="/psylattice-mark.svg" alt="PsyLattice" width={32} height={32} className="h-7 w-7 sm:h-8 sm:w-8" />
+            <span className="text-base font-semibold tracking-[-.03em] sm:text-lg">
+              <span className="text-slate-950">Psy</span>
+              <span className="text-cyan-600">L</span>
+              <span className="text-slate-950">attice</span>
+            </span>
+          </div>
 
-            <div className="mx-auto mt-3 h-px w-24 bg-gradient-to-r from-transparent via-cyan-500 to-transparent sm:mt-4" />
-            <p className="mt-3 text-[7px] font-bold uppercase tracking-[.24em] text-cyan-800 sm:text-[9px]">Certificate of Completion</p>
-            <p className="mt-3 text-[9px] text-slate-500 sm:mt-4 sm:text-[11px]">This certifies that</p>
-            <p className="mt-1 text-xl font-semibold tracking-[-.04em] text-slate-950 sm:text-2xl">Participant Name</p>
+          <div className="mx-auto mt-3 h-px w-28 bg-gradient-to-r from-transparent via-cyan-500 to-transparent sm:mt-4" />
+          <p className="mt-4 text-[7px] font-bold uppercase tracking-[.24em] text-cyan-800 sm:text-[9px]">Certificate of Completion</p>
 
-            <p className="mt-3 text-[9px] leading-4 text-slate-500 sm:text-[11px]">successfully completed the PsyLattice Workshop on</p>
-            <p className="mx-auto mt-1 max-w-[520px] text-[11px] font-semibold leading-4 text-slate-900 sm:text-sm sm:leading-5">
+          <div className="mt-5 sm:mt-6">
+            <p className="text-[9px] text-slate-500 sm:text-[11px]">This certifies that</p>
+            <p className="mt-1.5 text-xl font-semibold leading-none tracking-[-.04em] text-slate-950 sm:text-3xl">Participant Name</p>
+
+            <p className="mt-4 text-[9px] leading-4 text-slate-500 sm:text-[11px]">successfully completed the PsyLattice Workshop on</p>
+            <p className="mx-auto mt-1.5 max-w-[620px] text-[11px] font-semibold leading-4 text-slate-900 sm:text-[15px] sm:leading-5">
               “{WORKSHOP_TITLE}”
             </p>
-            <p className="mx-auto mt-2 max-w-[520px] text-[8px] leading-4 text-slate-500 sm:text-[10px] sm:leading-4">
+            <p className="mx-auto mt-3 max-w-[650px] text-[8px] leading-4 text-slate-500 sm:text-[10px] sm:leading-5">
               Covering research design, ambulatory assessment, cognitive tasks and statistical measurement techniques using PsyLattice.
             </p>
           </div>
 
-          <div className="mx-auto grid w-full max-w-[560px] grid-cols-3 gap-2 border-t border-slate-200 pt-3 sm:gap-3 sm:pt-4">
+          <div className="mt-6 grid w-full max-w-[650px] grid-cols-3 gap-2 border-t border-slate-200 pt-4 sm:mt-7 sm:gap-3 sm:pt-5">
             <div>
               <p className="text-[6px] font-bold uppercase tracking-[.12em] text-slate-400 sm:text-[8px]">Cohort</p>
-              <p className="mt-1 text-[8px] font-semibold text-slate-700 sm:text-[10px]">November 2026</p>
+              <p className="mt-1.5 text-[8px] font-semibold text-slate-700 sm:text-[10px]">November 2026</p>
             </div>
             <div>
               <p className="text-[6px] font-bold uppercase tracking-[.12em] text-slate-400 sm:text-[8px]">Workshop Reference</p>
-              <p className="mt-1 font-mono text-[8px] font-semibold text-slate-700 sm:text-[10px]">PSY-W26-XXXXXX</p>
+              <p className="mt-1.5 font-mono text-[8px] font-semibold text-slate-700 sm:text-[10px]">PSY-W26-XXXXXX</p>
             </div>
             <div>
               <p className="text-[6px] font-bold uppercase tracking-[.12em] text-slate-400 sm:text-[8px]">Status</p>
-              <p className="mt-1 text-[8px] font-semibold text-emerald-700 sm:text-[10px]">Verified completion</p>
+              <p className="mt-1.5 text-[8px] font-semibold text-emerald-700 sm:text-[10px]">Verified completion</p>
             </div>
           </div>
         </div>

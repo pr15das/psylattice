@@ -150,6 +150,36 @@ export default function SignInPage() {
         ? data.user.user_metadata.full_name.trim()
         : null;
 
+    // Restricted accounts are still allowed to authenticate so PsyLattice can
+    // show the dedicated restriction page. Check that state before touching
+    // normal user tables such as profiles, which are intentionally blocked by
+    // the Phase 8C restrictive RLS gate.
+    const { data: accessState, error: accessError } = await supabase
+      .from("psylattice_account_access")
+      .select("status, suspended_until")
+      .eq("user_id", data.user.id)
+      .maybeSingle();
+
+    if (accessError) {
+      console.error("Could not check account access:", accessError);
+    }
+
+    const suspensionIsActive =
+      accessState?.status === "suspended" &&
+      !!accessState.suspended_until &&
+      new Date(accessState.suspended_until).getTime() > Date.now();
+
+    const accountIsRestricted =
+      accessState?.status === "banned" ||
+      accessState?.status === "deleting" ||
+      suspensionIsActive;
+
+    if (accountIsRestricted) {
+      router.replace("/account-restricted");
+      router.refresh();
+      return;
+    }
+
     await ensureProfile(data.user.id, metadataName);
 
     router.replace("/workspace");
@@ -454,42 +484,6 @@ export default function SignInPage() {
                 .
               </p>
             </div>
-
-            <section
-              aria-labelledby="android-beta-heading"
-              className="mt-5 rounded-[26px] border border-cyan-100 bg-white p-5 shadow-[0_12px_30px_rgba(15,23,42,0.07),0_2px_8px_rgba(8,145,178,0.05)] sm:p-6"
-            >
-              <p className="text-xs font-semibold text-cyan-800">
-                Android • Beta
-              </p>
-              <h2
-                id="android-beta-heading"
-                className="mt-2 text-lg font-semibold tracking-tight"
-              >
-                PsyLattice Mobile Companion
-              </h2>
-
-              <div className="mt-4 flex flex-col gap-2 sm:flex-row">
-                <a
-                  href="https://github.com/pr15das/psylattice/releases/download/android-beta/psylattice-android-beta.zip"
-                  className="inline-flex min-h-11 items-center justify-center rounded-full bg-cyan-900 px-5 py-3 text-sm font-semibold text-white shadow-[0_7px_20px_rgba(8,145,178,0.15)] transition hover:bg-cyan-950 focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-cyan-200 sm:flex-1"
-                >
-                  Download Android Beta
-                </a>
-                <a
-                  href="https://github.com/pr15das/psylattice/releases/download/android-beta/psylattice-android-beta.apk"
-                  className="inline-flex min-h-11 items-center justify-center rounded-full border border-slate-200 bg-white px-4 py-3 text-sm font-semibold text-slate-600 transition hover:border-cyan-200 hover:text-cyan-900 focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-cyan-200"
-                >
-                  Direct APK
-                </a>
-              </div>
-
-              <p className="mt-4 text-xs leading-5 text-slate-500">
-                Android beta build. Download the ZIP, extract the APK, and
-                install it on your Android device. Direct APK requires no
-                extraction.
-              </p>
-            </section>
           </div>
         </section>
       </div>

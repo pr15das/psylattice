@@ -72,6 +72,45 @@ export async function proxy(request: NextRequest) {
     return redirectResponse;
   }
 
+  const userId = String(claimsData?.claims?.sub || "");
+
+  const { data: access, error: accessError } = await supabase
+    .from("psylattice_account_access")
+    .select("status, suspended_until")
+    .eq("user_id", userId)
+    .maybeSingle();
+
+  if (accessError) {
+    console.error("PsyLattice account access check failed:", accessError.message);
+    const restrictedUrl = request.nextUrl.clone();
+    restrictedUrl.pathname = "/account-restricted";
+    restrictedUrl.search = "?state=check_failed";
+    const restrictedResponse = NextResponse.redirect(restrictedUrl);
+    response.cookies.getAll().forEach((cookie) => restrictedResponse.cookies.set(cookie));
+    restrictedResponse.headers.set("Cache-Control", "private, no-store, max-age=0");
+    return restrictedResponse;
+  } else if (access) {
+    const suspendedUntil = access.suspended_until
+      ? new Date(access.suspended_until).getTime()
+      : null;
+    const isRestricted =
+      access.status === "banned" ||
+      access.status === "deleting" ||
+      (access.status === "suspended" &&
+        suspendedUntil !== null &&
+        suspendedUntil > Date.now());
+
+    if (isRestricted) {
+      const restrictedUrl = request.nextUrl.clone();
+      restrictedUrl.pathname = "/account-restricted";
+      restrictedUrl.search = "";
+      const restrictedResponse = NextResponse.redirect(restrictedUrl);
+      response.cookies.getAll().forEach((cookie) => restrictedResponse.cookies.set(cookie));
+      restrictedResponse.headers.set("Cache-Control", "private, no-store, max-age=0");
+      return restrictedResponse;
+    }
+  }
+
   response.headers.set(
     "Cache-Control",
     "private, no-store, max-age=0"
@@ -92,5 +131,8 @@ export const config = {
     "/self/:path*",
     "/researcher/:path*",
     "/clinician/:path*",
+    "/account/:path*",
+    "/admin/:path*",
+    "/api/admin/:path*",
   ],
 };

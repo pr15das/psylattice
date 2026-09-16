@@ -3,7 +3,9 @@
 import Link from "next/link";
 import {
   BadgeIndianRupee,
+  Ban,
   BookOpenCheck,
+  Clock3,
   ChevronRight,
   CircleDollarSign,
   Crown,
@@ -13,7 +15,9 @@ import {
   RefreshCcw,
   Search,
   ShieldCheck,
+  ShieldOff,
   Sparkles,
+  Trash2,
   UserCog,
   Users,
   X,
@@ -57,6 +61,7 @@ type DetailPayload = {
   billingTransactions?: AnyRow[];
   adminGrants?: AnyRow[];
   supportNotes?: AnyRow[];
+  accessControl?: AnyRow | null;
   error?: string;
 };
 
@@ -106,6 +111,28 @@ function planTone(plan: unknown) {
   if (value === "pro-monthly") return "border-cyan-200 bg-cyan-50 text-cyan-800";
   if (value === "study-pass") return "border-sky-200 bg-sky-50 text-sky-800";
   return "border-slate-200 bg-slate-50 text-slate-600";
+}
+
+
+function accessStatus(row: AnyRow | null | undefined) {
+  const status = String(row?.status || row?.access_status || "active");
+  const until = row?.suspended_until ? new Date(String(row.suspended_until)).getTime() : null;
+  if (status === "suspended" && until !== null && until <= Date.now()) return "active";
+  return status;
+}
+
+function accessTone(status: string) {
+  if (status === "banned") return "border-rose-200 bg-rose-50 text-rose-700";
+  if (status === "suspended") return "border-amber-200 bg-amber-50 text-amber-800";
+  if (status === "deleting") return "border-slate-300 bg-slate-100 text-slate-700";
+  return "border-emerald-200 bg-emerald-50 text-emerald-700";
+}
+
+function accessLabel(status: string) {
+  if (status === "banned") return "Banned";
+  if (status === "suspended") return "Suspended";
+  if (status === "deleting") return "Deleting";
+  return "Active";
 }
 
 async function getJson<T>(url: string): Promise<T> {
@@ -223,6 +250,10 @@ export default function AdminDashboard({
   const [subscriptionReason, setSubscriptionReason] = useState("");
   const [subscriptionSnapshot, setSubscriptionSnapshot] = useState<AnyRow | null>(null);
   const [subscriptionBusy, setSubscriptionBusy] = useState(false);
+  const [accessReason, setAccessReason] = useState("");
+  const [accessPublicMessage, setAccessPublicMessage] = useState("");
+  const [suspensionDays, setSuspensionDays] = useState("7");
+  const [deleteConfirmation, setDeleteConfirmation] = useState("");
 
   const loadOverview = useCallback(async () => {
     setLoading(true);
@@ -306,6 +337,9 @@ export default function AdminDashboard({
       const result = await getJson<DetailPayload>(`/api/admin/users/${encodeURIComponent(userId)}`);
       setDetail(result);
       setSubscriptionSnapshot(null);
+      setAccessReason("");
+      setAccessPublicMessage(result.accessControl?.public_message || "");
+      setDeleteConfirmation("");
       const firstStudy = result.studies?.[0]?.id;
       setSelectedStudyId(firstStudy ? String(firstStudy) : "");
     } catch (cause) {
@@ -467,6 +501,54 @@ export default function AdminDashboard({
       setActionMessage(cause instanceof Error ? cause.message : "Subscription action failed.");
     } finally {
       setSubscriptionBusy(false);
+    }
+  }
+
+  async function moderateAccount(action: "suspend" | "ban" | "restore" | "delete") {
+    if (!selectedUserId || !detail?.account) return;
+    if (accessReason.trim().length < 4) {
+      setActionMessage("Add a short internal reason first.");
+      return;
+    }
+    if (action === "delete" && deleteConfirmation !== "DELETE") {
+      setActionMessage("Type DELETE to confirm permanent deletion.");
+      return;
+    }
+
+    setActionBusy(true);
+    setActionMessage("");
+    try {
+      const result = await postJson<any>(
+        `/api/admin/users/${selectedUserId}/access`,
+        {
+          action,
+          reason: accessReason.trim(),
+          publicMessage: accessPublicMessage.trim(),
+          durationHours: Math.max(1, Number(suspensionDays || 0)) * 24,
+        },
+      );
+
+      if (action === "delete" && result.deleted) {
+        setSelectedUserId(null);
+        setDetail(null);
+        setActionMessage("");
+        await Promise.all([loadUsers(), loadOverview(), loadAudit()]);
+        return;
+      }
+
+      setActionMessage(
+        action === "restore"
+          ? "Account restored."
+          : action === "ban"
+            ? "Account banned."
+            : "Account suspended.",
+      );
+      await refreshAllAfterAction();
+    } catch (cause) {
+      setActionMessage(cause instanceof Error ? cause.message : "Account action failed.");
+      if (action === "delete") await loadDetail(selectedUserId);
+    } finally {
+      setActionBusy(false);
     }
   }
 
@@ -676,6 +758,7 @@ export default function AdminDashboard({
                     <tr>
                       <th className="px-4 py-3">Account</th>
                       <th className="px-4 py-3">Plan</th>
+                      <th className="px-4 py-3">Status</th>
                       <th className="px-4 py-3">Studies</th>
                       <th className="px-4 py-3">Payments</th>
                       <th className="px-4 py-3">Joined</th>
@@ -691,6 +774,12 @@ export default function AdminDashboard({
                         </td>
                         <td className="px-4 py-3">
                           <span className={`inline-flex rounded-full border px-2.5 py-1 text-[9px] font-bold ${planTone(row.effective_plan)}`}>{planLabel(row.effective_plan)}</span>
+                        </td>
+                        <td className="px-4 py-3">
+                          <span className={`inline-flex rounded-full border px-2.5 py-1 text-[9px] font-bold ${accessTone(accessStatus(row))}`}>{accessLabel(accessStatus(row))}</span>
+                          {accessStatus(row) === "suspended" && row.suspended_until && (
+                            <p className="mt-1 text-[9px] text-slate-400">until {dateTime(row.suspended_until)}</p>
+                          )}
                         </td>
                         <td className="px-4 py-3 text-slate-600">{row.active_studies || 0} active · {row.total_studies || 0} total</td>
                         <td className="px-4 py-3 text-slate-600">{row.successful_payments || 0} · {money(row.total_paid_paise)}</td>
@@ -897,6 +986,104 @@ export default function AdminDashboard({
                   </div>
                   <div className="mt-4 grid grid-cols-2 gap-3 text-xs"><div className="rounded-xl bg-white/80 p-3"><p className="text-slate-400">Member since</p><p className="mt-1 font-semibold">{date(detail.account.created_at)}</p></div><div className="rounded-xl bg-white/80 p-3"><p className="text-slate-400">Total paid</p><p className="mt-1 font-semibold">{money(detail.account.total_paid_paise)}</p></div></div>
                 </div>
+
+                <Section
+                  title="Account access & moderation"
+                  description="Suspend access for a fixed period, ban indefinitely, restore access, or permanently delete the account. Every action is recorded in the Admin audit log."
+                >
+                  {(() => {
+                    const status = accessStatus(detail.accessControl);
+                    const targetAdminRole = String(detail.account.admin_role || "");
+                    const protectedTarget =
+                      selectedUserId === initialAdmin.userId ||
+                      targetAdminRole === "super_admin" ||
+                      (initialAdmin.role !== "super_admin" && Boolean(targetAdminRole));
+                    return (
+                      <div className="space-y-4">
+                        <div className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-slate-200 bg-slate-50 p-4">
+                          <div>
+                            <p className="text-[10px] font-bold uppercase tracking-[0.12em] text-slate-400">Current status</p>
+                            <div className="mt-2 flex items-center gap-2">
+                              {status === "suspended" ? <Clock3 className="h-4 w-4 text-amber-700" /> : status === "banned" ? <Ban className="h-4 w-4 text-rose-700" /> : status === "active" ? <ShieldCheck className="h-4 w-4 text-emerald-700" /> : <ShieldOff className="h-4 w-4 text-slate-600" />}
+                              <span className={`rounded-full border px-3 py-1 text-[10px] font-bold ${accessTone(status)}`}>{accessLabel(status)}</span>
+                            </div>
+                          </div>
+                          {status === "suspended" && detail.accessControl?.suspended_until && (
+                            <div className="text-right text-[10px] text-slate-500">
+                              <p>Suspended until</p>
+                              <p className="mt-1 font-semibold text-slate-700">{dateTime(detail.accessControl.suspended_until)}</p>
+                            </div>
+                          )}
+                        </div>
+
+                        {protectedTarget && (
+                          <div className="rounded-xl border border-amber-200 bg-amber-50 p-3 text-[10px] leading-5 text-amber-900">
+                            This account is protected by the Admin hierarchy. Normal Admins cannot moderate other Admins; Super Admin accounts and your own Admin account cannot be restricted or deleted here.
+                          </div>
+                        )}
+
+                        <label className="block">
+                          <span className="text-xs font-semibold text-slate-600">Internal reason · never shown to the user</span>
+                          <textarea value={accessReason} onChange={(e) => setAccessReason(e.target.value)} rows={3} placeholder="Required for the audit log" className="mt-1 w-full rounded-xl border border-slate-200 px-3 py-3 text-sm" />
+                        </label>
+
+                        <label className="block">
+                          <span className="text-xs font-semibold text-slate-600">Message shown to the user · optional</span>
+                          <textarea value={accessPublicMessage} onChange={(e) => setAccessPublicMessage(e.target.value)} rows={3} maxLength={1000} placeholder="Example: Violation of PsyLattice's acceptable use policy." className="mt-1 w-full rounded-xl border border-slate-200 px-3 py-3 text-sm" />
+                        </label>
+
+                        {status !== "suspended" && status !== "banned" && status !== "deleting" && (
+                          <>
+                            <label className="block">
+                              <span className="text-xs font-semibold text-slate-600">Suspension duration (days)</span>
+                              <input
+                                inputMode="numeric"
+                                min={1}
+                                max={1825}
+                                value={suspensionDays}
+                                onChange={(e) => setSuspensionDays(e.target.value.replace(/\D/g, "").slice(0, 4))}
+                                placeholder="7"
+                                className="mt-1 w-full rounded-xl border border-slate-200 px-3 py-3 text-sm"
+                              />
+                              <div className="mt-2 flex flex-wrap gap-1.5">
+                                {[1, 3, 7, 30, 90, 365].map((days) => (
+                                  <button
+                                    key={days}
+                                    type="button"
+                                    onClick={() => setSuspensionDays(String(days))}
+                                    className="rounded-lg border border-slate-200 bg-white px-2.5 py-1.5 text-[10px] font-semibold text-slate-600 hover:border-cyan-200 hover:text-cyan-800"
+                                  >
+                                    {days === 1 ? "24h" : days === 365 ? "1 year" : `${days} days`}
+                                  </button>
+                                ))}
+                              </div>
+                            </label>
+                            <div className="grid grid-cols-2 gap-2">
+                              <button disabled={actionBusy || protectedTarget} onClick={() => void moderateAccount("suspend")} className="rounded-xl border border-amber-200 bg-amber-50 px-3 py-3 text-xs font-semibold text-amber-900 disabled:opacity-40">Suspend account</button>
+                              <button disabled={actionBusy || protectedTarget} onClick={() => void moderateAccount("ban")} className="rounded-xl border border-rose-200 bg-rose-50 px-3 py-3 text-xs font-semibold text-rose-700 disabled:opacity-40">Ban account</button>
+                            </div>
+                          </>
+                        )}
+
+                        {status !== "active" && (
+                          <button disabled={actionBusy || protectedTarget} onClick={() => void moderateAccount("restore")} className="w-full rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-3 text-xs font-semibold text-emerald-800 disabled:opacity-40">Restore account access</button>
+                        )}
+
+                        <div className="rounded-2xl border border-rose-200 bg-rose-50/60 p-4">
+                          <div className="flex items-start gap-3">
+                            <Trash2 className="mt-0.5 h-4 w-4 shrink-0 text-rose-700" />
+                            <div>
+                              <p className="text-xs font-bold text-rose-900">Permanent account deletion</p>
+                              <p className="mt-1 text-[10px] leading-5 text-rose-700">Owned Supabase Storage objects are removed first, then the Auth account is hard-deleted. Database rows that reference the Auth user follow their configured foreign-key deletion rules. This action cannot be undone.</p>
+                            </div>
+                          </div>
+                          <input value={deleteConfirmation} onChange={(e) => setDeleteConfirmation(e.target.value)} placeholder="Type DELETE to confirm" className="mt-3 w-full rounded-xl border border-rose-200 bg-white px-3 py-3 text-sm" />
+                          <button disabled={actionBusy || protectedTarget || deleteConfirmation !== "DELETE"} onClick={() => void moderateAccount("delete")} className="mt-2 w-full rounded-xl bg-rose-700 px-4 py-3 text-xs font-semibold text-white disabled:opacity-40">Permanently delete account</button>
+                        </div>
+                      </div>
+                    );
+                  })()}
+                </Section>
 
                 <Section title="Complimentary plan access" description="Use this for pilots, university arrangements, support corrections or internal testing. Paid Razorpay subscriptions cannot be overwritten here.">
                   <div className="space-y-3">

@@ -24344,7 +24344,7 @@ export default function ResearcherWorkspace() {
         {/* Sidebar */}
 
         <aside
-          className={`fixed bottom-3 left-3 top-[92px] z-40 hidden overflow-y-auto rounded-[28px] border border-slate-200/90 bg-white/95 p-3 shadow-[0_18px_46px_rgba(15,23,42,0.085),0_2px_10px_rgba(8,145,178,0.045)] backdrop-blur-xl transition-[width] duration-200 lg:block ${
+          className={`fixed bottom-3 left-3 top-[92px] z-40 hidden overflow-y-auto rounded-[28px] border border-slate-200/90 bg-white/95 p-3 shadow-[0_18px_46px_rgba(15,23,42,0.085),0_2px_10px_rgba(8,145,178,0.045)] backdrop-blur-xl transition-[width] duration-200 [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden lg:block ${
             sidebarCollapsed ? "w-[76px]" : "w-[250px]"
           }`}
         >
@@ -24460,7 +24460,9 @@ export default function ResearcherWorkspace() {
             </div>
           ))}
 
-          <SidebarAccountCard collapsed={sidebarCollapsed} />
+          <div className="sticky bottom-0 z-20 mt-2">
+            <SidebarAccountCard collapsed={sidebarCollapsed} />
+          </div>
         </aside>
 
         {/* Main content */}

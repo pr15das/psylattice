@@ -7,9 +7,11 @@ import {
   BarChart3,
   Brain,
   Check,
+  Expand,
   FileText,
-  PlayCircle,
   Sparkles,
+  Volume2,
+  VolumeX,
   Watch,
 } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
@@ -87,9 +89,29 @@ function clamp(value: number, min = 0, max = 1) {
   return Math.min(max, Math.max(min, value));
 }
 
+function ConnectedNet({ className = "", color = "#67e8f9", secondary = "#bae6fd" }: { className?: string; color?: string; secondary?: string }) {
+  return (
+    <svg viewBox="0 0 240 160" className={className} aria-hidden="true">
+      <path d="M14 120C36 108 49 82 73 80C94 78 102 103 126 103C154 103 165 60 194 57C212 55 221 69 229 84" fill="none" stroke={secondary} strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" opacity="0.9" />
+      <path d="M26 32C51 41 58 72 82 78C109 85 133 54 161 51C183 49 194 58 211 73" fill="none" stroke={color} strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" opacity="0.85" />
+      <path d="M98 140C116 123 134 126 151 112C172 95 177 67 200 64" fill="none" stroke={secondary} strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round" opacity="0.78" />
+      {[ [14,120], [73,80], [126,103], [194,57], [229,84], [26,32], [82,78], [161,51], [211,73], [98,140], [151,112] ].map(([cx, cy], index) => (
+        <g key={`${cx}-${cy}-${index}`}>
+          <circle cx={cx} cy={cy} r="4.5" fill={color} fillOpacity="0.14" />
+          <circle cx={cx} cy={cy} r="2.6" fill={color} fillOpacity="0.9" />
+        </g>
+      ))}
+    </svg>
+  );
+}
+
 export default function ScrollWorkflowStory() {
   const sectionRef = useRef<HTMLElement | null>(null);
+  const demoVideoRef = useRef<HTMLVideoElement | null>(null);
+  const demoMediaRef = useRef<HTMLDivElement | null>(null);
   const [progress, setProgress] = useState(0);
+  const [isDemoMuted, setIsDemoMuted] = useState(true);
+  const [isFullscreen, setIsFullscreen] = useState(false);
   const rafRef = useRef<number | null>(null);
 
   useEffect(() => {
@@ -125,9 +147,75 @@ export default function ScrollWorkflowStory() {
     };
   }, []);
 
-  // Each stage has a real dwell period before the next transition begins.
-  // This prevents the experience from feeling "runny": normal scrolling can
-  // continue while the current product remains fully settled and readable.
+  useEffect(() => {
+    const video = demoVideoRef.current;
+    const media = demoMediaRef.current;
+    if (!video || !media) return;
+
+    const prefersReducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+
+    const playMuted = async () => {
+      if (prefersReducedMotion) return;
+      video.loop = true;
+      video.playsInline = true;
+      video.muted = true;
+      setIsDemoMuted(true);
+      await video.play().catch(() => undefined);
+    };
+
+    const observer = new IntersectionObserver(
+      ([entry]) => {
+        if (!entry) return;
+
+        if (entry.isIntersecting && entry.intersectionRatio >= 0.3) {
+          void playMuted();
+          return;
+        }
+
+        video.pause();
+      },
+      { threshold: [0, 0.3, 0.5, 0.75] },
+    );
+
+    observer.observe(media);
+    return () => observer.disconnect();
+  }, []);
+
+  useEffect(() => {
+    const handleFullscreenChange = () => {
+      const media = demoMediaRef.current;
+      setIsFullscreen(document.fullscreenElement === media);
+    };
+
+    document.addEventListener("fullscreenchange", handleFullscreenChange);
+    return () => document.removeEventListener("fullscreenchange", handleFullscreenChange);
+  }, []);
+
+  async function toggleDemoMute() {
+    const video = demoVideoRef.current;
+    if (!video) return;
+
+    const nextMuted = !video.muted;
+    video.muted = nextMuted;
+    setIsDemoMuted(nextMuted);
+
+    if (!nextMuted) {
+      await video.play().catch(() => undefined);
+    }
+  }
+
+  async function toggleFullscreen() {
+    const media = demoMediaRef.current;
+    if (!media) return;
+
+    if (document.fullscreenElement === media) {
+      await document.exitFullscreen().catch(() => undefined);
+      return;
+    }
+
+    await media.requestFullscreen?.().catch(() => undefined);
+  }
+
   const HOLD = 0.72;
   const TRANSITION = 0.28;
   const timelineUnits = stages.length * HOLD + (stages.length - 1) * TRANSITION;
@@ -359,47 +447,106 @@ export default function ScrollWorkflowStory() {
         </div>
       </section>
 
-      <section id="demo" className="scroll-mt-28 bg-white px-5 py-16 sm:px-6 lg:px-8">
-        <div className="mx-auto max-w-[1320px]">
-          <div className="grid gap-7 lg:grid-cols-[.72fr_1.28fr] lg:items-end">
+      <section
+        id="demo"
+        className="relative scroll-mt-28 overflow-hidden bg-[linear-gradient(180deg,#ffffff_0%,#eef8f9_46%,#f9fcfc_100%)] px-5 py-16 sm:px-6 sm:py-18 lg:px-8 lg:py-20"
+      >
+        <div className="pointer-events-none absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-cyan-200 to-transparent" />
+        <div className="pointer-events-none absolute left-1/2 top-[48%] h-[520px] w-[980px] -translate-x-1/2 rounded-full bg-cyan-100/40 blur-3xl" />
+        <div className="pointer-events-none absolute left-[4%] top-[12%] h-48 w-48 rounded-full bg-cyan-100/32 blur-3xl" />
+        <div className="pointer-events-none absolute right-[4%] bottom-[8%] h-52 w-52 rounded-full bg-sky-100/28 blur-3xl" />
+
+        <ConnectedNet className="pointer-events-none absolute left-[2%] top-[17%] hidden w-[230px] -rotate-[7deg] opacity-32 lg:block" color="#22d3ee" secondary="#bae6fd" />
+        <ConnectedNet className="pointer-events-none absolute right-[2%] top-[13%] hidden w-[250px] rotate-[8deg] opacity-30 lg:block" color="#38bdf8" secondary="#a5f3fc" />
+        <ConnectedNet className="pointer-events-none absolute bottom-[7%] left-[7%] hidden w-[210px] rotate-[10deg] opacity-26 xl:block" color="#0891b2" secondary="#bae6fd" />
+        <ConnectedNet className="pointer-events-none absolute bottom-[5%] right-[7%] hidden w-[220px] -rotate-[8deg] opacity-24 xl:block" color="#0ea5e9" secondary="#cffafe" />
+
+        <div className="relative mx-auto max-w-[1380px]">
+          <div className="mx-auto grid max-w-[1220px] gap-8 lg:grid-cols-[.78fr_1.22fr] lg:items-end">
             <div>
-              <p className="text-xs font-bold uppercase tracking-[.15em] text-cyan-800">Product walkthrough</p>
-              <h2 className="mt-4 text-4xl font-semibold tracking-[-.04em] text-slate-950 sm:text-5xl">
-                See the PsyLattice workflow in action.
+              <p className="text-[10px] font-bold uppercase tracking-[.18em] text-cyan-800">Experience PsyLattice</p>
+              <h2 className="mt-4 max-w-[680px] text-4xl font-semibold tracking-[-.05em] text-slate-950 sm:text-5xl lg:text-[56px] lg:leading-[1.02]">
+                Immerse yourself in PsyLattice.
               </h2>
             </div>
+
             <p className="max-w-2xl text-base leading-7 text-slate-600 lg:justify-self-end">
-              A guided look at how study design, participant activity, data and analysis stay connected across the research workspace.
+              Watch study design, cognitive and real-world measurement, analysis and contextual AI move together in one connected research environment.
             </p>
           </div>
 
-          <div className="mt-8 overflow-hidden rounded-[30px] border border-slate-200 bg-[#f4f8f8] p-4 shadow-[0_20px_50px_-36px_rgba(15,23,42,.18)] sm:p-5">
-            <div className="relative overflow-hidden rounded-[24px] border border-slate-200 bg-slate-950">
-              <img
-                src="/marketing/illustrations/research-dashboard-showcase.webp"
-                alt="PsyLattice product walkthrough preview"
-                className="aspect-[16/9] w-full object-cover object-top"
-              />
-              <div className="absolute inset-0 bg-gradient-to-t from-slate-950/48 via-slate-950/15 to-transparent" />
-              <div className="absolute inset-x-0 bottom-0 flex items-end justify-between gap-4 p-5 sm:p-6">
-                <div className="max-w-xl text-white">
-                  <p className="text-[10px] font-bold uppercase tracking-[.14em] text-cyan-200">Product walkthrough</p>
-                  <h3 className="mt-2 text-2xl font-semibold tracking-[-.03em] sm:text-[30px]">
-                    From study design to research output
-                  </h3>
-                  <p className="mt-2 text-sm leading-6 text-slate-200/90">
-                    See how the researcher workspace brings study building, participant management and analysis into one continuous environment.
-                  </p>
-                </div>
+          <div className="relative mx-auto mt-10 max-w-[1260px] lg:mt-12">
+            <div className="pointer-events-none absolute -left-10 top-[16%] hidden h-[68%] w-px bg-gradient-to-b from-transparent via-cyan-200/70 to-transparent xl:block" />
+            <div className="pointer-events-none absolute -right-10 top-[16%] hidden h-[68%] w-px bg-gradient-to-b from-transparent via-sky-200/70 to-transparent xl:block" />
+            <span className="pointer-events-none absolute -left-[43px] top-[27%] hidden h-2.5 w-2.5 rounded-full bg-cyan-300 shadow-[0_0_0_7px_rgba(103,232,249,.12)] xl:block" />
+            <span className="pointer-events-none absolute -right-[43px] bottom-[28%] hidden h-2.5 w-2.5 rounded-full bg-sky-300 shadow-[0_0_0_7px_rgba(125,211,252,.12)] xl:block" />
 
-                <div className="hidden shrink-0 rounded-full border border-white/20 bg-white/12 p-4 text-white backdrop-blur md:block">
-                  <PlayCircle className="h-9 w-9" />
+            <div className="pointer-events-none absolute -inset-x-7 -inset-y-6 rounded-[42px] bg-[radial-gradient(circle_at_50%_46%,rgba(103,232,249,.20),transparent_56%),linear-gradient(180deg,rgba(255,255,255,.88),rgba(237,248,249,.92))] shadow-[0_28px_80px_-56px_rgba(15,23,42,.22)]" />
+
+            <div className="relative overflow-hidden rounded-[36px] border border-cyan-100/80 bg-[linear-gradient(180deg,#0b2430_0%,#0b2d3d_100%)] shadow-[0_38px_100px_-54px_rgba(15,23,42,.36)]">
+              <div
+                ref={demoMediaRef}
+                className="group relative overflow-hidden rounded-[36px]"
+              >
+                <video
+                  ref={demoVideoRef}
+                  src="/videos/psylattice-product-demo.mp4"
+                  poster="/videos/psylattice-product-demo-poster.jpg"
+                  muted={isDemoMuted}
+                  loop
+                  playsInline
+                  preload="metadata"
+                  controls={isFullscreen}
+                  onVolumeChange={(event) => setIsDemoMuted(event.currentTarget.muted)}
+                  aria-label="PsyLattice promotional film showing the connected research workflow"
+                  className="aspect-[16/9] w-full object-cover object-center"
+                />
+
+                <div className="pointer-events-none absolute inset-0 bg-gradient-to-t from-slate-950/88 via-slate-950/18 to-transparent opacity-0 transition-opacity duration-300 group-hover:opacity-100 group-focus-within:opacity-100" />
+
+                <div className="pointer-events-none invisible absolute inset-x-0 bottom-0 flex translate-y-3 items-end justify-between gap-4 p-5 opacity-0 transition-all duration-300 sm:p-6 lg:p-7 group-hover:visible group-hover:translate-y-0 group-hover:opacity-100 group-focus-within:visible group-focus-within:translate-y-0 group-focus-within:opacity-100">
+                  <div className="max-w-2xl text-white">
+                    <p className="text-[10px] font-bold uppercase tracking-[.14em] text-cyan-200">Experience PsyLattice</p>
+                    <h3 className="mt-2 text-2xl font-semibold tracking-[-.03em] sm:text-[30px] lg:text-[34px]">
+                      One platform. The full research journey.
+                    </h3>
+                    <p className="mt-2 max-w-xl text-sm leading-6 text-slate-200/95 sm:text-[15px]">
+                      Design advanced studies, run cognitive tasks, capture real-world data, analyse findings and write with contextual AI—all inside PsyLattice.
+                    </p>
+                  </div>
+
+                  <div className="pointer-events-auto flex shrink-0 items-center gap-3">
+                    <button
+                      type="button"
+                      onClick={toggleDemoMute}
+                      aria-label={isDemoMuted ? "Turn sound on" : "Turn sound off"}
+                      title={isDemoMuted ? "Sound on" : "Sound off"}
+                      className="rounded-full border border-white/25 bg-white/12 p-4 text-white shadow-[0_12px_35px_rgba(0,0,0,.24)] backdrop-blur transition duration-200 hover:scale-[1.04] hover:bg-white/20 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-200 focus-visible:ring-offset-2 focus-visible:ring-offset-slate-950"
+                    >
+                      {isDemoMuted ? (
+                        <VolumeX className="h-7 w-7 sm:h-8 sm:w-8" />
+                      ) : (
+                        <Volume2 className="h-7 w-7 sm:h-8 sm:w-8" />
+                      )}
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={toggleFullscreen}
+                      aria-label={isFullscreen ? "Exit fullscreen" : "Open fullscreen"}
+                      title={isFullscreen ? "Exit fullscreen" : "Open fullscreen"}
+                      className="rounded-full border border-white/25 bg-white/12 p-4 text-white shadow-[0_12px_35px_rgba(0,0,0,.24)] backdrop-blur transition duration-200 hover:scale-[1.04] hover:bg-white/20 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-200 focus-visible:ring-offset-2 focus-visible:ring-offset-slate-950"
+                    >
+                      <Expand className="h-7 w-7 sm:h-8 sm:w-8" />
+                    </button>
+                  </div>
                 </div>
               </div>
             </div>
           </div>
         </div>
       </section>
+
     </>
   );
 }

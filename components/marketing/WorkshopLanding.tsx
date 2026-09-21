@@ -24,8 +24,7 @@ import {
 import MarketingHeader from "@/components/marketing/MarketingHeader";
 import MarketingFooter from "@/components/marketing/MarketingFooter";
 import WorkshopCertificateLookup from "@/components/workshops/WorkshopCertificateLookup";
-
-const WORKSHOP_TITLE = "Foundations of Modern Psychological Research with PsyLattice";
+import { WORKSHOP_SUBTITLE, WORKSHOP_TITLE } from "@/lib/workshops/registration";
 
 const benefits = [
   {
@@ -240,12 +239,15 @@ function CertificatePreview() {
             <p className="text-[9px] text-slate-500 sm:text-[11px]">This certifies that</p>
             <p className="mt-1.5 text-xl font-semibold leading-none tracking-[-.04em] text-slate-950 sm:text-3xl">Participant Name</p>
 
-            <p className="mt-4 text-[9px] leading-4 text-slate-500 sm:text-[11px]">successfully completed the PsyLattice Workshop on</p>
-            <p className="mx-auto mt-1.5 max-w-[620px] text-[11px] font-semibold leading-4 text-slate-900 sm:text-[15px] sm:leading-5">
-              “{WORKSHOP_TITLE}”
+            <p className="mt-3 text-[9px] leading-4 text-slate-500 sm:text-[11px]">has successfully completed the</p>
+            <p className="mx-auto mt-1.5 max-w-[650px] text-[11px] font-semibold leading-4 text-slate-900 sm:text-[15px] sm:leading-5">
+              {WORKSHOP_TITLE}
             </p>
-            <p className="mx-auto mt-3 max-w-[650px] text-[8px] leading-4 text-slate-500 sm:text-[10px] sm:leading-5">
-              Covering research design, ambulatory assessment, cognitive tasks and statistical measurement techniques using PsyLattice.
+            <p className="mx-auto mt-1 max-w-[620px] text-[9px] font-medium leading-4 text-violet-700 sm:text-[11px] sm:leading-5">
+              {WORKSHOP_SUBTITLE}
+            </p>
+            <p className="mx-auto mt-2 max-w-[650px] text-[8px] leading-4 text-slate-500 sm:text-[10px] sm:leading-5">
+              Covering research ideation, study design, ambulatory assessment, cognitive task foundations, participant workflow, and statistical measurement for research.
             </p>
           </div>
 
@@ -506,7 +508,7 @@ export default function WorkshopLanding() {
               Complete the workshop. Earn a verifiable certificate.
             </h2>
             <p className="mt-4 max-w-xl text-sm leading-7 text-slate-600">
-              Attend all four live sessions to earn your PsyLattice Workshop certificate. After an admin marks the workshop as completed for you, the certificate is issued as a downloadable PDF and becomes publicly verifiable by its Workshop Reference.
+              Attend all four live sessions to earn your certificate of completion. After an admin marks the workshop as completed for you, the certificate is issued as a downloadable PDF and becomes publicly verifiable by its Workshop Reference.
             </p>
 
             <div className="mt-6 space-y-3">

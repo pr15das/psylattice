@@ -23,6 +23,8 @@ import {
 } from "lucide-react";
 import PsyLatticeLogo from "@/components/PsyLatticeLogo";
 import {
+  WORKSHOP_SUBTITLE,
+  WORKSHOP_TITLE,
   formatWorkshopAmount,
   type WorkshopPrivateAccess,
   type WorkshopRegistrationContext,
@@ -477,7 +479,7 @@ export default function WorkshopRegistrationForm({
         name: "PsyLattice",
         description:
           checkout.description ||
-          "Foundations of Modern Psychological Research with PsyLattice",
+          WORKSHOP_TITLE,
         order_id: checkout.orderId,
         prefill: checkout.prefill,
         notes: {
@@ -539,10 +541,13 @@ export default function WorkshopRegistrationForm({
                 November 2026 cohort
               </p>
               <h1 className="mt-3 text-3xl font-semibold tracking-[-.04em]">
-                Foundations of Modern Psychological Research with PsyLattice
+                {context?.workshop.title || WORKSHOP_TITLE}
               </h1>
+              <p className="mt-2 text-sm font-semibold text-cyan-200">
+                {WORKSHOP_SUBTITLE}
+              </p>
               <p className="mt-4 text-sm leading-7 text-slate-300">
-                One month of connected research-methods training using PsyLattice, from research foundations through ambulatory assessment, cognitive tasks and statistical measurement.
+                One month of connected research-methods training using PsyLattice, from research ideation and study design through ambulatory assessment, cognitive tasks and statistical interpretation.
               </p>
 
               <div className="mt-6 space-y-3">

@@ -24,6 +24,7 @@ export default function MarketingHeader() {
     ["Mobile", "/#mobile"],
     ["AI", "/#trusted-ai"],
     ["Pricing", "/#pricing"],
+    ["Workshop", "/workshops"],
   ] as const;
 
   useEffect(() => {

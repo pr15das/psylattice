@@ -1,5 +1,7 @@
 export const WORKSHOP_SLUG = "foundations-modern-psychological-research-2026";
-export const WORKSHOP_TITLE = "Foundations of Modern Psychological Research with PsyLattice";
+
+export const WORKSHOP_TITLE = "International Workshop on Research Design & Methodology";
+export const WORKSHOP_SUBTITLE = "From Research Idea to Evidence";
 
 export type WorkshopRegistrationStatus =
   | "pending_payment"

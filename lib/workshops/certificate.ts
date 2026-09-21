@@ -4,6 +4,7 @@ import fs from "node:fs/promises";
 import path from "node:path";
 import { jsPDF } from "jspdf";
 import { billingAdmin } from "@/lib/billing/server";
+import { WORKSHOP_SUBTITLE, WORKSHOP_TITLE } from "@/lib/workshops/registration";
 
 export type PublicWorkshopCertificate = {
   recipient_name: string;
@@ -274,12 +275,12 @@ export async function buildWorkshopCertificatePdf(certificate: PublicWorkshopCer
   doc.setFont("helvetica", "normal");
   doc.setTextColor(87, 107, 137);
   doc.setFontSize(11.5);
-  doc.text("successfully completed the PsyLattice Workshop on", centerX, 109, {
+  doc.text("has successfully completed the", centerX, 106, {
     align: "center",
   });
 
   // Workshop title - controlled wrapping and dynamic font size to avoid clipping.
-  const title = `\"${certificate.workshop_title}\"`;
+  const title = certificate.workshop_title;
   doc.setFont("helvetica", "bold");
   doc.setTextColor(9, 25, 57);
   let titleSize = 16.5;
@@ -290,23 +291,34 @@ export async function buildWorkshopCertificatePdf(certificate: PublicWorkshopCer
     doc.setFontSize(titleSize);
     titleLines = doc.splitTextToSize(title, 252) as string[];
   }
-  doc.text(titleLines, centerX, 124, {
+  doc.text(titleLines, centerX, 120, {
     align: "center",
     lineHeightFactor: 1.15,
   });
 
   const titleLineHeightMm = (titleSize * 0.352778) * 1.15;
-  const titleBottomY = 124 + Math.max(0, titleLines.length - 1) * titleLineHeightMm;
+  const titleBottomY = 120 + Math.max(0, titleLines.length - 1) * titleLineHeightMm;
+
+  const subtitle = certificate.workshop_title === WORKSHOP_TITLE ? WORKSHOP_SUBTITLE : "";
+  let contentY = titleBottomY + 8;
+
+  if (subtitle) {
+    doc.setFont("helvetica", "bold");
+    doc.setTextColor(109, 40, 217);
+    doc.setFontSize(11.5);
+    doc.text(subtitle, centerX, contentY, { align: "center" });
+    contentY += 9;
+  }
 
   doc.setFont("helvetica", "normal");
   doc.setTextColor(87, 107, 137);
-  doc.setFontSize(10.4);
+  doc.setFontSize(9.8);
   const description =
-    "Covering research design, ambulatory assessment, cognitive tasks and statistical measurement techniques using PsyLattice.";
+    "Covering research ideation, study design, ambulatory assessment, cognitive task foundations, participant workflow, and statistical measurement for research.";
   const descriptionLines = doc.splitTextToSize(description, 258) as string[];
-  doc.text(descriptionLines, centerX, titleBottomY + 11, {
+  doc.text(descriptionLines, centerX, contentY, {
     align: "center",
-    lineHeightFactor: 1.22,
+    lineHeightFactor: 1.2,
   });
 
   // Metadata area.

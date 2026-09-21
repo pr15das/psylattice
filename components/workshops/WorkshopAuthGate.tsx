@@ -7,6 +7,9 @@ import { createClient } from "@/lib/supabase/client";
 
 type Mode = "signin" | "signup";
 
+const WORKSHOP_REGISTRATION_PATH = "/workshops/register";
+const WORKSHOP_AUTH_ORIGIN = "workshop_registration";
+
 export default function WorkshopAuthGate() {
   const router = useRouter();
   const [mode, setMode] = useState<Mode>("signin");
@@ -48,6 +51,14 @@ export default function WorkshopAuthGate() {
       .eq("id", userId);
   }
 
+  function openWorkshopRegistrationForm() {
+    // Keep workshop authentication completely separate from normal product
+    // onboarding. Once authenticated from this page, stay in the workshop
+    // registration flow and let the server-rendered page reveal the form.
+    router.replace(WORKSHOP_REGISTRATION_PATH);
+    router.refresh();
+  }
+
   async function finishSignedInUser(userId: string, metadataName: string | null) {
     const supabase = createClient();
     const { data: accessState } = await supabase
@@ -58,7 +69,8 @@ export default function WorkshopAuthGate() {
 
     const activeSuspension =
       accessState?.status === "suspended" &&
-      (!accessState.suspended_until || new Date(accessState.suspended_until).getTime() > Date.now());
+      (!accessState.suspended_until ||
+        new Date(accessState.suspended_until).getTime() > Date.now());
 
     if (
       accessState?.status === "banned" ||
@@ -71,7 +83,7 @@ export default function WorkshopAuthGate() {
     }
 
     await ensureProfile(userId, metadataName);
-    router.refresh();
+    openWorkshopRegistrationForm();
   }
 
   async function submit(event: FormEvent<HTMLFormElement>) {
@@ -88,13 +100,19 @@ export default function WorkshopAuthGate() {
 
     try {
       if (mode === "signin") {
-        if (!normalizedEmail || !password) throw new Error("Enter your email and password.");
+        if (!normalizedEmail || !password) {
+          throw new Error("Enter your email and password.");
+        }
 
-        const { data, error: signInError } = await supabase.auth.signInWithPassword({
-          email: normalizedEmail,
-          password,
-        });
-        if (signInError || !data.user) throw new Error(signInError?.message || "Sign in failed.");
+        const { data, error: signInError } =
+          await supabase.auth.signInWithPassword({
+            email: normalizedEmail,
+            password,
+          });
+
+        if (signInError || !data.user) {
+          throw new Error(signInError?.message || "Sign in failed.");
+        }
 
         const metadataName =
           typeof data.user.user_metadata?.full_name === "string"
@@ -107,33 +125,51 @@ export default function WorkshopAuthGate() {
 
       if (!normalizedName) throw new Error("Enter your full name.");
       if (!normalizedEmail) throw new Error("Enter your email address.");
-      if (password.length < 8) throw new Error("Use a password with at least 8 characters.");
+      if (password.length < 8) {
+        throw new Error("Use a password with at least 8 characters.");
+      }
 
       const { data, error: signUpError } = await supabase.auth.signUp({
         email: normalizedEmail,
         password,
         options: {
-          emailRedirectTo: `${window.location.origin}/auth/callback?next=${encodeURIComponent("/workshops/register")}`,
+          emailRedirectTo: `${window.location.origin}/auth/callback?next=${encodeURIComponent(
+            WORKSHOP_REGISTRATION_PATH,
+          )}`,
           data: {
             full_name: normalizedName,
             workspace_access: ["self", "researcher", "clinician"],
+
+            // This gives both supported Supabase confirmation routes a
+            // reliable fallback if an email template/provider drops the
+            // ?next=/workshops/register query string.
+            post_auth_next: WORKSHOP_REGISTRATION_PATH,
+            auth_origin: WORKSHOP_AUTH_ORIGIN,
           },
         },
       });
 
-      if (signUpError || !data.user) throw new Error(signUpError?.message || "Account creation failed.");
+      if (signUpError || !data.user) {
+        throw new Error(signUpError?.message || "Account creation failed.");
+      }
 
+      // If email confirmation is disabled and Supabase gives us a session
+      // immediately, bypass the normal workspace/onboarding flow entirely.
       if (data.session) {
         await ensureProfile(data.user.id, normalizedName);
-        router.refresh();
+        openWorkshopRegistrationForm();
         return;
       }
 
-      setMessage("Your PsyLattice account was created. Confirm your email address, then return here and sign in to continue workshop registration.");
+      setMessage(
+        "Your PsyLattice account was created. Confirm your email address and you will return directly to the workshop registration form.",
+      );
       setMode("signin");
       setPassword("");
     } catch (authError) {
-      setError(authError instanceof Error ? authError.message : "Authentication failed.");
+      setError(
+        authError instanceof Error ? authError.message : "Authentication failed.",
+      );
     } finally {
       setBusy(false);
     }
@@ -144,26 +180,45 @@ export default function WorkshopAuthGate() {
       <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-cyan-50 text-cyan-800">
         <LockKeyhole className="h-5 w-5" />
       </div>
-      <p className="mt-5 text-[10px] font-bold uppercase tracking-[.15em] text-cyan-800">Register now</p>
+      <p className="mt-5 text-[10px] font-bold uppercase tracking-[.15em] text-cyan-800">
+        Register now
+      </p>
       <h1 className="mt-2 text-3xl font-semibold tracking-[-.04em] text-slate-950">
         Use your PsyLattice account to continue.
       </h1>
       <p className="mt-3 text-sm leading-7 text-slate-600">
-        Your payment status, Workshop Reference, WhatsApp access and later certificate remain attached to one PsyLattice account.
+        Your payment status, Workshop Reference, WhatsApp access and later
+        certificate remain attached to one PsyLattice account.
       </p>
 
       <div className="mt-6 grid grid-cols-2 rounded-2xl border border-slate-200 bg-slate-50 p-1">
         <button
           type="button"
-          onClick={() => { setMode("signin"); setError(""); setMessage(""); }}
-          className={`rounded-xl px-4 py-2.5 text-sm font-semibold ${mode === "signin" ? "bg-white text-slate-950 shadow-sm" : "text-slate-500"}`}
+          onClick={() => {
+            setMode("signin");
+            setError("");
+            setMessage("");
+          }}
+          className={`rounded-xl px-4 py-2.5 text-sm font-semibold ${
+            mode === "signin"
+              ? "bg-white text-slate-950 shadow-sm"
+              : "text-slate-500"
+          }`}
         >
           Sign in
         </button>
         <button
           type="button"
-          onClick={() => { setMode("signup"); setError(""); setMessage(""); }}
-          className={`rounded-xl px-4 py-2.5 text-sm font-semibold ${mode === "signup" ? "bg-white text-slate-950 shadow-sm" : "text-slate-500"}`}
+          onClick={() => {
+            setMode("signup");
+            setError("");
+            setMessage("");
+          }}
+          className={`rounded-xl px-4 py-2.5 text-sm font-semibold ${
+            mode === "signup"
+              ? "bg-white text-slate-950 shadow-sm"
+              : "text-slate-500"
+          }`}
         >
           Create account
         </button>
@@ -172,7 +227,9 @@ export default function WorkshopAuthGate() {
       <form onSubmit={submit} className="mt-6 space-y-4">
         {mode === "signup" ? (
           <label className="block">
-            <span className="text-sm font-semibold text-slate-800">Full name</span>
+            <span className="text-sm font-semibold text-slate-800">
+              Full name
+            </span>
             <input
               value={fullName}
               onChange={(event) => setFullName(event.target.value)}
@@ -207,7 +264,12 @@ export default function WorkshopAuthGate() {
           />
         </label>
 
-        {error ? <div className="rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">{error}</div> : null}
+        {error ? (
+          <div className="rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">
+            {error}
+          </div>
+        ) : null}
+
         {message ? (
           <div className="flex gap-2 rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm leading-6 text-emerald-800">
             <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0" />
@@ -220,8 +282,18 @@ export default function WorkshopAuthGate() {
           disabled={busy}
           className="inline-flex w-full items-center justify-center gap-2 rounded-xl bg-slate-950 px-5 py-3 text-sm font-semibold text-white transition hover:bg-cyan-950 disabled:bg-slate-300"
         >
-          {busy ? <LoaderCircle className="h-4 w-4 animate-spin" /> : mode === "signup" ? <UserPlus className="h-4 w-4" /> : <LockKeyhole className="h-4 w-4" />}
-          {busy ? "Please wait…" : mode === "signup" ? "Create account & continue" : "Sign in & continue"}
+          {busy ? (
+            <LoaderCircle className="h-4 w-4 animate-spin" />
+          ) : mode === "signup" ? (
+            <UserPlus className="h-4 w-4" />
+          ) : (
+            <LockKeyhole className="h-4 w-4" />
+          )}
+          {busy
+            ? "Please wait…"
+            : mode === "signup"
+              ? "Create account & continue"
+              : "Sign in & continue"}
         </button>
       </form>
     </div>

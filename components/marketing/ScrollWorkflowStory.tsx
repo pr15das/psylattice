@@ -89,22 +89,6 @@ function clamp(value: number, min = 0, max = 1) {
   return Math.min(max, Math.max(min, value));
 }
 
-function ConnectedNet({ className = "", color = "#67e8f9", secondary = "#bae6fd" }: { className?: string; color?: string; secondary?: string }) {
-  return (
-    <svg viewBox="0 0 240 160" className={className} aria-hidden="true">
-      <path d="M14 120C36 108 49 82 73 80C94 78 102 103 126 103C154 103 165 60 194 57C212 55 221 69 229 84" fill="none" stroke={secondary} strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" opacity="0.9" />
-      <path d="M26 32C51 41 58 72 82 78C109 85 133 54 161 51C183 49 194 58 211 73" fill="none" stroke={color} strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" opacity="0.85" />
-      <path d="M98 140C116 123 134 126 151 112C172 95 177 67 200 64" fill="none" stroke={secondary} strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round" opacity="0.78" />
-      {[ [14,120], [73,80], [126,103], [194,57], [229,84], [26,32], [82,78], [161,51], [211,73], [98,140], [151,112] ].map(([cx, cy], index) => (
-        <g key={`${cx}-${cy}-${index}`}>
-          <circle cx={cx} cy={cy} r="4.5" fill={color} fillOpacity="0.14" />
-          <circle cx={cx} cy={cy} r="2.6" fill={color} fillOpacity="0.9" />
-        </g>
-      ))}
-    </svg>
-  );
-}
-
 export default function ScrollWorkflowStory() {
   const sectionRef = useRef<HTMLElement | null>(null);
   const demoVideoRef = useRef<HTMLVideoElement | null>(null);
@@ -447,102 +431,42 @@ export default function ScrollWorkflowStory() {
         </div>
       </section>
 
-      <section
-        id="demo"
-        className="relative scroll-mt-28 overflow-hidden bg-[linear-gradient(180deg,#ffffff_0%,#eef8f9_46%,#f9fcfc_100%)] px-5 py-14 sm:px-6 sm:py-16 lg:px-8 lg:py-18"
-      >
-        <div className="pointer-events-none absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-cyan-200 to-transparent" />
-        <div className="pointer-events-none absolute left-1/2 top-[48%] h-[460px] w-[860px] -translate-x-1/2 rounded-full bg-cyan-100/40 blur-3xl" />
-        <div className="pointer-events-none absolute left-[4%] top-[12%] h-40 w-40 rounded-full bg-cyan-100/32 blur-3xl" />
-        <div className="pointer-events-none absolute right-[4%] bottom-[8%] h-44 w-44 rounded-full bg-sky-100/28 blur-3xl" />
+      <section id="demo" className="relative h-[100svh] w-full overflow-hidden bg-[#06151d]">
+        <div ref={demoMediaRef} className="group relative h-full w-full overflow-hidden bg-[#06151d]">
+          <video
+            ref={demoVideoRef}
+            src="/videos/psylattice-product-demo.mp4"
+            poster="/videos/psylattice-product-demo-poster.jpg"
+            muted={isDemoMuted}
+            loop
+            playsInline
+            preload="metadata"
+            controls={isFullscreen}
+            onVolumeChange={(event) => setIsDemoMuted(event.currentTarget.muted)}
+            aria-label="PsyLattice promotional film showing the connected research workflow"
+            className="absolute inset-0 h-full w-full object-cover object-center"
+          />
 
-        <ConnectedNet className="pointer-events-none absolute left-[2%] top-[17%] hidden w-[205px] -rotate-[7deg] opacity-32 lg:block" color="#22d3ee" secondary="#bae6fd" />
-        <ConnectedNet className="pointer-events-none absolute right-[2%] top-[13%] hidden w-[195px] rotate-[8deg] opacity-30 lg:block" color="#38bdf8" secondary="#a5f3fc" />
-        <ConnectedNet className="pointer-events-none absolute bottom-[7%] left-[7%] hidden w-[185px] rotate-[10deg] opacity-26 xl:block" color="#0891b2" secondary="#bae6fd" />
-        <ConnectedNet className="pointer-events-none absolute bottom-[5%] right-[7%] hidden w-[195px] -rotate-[8deg] opacity-24 xl:block" color="#0ea5e9" secondary="#cffafe" />
+          <div className="absolute right-4 top-4 z-10 flex items-center gap-2 opacity-100 transition-opacity duration-300 sm:right-6 sm:top-6 md:opacity-0 md:group-hover:opacity-100 md:group-focus-within:opacity-100">
+            <button
+              type="button"
+              onClick={toggleDemoMute}
+              aria-label={isDemoMuted ? "Turn sound on" : "Turn sound off"}
+              title={isDemoMuted ? "Sound on" : "Sound off"}
+              className="rounded-full border border-white/25 bg-slate-950/45 p-3 text-white shadow-[0_12px_35px_rgba(0,0,0,.24)] backdrop-blur-md transition duration-200 hover:scale-[1.04] hover:bg-slate-950/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-200"
+            >
+              {isDemoMuted ? <VolumeX className="h-5 w-5 sm:h-6 sm:w-6" /> : <Volume2 className="h-5 w-5 sm:h-6 sm:w-6" />}
+            </button>
 
-        <div className="relative mx-auto max-w-[1300px]">
-          <div className="mx-auto grid max-w-[1100px] gap-8 lg:grid-cols-[.78fr_1.22fr] lg:items-end">
-            <div>
-              <p className="text-[10px] font-bold uppercase tracking-[.18em] text-cyan-800">Experience PsyLattice</p>
-              <h2 className="mt-4 max-w-[610px] text-4xl font-semibold tracking-[-.05em] text-slate-950 sm:text-5xl lg:text-[50px] lg:leading-[1.02]">
-                Immerse yourself in PsyLattice.
-              </h2>
-            </div>
-
-            <p className="max-w-2xl text-[15px] leading-6 text-slate-600 lg:justify-self-end">
-              Watch study design, cognitive and real-world measurement, analysis and contextual AI move together in one connected research environment.
-            </p>
-          </div>
-
-          <div className="relative mx-auto mt-8 max-w-[1200px] lg:mt-10">
-            <div className="pointer-events-none absolute -left-8 top-[16%] hidden h-[68%] w-px bg-gradient-to-b from-transparent via-cyan-200/70 to-transparent xl:block" />
-            <div className="pointer-events-none absolute -right-8 top-[16%] hidden h-[68%] w-px bg-gradient-to-b from-transparent via-sky-200/70 to-transparent xl:block" />
-            <span className="pointer-events-none absolute -left-[35px] top-[27%] hidden h-2.5 w-2.5 rounded-full bg-cyan-300 shadow-[0_0_0_7px_rgba(103,232,249,.12)] xl:block" />
-            <span className="pointer-events-none absolute -right-[35px] bottom-[28%] hidden h-2.5 w-2.5 rounded-full bg-sky-300 shadow-[0_0_0_7px_rgba(125,211,252,.12)] xl:block" />
-
-            <div className="pointer-events-none absolute -inset-x-5 -inset-y-4 rounded-[36px] bg-[radial-gradient(circle_at_50%_46%,rgba(103,232,249,.20),transparent_56%),linear-gradient(180deg,rgba(255,255,255,.88),rgba(237,248,249,.92))] shadow-[0_28px_80px_-56px_rgba(15,23,42,.22)]" />
-
-            <div className="relative overflow-hidden rounded-[32px] border border-cyan-100/80 bg-[linear-gradient(180deg,#0b2430_0%,#0b2d3d_100%)] shadow-[0_38px_100px_-54px_rgba(15,23,42,.36)]">
-              <div
-                ref={demoMediaRef}
-                className="group relative overflow-hidden rounded-[32px]"
-              >
-                <video
-                  ref={demoVideoRef}
-                  src="/videos/psylattice-product-demo.mp4"
-                  poster="/videos/psylattice-product-demo-poster.jpg"
-                  muted={isDemoMuted}
-                  loop
-                  playsInline
-                  preload="metadata"
-                  controls={isFullscreen}
-                  onVolumeChange={(event) => setIsDemoMuted(event.currentTarget.muted)}
-                  aria-label="PsyLattice promotional film showing the connected research workflow"
-                  className="aspect-[16/9] w-full object-cover object-center"
-                />
-
-                <div className="pointer-events-none absolute inset-0 bg-gradient-to-t from-slate-950/88 via-slate-950/18 to-transparent opacity-0 transition-opacity duration-300 group-hover:opacity-100 group-focus-within:opacity-100" />
-
-                <div className="pointer-events-none invisible absolute inset-x-0 bottom-0 flex translate-y-3 items-end justify-between gap-4 p-5 opacity-0 transition-all duration-300 sm:p-6 lg:p-6 group-hover:visible group-hover:translate-y-0 group-hover:opacity-100 group-focus-within:visible group-focus-within:translate-y-0 group-focus-within:opacity-100">
-                  <div className="max-w-2xl text-white">
-                    <p className="text-[10px] font-bold uppercase tracking-[.14em] text-cyan-200">Experience PsyLattice</p>
-                    <h3 className="mt-2 text-2xl font-semibold tracking-[-.03em] sm:text-[30px] lg:text-[30px]">
-                      One platform. The full research journey.
-                    </h3>
-                    <p className="mt-2 max-w-xl text-sm leading-6 text-slate-200/95 sm:text-[14px]">
-                      Design advanced studies, run cognitive tasks, capture real-world data, analyse findings and write with contextual AI—all inside PsyLattice.
-                    </p>
-                  </div>
-
-                  <div className="pointer-events-auto flex shrink-0 items-center gap-3">
-                    <button
-                      type="button"
-                      onClick={toggleDemoMute}
-                      aria-label={isDemoMuted ? "Turn sound on" : "Turn sound off"}
-                      title={isDemoMuted ? "Sound on" : "Sound off"}
-                      className="rounded-full border border-white/25 bg-white/12 p-[13px] text-white shadow-[0_12px_35px_rgba(0,0,0,.24)] backdrop-blur transition duration-200 hover:scale-[1.04] hover:bg-white/20 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-200 focus-visible:ring-offset-2 focus-visible:ring-offset-slate-950"
-                    >
-                      {isDemoMuted ? (
-                        <VolumeX className="h-6 w-6 sm:h-7 sm:w-7" />
-                      ) : (
-                        <Volume2 className="h-6 w-6 sm:h-7 sm:w-7" />
-                      )}
-                    </button>
-
-                    <button
-                      type="button"
-                      onClick={toggleFullscreen}
-                      aria-label={isFullscreen ? "Exit fullscreen" : "Open fullscreen"}
-                      title={isFullscreen ? "Exit fullscreen" : "Open fullscreen"}
-                      className="rounded-full border border-white/25 bg-white/12 p-[13px] text-white shadow-[0_12px_35px_rgba(0,0,0,.24)] backdrop-blur transition duration-200 hover:scale-[1.04] hover:bg-white/20 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-200 focus-visible:ring-offset-2 focus-visible:ring-offset-slate-950"
-                    >
-                      <Expand className="h-6 w-6 sm:h-7 sm:w-7" />
-                    </button>
-                  </div>
-                </div>
-              </div>
-            </div>
+            <button
+              type="button"
+              onClick={toggleFullscreen}
+              aria-label={isFullscreen ? "Exit fullscreen" : "Open fullscreen"}
+              title={isFullscreen ? "Exit fullscreen" : "Open fullscreen"}
+              className="rounded-full border border-white/25 bg-slate-950/45 p-3 text-white shadow-[0_12px_35px_rgba(0,0,0,.24)] backdrop-blur-md transition duration-200 hover:scale-[1.04] hover:bg-slate-950/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-200"
+            >
+              <Expand className="h-5 w-5 sm:h-6 sm:w-6" />
+            </button>
           </div>
         </div>
       </section>

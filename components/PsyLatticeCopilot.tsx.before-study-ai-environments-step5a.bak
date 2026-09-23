@@ -1,11 +1,8 @@
 "use client";
 
-// psylattice.study-ai-environments.step5a.v2
-
 import {
   ArrowRight,
   BrainCircuit,
-  BookOpen,
   Check,
   Copy,
   ChevronDown,
@@ -34,9 +31,6 @@ import {
   subscribeCopilotContext,
   type PsyLatticeCopilotContextEnvelope,
 } from "@/lib/research/copilotBridge";
-import ResearchAiEnvironmentSelector, {
-  type ResearchAiEnvironment,
-} from "@/components/ResearchAiEnvironmentSelector";
 
 type CopilotAction = {
   type: "navigate";
@@ -104,7 +98,6 @@ type Permissions = {
   dataExplorer: boolean;
   analysis: boolean;
   thesis: boolean;
-  referenceLibrary: boolean;
   cognitive: boolean;
   ambulatory: boolean;
   participantRows: boolean;
@@ -164,10 +157,6 @@ const PERMISSION_KEY = "psylattice.copilot.permissions.v2";
 const PLAN_KEY = "psylattice.research-assistant.plan.session.v1";
 const HISTORY_NUDGE_INTERVAL = 12;
 
-function scopedEnvironmentStorageKey(base: string, scope = "default") {
-  return `${base}.${scope || "default"}`;
-}
-
 const TAB_OPTIONS: Array<{
   value: "chat" | "plan" | "context" | "permissions";
   label: string;
@@ -209,13 +198,6 @@ const READ_PERMISSION_OPTIONS: Array<{
     title: "Thesis Builder",
     detail: "Owned thesis/paper drafts and the current document context.",
     icon: FileText,
-  },
-  {
-    key: "referenceLibrary",
-    title: "Reference Library",
-    detail:
-      "Saved bibliographic metadata, abstracts and permitted extracted paper text from your global Reference Manager.",
-    icon: BookOpen,
   },
   {
     key: "cognitive",
@@ -262,7 +244,6 @@ const DEFAULT_PERMISSIONS: Permissions = {
   dataExplorer: true,
   analysis: true,
   thesis: true,
-  referenceLibrary: false,
   cognitive: true,
   ambulatory: false,
   participantRows: false,
@@ -273,10 +254,10 @@ const DEFAULT_PERMISSIONS: Permissions = {
   draftCreation: false,
 };
 
-function readPermissions(scope = "default"): Permissions {
+function readPermissions(): Permissions {
   if (typeof window === "undefined") return DEFAULT_PERMISSIONS;
   try {
-    const stored = window.localStorage.getItem(scopedEnvironmentStorageKey(PERMISSION_KEY, scope));
+    const stored = window.localStorage.getItem(PERMISSION_KEY);
     if (!stored) return { ...DEFAULT_PERMISSIONS, saveHistory: true };
     return { ...DEFAULT_PERMISSIONS, ...(JSON.parse(stored) as Partial<Permissions>), saveHistory: true };
   } catch {
@@ -284,18 +265,15 @@ function readPermissions(scope = "default"): Permissions {
   }
 }
 
-function savePermissions(value: Permissions, scope = "default") {
+function savePermissions(value: Permissions) {
   if (typeof window === "undefined") return;
-  window.localStorage.setItem(
-    scopedEnvironmentStorageKey(PERMISSION_KEY, scope),
-    JSON.stringify(value),
-  );
+  window.localStorage.setItem(PERMISSION_KEY, JSON.stringify(value));
 }
 
-function readPlan(scope = "default"): ResearchPlan | null {
+function readPlan(): ResearchPlan | null {
   if (typeof window === "undefined") return null;
   try {
-    const raw = window.sessionStorage.getItem(scopedEnvironmentStorageKey(PLAN_KEY, scope));
+    const raw = window.sessionStorage.getItem(PLAN_KEY);
     if (!raw) return null;
     const parsed = JSON.parse(raw) as ResearchPlan;
     return parsed?.schema_version === 1 && Array.isArray(parsed.stages) ? parsed : null;
@@ -304,12 +282,11 @@ function readPlan(scope = "default"): ResearchPlan | null {
   }
 }
 
-function savePlan(plan: ResearchPlan | null, scope = "default") {
+function savePlan(plan: ResearchPlan | null) {
   if (typeof window === "undefined") return;
   try {
-    const key = scopedEnvironmentStorageKey(PLAN_KEY, scope);
-    if (!plan) window.sessionStorage.removeItem(key);
-    else window.sessionStorage.setItem(key, JSON.stringify(plan));
+    if (!plan) window.sessionStorage.removeItem(PLAN_KEY);
+    else window.sessionStorage.setItem(PLAN_KEY, JSON.stringify(plan));
   } catch {
     // Plan persistence is session-local by design in this phase.
   }
@@ -604,53 +581,32 @@ export default function PsyLatticeCopilot({
   const [historyNudgeDismissedAt, setHistoryNudgeDismissedAt] = useState(0);
   const [copiedMessageKey, setCopiedMessageKey] = useState("");
   const [verifiedState, setVerifiedState] = useState<VerifiedWorkspaceState>({});
-  const [activeEnvironment, setActiveEnvironment] =
-    useState<ResearchAiEnvironment | null>(null);
   const scrollRef = useRef<HTMLDivElement | null>(null);
   const historyPanelRef = useRef<HTMLDivElement | null>(null);
 
-  const environmentScope = activeEnvironment?.id || "default";
-  const environmentStudyId = activeEnvironment?.study_id || "";
-
-  function copilotHistoryUrl(
-    mode: "latest" | "list" | "conversation",
-    values: Record<string, string> = {},
-  ) {
-    const params = new URLSearchParams({ mode, ...values });
-    if (activeEnvironment?.id) {
-      params.set("environment_id", activeEnvironment.id);
-    }
-    return `/api/psylattice-copilot?${params.toString()}`;
-  }
-
   useEffect(() => {
-    const next = readPermissions(environmentScope);
+    const next = readPermissions();
     setPermissions(next);
-    setResearchPlan(readPlan(environmentScope));
-    setConversationId("");
-    setMessages([]);
-    setHistoryConversations([]);
-    setPinnedMessages([]);
-    setHistoryStats({ conversationCount: 0, messageCount: 0, warning: false });
-    setVerifiedState({});
-    setHistoryNote("");
-    setHistoryPanelOpen(false);
-    setDraft("");
+    setResearchPlan(readPlan());
     if (!next.confirmed) setTab("permissions");
 
-    // Saved chat history is server-persistent, but it is now restored only
-    // inside the selected AI environment.
+    // Saved Research Assistant history belongs to the signed-in PsyLattice account,
+    // not to the browser session. Always restore it after mount, including after
+    // sign-out -> sign-in. Permissions govern what NEW context may be sent to AI;
+    // they must never gate access to the user's own saved chat history.
     void resumeSavedConversation();
 
-    // Safari/auth hydration retry, scoped to the same environment.
+    // Auth/session hydration can finish just after the client mounts on Safari.
+    // A small retry makes account history restoration resilient without creating
+    // a second persistence layer in sessionStorage.
     const retry = window.setTimeout(() => void resumeSavedConversation(true), 900);
     return () => window.clearTimeout(retry);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [environmentScope]);
+  }, []);
 
   useEffect(() => {
-    savePlan(researchPlan, environmentScope);
-  }, [environmentScope, researchPlan]);
+    savePlan(researchPlan);
+  }, [researchPlan]);
 
   useEffect(() => {
     const sync = () => setContexts(getCopilotContextSnapshot());
@@ -701,9 +657,6 @@ export default function PsyLatticeCopilot({
       workspace: {
         current_screen: currentScreen,
         current_screen_label: surfaceLabel(currentScreen),
-        ai_environment_id: activeEnvironment?.id || null,
-        ai_environment_study_id: activeEnvironment?.study_id || null,
-        ai_environment_name: activeEnvironment?.study_title || null,
       },
     };
 
@@ -711,13 +664,6 @@ export default function PsyLatticeCopilot({
       [string, PsyLatticeCopilotContextEnvelope]
     >) {
       if (!permissionForSurface(surface, permissions)) continue;
-      if (
-        environmentStudyId &&
-        envelope.studyId &&
-        envelope.studyId !== environmentStudyId
-      ) {
-        continue;
-      }
       const item: Record<string, unknown> = {
         label: envelope.label,
         active: envelope.active,
@@ -752,7 +698,6 @@ export default function PsyLatticeCopilot({
       data_explorer: permissions.dataExplorer,
       analysis: permissions.analysis,
       thesis: permissions.thesis,
-      reference_library: permissions.referenceLibrary,
       cognitive: permissions.cognitive,
       ambulatory: permissions.ambulatory,
       navigation_actions: permissions.navigationActions,
@@ -765,31 +710,16 @@ export default function PsyLatticeCopilot({
     };
 
     return included;
-  }, [
-    activeEnvironment,
-    contexts,
-    currentScreen,
-    environmentStudyId,
-    onNavigate,
-    permissions,
-    pinnedMessages,
-  ]);
+  }, [contexts, currentScreen, onNavigate, permissions, pinnedMessages]);
 
   const primaryStudy = useMemo(() => {
-    if (activeEnvironment?.study_id) {
-      return {
-        id: activeEnvironment.study_id,
-        title: activeEnvironment.study_title || activeEnvironment.name || "",
-      };
-    }
-
     const values = Object.values(contexts) as PsyLatticeCopilotContextEnvelope[];
     const active = values.find((item) => item.active && item.studyId);
     if (active?.studyId) return { id: active.studyId, title: active.studyTitle || "" };
     if (preferredStudyId) return { id: preferredStudyId, title: "" };
     const stale = values.find((item) => item.studyId);
     return stale?.studyId ? { id: stale.studyId, title: stale.studyTitle || "" } : null;
-  }, [activeEnvironment, contexts, preferredStudyId]);
+  }, [contexts, preferredStudyId]);
 
   const autoSignals = useMemo<Record<AutoSignal, boolean>>(
     () => ({
@@ -870,7 +800,7 @@ export default function PsyLatticeCopilot({
 
   async function loadHistoryIndex() {
     try {
-      const response = await fetch(copilotHistoryUrl("list"), { method: "GET", cache: "no-store" });
+      const response = await fetch("/api/psylattice-copilot?mode=list", { method: "GET", cache: "no-store" });
       const data = (await response.json()) as {
         ok?: boolean;
         conversations?: SavedConversation[];
@@ -896,7 +826,7 @@ export default function PsyLatticeCopilot({
     setHistoryLoading(true);
     if (!silentRetry) setHistoryNote("");
     try {
-      const response = await fetch(copilotHistoryUrl("latest"), { method: "GET", cache: "no-store" });
+      const response = await fetch("/api/psylattice-copilot?mode=latest", { method: "GET", cache: "no-store" });
       const data = (await response.json()) as {
         ok?: boolean;
         historyAvailable?: boolean;
@@ -936,7 +866,7 @@ export default function PsyLatticeCopilot({
     setHistoryActionBusy(targetConversationId);
     setError("");
     try {
-      const response = await fetch(copilotHistoryUrl("conversation", { id: targetConversationId }), {
+      const response = await fetch(`/api/psylattice-copilot?mode=conversation&id=${encodeURIComponent(targetConversationId)}`, {
         method: "GET",
         cache: "no-store",
       });
@@ -999,7 +929,6 @@ export default function PsyLatticeCopilot({
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           operation: pinned ? "pin_message" : "unpin_message",
-          environment_id: activeEnvironment?.id || undefined,
           message_id: message.id,
         }),
       });
@@ -1029,11 +958,7 @@ export default function PsyLatticeCopilot({
       const response = await fetch("/api/psylattice-copilot", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          operation: "delete_conversation",
-          environment_id: activeEnvironment?.id || undefined,
-          conversation_id: conversation.id,
-        }),
+        body: JSON.stringify({ operation: "delete_conversation", conversation_id: conversation.id }),
       });
       const data = (await response.json()) as { ok?: boolean; preservedPinned?: boolean; error?: string };
       if (!response.ok || !data.ok) throw new Error(data.error || "The saved chat could not be deleted.");
@@ -1074,10 +999,7 @@ export default function PsyLatticeCopilot({
       const response = await fetch("/api/psylattice-copilot", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          operation: "delete_unpinned_history",
-          environment_id: activeEnvironment?.id || undefined,
-        }),
+        body: JSON.stringify({ operation: "delete_unpinned_history" }),
       });
       const data = (await response.json()) as { ok?: boolean; error?: string };
       if (!response.ok || !data.ok) throw new Error(data.error || "Chat history could not be deleted.");
@@ -1104,7 +1026,6 @@ export default function PsyLatticeCopilot({
         body: JSON.stringify({
           operation: "save_plan_state",
           save_history: true,
-          environment_id: activeEnvironment?.id || undefined,
           conversation_id: targetConversationId,
           plan: nextPlan,
         }),
@@ -1123,13 +1044,13 @@ export default function PsyLatticeCopilot({
   function confirmPermissions() {
     const next = { ...permissions, confirmed: true };
     setPermissions(next);
-    savePermissions(next, environmentScope);
+    savePermissions(next);
     setTab("chat");
     void resumeSavedConversation();
   }
 
   function persistPermissionChanges() {
-    savePermissions(permissions, environmentScope);
+    savePermissions(permissions);
     if (!conversationId && !historyLoading) void resumeSavedConversation();
   }
 
@@ -1176,7 +1097,6 @@ export default function PsyLatticeCopilot({
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           study_id: primaryStudy?.id || undefined,
-          environment_id: activeEnvironment?.id || undefined,
           current_screen: currentScreen,
           messages: nextMessages.map(({ role, content }) => ({ role, content })),
           context: allowedContext,
@@ -1246,7 +1166,6 @@ export default function PsyLatticeCopilot({
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           study_id: primaryStudy?.id || undefined,
-          environment_id: activeEnvironment?.id || undefined,
           current_screen: currentScreen,
           messages: nextMessages.map(({ role, content }) => ({ role, content })),
           context: allowedContext,
@@ -1312,13 +1231,7 @@ export default function PsyLatticeCopilot({
 
   const connectedContextCount = (Object.entries(contexts) as Array<
     [string, PsyLatticeCopilotContextEnvelope]
-  >).filter(
-    ([surface, envelope]) =>
-      permissionForSurface(surface, permissions) &&
-      (!environmentStudyId ||
-        !envelope.studyId ||
-        envelope.studyId === environmentStudyId),
-  ).length;
+  >).filter(([surface]) => permissionForSurface(surface, permissions)).length;
 
   const showHistoryNudge =
     messages.length >= HISTORY_NUDGE_INTERVAL &&
@@ -1342,7 +1255,7 @@ export default function PsyLatticeCopilot({
   function resetPlan() {
     setResearchPlan(null);
     setExpandedPlanStage("analysis");
-    savePlan(null, environmentScope);
+    savePlan(null);
     if (conversationId) {
       void fetch("/api/psylattice-copilot", {
         method: "POST",
@@ -1350,7 +1263,6 @@ export default function PsyLatticeCopilot({
         body: JSON.stringify({
           operation: "clear_plan_state",
           save_history: true,
-          environment_id: activeEnvironment?.id || undefined,
           conversation_id: conversationId,
         }),
       }).catch(() => undefined);
@@ -1581,13 +1493,11 @@ export default function PsyLatticeCopilot({
                 </button>
               </div>
 
-              {/* psylattice.ai-environment-three-button-row.v1 */}
-              <div className="grid grid-cols-2 gap-2 pb-2" data-layout="psylattice.ai-environment-50-50.v1" data-layout="psylattice.ai-environment-three-button-proportions.v3.70-20-10" data-layout="psylattice.ai-environment-three-button-proportions.v2">
-                <div className="relative min-w-0">
-                  <button
+              <div className="relative pb-2">
+                <button
                   type="button"
                   onClick={() => setModelOpen((value) => !value)}
-                  className="research-assistant-model-switcher group/model relative flex h-[52px] w-full items-center gap-2.5 rounded-xl border border-cyan-200/80 bg-[linear-gradient(135deg,rgba(236,254,255,.96)_0%,rgba(255,255,255,.98)_46%,rgba(245,243,255,.96)_100%)] px-3 py-2 text-left shadow-[0_10px_28px_rgba(15,23,42,.08),0_0_0_1px_rgba(139,92,246,.04)] transition-all duration-300 hover:-translate-y-0.5 hover:border-violet-200 hover:shadow-[0_16px_38px_rgba(15,23,42,.11),0_0_22px_rgba(34,211,238,.10)]"
+                  className="research-assistant-model-switcher group/model relative flex min-h-[56px] w-full items-center gap-3 rounded-2xl border border-cyan-200/80 bg-[linear-gradient(135deg,rgba(236,254,255,.96)_0%,rgba(255,255,255,.98)_46%,rgba(245,243,255,.96)_100%)] px-3.5 py-2.5 text-left shadow-[0_10px_28px_rgba(15,23,42,.08),0_0_0_1px_rgba(139,92,246,.04)] transition-all duration-300 hover:-translate-y-0.5 hover:border-violet-200 hover:shadow-[0_16px_38px_rgba(15,23,42,.11),0_0_22px_rgba(34,211,238,.10)]"
                 >
                   <span className="research-assistant-model-aura pointer-events-none absolute -left-8 top-1/2 h-16 w-24 -translate-y-1/2 rounded-full bg-cyan-300/20 blur-2xl" />
                   <span className="research-assistant-model-aura-delayed pointer-events-none absolute -right-6 top-1/2 h-14 w-20 -translate-y-1/2 rounded-full bg-violet-300/20 blur-2xl" />
@@ -1632,15 +1542,6 @@ export default function PsyLatticeCopilot({
                     })}
                   </div>
                 )}
-                </div>
-
-                <div className="min-w-0">
-                  <ResearchAiEnvironmentSelector
-                    activeEnvironmentId={activeEnvironment?.id || ""}
-                    preferredStudyId={preferredStudyId}
-                    onChange={setActiveEnvironment}
-                  />
-                </div>
               </div>
 
               <nav className="flex border-b border-slate-200">
@@ -1733,15 +1634,9 @@ export default function PsyLatticeCopilot({
                   {messages.length === 0 ? (
                     <div className="space-y-3">
                       <div className="research-assistant-soft-card rounded-2xl bg-cyan-50/60 p-4">
-                        <p className="text-[12px] font-semibold text-slate-900">
-                          {activeEnvironment
-                            ? `Dedicated AI environment · ${activeEnvironment.study_title}`
-                            : "Current-study Research Assistant"}
-                        </p>
+                        <p className="text-[12px] font-semibold text-slate-900">One conversation across your research workflow.</p>
                         <p className="mt-1 text-[11px] leading-5 text-slate-500">
-                          {activeEnvironment
-                            ? "Chat history, Research Plan and permissions are isolated to this study. Live context explicitly belonging to another study is blocked from this environment."
-                            : "This keeps the existing current-study Research Assistant behavior. Create or select a paid study AI environment when you want a persistent isolated research context."}
+                          Research Assistant follows the permitted study, data, analysis and thesis context as you move through PsyLattice. Last-known module context stays available for this page session and is marked as a snapshot when it is no longer live.
                         </p>
                       </div>
                       {[

@@ -1581,13 +1581,19 @@ export default function PsyLatticeCopilot({
                 </button>
               </div>
 
-              {/* psylattice.ai-environment-three-button-row.v1 */}
-              <div className="grid grid-cols-2 gap-2 pb-2" data-layout="psylattice.ai-environment-50-50.v1" data-layout="psylattice.ai-environment-three-button-proportions.v3.70-20-10" data-layout="psylattice.ai-environment-three-button-proportions.v2">
-                <div className="relative min-w-0">
-                  <button
+              <div className="pb-2">
+                <ResearchAiEnvironmentSelector
+                  activeEnvironmentId={activeEnvironment?.id || ""}
+                  preferredStudyId={preferredStudyId}
+                  onChange={setActiveEnvironment}
+                />
+              </div>
+
+              <div className="relative pb-2">
+                <button
                   type="button"
                   onClick={() => setModelOpen((value) => !value)}
-                  className="research-assistant-model-switcher group/model relative flex h-[52px] w-full items-center gap-2.5 rounded-xl border border-cyan-200/80 bg-[linear-gradient(135deg,rgba(236,254,255,.96)_0%,rgba(255,255,255,.98)_46%,rgba(245,243,255,.96)_100%)] px-3 py-2 text-left shadow-[0_10px_28px_rgba(15,23,42,.08),0_0_0_1px_rgba(139,92,246,.04)] transition-all duration-300 hover:-translate-y-0.5 hover:border-violet-200 hover:shadow-[0_16px_38px_rgba(15,23,42,.11),0_0_22px_rgba(34,211,238,.10)]"
+                  className="research-assistant-model-switcher group/model relative flex min-h-[56px] w-full items-center gap-3 rounded-2xl border border-cyan-200/80 bg-[linear-gradient(135deg,rgba(236,254,255,.96)_0%,rgba(255,255,255,.98)_46%,rgba(245,243,255,.96)_100%)] px-3.5 py-2.5 text-left shadow-[0_10px_28px_rgba(15,23,42,.08),0_0_0_1px_rgba(139,92,246,.04)] transition-all duration-300 hover:-translate-y-0.5 hover:border-violet-200 hover:shadow-[0_16px_38px_rgba(15,23,42,.11),0_0_22px_rgba(34,211,238,.10)]"
                 >
                   <span className="research-assistant-model-aura pointer-events-none absolute -left-8 top-1/2 h-16 w-24 -translate-y-1/2 rounded-full bg-cyan-300/20 blur-2xl" />
                   <span className="research-assistant-model-aura-delayed pointer-events-none absolute -right-6 top-1/2 h-14 w-20 -translate-y-1/2 rounded-full bg-violet-300/20 blur-2xl" />
@@ -1632,15 +1638,6 @@ export default function PsyLatticeCopilot({
                     })}
                   </div>
                 )}
-                </div>
-
-                <div className="min-w-0">
-                  <ResearchAiEnvironmentSelector
-                    activeEnvironmentId={activeEnvironment?.id || ""}
-                    preferredStudyId={preferredStudyId}
-                    onChange={setActiveEnvironment}
-                  />
-                </div>
               </div>
 
               <nav className="flex border-b border-slate-200">

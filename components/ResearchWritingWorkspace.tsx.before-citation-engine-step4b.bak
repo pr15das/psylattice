@@ -13,7 +13,6 @@ import {
   AlignLeft,
   AlignRight,
   Bold,
-  BookOpen,
   Check,
   ChevronDown,
   ChevronRight,
@@ -55,16 +54,6 @@ import {
 } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import { publishCopilotContext, deactivateCopilotContext } from "@/lib/research/copilotBridge";
-import ThesisCitationPanel from "@/components/ThesisCitationPanel";
-import {
-  buildCitationNumberMap,
-  defaultCitationStyleForPaperFormat,
-  formatBibliographyEntries,
-  formatCitationText,
-  type CitationMode,
-  type CitationReference,
-  type CitationStyleId,
-} from "@/lib/references/citationEngine";
 
 type FolderRow = {
   id: string;
@@ -716,9 +705,6 @@ export default function ResearchWritingWorkspace({
   const [exportPageSize, setExportPageSize] = useState<"letter" | "a4">("letter");
   const [applyExportSizeToCanvas, setApplyExportSizeToCanvas] = useState(false);
   const [exporting, setExporting] = useState(false);
-
-  const [citationPanelOpen, setCitationPanelOpen] = useState(false);
-  const [citationStyle, setCitationStyle] = useState<CitationStyleId>("apa7");
 
   const [tableMenuOpen, setTableMenuOpen] = useState(false);
   const [tableRows, setTableRows] = useState(3);
@@ -1429,43 +1415,6 @@ export default function ResearchWritingWorkspace({
   useEffect(() => {
     void load();
   }, [load]);
-
-  useEffect(() => {
-    if (!selectedDocumentId || !userId) return;
-
-    let cancelled = false;
-
-    async function loadCitationStyle() {
-      const supabase = createClient();
-      const { data, error: styleError } = await supabase
-        .from("research_document_citation_settings")
-        .select("citation_style")
-        .eq("owner_user_id", userId)
-        .eq("document_id", selectedDocumentId)
-        .maybeSingle();
-
-      if (cancelled) return;
-
-      if (styleError) {
-        console.warn("Could not load citation style:", styleError);
-        return;
-      }
-
-      setCitationStyle(
-        (data?.citation_style as CitationStyleId | undefined) ||
-          defaultCitationStyleForPaperFormat(
-            documents.find((document) => document.id === selectedDocumentId)
-              ?.format_style,
-          ),
-      );
-    }
-
-    void loadCitationStyle();
-
-    return () => {
-      cancelled = true;
-    };
-  }, [documents, selectedDocumentId, userId]);
 
   useEffect(() => {
     if (!selectedDocument) {
@@ -2254,7 +2203,7 @@ export default function ResearchWritingWorkspace({
 
   function editorAtPoint(x: number, y: number) {
     const hit = document.elementFromPoint(x, y) as HTMLElement | null;
-    return hit?.closest<HTMLDivElement>(".research-paper-editor") || null;
+    return hit?.closest<HTMLElement>(".research-paper-editor") || null;
   }
 
   async function imageFileToDataUrl(file: File) {
@@ -2347,7 +2296,7 @@ export default function ResearchWritingWorkspace({
     if (resizeFrame && (imageHandle || tableHandle)) {
       event.preventDefault();
       event.stopPropagation();
-      const editor = resizeFrame.closest<HTMLDivElement>(".research-paper-editor");
+      const editor = resizeFrame.closest<HTMLElement>(".research-paper-editor");
       if (!editor) return;
       const startX = event.clientX;
       const startWidth = resizeFrame.getBoundingClientRect().width;
@@ -2386,7 +2335,7 @@ export default function ResearchWritingWorkspace({
     event.preventDefault();
     event.stopPropagation();
 
-    const startEditor = imageFrame.closest<HTMLDivElement>(".research-paper-editor");
+    const startEditor = imageFrame.closest<HTMLElement>(".research-paper-editor");
     if (!startEditor) return;
     const wrap = (imageFrame.dataset.wrap as ImageWrapMode) || "top_bottom";
     const freePosition = wrap === "front" || wrap === "behind";
@@ -2447,7 +2396,7 @@ export default function ResearchWritingWorkspace({
         imageFrame.style.pointerEvents = oldPointerEvents || "auto";
         if (range) {
           const container = range.startContainer instanceof Element ? range.startContainer : range.startContainer.parentElement;
-          const destinationEditor = container?.closest<HTMLDivElement>(".research-paper-editor");
+          const destinationEditor = container?.closest<HTMLElement>(".research-paper-editor");
           if (destinationEditor && !imageFrame.contains(range.startContainer)) {
             range.insertNode(imageFrame);
             applyImageLayout(wrap, (imageFrame.dataset.align as ImageAlignment) || "center", Number(imageFrame.dataset.width || 60));
@@ -2899,18 +2848,6 @@ export default function ResearchWritingWorkspace({
     setFormatStyle(nextFormat);
     setSettings(nextSettings);
     setDirty(true);
-
-    const matchingCitationStyle =
-      nextFormat === "ieee_conference"
-        ? "ieee"
-        : nextFormat === "apa7_student" || nextFormat === "apa7_professional"
-          ? "apa7"
-          : null;
-
-    if (matchingCitationStyle && matchingCitationStyle !== citationStyle) {
-      void applyCitationStyle(matchingCitationStyle);
-    }
-
     setNotice(`${FORMAT_PRESETS[nextFormat].shortLabel} page formatting applied.`);
     setGuidelinesOpen(true);
     window.requestAnimationFrame(() => replaceVisiblePages(currentHtml, nextSettings, true));
@@ -2919,636 +2856,6 @@ export default function ResearchWritingWorkspace({
     }
   }
 
-
-  const citationCaretOffsetRef = useRef<number | null>(null);
-
-  function rememberCitationInsertionPoint() {
-    const offset = captureCaretOffset();
-
-    // IMPORTANT:
-    // When the user clicks the Cite toolbar or interacts with the drawer,
-    // browser selection moves outside the paper. captureCaretOffset() then
-    // returns null. We deliberately DO NOT overwrite the last valid paper
-    // position in that case.
-    if (offset !== null) {
-      citationCaretOffsetRef.current = offset;
-    }
-  }
-
-  useEffect(() => {
-    const remember = () => rememberCitationInsertionPoint();
-
-    document.addEventListener("selectionchange", remember);
-    document.addEventListener("mouseup", remember, true);
-    document.addEventListener("keyup", remember, true);
-
-    return () => {
-      document.removeEventListener("selectionchange", remember);
-      document.removeEventListener("mouseup", remember, true);
-      document.removeEventListener("keyup", remember, true);
-    };
-  }, [selectedDocumentId]);
-
-  function restoreCitationInsertionPoint(): HTMLDivElement | null {
-    const globalOffset = citationCaretOffsetRef.current;
-    const pages = orderedPageElements();
-
-    if (!pages.length) return null;
-
-    // If the user has never placed the caret in the paper, use the end of
-    // the current/last page — never silently jump to the beginning.
-    if (globalOffset === null) {
-      const fallback = editorRef.current || pages.at(-1) || null;
-      if (!fallback) return null;
-
-      fallback.focus({ preventScroll: true });
-
-      const range = document.createRange();
-      range.selectNodeContents(fallback);
-      range.collapse(false);
-
-      const selection = window.getSelection();
-      selection?.removeAllRanges();
-      selection?.addRange(range);
-
-      editorRef.current = fallback;
-      return fallback;
-    }
-
-    let remaining = Math.max(0, globalOffset);
-
-    for (const page of pages) {
-      const pageLength = page.textContent?.length || 0;
-
-      if (remaining <= pageLength) {
-        const walker = document.createTreeWalker(
-          page,
-          NodeFilter.SHOW_TEXT,
-        );
-
-        let node = walker.nextNode();
-
-        // Focus FIRST. Safari can reset a contenteditable caret when focus()
-        // is called after restoring a DOM Range.
-        page.focus({ preventScroll: true });
-
-        while (node) {
-          const length = node.textContent?.length || 0;
-
-          if (remaining <= length) {
-            const range = document.createRange();
-            range.setStart(
-              node,
-              Math.max(0, Math.min(remaining, length)),
-            );
-            range.collapse(true);
-
-            const selection = window.getSelection();
-            selection?.removeAllRanges();
-            selection?.addRange(range);
-
-            editorRef.current = page;
-            return page;
-          }
-
-          remaining -= length;
-          node = walker.nextNode();
-        }
-
-        // A page may contain no text node at the exact remembered boundary.
-        // Put the caret at the end of that page instead of at its beginning.
-        const range = document.createRange();
-        range.selectNodeContents(page);
-        range.collapse(false);
-
-        const selection = window.getSelection();
-        selection?.removeAllRanges();
-        selection?.addRange(range);
-
-        editorRef.current = page;
-        return page;
-      }
-
-      remaining -= pageLength;
-    }
-
-    // If the document became shorter while the drawer was open, clamp to the
-    // end of the final page rather than jumping to page 1.
-    const lastPage = pages.at(-1) || null;
-    if (!lastPage) return null;
-
-    lastPage.focus({ preventScroll: true });
-
-    const range = document.createRange();
-    range.selectNodeContents(lastPage);
-    range.collapse(false);
-
-    const selection = window.getSelection();
-    selection?.removeAllRanges();
-    selection?.addRange(range);
-
-    editorRef.current = lastPage;
-    return lastPage;
-  }
-
-  async function loadDocumentCitationRows() {
-    if (!selectedDocument || !userId) return [];
-
-    const supabase = createClient();
-    const { data, error: citationError } = await supabase
-      .from("research_document_citations")
-      .select(
-        "id,reference_ids,citation_mode,locator_label,locator,prefix,suffix,rendered_text,created_at,updated_at",
-      )
-      .eq("owner_user_id", userId)
-      .eq("document_id", selectedDocument.id)
-      .order("created_at", { ascending: true })
-      .order("id", { ascending: true });
-
-    if (citationError) throw citationError;
-    return data || [];
-  }
-
-  async function loadDocumentReferenceEntryRows() {
-    if (!selectedDocument || !userId) return [];
-
-    const supabase = createClient();
-    const { data, error: referenceEntryError } = await supabase
-      .from("research_document_reference_entries")
-      .select("id,reference_ids,rendered_text,created_at,updated_at")
-      .eq("owner_user_id", userId)
-      .eq("document_id", selectedDocument.id)
-      .order("created_at", { ascending: true })
-      .order("id", { ascending: true });
-
-    if (referenceEntryError) throw referenceEntryError;
-    return data || [];
-  }
-
-  async function loadCitationReferences(referenceIds: string[]) {
-    if (!referenceIds.length || !userId) return [] as CitationReference[];
-
-    const supabase = createClient();
-    const { data, error: referenceError } = await supabase
-      .from("reference_items")
-      .select(
-        "id,item_type,title,authors,editors,published_year,container_title,publisher,publisher_place,volume,issue,page,edition,doi,url",
-      )
-      .eq("owner_user_id", userId)
-      .in("id", referenceIds);
-
-    if (referenceError) throw referenceError;
-    return (data || []) as CitationReference[];
-  }
-
-  function citationSpanHtml(citationId: string, renderedText: string) {
-    return `<span data-psylattice-citation-id="${escapeHtml(
-      citationId,
-    )}" data-psylattice-citation="true" contenteditable="false">${escapeHtml(
-      renderedText,
-    )}</span>`;
-  }
-
-  function bibliographyInnerHtml(
-    entries: ReturnType<typeof formatBibliographyEntries>,
-  ) {
-    return [
-      '<span data-psylattice-bibliography-title="true" style="display:block;font-weight:700;margin:0 0 0.55em 0;">References</span>',
-      ...entries.map(
-        (entry) =>
-          '<span data-psylattice-reference-id="' +
-          escapeHtml(entry.reference.id) +
-          '" style="display:block;margin:0 0 0.45em 0;">' +
-          escapeHtml(entry.text) +
-          "</span>",
-      ),
-    ].join("");
-  }
-
-  function bibliographyHtml(
-    entries: ReturnType<typeof formatBibliographyEntries>,
-  ) {
-    return (
-      '<span data-psylattice-bibliography="true" contenteditable="false" style="display:block;">' +
-      bibliographyInnerHtml(entries) +
-      "</span>"
-    );
-  }
-  async function insertStructuredCitation(payload: {
-    references: CitationReference[];
-    mode: CitationMode;
-    locator: string;
-    locatorLabel: string;
-    prefix: string;
-    suffix: string;
-  }) {
-    if (!selectedDocument || !userId) {
-      throw new Error("Open a Thesis Builder document first.");
-    }
-
-    const supabase = createClient();
-    const rows = await loadDocumentCitationRows();
-    const referenceEntryRows = await loadDocumentReferenceEntryRows();
-    const numberMap = buildCitationNumberMap([
-      ...rows.map((row) => ({
-        reference_ids: (row.reference_ids || []) as string[],
-        created_at: row.created_at,
-      })),
-      ...referenceEntryRows.map((row) => ({
-        reference_ids: (row.reference_ids || []) as string[],
-        created_at: row.created_at,
-      })),
-    ]);
-
-    let nextNumber = Math.max(0, ...Array.from(numberMap.values())) + 1;
-    for (const reference of payload.references) {
-      if (!numberMap.has(reference.id)) {
-        numberMap.set(reference.id, nextNumber);
-        nextNumber += 1;
-      }
-    }
-
-    const renderedText = formatCitationText({
-      style: citationStyle,
-      references: payload.references,
-      mode: payload.mode,
-      locator: payload.locator,
-      locatorLabel: payload.locatorLabel,
-      prefix: payload.prefix,
-      suffix: payload.suffix,
-      numberMap,
-    });
-
-    const citationId = crypto.randomUUID();
-
-    const { error: insertError } = await supabase
-      .from("research_document_citations")
-      .insert({
-        id: citationId,
-        owner_user_id: userId,
-        document_id: selectedDocument.id,
-        reference_ids: payload.references.map((reference) => reference.id),
-        citation_mode: payload.mode,
-        locator_label: payload.locatorLabel || null,
-        locator: payload.locator.trim() || null,
-        prefix: payload.prefix.trim() || null,
-        suffix: payload.suffix.trim() || null,
-        rendered_text: renderedText,
-      });
-
-    if (insertError) throw insertError;
-
-    const target = restoreCitationInsertionPoint();
-    if (!target) throw new Error("The writing cursor could not be restored.");
-
-    const inserted = document.execCommand(
-      "insertHTML",
-      false,
-      citationSpanHtml(citationId, renderedText),
-    );
-
-    if (!inserted) {
-      const fallback = document.createElement("span");
-      fallback.dataset.psylatticeCitationId = citationId;
-      fallback.dataset.psylatticeCitation = "true";
-      fallback.contentEditable = "false";
-      fallback.textContent = renderedText;
-      target.appendChild(fallback);
-    }
-
-    captureEditor(undefined, true);
-    setNotice("Citation inserted.");
-  }
-
-  async function insertStructuredReferenceEntries(payload: {
-    references: CitationReference[];
-  }) {
-    if (!selectedDocument || !userId) {
-      throw new Error("Open a Thesis Builder document first.");
-    }
-
-    if (!payload.references.length) {
-      throw new Error("Select at least one reference.");
-    }
-
-    const supabase = createClient();
-    const citationRows = await loadDocumentCitationRows();
-    const referenceEntryRows = await loadDocumentReferenceEntryRows();
-
-    const numberMap = buildCitationNumberMap([
-      ...citationRows.map((row) => ({
-        reference_ids: (row.reference_ids || []) as string[],
-        created_at: row.created_at,
-      })),
-      ...referenceEntryRows.map((row) => ({
-        reference_ids: (row.reference_ids || []) as string[],
-        created_at: row.created_at,
-      })),
-    ]);
-
-    let nextNumber = Math.max(0, ...Array.from(numberMap.values())) + 1;
-    for (const reference of payload.references) {
-      if (!numberMap.has(reference.id)) {
-        numberMap.set(reference.id, nextNumber);
-        nextNumber += 1;
-      }
-    }
-
-    const entries = formatBibliographyEntries({
-      style: citationStyle,
-      references: payload.references,
-      numberMap,
-    });
-
-    const entryId = crypto.randomUUID();
-    const renderedText = entries.map((entry) => entry.text).join("\n");
-
-    const { error: insertError } = await supabase
-      .from("research_document_reference_entries")
-      .insert({
-        id: entryId,
-        owner_user_id: userId,
-        document_id: selectedDocument.id,
-        reference_ids: payload.references.map((reference) => reference.id),
-        rendered_text: renderedText,
-      });
-
-    if (insertError) throw insertError;
-
-    const target = restoreCitationInsertionPoint();
-    if (!target) throw new Error("The writing cursor could not be restored.");
-
-    const html = `<div data-psylattice-reference-entry-id="${escapeHtml(
-      entryId,
-    )}" data-psylattice-reference-entry="true" contenteditable="false">${entries
-      .map(
-        (entry) =>
-          `<p data-psylattice-reference-id="${escapeHtml(
-            entry.reference.id,
-          )}">${escapeHtml(entry.text)}</p>`,
-      )
-      .join("")}</div>`;
-
-    const inserted = document.execCommand("insertHTML", false, html);
-
-    if (!inserted) {
-      const fallback = document.createElement("div");
-      fallback.dataset.psylatticeReferenceEntryId = entryId;
-      fallback.dataset.psylatticeReferenceEntry = "true";
-      fallback.contentEditable = "false";
-
-      for (const entry of entries) {
-        const paragraph = document.createElement("p");
-        paragraph.dataset.psylatticeReferenceId = entry.reference.id;
-        paragraph.textContent = entry.text;
-        fallback.appendChild(paragraph);
-      }
-
-      target.appendChild(fallback);
-    }
-
-    captureEditor(undefined, true);
-    setNotice(
-      payload.references.length === 1
-        ? "Formatted reference inserted."
-        : "Formatted references inserted.",
-    );
-  }
-
-  async function insertOrRefreshBibliography() {
-    if (!selectedDocument || !userId) {
-      throw new Error("Open a Thesis Builder document first.");
-    }
-
-    const rows = await loadDocumentCitationRows();
-    const referenceEntryRows = await loadDocumentReferenceEntryRows();
-
-    if (!rows.length) {
-      throw new Error(
-        "This document does not contain any structured citations yet.",
-      );
-    }
-
-    const orderedIds: string[] = [];
-    for (const row of rows) {
-      for (const id of (row.reference_ids || []) as string[]) {
-        if (!orderedIds.includes(id)) orderedIds.push(id);
-      }
-    }
-
-    const references = await loadCitationReferences(orderedIds);
-
-    const numberMap = buildCitationNumberMap([
-      ...rows.map((row) => ({
-        reference_ids: (row.reference_ids || []) as string[],
-        created_at: row.created_at,
-      })),
-      ...referenceEntryRows.map((row) => ({
-        reference_ids: (row.reference_ids || []) as string[],
-        created_at: row.created_at,
-      })),
-    ]);
-
-    const entries = formatBibliographyEntries({
-      style: citationStyle,
-      references,
-      numberMap,
-    });
-
-    const target = restoreCitationInsertionPoint();
-    if (!target) {
-      throw new Error("The bibliography insertion point is unavailable.");
-    }
-
-    const selection = window.getSelection();
-    if (!selection || selection.rangeCount === 0) {
-      throw new Error("The bibliography insertion point could not be restored.");
-    }
-
-    const range = selection.getRangeAt(0).cloneRange();
-
-    // Pin the user's exact live caret before changing/removing any existing
-    // bibliography elsewhere in the document.
-    const anchor = document.createElement("span");
-    anchor.dataset.psylatticeBibliographyAnchor = "true";
-    anchor.textContent = "\u200B";
-
-    range.deleteContents();
-    range.insertNode(anchor);
-
-    const existing = orderedPageElements()
-      .map((page) =>
-        page.querySelector<HTMLElement>(
-          '[data-psylattice-bibliography="true"]',
-        ),
-      )
-      .find(Boolean);
-
-    if (existing && !existing.contains(anchor)) {
-      existing.remove();
-    }
-
-    const holder = document.createElement("div");
-    holder.innerHTML = bibliographyHtml(entries);
-    const bibliography = holder.firstElementChild as HTMLElement | null;
-
-    if (!bibliography) {
-      anchor.remove();
-      throw new Error("PsyLattice could not create the bibliography block.");
-    }
-
-    anchor.replaceWith(bibliography);
-
-    const after = document.createRange();
-    after.setStartAfter(bibliography);
-    after.collapse(true);
-
-    selection.removeAllRanges();
-    selection.addRange(after);
-
-    editorRef.current = target;
-    citationCaretOffsetRef.current = captureCaretOffset();
-
-    captureEditor(undefined, true);
-    setNotice("Bibliography inserted at the selected cursor position.");
-  }
-
-  async function applyCitationStyle(nextStyle: CitationStyleId) {
-    if (!selectedDocument || !userId) {
-      setCitationStyle(nextStyle);
-      return;
-    }
-
-    const supabase = createClient();
-
-    const { error: settingError } = await supabase
-      .from("research_document_citation_settings")
-      .upsert(
-        {
-          document_id: selectedDocument.id,
-          owner_user_id: userId,
-          citation_style: nextStyle,
-        },
-        { onConflict: "document_id" },
-      );
-
-    if (settingError) throw settingError;
-
-    const rows = await loadDocumentCitationRows();
-    const referenceEntryRows = await loadDocumentReferenceEntryRows();
-    const allReferenceIds = Array.from(
-      new Set([
-        ...rows.flatMap((row) => (row.reference_ids || []) as string[]),
-        ...referenceEntryRows.flatMap(
-          (row) => (row.reference_ids || []) as string[],
-        ),
-      ]),
-    );
-    const references = await loadCitationReferences(allReferenceIds);
-    const byId = new Map(references.map((reference) => [reference.id, reference]));
-    const numberMap = buildCitationNumberMap(
-      rows.map((row) => ({
-        reference_ids: (row.reference_ids || []) as string[],
-        created_at: row.created_at,
-      })),
-    );
-
-    for (const row of rows) {
-      const rowReferences = ((row.reference_ids || []) as string[])
-        .map((id) => byId.get(id))
-        .filter(
-          (reference): reference is CitationReference => Boolean(reference),
-        );
-
-      const renderedText = formatCitationText({
-        style: nextStyle,
-        references: rowReferences,
-        mode: row.citation_mode as CitationMode,
-        locator: row.locator,
-        locatorLabel: row.locator_label,
-        prefix: row.prefix,
-        suffix: row.suffix,
-        numberMap,
-      });
-
-      for (const page of orderedPageElements()) {
-        const node = page.querySelector<HTMLElement>(
-          `[data-psylattice-citation-id="${row.id}"]`,
-        );
-        if (node) node.textContent = renderedText;
-      }
-
-      await supabase
-        .from("research_document_citations")
-        .update({ rendered_text: renderedText })
-        .eq("id", row.id)
-        .eq("owner_user_id", userId);
-    }
-
-    for (const row of referenceEntryRows) {
-      const rowReferences = ((row.reference_ids || []) as string[])
-        .map((id) => byId.get(id))
-        .filter(
-          (reference): reference is CitationReference => Boolean(reference),
-        );
-
-      const entries = formatBibliographyEntries({
-        style: nextStyle,
-        references: rowReferences,
-        numberMap,
-      });
-
-      for (const page of orderedPageElements()) {
-        const node = page.querySelector<HTMLElement>(
-          `[data-psylattice-reference-entry-id="${row.id}"]`,
-        );
-
-        if (node) {
-          node.innerHTML = entries
-            .map(
-              (entry) =>
-                `<p data-psylattice-reference-id="${escapeHtml(
-                  entry.reference.id,
-                )}">${escapeHtml(entry.text)}</p>`,
-            )
-            .join("");
-        }
-      }
-
-      await supabase
-        .from("research_document_reference_entries")
-        .update({
-          rendered_text: entries.map((entry) => entry.text).join("\n"),
-        })
-        .eq("id", row.id)
-        .eq("owner_user_id", userId);
-    }
-
-    setCitationStyle(nextStyle);
-
-    const bibliography = orderedPageElements()
-      .map((page) =>
-        page.querySelector<HTMLElement>('[data-psylattice-bibliography="true"]'),
-      )
-      .find(Boolean);
-
-    if (bibliography && references.length) {
-      const entries = formatBibliographyEntries({
-        style: nextStyle,
-        references,
-        numberMap,
-      });
-      bibliography.innerHTML = bibliographyInnerHtml(entries);
-    }
-
-    if (rows.length || referenceEntryRows.length) {
-      captureEditor(undefined, true);
-    }
-
-    setNotice(
-      `${nextStyle === "apa7" ? "APA 7" : nextStyle === "ieee" ? "IEEE" : nextStyle === "vancouver" ? "Vancouver" : "Harvard"} citation style applied.`,
-    );
-  }
   async function snapshotRevision(reason: string) {
     if (!selectedDocument || !userId) return;
     const supabase = createClient();
@@ -3902,22 +3209,6 @@ export default function ResearchWritingWorkspace({
                   >
                     <span className="flex items-center gap-1.5 whitespace-nowrap font-semibold"><Download className="h-3.5 w-3.5" /> Export</span>
                   </ToolbarButton>
-
-                  <ToolbarButton
-                    title="Citations and bibliography"
-                    active={citationPanelOpen}
-                    onClick={() => {
-                      rememberCitationInsertionPoint();
-                      captureFormattingSelection();
-                      setCitationPanelOpen(true);
-                    }}
-                  >
-                    <span className="flex items-center gap-1.5 whitespace-nowrap font-semibold">
-                      <BookOpen className="h-3.5 w-3.5" />
-                      Cite
-                    </span>
-                  </ToolbarButton>
-
                   <span className="mx-1 h-6 w-px bg-slate-200" />
 
                   <div className="mr-1 flex items-center gap-1 rounded-xl border border-cyan-200 bg-cyan-50/60 px-2 py-1">
@@ -4543,16 +3834,6 @@ export default function ResearchWritingWorkspace({
           )}
         </main>
       </div>
-
-      <ThesisCitationPanel
-        open={citationPanelOpen}
-        documentId={selectedDocumentId}
-        style={citationStyle}
-        onClose={() => setCitationPanelOpen(false)}
-        onStyleChange={(nextStyle) => applyCitationStyle(nextStyle)}
-        onInsertCitation={(payload) => insertStructuredCitation(payload)}
-        onInsertReference={(payload) => insertStructuredReferenceEntries(payload)}
-      />
 
       {importOpen && (
         <div className="fixed inset-0 z-[75] flex items-center justify-center bg-slate-950/35 p-4" onMouseDown={(event) => event.target === event.currentTarget && !importing && setImportOpen(false)}>

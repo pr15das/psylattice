@@ -3112,28 +3112,26 @@ export default function ResearchWritingWorkspace({
   function bibliographyInnerHtml(
     entries: ReturnType<typeof formatBibliographyEntries>,
   ) {
-    return [
-      '<span data-psylattice-bibliography-title="true" style="display:block;font-weight:700;margin:0 0 0.55em 0;">References</span>',
-      ...entries.map(
+    return \`<span data-psylattice-bibliography-title="true" style="display:block;font-weight:700;margin:0 0 0.55em 0;">References</span>\${entries
+      .map(
         (entry) =>
-          '<span data-psylattice-reference-id="' +
-          escapeHtml(entry.reference.id) +
-          '" style="display:block;margin:0 0 0.45em 0;">' +
-          escapeHtml(entry.text) +
-          "</span>",
-      ),
-    ].join("");
+          \`<span data-psylattice-reference-id="\${escapeHtml(
+            entry.reference.id,
+          )}" style="display:block;margin:0 0 0.45em 0;">\${escapeHtml(
+            entry.text,
+          )}</span>\`,
+      )
+      .join("")}\`;
   }
 
   function bibliographyHtml(
     entries: ReturnType<typeof formatBibliographyEntries>,
   ) {
-    return (
-      '<span data-psylattice-bibliography="true" contenteditable="false" style="display:block;">' +
-      bibliographyInnerHtml(entries) +
-      "</span>"
-    );
+    return \`<span data-psylattice-bibliography="true" contenteditable="false" style="display:block;">\${bibliographyInnerHtml(
+      entries,
+    )}</span>\`;
   }
+
   async function insertStructuredCitation(payload: {
     references: CitationReference[];
     mode: CitationMode;
@@ -4552,6 +4550,7 @@ export default function ResearchWritingWorkspace({
         onStyleChange={(nextStyle) => applyCitationStyle(nextStyle)}
         onInsertCitation={(payload) => insertStructuredCitation(payload)}
         onInsertReference={(payload) => insertStructuredReferenceEntries(payload)}
+        onInsertBibliography={() => insertOrRefreshBibliography()}
       />
 
       {importOpen && (

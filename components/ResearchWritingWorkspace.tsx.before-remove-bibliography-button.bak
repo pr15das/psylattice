@@ -4552,6 +4552,7 @@ export default function ResearchWritingWorkspace({
         onStyleChange={(nextStyle) => applyCitationStyle(nextStyle)}
         onInsertCitation={(payload) => insertStructuredCitation(payload)}
         onInsertReference={(payload) => insertStructuredReferenceEntries(payload)}
+        onInsertBibliography={() => insertOrRefreshBibliography()}
       />
 
       {importOpen && (

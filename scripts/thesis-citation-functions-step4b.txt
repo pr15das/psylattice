@@ -1,0 +1,294 @@
+
+  async function loadDocumentCitationRows() {
+    if (!selectedDocument || !userId) return [];
+
+    const supabase = createClient();
+    const { data, error: citationError } = await supabase
+      .from("research_document_citations")
+      .select(
+        "id,reference_ids,citation_mode,locator_label,locator,prefix,suffix,rendered_text,created_at,updated_at",
+      )
+      .eq("owner_user_id", userId)
+      .eq("document_id", selectedDocument.id)
+      .order("created_at", { ascending: true })
+      .order("id", { ascending: true });
+
+    if (citationError) throw citationError;
+    return data || [];
+  }
+
+  async function loadCitationReferences(referenceIds: string[]) {
+    if (!referenceIds.length || !userId) return [] as CitationReference[];
+
+    const supabase = createClient();
+    const { data, error: referenceError } = await supabase
+      .from("reference_items")
+      .select(
+        "id,item_type,title,authors,editors,published_year,container_title,publisher,publisher_place,volume,issue,page,edition,doi,url",
+      )
+      .eq("owner_user_id", userId)
+      .in("id", referenceIds);
+
+    if (referenceError) throw referenceError;
+    return (data || []) as CitationReference[];
+  }
+
+  function citationSpanHtml(citationId: string, renderedText: string) {
+    return `<span data-psylattice-citation-id="${escapeHtml(
+      citationId,
+    )}" data-psylattice-citation="true" contenteditable="false">${escapeHtml(
+      renderedText,
+    )}</span>`;
+  }
+
+  function bibliographyHtml(
+    entries: ReturnType<typeof formatBibliographyEntries>,
+  ) {
+    return `<div data-psylattice-bibliography="true"><h2>References</h2>${entries
+      .map(
+        (entry) =>
+          `<p data-psylattice-reference-id="${escapeHtml(
+            entry.reference.id,
+          )}">${escapeHtml(entry.text)}</p>`,
+      )
+      .join("")}</div>`;
+  }
+
+  async function insertStructuredCitation(payload: {
+    references: CitationReference[];
+    mode: CitationMode;
+    locator: string;
+    locatorLabel: string;
+    prefix: string;
+    suffix: string;
+  }) {
+    if (!selectedDocument || !userId) {
+      throw new Error("Open a Thesis Builder document first.");
+    }
+
+    const supabase = createClient();
+    const rows = await loadDocumentCitationRows();
+    const numberMap = buildCitationNumberMap(
+      rows.map((row) => ({
+        reference_ids: (row.reference_ids || []) as string[],
+        created_at: row.created_at,
+      })),
+    );
+
+    let nextNumber = Math.max(0, ...Array.from(numberMap.values())) + 1;
+    for (const reference of payload.references) {
+      if (!numberMap.has(reference.id)) {
+        numberMap.set(reference.id, nextNumber);
+        nextNumber += 1;
+      }
+    }
+
+    const renderedText = formatCitationText({
+      style: citationStyle,
+      references: payload.references,
+      mode: payload.mode,
+      locator: payload.locator,
+      locatorLabel: payload.locatorLabel,
+      prefix: payload.prefix,
+      suffix: payload.suffix,
+      numberMap,
+    });
+
+    const citationId = crypto.randomUUID();
+
+    const { error: insertError } = await supabase
+      .from("research_document_citations")
+      .insert({
+        id: citationId,
+        owner_user_id: userId,
+        document_id: selectedDocument.id,
+        reference_ids: payload.references.map((reference) => reference.id),
+        citation_mode: payload.mode,
+        locator_label: payload.locatorLabel || null,
+        locator: payload.locator.trim() || null,
+        prefix: payload.prefix.trim() || null,
+        suffix: payload.suffix.trim() || null,
+        rendered_text: renderedText,
+      });
+
+    if (insertError) throw insertError;
+
+    restoreFormattingSelection();
+
+    const target = editorRef.current || orderedPageElements().at(-1);
+    if (!target) throw new Error("The writing cursor could not be restored.");
+
+    target.focus({ preventScroll: true });
+    editorRef.current = target;
+
+    const inserted = document.execCommand(
+      "insertHTML",
+      false,
+      citationSpanHtml(citationId, renderedText),
+    );
+
+    if (!inserted) {
+      const fallback = document.createElement("span");
+      fallback.dataset.psylatticeCitationId = citationId;
+      fallback.dataset.psylatticeCitation = "true";
+      fallback.contentEditable = "false";
+      fallback.textContent = renderedText;
+      target.appendChild(fallback);
+    }
+
+    captureEditor(undefined, true);
+    setNotice("Citation inserted.");
+  }
+
+  async function insertOrRefreshBibliography() {
+    if (!selectedDocument || !userId) {
+      throw new Error("Open a Thesis Builder document first.");
+    }
+
+    const rows = await loadDocumentCitationRows();
+    if (!rows.length) {
+      throw new Error("This document does not contain any structured citations yet.");
+    }
+
+    const orderedIds: string[] = [];
+    for (const row of rows) {
+      for (const id of (row.reference_ids || []) as string[]) {
+        if (!orderedIds.includes(id)) orderedIds.push(id);
+      }
+    }
+
+    const references = await loadCitationReferences(orderedIds);
+    const numberMap = buildCitationNumberMap(
+      rows.map((row) => ({
+        reference_ids: (row.reference_ids || []) as string[],
+        created_at: row.created_at,
+      })),
+    );
+
+    const entries = formatBibliographyEntries({
+      style: citationStyle,
+      references,
+      numberMap,
+    });
+
+    const existing = orderedPageElements()
+      .map((page) =>
+        page.querySelector<HTMLElement>('[data-psylattice-bibliography="true"]'),
+      )
+      .find(Boolean);
+
+    if (existing) {
+      const container = document.createElement("div");
+      container.innerHTML = bibliographyHtml(entries);
+      const next = container.firstElementChild;
+      if (next) existing.replaceWith(next);
+    } else {
+      restoreFormattingSelection();
+      const target = editorRef.current || orderedPageElements().at(-1);
+      if (!target) throw new Error("The bibliography insertion point is unavailable.");
+
+      target.focus({ preventScroll: true });
+      editorRef.current = target;
+      document.execCommand("insertHTML", false, bibliographyHtml(entries));
+    }
+
+    captureEditor(undefined, true);
+    setNotice("Bibliography updated.");
+  }
+
+  async function applyCitationStyle(nextStyle: CitationStyleId) {
+    if (!selectedDocument || !userId) {
+      setCitationStyle(nextStyle);
+      return;
+    }
+
+    const supabase = createClient();
+
+    const { error: settingError } = await supabase
+      .from("research_document_citation_settings")
+      .upsert(
+        {
+          document_id: selectedDocument.id,
+          owner_user_id: userId,
+          citation_style: nextStyle,
+        },
+        { onConflict: "document_id" },
+      );
+
+    if (settingError) throw settingError;
+
+    const rows = await loadDocumentCitationRows();
+    const allReferenceIds = Array.from(
+      new Set(
+        rows.flatMap((row) => (row.reference_ids || []) as string[]),
+      ),
+    );
+    const references = await loadCitationReferences(allReferenceIds);
+    const byId = new Map(references.map((reference) => [reference.id, reference]));
+    const numberMap = buildCitationNumberMap(
+      rows.map((row) => ({
+        reference_ids: (row.reference_ids || []) as string[],
+        created_at: row.created_at,
+      })),
+    );
+
+    for (const row of rows) {
+      const rowReferences = ((row.reference_ids || []) as string[])
+        .map((id) => byId.get(id))
+        .filter(
+          (reference): reference is CitationReference => Boolean(reference),
+        );
+
+      const renderedText = formatCitationText({
+        style: nextStyle,
+        references: rowReferences,
+        mode: row.citation_mode as CitationMode,
+        locator: row.locator,
+        locatorLabel: row.locator_label,
+        prefix: row.prefix,
+        suffix: row.suffix,
+        numberMap,
+      });
+
+      for (const page of orderedPageElements()) {
+        const node = page.querySelector<HTMLElement>(
+          `[data-psylattice-citation-id="${row.id}"]`,
+        );
+        if (node) node.textContent = renderedText;
+      }
+
+      await supabase
+        .from("research_document_citations")
+        .update({ rendered_text: renderedText })
+        .eq("id", row.id)
+        .eq("owner_user_id", userId);
+    }
+
+    setCitationStyle(nextStyle);
+
+    const bibliography = orderedPageElements()
+      .map((page) =>
+        page.querySelector<HTMLElement>('[data-psylattice-bibliography="true"]'),
+      )
+      .find(Boolean);
+
+    if (bibliography && references.length) {
+      const entries = formatBibliographyEntries({
+        style: nextStyle,
+        references,
+        numberMap,
+      });
+      const container = document.createElement("div");
+      container.innerHTML = bibliographyHtml(entries);
+      const next = container.firstElementChild;
+      if (next) bibliography.replaceWith(next);
+    }
+
+    if (rows.length) {
+      captureEditor(undefined, true);
+    }
+
+    setNotice(
+      `${nextStyle === "apa7" ? "APA 7" : nextStyle === "ieee" ? "IEEE" : nextStyle === "vancouver" ? "Vancouver" : "Harvard"} citation style applied.`,
+    );
+  }

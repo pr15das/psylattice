@@ -28,7 +28,6 @@ import FollowupManager from "@/components/PlanAwareFollowupManager";
 import ResearchAiAssistant from "@/components/ResearchAiAssistant";
 import PsyLatticeCopilot from "@/components/PsyLatticeCopilot";
 import ResearchWritingWorkspace from "@/components/ResearchWritingWorkspace";
-import ReferenceManager from "@/components/ReferenceManager";
 import ResearchStudyAssociations from "@/components/ResearchStudyAssociations";
 import AnalysisLab from "@/components/AnalysisLab";
 import IntegratedDatasetBuilder from "@/components/IntegratedDatasetBuilder";
@@ -60,7 +59,6 @@ type Screen =
   | "builder"
   | "library"
   | "cognitive"
-  | "references"
   | "writing"
   | "ambulatory"
   | "followup"
@@ -84,7 +82,6 @@ const navigation: {
   { id: "builder", label: "Study Builder", group: "Research" },
   { id: "library", label: "Questionnaire Library", group: "Research" },
   { id: "cognitive", label: "Cognitive Lab", group: "Research" },
-  { id: "references", label: "Reference Manager", group: "Research" },
   { id: "writing", label: "Thesis Builder", group: "Research" },
   { id: "ambulatory", label: "Ambulatory Assessment", group: "Research" },
   { id: "followup", label: "Follow-up Manager", group: "Research" },
@@ -107,7 +104,6 @@ const sidebarIcons: Record<Screen, LucideIcon> = {
   builder: Workflow,
   library: BookOpen,
   cognitive: BrainCircuit,
-  references: BookOpen,
   writing: FileText,
   ambulatory: Activity,
   followup: CalendarClock,
@@ -24080,9 +24076,6 @@ export default function ResearcherWorkspace() {
       case "cognitive":
         return <CognitiveLab />;
 
-      case "references":
-        return <ReferenceManager />;
-
       case "writing":
         return (
           <ResearchWritingWorkspace
@@ -24156,8 +24149,6 @@ export default function ResearcherWorkspace() {
       "Search the research catalogue, review administration and scoring, open manuals and official resources, and verify questionnaire usage rights.",
     cognitive:
       "Create reusable cognitive task definitions, start from PsyLattice templates, and prepare versioned tasks for experiments and longitudinal research.",
-    references:
-      "Build a global research library, organise papers into collections, verify DOI metadata, and link references across studies without duplicating them.",
     writing:
       "Build and organise thesis and paper drafts in nested visual folders, write in a paged academic editor, apply format presets, and use consent-gated AI writing support.",
     ambulatory:

@@ -24478,7 +24478,7 @@ export default function ResearcherWorkspace() {
 
         <section
           className={`min-w-0 transition-[margin,padding] duration-200 ${
-            screen === "writing" && thesisFocusMode
+            (screen === "writing" && thesisFocusMode) || screen === "references"
               ? "p-2 sm:p-3 lg:p-4"
               : "p-5 sm:p-6 lg:p-8"
           } ${
@@ -24487,8 +24487,8 @@ export default function ResearcherWorkspace() {
               : "lg:ml-[268px]"
           }`}
         >
-          <div className={screen === "writing" && thesisFocusMode ? "mx-auto max-w-none" : "mx-auto max-w-[1450px]"}>
-            {!(screen === "writing" && thesisFocusMode) && (
+          <div className={(screen === "writing" && thesisFocusMode) || screen === "references" ? "mx-auto max-w-none" : "mx-auto max-w-[1450px]"}>
+            {!(screen === "writing" && thesisFocusMode) && screen !== "references" && (
             <div className="mb-7 flex flex-col gap-3 rounded-[28px] border border-slate-200/80 bg-white/88 px-5 py-5 shadow-[0_2px_5px_rgba(15,23,42,0.04),0_12px_32px_rgba(15,23,42,0.075),0_34px_76px_rgba(8,145,178,0.045)] backdrop-blur-xl sm:px-6">
               <div className="flex flex-wrap items-center gap-2">
                 <Status type="accent">Researcher workspace</Status>

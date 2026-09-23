@@ -3109,31 +3109,19 @@ export default function ResearchWritingWorkspace({
     )}</span>`;
   }
 
-  function bibliographyInnerHtml(
-    entries: ReturnType<typeof formatBibliographyEntries>,
-  ) {
-    return [
-      '<span data-psylattice-bibliography-title="true" style="display:block;font-weight:700;margin:0 0 0.55em 0;">References</span>',
-      ...entries.map(
-        (entry) =>
-          '<span data-psylattice-reference-id="' +
-          escapeHtml(entry.reference.id) +
-          '" style="display:block;margin:0 0 0.45em 0;">' +
-          escapeHtml(entry.text) +
-          "</span>",
-      ),
-    ].join("");
-  }
-
   function bibliographyHtml(
     entries: ReturnType<typeof formatBibliographyEntries>,
   ) {
-    return (
-      '<span data-psylattice-bibliography="true" contenteditable="false" style="display:block;">' +
-      bibliographyInnerHtml(entries) +
-      "</span>"
-    );
+    return `<div data-psylattice-bibliography="true"><h2>References</h2>${entries
+      .map(
+        (entry) =>
+          `<p data-psylattice-reference-id="${escapeHtml(
+            entry.reference.id,
+          )}">${escapeHtml(entry.text)}</p>`,
+      )
+      .join("")}</div>`;
   }
+
   async function insertStructuredCitation(payload: {
     references: CitationReference[];
     mode: CitationMode;
@@ -3321,12 +3309,8 @@ export default function ResearchWritingWorkspace({
     }
 
     const rows = await loadDocumentCitationRows();
-    const referenceEntryRows = await loadDocumentReferenceEntryRows();
-
     if (!rows.length) {
-      throw new Error(
-        "This document does not contain any structured citations yet.",
-      );
+      throw new Error("This document does not contain any structured citations yet.");
     }
 
     const orderedIds: string[] = [];
@@ -3337,17 +3321,12 @@ export default function ResearchWritingWorkspace({
     }
 
     const references = await loadCitationReferences(orderedIds);
-
-    const numberMap = buildCitationNumberMap([
-      ...rows.map((row) => ({
+    const numberMap = buildCitationNumberMap(
+      rows.map((row) => ({
         reference_ids: (row.reference_ids || []) as string[],
         created_at: row.created_at,
       })),
-      ...referenceEntryRows.map((row) => ({
-        reference_ids: (row.reference_ids || []) as string[],
-        created_at: row.created_at,
-      })),
-    ]);
+    );
 
     const entries = formatBibliographyEntries({
       style: citationStyle,
@@ -3355,62 +3334,29 @@ export default function ResearchWritingWorkspace({
       numberMap,
     });
 
-    const target = restoreCitationInsertionPoint();
-    if (!target) {
-      throw new Error("The bibliography insertion point is unavailable.");
-    }
-
-    const selection = window.getSelection();
-    if (!selection || selection.rangeCount === 0) {
-      throw new Error("The bibliography insertion point could not be restored.");
-    }
-
-    const range = selection.getRangeAt(0).cloneRange();
-
-    // Pin the user's exact live caret before changing/removing any existing
-    // bibliography elsewhere in the document.
-    const anchor = document.createElement("span");
-    anchor.dataset.psylatticeBibliographyAnchor = "true";
-    anchor.textContent = "\u200B";
-
-    range.deleteContents();
-    range.insertNode(anchor);
-
     const existing = orderedPageElements()
       .map((page) =>
-        page.querySelector<HTMLElement>(
-          '[data-psylattice-bibliography="true"]',
-        ),
+        page.querySelector<HTMLElement>('[data-psylattice-bibliography="true"]'),
       )
       .find(Boolean);
 
-    if (existing && !existing.contains(anchor)) {
-      existing.remove();
+    if (existing) {
+      const container = document.createElement("div");
+      container.innerHTML = bibliographyHtml(entries);
+      const next = container.firstElementChild;
+      if (next) existing.replaceWith(next);
+    } else {
+      restoreFormattingSelection();
+      const target = editorRef.current || orderedPageElements().at(-1);
+      if (!target) throw new Error("The bibliography insertion point is unavailable.");
+
+      target.focus({ preventScroll: true });
+      editorRef.current = target;
+      document.execCommand("insertHTML", false, bibliographyHtml(entries));
     }
-
-    const holder = document.createElement("div");
-    holder.innerHTML = bibliographyHtml(entries);
-    const bibliography = holder.firstElementChild as HTMLElement | null;
-
-    if (!bibliography) {
-      anchor.remove();
-      throw new Error("PsyLattice could not create the bibliography block.");
-    }
-
-    anchor.replaceWith(bibliography);
-
-    const after = document.createRange();
-    after.setStartAfter(bibliography);
-    after.collapse(true);
-
-    selection.removeAllRanges();
-    selection.addRange(after);
-
-    editorRef.current = target;
-    citationCaretOffsetRef.current = captureCaretOffset();
 
     captureEditor(undefined, true);
-    setNotice("Bibliography inserted at the selected cursor position.");
+    setNotice("Bibliography updated.");
   }
 
   async function applyCitationStyle(nextStyle: CitationStyleId) {
@@ -3538,7 +3484,10 @@ export default function ResearchWritingWorkspace({
         references,
         numberMap,
       });
-      bibliography.innerHTML = bibliographyInnerHtml(entries);
+      const container = document.createElement("div");
+      container.innerHTML = bibliographyHtml(entries);
+      const next = container.firstElementChild;
+      if (next) bibliography.replaceWith(next);
     }
 
     if (rows.length || referenceEntryRows.length) {
@@ -4552,6 +4501,7 @@ export default function ResearchWritingWorkspace({
         onStyleChange={(nextStyle) => applyCitationStyle(nextStyle)}
         onInsertCitation={(payload) => insertStructuredCitation(payload)}
         onInsertReference={(payload) => insertStructuredReferenceEntries(payload)}
+        onInsertBibliography={() => insertOrRefreshBibliography()}
       />
 
       {importOpen && (

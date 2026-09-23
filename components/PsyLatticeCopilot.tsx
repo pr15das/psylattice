@@ -1582,7 +1582,7 @@ export default function PsyLatticeCopilot({
               </div>
 
               {/* psylattice.ai-environment-three-button-row.v1 */}
-              <div className="grid grid-cols-2 gap-2 pb-2" data-layout="psylattice.ai-environment-50-50.v1" data-layout="psylattice.ai-environment-three-button-proportions.v3.70-20-10" data-layout="psylattice.ai-environment-three-button-proportions.v2">
+              <div className="grid grid-cols-2 gap-2 pb-2" data-layout="psylattice.ai-environment-50-50.v1">
                 <div className="relative min-w-0">
                   <button
                   type="button"

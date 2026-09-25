@@ -457,200 +457,63 @@ async function loadServerQuestionnaireContext(
 async function loadServerCognitiveContext(
   supabase: Awaited<ReturnType<typeof createClient>>,
   userId: string,
-  studyId: string,
 ) {
-  // psylattice.study-scoped-copilot.v1
-  if (!studyId) {
-    return {
-      study_id: null,
-      study_links: [],
-      templates: [],
-      owned_tasks: [],
-      task_versions: [],
-      task_structure: {},
-      pilot_sessions: [],
-      pilot_links: [],
-      capabilities: { study_scoped: true },
-      note:
-        "No active study scope was supplied, so Cognitive Lab records were not loaded. This prevents cross-study context mixing.",
-    };
+  const taskSelect = "id,owner_user_id,source_type,source_template_id,template_key,title,short_title,description,domain,tags,status,template_stage,default_device_support,library_metadata,created_at,updated_at";
+  const [templatesResult, ownedResult, sessionsResult, linksResult, batteriesResult] = await Promise.all([
+    supabase.from("cognitive_tasks").select(taskSelect).eq("source_type", "system_template").eq("status", "active").eq("researcher_available", true).order("title", { ascending: true }),
+    supabase.from("cognitive_tasks").select(taskSelect).eq("owner_user_id", userId).neq("status", "archived").order("updated_at", { ascending: false }),
+    supabase.from("cognitive_task_sessions").select("id,task_id,version_id,session_mode,status,started_at,completed_at,created_at").eq("owner_user_id", userId).eq("session_mode", "pilot").order("created_at", { ascending: false }).limit(100),
+    supabase.from("cognitive_pilot_links").select("id,task_id,version_id,label,status,max_completions,completion_count,expires_at,last_used_at,created_at").eq("owner_user_id", userId).order("created_at", { ascending: false }).limit(100),
+    supabase.from("cognitive_batteries").select("id,title,description,status,updated_at").eq("owner_user_id", userId).neq("status", "archived").order("updated_at", { ascending: false }),
+  ]);
+  const templates = templatesResult.data || [];
+  const ownedTasks = ownedResult.data || [];
+  const taskIds = [...templates, ...ownedTasks].map((row: any) => String(row.id));
+  const { data: versionRows } = taskIds.length
+    ? await supabase.from("cognitive_task_versions").select("id,task_id,version_number,version_label,status,runtime_engine,participant_instructions,task_config,randomization_config,scoring_config,timing_config,output_config,device_config,updated_at").in("task_id", taskIds).order("version_number", { ascending: false })
+    : ({ data: [] } as any);
+  const versionsByTask = new Map<string, any[]>();
+  for (const row of versionRows || []) {
+    const key = String((row as any).task_id);
+    const current = versionsByTask.get(key) || [];
+    if (current.length < 5) current.push(row);
+    versionsByTask.set(key, current);
   }
 
-  const { data: studyLinks, error: linkError } = await supabase
-    .from("study_cognitive_tasks")
-    .select("id,task_id,task_version_id,position,required,config")
-    .eq("study_id", studyId)
-    .order("position", { ascending: true });
-
-  if (linkError) {
-    return {
-      study_id: studyId,
-      study_links: [],
-      templates: [],
-      owned_tasks: [],
-      task_versions: [],
-      task_structure: {},
-      pilot_sessions: [],
-      pilot_links: [],
-      capabilities: { study_scoped: true },
-      note: "Study-linked Cognitive Lab records could not be loaded for this request.",
-    };
+  const latestVersionByTask = new Map<string, any>();
+  for (const row of versionRows || []) {
+    const key = String((row as any).task_id);
+    if (!latestVersionByTask.has(key)) latestVersionByTask.set(key, row);
   }
 
-  const links = studyLinks || [];
-  const taskIds = Array.from(
-    new Set(
-      links
-        .map((row: any) => String(row.task_id || ""))
-        .filter(Boolean),
-    ),
-  );
-
-  if (!taskIds.length) {
-    return {
-      study_id: studyId,
-      study_links: [],
-      templates: [],
-      owned_tasks: [],
-      task_versions: [],
-      task_structure: {},
-      pilot_sessions: [],
-      pilot_links: [],
-      capabilities: {
-        study_scoped: true,
-        study_builder_attachment: true,
-        task_builder: true,
-      },
-      note:
-        "This study currently has no Cognitive Lab tasks attached. Global Cognitive Lab library content is intentionally excluded from this study AI environment.",
-    };
-  }
-
-  const taskSelect =
-    "id,owner_user_id,source_type,source_template_id,template_key,title,short_title,description,domain,tags,status,template_stage,default_device_support,library_metadata,created_at,updated_at";
-
-  const [taskResult, versionResult, sessionResult, pilotLinkResult] =
-    await Promise.all([
-      supabase.from("cognitive_tasks").select(taskSelect).in("id", taskIds),
-      supabase
-        .from("cognitive_task_versions")
-        .select(
-          "id,task_id,version_number,version_label,status,runtime_engine,participant_instructions,task_config,randomization_config,scoring_config,timing_config,output_config,device_config,updated_at",
-        )
-        .in("task_id", taskIds)
-        .order("version_number", { ascending: false }),
-      supabase
-        .from("cognitive_task_sessions")
-        .select(
-          "id,task_id,version_id,session_mode,status,started_at,completed_at,created_at",
-        )
-        .eq("owner_user_id", userId)
-        .in("task_id", taskIds)
-        .eq("session_mode", "pilot")
-        .order("created_at", { ascending: false })
-        .limit(100),
-      supabase
-        .from("cognitive_pilot_links")
-        .select(
-          "id,task_id,version_id,label,status,max_completions,completion_count,expires_at,last_used_at,created_at",
-        )
-        .eq("owner_user_id", userId)
-        .in("task_id", taskIds)
-        .order("created_at", { ascending: false })
-        .limit(100),
-    ]);
-
-  if (taskResult.error) {
-    throw new Error("Study-linked Cognitive Lab tasks could not be loaded.");
-  }
-
-  const allVersions = versionResult.data || [];
-  const explicitVersionByTask = new Map(
-    links
-      .filter((row: any) => row.task_version_id)
-      .map((row: any) => [
-        String(row.task_id),
-        String(row.task_version_id),
-      ]),
-  );
-
-  const selectedVersions: any[] = [];
-  for (const taskId of taskIds) {
-    const explicitId = explicitVersionByTask.get(taskId);
-    const versionsForTask = allVersions.filter(
-      (row: any) => String(row.task_id) === taskId,
-    );
-    const selected = explicitId
-      ? versionsForTask.find((row: any) => String(row.id) === explicitId)
-      : versionsForTask[0];
-    if (selected) selectedVersions.push(selected);
-  }
-
-  const selectedVersionIds = selectedVersions.map((row: any) => String(row.id));
+  const latestVersionIds = Array.from(latestVersionByTask.values()).map((row: any) => String(row.id));
   let structureByTask: Record<string, unknown> = {};
-
-  if (selectedVersionIds.length) {
+  if (latestVersionIds.length) {
     const { data: blockRows } = await supabase
       .from("cognitive_task_blocks")
-      .select(
-        "id,version_id,block_key,name,block_type,position,repeat_count,continue_rule,config",
-      )
-      .in("version_id", selectedVersionIds)
+      .select("id,version_id,block_key,name,block_type,position,repeat_count,continue_rule,config")
+      .in("version_id", latestVersionIds)
       .order("position", { ascending: true });
-
     const blockIds = (blockRows || []).map((row: any) => String(row.id));
     const [componentResult, trialResult] = blockIds.length
       ? await Promise.all([
-          supabase
-            .from("cognitive_task_components")
-            .select(
-              "id,block_id,component_key,component_type,position,config",
-            )
-            .in("block_id", blockIds)
-            .order("position", { ascending: true }),
-          supabase
-            .from("cognitive_task_trial_rows")
-            .select(
-              "id,block_id,position,condition_label,variables,weight,enabled",
-            )
-            .in("block_id", blockIds)
-            .order("position", { ascending: true })
-            .limit(4000),
+          supabase.from("cognitive_task_components").select("id,block_id,component_key,component_type,position,config").in("block_id", blockIds).order("position", { ascending: true }),
+          supabase.from("cognitive_task_trial_rows").select("id,block_id,position,condition_label,variables,weight,enabled").in("block_id", blockIds).order("position", { ascending: true }).limit(4000),
         ])
       : [{ data: [] } as any, { data: [] } as any];
-
-    const taskByVersion = new Map(
-      selectedVersions.map((row: any) => [String(row.id), String(row.task_id)]),
-    );
-
+    const versionToTask = new Map(Array.from(latestVersionByTask.entries()).map(([taskId, row]) => [String(row.id), taskId]));
     const next: Record<string, unknown> = {};
     for (const block of blockRows || []) {
-      const taskId = taskByVersion.get(String((block as any).version_id));
+      const taskId = versionToTask.get(String((block as any).version_id));
       if (!taskId) continue;
       const current = (next[taskId] as any[]) || [];
-      const trials = (trialResult.data || []).filter(
-        (row: any) => String(row.block_id) === String((block as any).id),
-      );
+      const trials = (trialResult.data || []).filter((row: any) => String(row.block_id) === String((block as any).id));
       current.push({
-        id: (block as any).id,
-        block_key: (block as any).block_key,
-        name: (block as any).name,
-        block_type: (block as any).block_type,
-        position: (block as any).position,
-        repeat_count: (block as any).repeat_count,
-        continue_rule: (block as any).continue_rule,
-        config: (block as any).config,
-        components: (componentResult.data || []).filter(
-          (row: any) => String(row.block_id) === String((block as any).id),
-        ),
+        id: (block as any).id, block_key: (block as any).block_key, name: (block as any).name, block_type: (block as any).block_type,
+        position: (block as any).position, repeat_count: (block as any).repeat_count, continue_rule: (block as any).continue_rule, config: (block as any).config,
+        components: (componentResult.data || []).filter((row: any) => String(row.block_id) === String((block as any).id)),
         trial_count: trials.length,
-        trial_variable_names: Array.from(
-          new Set(
-            trials.flatMap((row: any) =>
-              Object.keys(row.variables || {}),
-            ),
-          ),
-        ),
+        trial_variable_names: Array.from(new Set(trials.flatMap((row: any) => Object.keys(row.variables || {})))),
         sample_trials: trials.slice(0, 16),
         trial_samples_truncated: trials.length > 16,
       });
@@ -659,82 +522,72 @@ async function loadServerCognitiveContext(
     structureByTask = next;
   }
 
-  const tasks = taskResult.data || [];
+  let batteries: any[] = [];
+  const batteryRows = batteriesResult.data || [];
+  const batteryIds = batteryRows.map((row: any) => String(row.id));
+  if (batteryIds.length) {
+    const { data: batteryVersions } = await supabase
+      .from("cognitive_battery_versions")
+      .select("id,battery_id,version_number,version_label,status,title_snapshot,description_snapshot,participant_intro,order_mode,counterbalance_strategy,show_task_progress,show_transition_screens,default_break_seconds")
+      .in("battery_id", batteryIds)
+      .order("version_number", { ascending: false });
+    const versionIds = (batteryVersions || []).map((row: any) => String(row.id));
+    const { data: batteryItems } = versionIds.length
+      ? await supabase.from("cognitive_battery_items").select("id,battery_version_id,position,task_id,task_version_id,required,transition_text,break_after_seconds,task_title_snapshot,task_domain_snapshot,estimated_minutes_snapshot,config").in("battery_version_id", versionIds).order("position", { ascending: true })
+      : ({ data: [] } as any);
+    batteries = batteryRows.map((battery: any) => ({
+      ...battery,
+      versions: (batteryVersions || []).filter((version: any) => String(version.battery_id) === String(battery.id)).slice(0, 5).map((version: any) => ({
+        ...version,
+        items: (batteryItems || []).filter((item: any) => String(item.battery_version_id) === String(version.id)),
+      })),
+    }));
+  }
+
   const enrich = (row: any) => ({
     ...row,
-    attached_to_study: true,
-    study_attachment:
-      links.find((link: any) => String(link.task_id) === String(row.id)) || null,
-    selected_version:
-      selectedVersions.find(
-        (version: any) => String(version.task_id) === String(row.id),
-      ) || null,
-    selected_structure: structureByTask[String(row.id)] || [],
+    recent_versions: (versionsByTask.get(String(row.id)) || []).slice(0, 3),
+    latest_structure: structureByTask[String(row.id)] || [],
   });
-
   return {
-    study_id: studyId,
-    study_links: links,
-    templates: tasks
-      .filter((row: any) => row.source_type === "system_template")
-      .map(enrich),
-    owned_tasks: tasks
-      .filter((row: any) => String(row.owner_user_id || "") === userId)
-      .map(enrich),
-    task_versions: selectedVersions,
-    task_structure: structureByTask,
-    pilot_sessions: sessionResult.data || [],
-    pilot_links: pilotLinkResult.data || [],
+    templates: templates.map(enrich),
+    owned_tasks: ownedTasks.map(enrich),
+    pilot_sessions: sessionsResult.data || [],
+    pilot_links: linksResult.data || [],
+    batteries,
     capabilities: {
-      study_scoped: true,
-      task_builder: true,
-      study_builder_attachment: true,
-      browser_preview: true,
-      pilot_links: true,
-      publish_and_version: true,
-      batteries_in_study_context: false,
+      learn: true, task_templates: true, task_builder: true, generic_blocks_components_trials: true,
+      generic_block_types: ["instructions", "practice", "experimental", "break", "end", "custom"],
+      generic_component_types: ["fixation", "text", "image", "audio", "video", "shape", "response", "iti", "html"],
+      builder_tabs: ["paradigm", "timeline", "trials", "randomization", "scoring"],
+      dedicated_paradigms: ["stop_signal", "corsi", "card_sorting", "bart", "mental_rotation"],
+      browser_preview: true, pilot_links: true, publish_and_version: true, batteries: true, study_builder_attachment: true,
     },
-    note:
-      "Strict study-scoped Cognitive Lab context. Only tasks attached through study_cognitive_tasks for the active study are included. Global task-library and unrelated-study records are excluded.",
+    scientific_boundaries: {
+      published_versions_are_immutable: true,
+      card_sorting_is_not_official_wcst_or_heaton_scoring: true,
+      mental_rotation_stimuli_are_not_claimed_as_commercial_standardized_sheets: true,
+      battery_is_orchestration_not_child_task_scoring: true,
+    },
+    note: "Server-verified Cognitive Lab catalogue/owned task state. Pilot tokens are deliberately excluded. EMA/ESM is unrelated and not loaded here.",
   };
 }
 
 async function loadServerThesisContext(
   supabase: Awaited<ReturnType<typeof createClient>>,
   userId: string,
-  studyId: string,
 ) {
-  if (!studyId) {
-    return {
-      study_id: null,
-      documents: [],
-      note:
-        "No active study scope was supplied, so Thesis Builder documents were not loaded. This prevents cross-study context mixing.",
-    };
-  }
-
   const { data, error } = await supabase
     .from("research_writing_documents")
-    .select(
-      "id,folder_id,study_id,title,document_type,format_style,content_text,updated_at",
-    )
+    .select("id,folder_id,title,document_type,format_style,content_text,updated_at")
     .eq("owner_user_id", userId)
-    .eq("study_id", studyId)
     .order("updated_at", { ascending: false })
-    .limit(24);
-
+    .limit(12);
   if (error) {
-    return {
-      study_id: studyId,
-      documents: [],
-      note:
-        "Study-linked Thesis Builder records could not be loaded for this request.",
-    };
+    return { documents: [], note: "Thesis Builder records could not be loaded for this request." };
   }
-
   let remaining = MAX_THESIS_CONTEXT_CHARS;
   const documents = [] as Array<Record<string, unknown>>;
-
   for (const row of data || []) {
     if (remaining <= 0) break;
     const raw = typeof row.content_text === "string" ? row.content_text : "";
@@ -743,7 +596,6 @@ async function loadServerThesisContext(
     documents.push({
       id: row.id,
       folder_id: row.folder_id,
-      study_id: row.study_id,
       title: row.title,
       document_type: row.document_type,
       format_style: row.format_style,
@@ -752,12 +604,9 @@ async function loadServerThesisContext(
       updated_at: row.updated_at,
     });
   }
-
   return {
-    study_id: studyId,
     documents,
-    note:
-      "Strict study-scoped Thesis Builder context. Multiple files may belong to one study, and only files linked to the active AI environment's study are included.",
+    note: "Server-verified owned Thesis Builder documents, included only because Thesis permission is enabled.",
   };
 }
 
@@ -1441,7 +1290,7 @@ export async function POST(request: NextRequest) {
       if (!ownedStudy) return jsonError("This study is not available to your researcher account.", 404);
     }
     if (boolPermission(permissions, "thesis")) {
-      const thesisContext = await loadServerThesisContext(supabase, user.id, studyId);
+      const thesisContext = await loadServerThesisContext(supabase, user.id);
       serverContext.thesis_builder = thesisContext;
       const docs = Array.isArray((thesisContext as any).documents) ? (thesisContext as any).documents : [];
       const currentState = plainObject(serverContext.workspace_state) ? serverContext.workspace_state : {};
@@ -1459,7 +1308,7 @@ export async function POST(request: NextRequest) {
       serverContext.questionnaire_library = await loadServerQuestionnaireContext(supabase, user.id);
     }
     if (boolPermission(permissions, "cognitive")) {
-      const cognitiveContext = await loadServerCognitiveContext(supabase, user.id, studyId);
+      const cognitiveContext = await loadServerCognitiveContext(supabase, user.id);
       serverContext.cognitive_lab = cognitiveContext;
       const currentState = plainObject(serverContext.workspace_state) ? serverContext.workspace_state : {};
       const ownedTasks = Array.isArray((cognitiveContext as any).owned_tasks) ? (cognitiveContext as any).owned_tasks : [];

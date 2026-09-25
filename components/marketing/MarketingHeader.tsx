@@ -2,11 +2,21 @@
 
 import Link from "next/link";
 import { ArrowRight, Menu, X } from "lucide-react";
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
+import { usePathname } from "next/navigation";
 import PsyLatticeLogo from "@/components/PsyLatticeLogo";
 
 export default function MarketingHeader() {
+  const pathname = usePathname();
+  const isHome = pathname === "/";
+
   const [open, setOpen] = useState(false);
+  const [visible, setVisible] = useState(true);
+
+  const lastYRef = useRef(0);
+  const directionDistanceRef = useRef(0);
+  const lastDirectionRef = useRef<"up" | "down" | null>(null);
+  const rafRef = useRef<number | null>(null);
 
   const nav = [
     ["Features", "/#features"],
@@ -14,10 +24,92 @@ export default function MarketingHeader() {
     ["Mobile", "/#mobile"],
     ["AI", "/#trusted-ai"],
     ["Pricing", "/#pricing"],
+    ["Workshop", "/workshops"],
   ] as const;
 
-  return (
-    <header className="sticky top-3 z-50 px-3 sm:px-5 lg:px-8">
+  useEffect(() => {
+    if (!isHome) {
+      setVisible(true);
+      return;
+    }
+
+    lastYRef.current = window.scrollY;
+    directionDistanceRef.current = 0;
+    lastDirectionRef.current = null;
+
+    const update = () => {
+      rafRef.current = null;
+
+      const currentY = Math.max(0, window.scrollY);
+      const delta = currentY - lastYRef.current;
+
+      if (currentY <= 8) {
+        setVisible(true);
+        lastYRef.current = currentY;
+        directionDistanceRef.current = 0;
+        lastDirectionRef.current = null;
+        return;
+      }
+
+      if (open) {
+        setVisible(true);
+        lastYRef.current = currentY;
+        return;
+      }
+
+      if (Math.abs(delta) < 1) return;
+
+      const direction: "up" | "down" = delta > 0 ? "down" : "up";
+
+      if (lastDirectionRef.current !== direction) {
+        lastDirectionRef.current = direction;
+        directionDistanceRef.current = 0;
+      }
+
+      directionDistanceRef.current += Math.abs(delta);
+
+      // A small threshold prevents trackpad / momentum jitter.
+      if (direction === "down" && directionDistanceRef.current >= 6) {
+        setVisible(true);
+        directionDistanceRef.current = 0;
+      }
+
+      if (direction === "up" && directionDistanceRef.current >= 10) {
+        setVisible(false);
+        directionDistanceRef.current = 0;
+      }
+
+      lastYRef.current = currentY;
+    };
+
+    const onScroll = () => {
+      if (rafRef.current !== null) return;
+      rafRef.current = window.requestAnimationFrame(update);
+    };
+
+    window.addEventListener("scroll", onScroll, { passive: true });
+
+    return () => {
+      window.removeEventListener("scroll", onScroll);
+      if (rafRef.current !== null) {
+        window.cancelAnimationFrame(rafRef.current);
+        rafRef.current = null;
+      }
+    };
+  }, [isHome, open]);
+
+  const header = (
+    <header
+      onFocusCapture={() => setVisible(true)}
+      className={[
+        "z-50 px-3 sm:px-5 lg:px-8",
+        isHome ? "fixed inset-x-0 top-3" : "sticky top-3",
+        "transition-transform duration-300 ease-[cubic-bezier(.22,1,.36,1)] will-change-transform",
+      ].join(" ")}
+      style={{
+        transform: isHome && !visible ? "translateY(-135%)" : "translateY(0)",
+      }}
+    >
       <div className="mx-auto flex h-[66px] max-w-[1380px] items-center justify-between rounded-[22px] border border-slate-200/90 bg-white/95 px-4 shadow-[0_12px_34px_rgba(15,23,42,.08)] backdrop-blur-xl sm:px-5">
         <div className="shrink-0">
           <PsyLatticeLogo />
@@ -44,6 +136,7 @@ export default function MarketingHeader() {
           >
             Sign in
           </Link>
+
           <Link
             href="/signin"
             className="hidden items-center gap-2 rounded-xl bg-slate-950 px-4 py-2.5 text-sm font-semibold text-white transition hover:-translate-y-px hover:bg-cyan-950 sm:inline-flex"
@@ -56,7 +149,10 @@ export default function MarketingHeader() {
             type="button"
             aria-label="Toggle navigation"
             aria-expanded={open}
-            onClick={() => setOpen((value) => !value)}
+            onClick={() => {
+              setVisible(true);
+              setOpen((value) => !value);
+            }}
             className="flex h-10 w-10 items-center justify-center rounded-xl border border-slate-200 bg-white text-slate-700 lg:hidden"
           >
             {open ? <X className="h-4 w-4" /> : <Menu className="h-4 w-4" />}
@@ -77,17 +173,34 @@ export default function MarketingHeader() {
                 {label}
               </a>
             ))}
-            <Link href="/security" onClick={() => setOpen(false)} className="rounded-xl px-4 py-3 text-sm font-semibold text-slate-700 hover:bg-slate-50">
+
+            <Link
+              href="/security"
+              onClick={() => setOpen(false)}
+              className="rounded-xl px-4 py-3 text-sm font-semibold text-slate-700 hover:bg-slate-50"
+            >
               Security
             </Link>
-            <Link href="/about" onClick={() => setOpen(false)} className="rounded-xl px-4 py-3 text-sm font-semibold text-slate-700 hover:bg-slate-50">
+
+            <Link
+              href="/about"
+              onClick={() => setOpen(false)}
+              className="rounded-xl px-4 py-3 text-sm font-semibold text-slate-700 hover:bg-slate-50"
+            >
               About
             </Link>
+
             <div className="mt-2 grid grid-cols-2 gap-2 border-t border-slate-100 pt-3">
-              <Link href="/signin" className="rounded-xl border border-slate-200 px-4 py-3 text-center text-sm font-semibold text-slate-700">
+              <Link
+                href="/signin"
+                className="rounded-xl border border-slate-200 px-4 py-3 text-center text-sm font-semibold text-slate-700"
+              >
                 Sign in
               </Link>
-              <Link href="/signin" className="rounded-xl bg-slate-950 px-4 py-3 text-center text-sm font-semibold text-white">
+              <Link
+                href="/signin"
+                className="rounded-xl bg-slate-950 px-4 py-3 text-center text-sm font-semibold text-white"
+              >
                 Start free
               </Link>
             </div>
@@ -95,5 +208,16 @@ export default function MarketingHeader() {
         </div>
       )}
     </header>
+  );
+
+  if (!isHome) return header;
+
+  // Preserve the same header footprint on the homepage while the real header
+  // is fixed to the viewport and can slide completely out of view.
+  return (
+    <>
+      <div className="h-[81px]" aria-hidden="true" />
+      {header}
+    </>
   );
 }

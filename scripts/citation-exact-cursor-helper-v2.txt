@@ -1,0 +1,131 @@
+  const citationCaretOffsetRef = useRef<number | null>(null);
+
+  function rememberCitationInsertionPoint() {
+    const offset = captureCaretOffset();
+
+    // IMPORTANT:
+    // When the user clicks the Cite toolbar or interacts with the drawer,
+    // browser selection moves outside the paper. captureCaretOffset() then
+    // returns null. We deliberately DO NOT overwrite the last valid paper
+    // position in that case.
+    if (offset !== null) {
+      citationCaretOffsetRef.current = offset;
+    }
+  }
+
+  useEffect(() => {
+    const remember = () => rememberCitationInsertionPoint();
+
+    document.addEventListener("selectionchange", remember);
+    document.addEventListener("mouseup", remember, true);
+    document.addEventListener("keyup", remember, true);
+
+    return () => {
+      document.removeEventListener("selectionchange", remember);
+      document.removeEventListener("mouseup", remember, true);
+      document.removeEventListener("keyup", remember, true);
+    };
+  }, [selectedDocumentId]);
+
+  function restoreCitationInsertionPoint(): HTMLDivElement | null {
+    const globalOffset = citationCaretOffsetRef.current;
+    const pages = orderedPageElements();
+
+    if (!pages.length) return null;
+
+    // If the user has never placed the caret in the paper, use the end of
+    // the current/last page — never silently jump to the beginning.
+    if (globalOffset === null) {
+      const fallback = editorRef.current || pages.at(-1) || null;
+      if (!fallback) return null;
+
+      fallback.focus({ preventScroll: true });
+
+      const range = document.createRange();
+      range.selectNodeContents(fallback);
+      range.collapse(false);
+
+      const selection = window.getSelection();
+      selection?.removeAllRanges();
+      selection?.addRange(range);
+
+      editorRef.current = fallback;
+      return fallback;
+    }
+
+    let remaining = Math.max(0, globalOffset);
+
+    for (const page of pages) {
+      const pageLength = page.textContent?.length || 0;
+
+      if (remaining <= pageLength) {
+        const walker = document.createTreeWalker(
+          page,
+          NodeFilter.SHOW_TEXT,
+        );
+
+        let node = walker.nextNode();
+
+        // Focus FIRST. Safari can reset a contenteditable caret when focus()
+        // is called after restoring a DOM Range.
+        page.focus({ preventScroll: true });
+
+        while (node) {
+          const length = node.textContent?.length || 0;
+
+          if (remaining <= length) {
+            const range = document.createRange();
+            range.setStart(
+              node,
+              Math.max(0, Math.min(remaining, length)),
+            );
+            range.collapse(true);
+
+            const selection = window.getSelection();
+            selection?.removeAllRanges();
+            selection?.addRange(range);
+
+            editorRef.current = page;
+            return page;
+          }
+
+          remaining -= length;
+          node = walker.nextNode();
+        }
+
+        // A page may contain no text node at the exact remembered boundary.
+        // Put the caret at the end of that page instead of at its beginning.
+        const range = document.createRange();
+        range.selectNodeContents(page);
+        range.collapse(false);
+
+        const selection = window.getSelection();
+        selection?.removeAllRanges();
+        selection?.addRange(range);
+
+        editorRef.current = page;
+        return page;
+      }
+
+      remaining -= pageLength;
+    }
+
+    // If the document became shorter while the drawer was open, clamp to the
+    // end of the final page rather than jumping to page 1.
+    const lastPage = pages.at(-1) || null;
+    if (!lastPage) return null;
+
+    lastPage.focus({ preventScroll: true });
+
+    const range = document.createRange();
+    range.selectNodeContents(lastPage);
+    range.collapse(false);
+
+    const selection = window.getSelection();
+    selection?.removeAllRanges();
+    selection?.addRange(range);
+
+    editorRef.current = lastPage;
+    return lastPage;
+  }
+

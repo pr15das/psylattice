@@ -12,41 +12,26 @@ export default function MarketingFooter() {
         <div className="grid gap-12 lg:grid-cols-[1.25fr_.75fr_.75fr_.75fr]">
           <div>
             <PsyLatticeLogo />
-            <p className="mt-5 max-w-sm text-sm leading-7 text-slate-500">
-              World-class research made accessible. Design, collect, analyse and write in one connected psychological research environment.
-            </p>
-            <a
-              href={ANDROID_APP_URL}
-              target="_blank"
-              rel="noreferrer"
-              className="mt-5 inline-flex rounded-full border border-cyan-200 bg-cyan-50 px-3 py-1.5 text-[11px] font-semibold text-cyan-800"
-            >
-              Android companion
-            </a>
+            <p className="mt-5 max-w-sm text-sm leading-7 text-slate-500">World-class research made accessible. Design, collect, analyse and write in one connected psychological research environment.</p>
+            <a href={ANDROID_APP_URL} target="_blank" rel="noreferrer" className="mt-5 inline-flex rounded-full border border-cyan-200 bg-cyan-50 px-3 py-1.5 text-[11px] font-semibold text-cyan-800">Android companion</a>
           </div>
-
           <div>
             <p className="text-sm font-semibold text-slate-950">Research features</p>
             <div className="mt-4 space-y-3 text-sm text-slate-500">
-              {marketingFeatures.slice(0, 5).map((feature) => (
-                <Link key={feature.slug} href={`/features/${feature.slug}`} className="block hover:text-slate-950">
-                  {feature.shortTitle}
-                </Link>
-              ))}
+              {marketingFeatures.slice(0, 5).map((feature) => <Link key={feature.slug} href={`/features/${feature.slug}`} className="block hover:text-slate-950">{feature.shortTitle}</Link>)}
             </div>
           </div>
-
           <div>
             <p className="text-sm font-semibold text-slate-950">Platform</p>
             <div className="mt-4 space-y-3 text-sm text-slate-500">
               <Link href="/signin" className="block hover:text-slate-950">Researcher</Link>
               <Link href="/signin" className="block hover:text-slate-950">Self</Link>
               <Link href="/signin" className="block hover:text-slate-950">Clinical</Link>
+              <Link href="/workshops" className="block hover:text-slate-950">Workshops</Link>
               <Link href="/security" className="block hover:text-slate-950">Security</Link>
               <Link href="/contact" className="block hover:text-slate-950">Contact</Link>
             </div>
           </div>
-
           <div>
             <p className="text-sm font-semibold text-slate-950">Legal</p>
             <div className="mt-4 space-y-3 text-sm text-slate-500">
@@ -57,10 +42,8 @@ export default function MarketingFooter() {
             </div>
           </div>
         </div>
-
         <div className="mt-12 flex flex-col justify-between gap-3 border-t border-slate-100 pt-6 text-xs text-slate-400 sm:flex-row">
-          <p>© 2026 PsyLattice.</p>
-          <p>Designed for responsible psychological research and measurement.</p>
+          <p>© 2026 PsyLattice.</p><p>Designed for responsible psychological research and measurement.</p>
         </div>
       </div>
     </footer>

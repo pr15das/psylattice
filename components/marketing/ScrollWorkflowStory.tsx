@@ -7,9 +7,11 @@ import {
   BarChart3,
   Brain,
   Check,
+  Expand,
   FileText,
-  PlayCircle,
   Sparkles,
+  Volume2,
+  VolumeX,
   Watch,
 } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
@@ -89,7 +91,11 @@ function clamp(value: number, min = 0, max = 1) {
 
 export default function ScrollWorkflowStory() {
   const sectionRef = useRef<HTMLElement | null>(null);
+  const demoVideoRef = useRef<HTMLVideoElement | null>(null);
+  const demoMediaRef = useRef<HTMLDivElement | null>(null);
   const [progress, setProgress] = useState(0);
+  const [isDemoMuted, setIsDemoMuted] = useState(true);
+  const [isFullscreen, setIsFullscreen] = useState(false);
   const rafRef = useRef<number | null>(null);
 
   useEffect(() => {
@@ -125,9 +131,75 @@ export default function ScrollWorkflowStory() {
     };
   }, []);
 
-  // Each stage has a real dwell period before the next transition begins.
-  // This prevents the experience from feeling "runny": normal scrolling can
-  // continue while the current product remains fully settled and readable.
+  useEffect(() => {
+    const video = demoVideoRef.current;
+    const media = demoMediaRef.current;
+    if (!video || !media) return;
+
+    const prefersReducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+
+    const playMuted = async () => {
+      if (prefersReducedMotion) return;
+      video.loop = true;
+      video.playsInline = true;
+      video.muted = true;
+      setIsDemoMuted(true);
+      await video.play().catch(() => undefined);
+    };
+
+    const observer = new IntersectionObserver(
+      ([entry]) => {
+        if (!entry) return;
+
+        if (entry.isIntersecting && entry.intersectionRatio >= 0.3) {
+          void playMuted();
+          return;
+        }
+
+        video.pause();
+      },
+      { threshold: [0, 0.3, 0.5, 0.75] },
+    );
+
+    observer.observe(media);
+    return () => observer.disconnect();
+  }, []);
+
+  useEffect(() => {
+    const handleFullscreenChange = () => {
+      const media = demoMediaRef.current;
+      setIsFullscreen(document.fullscreenElement === media);
+    };
+
+    document.addEventListener("fullscreenchange", handleFullscreenChange);
+    return () => document.removeEventListener("fullscreenchange", handleFullscreenChange);
+  }, []);
+
+  async function toggleDemoMute() {
+    const video = demoVideoRef.current;
+    if (!video) return;
+
+    const nextMuted = !video.muted;
+    video.muted = nextMuted;
+    setIsDemoMuted(nextMuted);
+
+    if (!nextMuted) {
+      await video.play().catch(() => undefined);
+    }
+  }
+
+  async function toggleFullscreen() {
+    const media = demoMediaRef.current;
+    if (!media) return;
+
+    if (document.fullscreenElement === media) {
+      await document.exitFullscreen().catch(() => undefined);
+      return;
+    }
+
+    await media.requestFullscreen?.().catch(() => undefined);
+  }
+
   const HOLD = 0.72;
   const TRANSITION = 0.28;
   const timelineUnits = stages.length * HOLD + (stages.length - 1) * TRANSITION;
@@ -359,47 +431,46 @@ export default function ScrollWorkflowStory() {
         </div>
       </section>
 
-      <section id="demo" className="scroll-mt-28 bg-white px-5 py-16 sm:px-6 lg:px-8">
-        <div className="mx-auto max-w-[1320px]">
-          <div className="grid gap-7 lg:grid-cols-[.72fr_1.28fr] lg:items-end">
-            <div>
-              <p className="text-xs font-bold uppercase tracking-[.15em] text-cyan-800">Product walkthrough</p>
-              <h2 className="mt-4 text-4xl font-semibold tracking-[-.04em] text-slate-950 sm:text-5xl">
-                See the PsyLattice workflow in action.
-              </h2>
-            </div>
-            <p className="max-w-2xl text-base leading-7 text-slate-600 lg:justify-self-end">
-              A guided look at how study design, participant activity, data and analysis stay connected across the research workspace.
-            </p>
-          </div>
+      <section id="demo" className="relative h-[100svh] w-full overflow-hidden bg-[#06151d]">
+        <div ref={demoMediaRef} className="group relative h-full w-full overflow-hidden bg-[#06151d]">
+          <video
+            ref={demoVideoRef}
+            src="/videos/psylattice-product-demo.mp4"
+            poster="/videos/psylattice-product-demo-poster.jpg"
+            muted={isDemoMuted}
+            loop
+            playsInline
+            preload="metadata"
+            controls={isFullscreen}
+            onVolumeChange={(event) => setIsDemoMuted(event.currentTarget.muted)}
+            aria-label="PsyLattice promotional film showing the connected research workflow"
+            className="absolute inset-0 h-full w-full object-cover object-center"
+          />
 
-          <div className="mt-8 overflow-hidden rounded-[30px] border border-slate-200 bg-[#f4f8f8] p-4 shadow-[0_20px_50px_-36px_rgba(15,23,42,.18)] sm:p-5">
-            <div className="relative overflow-hidden rounded-[24px] border border-slate-200 bg-slate-950">
-              <img
-                src="/marketing/illustrations/research-dashboard-showcase.webp"
-                alt="PsyLattice product walkthrough preview"
-                className="aspect-[16/9] w-full object-cover object-top"
-              />
-              <div className="absolute inset-0 bg-gradient-to-t from-slate-950/48 via-slate-950/15 to-transparent" />
-              <div className="absolute inset-x-0 bottom-0 flex items-end justify-between gap-4 p-5 sm:p-6">
-                <div className="max-w-xl text-white">
-                  <p className="text-[10px] font-bold uppercase tracking-[.14em] text-cyan-200">Product walkthrough</p>
-                  <h3 className="mt-2 text-2xl font-semibold tracking-[-.03em] sm:text-[30px]">
-                    From study design to research output
-                  </h3>
-                  <p className="mt-2 text-sm leading-6 text-slate-200/90">
-                    See how the researcher workspace brings study building, participant management and analysis into one continuous environment.
-                  </p>
-                </div>
+          <div className="absolute right-4 top-4 z-10 flex items-center gap-2 opacity-100 transition-opacity duration-300 sm:right-6 sm:top-6 md:opacity-0 md:group-hover:opacity-100 md:group-focus-within:opacity-100">
+            <button
+              type="button"
+              onClick={toggleDemoMute}
+              aria-label={isDemoMuted ? "Turn sound on" : "Turn sound off"}
+              title={isDemoMuted ? "Sound on" : "Sound off"}
+              className="rounded-full border border-white/25 bg-slate-950/45 p-3 text-white shadow-[0_12px_35px_rgba(0,0,0,.24)] backdrop-blur-md transition duration-200 hover:scale-[1.04] hover:bg-slate-950/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-200"
+            >
+              {isDemoMuted ? <VolumeX className="h-5 w-5 sm:h-6 sm:w-6" /> : <Volume2 className="h-5 w-5 sm:h-6 sm:w-6" />}
+            </button>
 
-                <div className="hidden shrink-0 rounded-full border border-white/20 bg-white/12 p-4 text-white backdrop-blur md:block">
-                  <PlayCircle className="h-9 w-9" />
-                </div>
-              </div>
-            </div>
+            <button
+              type="button"
+              onClick={toggleFullscreen}
+              aria-label={isFullscreen ? "Exit fullscreen" : "Open fullscreen"}
+              title={isFullscreen ? "Exit fullscreen" : "Open fullscreen"}
+              className="rounded-full border border-white/25 bg-slate-950/45 p-3 text-white shadow-[0_12px_35px_rgba(0,0,0,.24)] backdrop-blur-md transition duration-200 hover:scale-[1.04] hover:bg-slate-950/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-200"
+            >
+              <Expand className="h-5 w-5 sm:h-6 sm:w-6" />
+            </button>
           </div>
         </div>
       </section>
+
     </>
   );
 }

@@ -150,6 +150,36 @@ export default function SignInPage() {
         ? data.user.user_metadata.full_name.trim()
         : null;
 
+    // Restricted accounts are still allowed to authenticate so PsyLattice can
+    // show the dedicated restriction page. Check that state before touching
+    // normal user tables such as profiles, which are intentionally blocked by
+    // the Phase 8C restrictive RLS gate.
+    const { data: accessState, error: accessError } = await supabase
+      .from("psylattice_account_access")
+      .select("status, suspended_until")
+      .eq("user_id", data.user.id)
+      .maybeSingle();
+
+    if (accessError) {
+      console.error("Could not check account access:", accessError);
+    }
+
+    const suspensionIsActive =
+      accessState?.status === "suspended" &&
+      !!accessState.suspended_until &&
+      new Date(accessState.suspended_until).getTime() > Date.now();
+
+    const accountIsRestricted =
+      accessState?.status === "banned" ||
+      accessState?.status === "deleting" ||
+      suspensionIsActive;
+
+    if (accountIsRestricted) {
+      router.replace("/account-restricted");
+      router.refresh();
+      return;
+    }
+
     await ensureProfile(data.user.id, metadataName);
 
     router.replace("/workspace");

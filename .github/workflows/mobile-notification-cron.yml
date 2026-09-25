@@ -1,0 +1,35 @@
+﻿name: Mobile Notification Dispatcher
+
+on:
+  schedule:
+    - cron: "*/5 * * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  dispatch:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+
+    steps:
+      - name: Trigger PsyLattice mobile notification dispatcher
+        env:
+          CRON_SECRET: ${{ secrets.PSYLATTICE_CRON_SECRET }}
+        run: |
+          response_code=$(curl \
+            --silent \
+            --show-error \
+            --output response.txt \
+            --write-out "%{http_code}" \
+            --request GET \
+            --header "Authorization: Bearer ${CRON_SECRET}" \
+            "https://psylattice.com/api/cron/mobile-notifications")
+
+          echo "Dispatcher HTTP status: ${response_code}"
+
+          if [ "${response_code}" -lt 200 ] || [ "${response_code}" -ge 300 ]; then
+            echo "Dispatcher request failed."
+            exit 1
+          fi

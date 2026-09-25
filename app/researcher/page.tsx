@@ -28,7 +28,9 @@ import FollowupManager from "@/components/PlanAwareFollowupManager";
 import ResearchAiAssistant from "@/components/ResearchAiAssistant";
 import PsyLatticeCopilot from "@/components/PsyLatticeCopilot";
 import ResearchWritingWorkspace from "@/components/ResearchWritingWorkspace";
+import ReferenceManager from "@/components/ReferenceManager";
 import ResearchStudyAssociations from "@/components/ResearchStudyAssociations";
+import StudyHealthPanel from "@/components/StudyHealthPanel";
 import AnalysisLab from "@/components/AnalysisLab";
 import IntegratedDatasetBuilder from "@/components/IntegratedDatasetBuilder";
 import { buildIntegratedDatasetPreview } from "@/lib/research/integratedDataset";
@@ -51,6 +53,7 @@ import {
   type AmbulatoryQuestionnaireOption,
 } from "@/components/AmbulatoryProtocolBuilder";
 import { AiBudgetIndicator, CurrentPlanBadge, PlansAndBilling } from "@/components/AiProductUi";
+import { deactivateCopilotContext, publishCopilotContext } from "@/lib/research/copilotBridge";
 
 type Screen =
   | "dashboard"
@@ -58,6 +61,7 @@ type Screen =
   | "builder"
   | "library"
   | "cognitive"
+  | "references"
   | "writing"
   | "ambulatory"
   | "followup"
@@ -81,6 +85,7 @@ const navigation: {
   { id: "builder", label: "Study Builder", group: "Research" },
   { id: "library", label: "Questionnaire Library", group: "Research" },
   { id: "cognitive", label: "Cognitive Lab", group: "Research" },
+  { id: "references", label: "Reference Manager", group: "Research" },
   { id: "writing", label: "Thesis Builder", group: "Research" },
   { id: "ambulatory", label: "Ambulatory Assessment", group: "Research" },
   { id: "followup", label: "Follow-up Manager", group: "Research" },
@@ -103,6 +108,7 @@ const sidebarIcons: Record<Screen, LucideIcon> = {
   builder: Workflow,
   library: BookOpen,
   cognitive: BrainCircuit,
+  references: BookOpen,
   writing: FileText,
   ambulatory: Activity,
   followup: CalendarClock,
@@ -1479,6 +1485,16 @@ function Studies({
             </div>
           </div>
 
+          <div
+            className="mt-6"
+            data-psylattice-study-health="v1"
+          >
+            <StudyHealthPanel
+              studyId={selectedStudy.id}
+              onNavigate={changeScreen}
+            />
+          </div>
+
           <div className="mt-6 border-t border-slate-100 pt-5">
             <div className="mb-5 rounded-2xl border shadow-[0_8px_24px_rgba(15,23,42,0.065),0_2px_6px_rgba(15,23,42,0.035)] border-slate-200 bg-slate-50/70 p-4">
               <div className="flex flex-col justify-between gap-4 md:flex-row md:items-center">
@@ -2039,6 +2055,71 @@ function StudyBuilder({
     steps.findIndex((step) => step.key === activeStepKey)
   );
   const currentStep = steps[currentStepIndex] || steps[0];
+
+  useEffect(() => {
+    publishCopilotContext({
+      surface: "study_builder",
+      label: `Study Builder · ${currentStep?.label || "Overview"}`,
+      studyId: studyId || initialStudyId || undefined,
+      studyTitle: title || undefined,
+      publicContext: {
+        module: "Study Builder",
+        live_unsaved_draft: true,
+        current_step: currentStep?.key || activeStepKey,
+        workflow_steps: [
+          { key: "overview", label: "Overview", enabled: true },
+          { key: "components", label: "Study components", enabled: true },
+          { key: "flow", label: "Study flow", enabled: true },
+          { key: "consent", label: "Consent", enabled: components.consent },
+          { key: "demographics", label: "Demographics", enabled: components.demographics },
+          { key: "measures", label: "Baseline measures", enabled: components.baseline },
+          { key: "cognitive", label: "Cognitive tasks", enabled: components.cognitive },
+          { key: "ambulatory", label: "Ambulatory", enabled: components.ambulatory, ai_isolated: true },
+          { key: "followup", label: "Follow-ups", enabled: components.followup },
+          { key: "recruitment", label: "Recruitment", enabled: true },
+          { key: "review", label: "Review", enabled: true },
+        ],
+        study: { id: studyId || initialStudyId || null, title, participant_description: description, design, target_sample_size: targetSampleSize },
+        components: {
+          consent: components.consent, demographics: components.demographics, baseline: components.baseline, cognitive: components.cognitive,
+          followup: components.followup, wearables: components.wearables, passive: components.passive, uploads: components.uploads,
+          ambulatory: { enabled: components.ambulatory, ai_integration: "isolated", note: "EMA/ESM/Ambulatory configuration is intentionally not exposed to Research Assistant in this phase." },
+        },
+        consent: components.consent ? {
+          method: consentMethod, participant_information: participantInformation, external_consent_note: externalConsentNote,
+          items: consentItems.map((item) => ({ prompt: item.prompt, response_type: item.response_type, required: item.required, options: item.options, has_correct_option: Boolean(item.correct_option) })),
+        } : null,
+        demographics: components.demographics ? demographicQuestions.map((item) => ({
+          field_key: item.field_key, label: item.label, description: item.description, question_type: item.question_type, required: item.required,
+          direct_identifier: item.direct_identifier, options: item.options, placeholder: item.placeholder, min_value: item.min_value, max_value: item.max_value,
+        })) : [],
+        baseline_measures: studyMeasures.map((item) => ({
+          questionnaire_id: item.questionnaire_id, questionnaire_version_id: item.questionnaire_version_id, name: item.name, acronym: item.acronym,
+          category: item.category, source_type: item.source_type, version_label: item.version_label, required: item.required, position: item.position ?? null,
+        })),
+        cognitive_tasks: studyCognitiveTasks.map((item) => ({
+          task_id: item.task_id, version_id: item.version_id, title: item.title, description: item.description, domain: item.domain,
+          version_label: item.version_label, required: item.required, administration_mode: item.administration_mode, schedule_config: item.schedule_config || {}, position: item.position ?? null,
+        })),
+        participant_flow: baselineFlow,
+        available_questionnaire_catalogue: measureCatalogue.slice(0, 250).map((item) => ({
+          id: item.id, name: item.name, acronym: item.acronym, category: item.category, description: item.description, item_count: item.item_count,
+          estimated_minutes: item.estimated_minutes, license_status: item.license_status, source_type: item.source_type, current_version_id: item.current_version_id, current_version_label: item.current_version_label,
+        })),
+        study_ready_cognitive_catalogue: cognitiveCatalogue.slice(0, 150),
+        followup_summary: followupWaveSummary,
+        guidance_contract: {
+          can_explain_workflow_step_by_step: true, can_recommend_study_design: true, can_recommend_questionnaires_from_available_catalogue: true,
+          can_recommend_cognitive_tasks_from_available_catalogue: true, can_help_design_consent_and_demographics: true,
+          can_help_prepare_recruitment_and_test_link_workflow: true, can_apply_changes: false, ambulatory_configuration_available: false,
+        },
+      },
+    });
+    return () => deactivateCopilotContext("study_builder");
+  }, [
+    activeStepKey, baselineFlow, cognitiveCatalogue, components, consentItems, consentMethod, demographicQuestions, description, design,
+    externalConsentNote, followupWaveSummary, initialStudyId, measureCatalogue, participantInformation, studyCognitiveTasks, studyId, studyMeasures, targetSampleSize, title,
+  ]);
 
   useEffect(() => {
     if (!steps.some((step) => step.key === activeStepKey)) {
@@ -5595,6 +5676,54 @@ function QuestionnaireLibrary({
     { value: "video_content", label: "Video stimulus / content", group: "Content" },
     { value: "custom", label: "Custom / future item type", group: "Advanced" },
   ];
+
+  useEffect(() => {
+    const catalogue = questionnaires.slice(0, 300).map((item) => ({
+      id: item.id, name: item.name, acronym: item.acronym, category: item.category, description: item.description, constructs: item.constructs || [],
+      population: item.population, item_count: item.item_count, estimated_minutes: item.estimated_minutes, languages: item.languages || [],
+      administration_mode: item.administration_mode, recall_period: item.recall_period, license_status: item.license_status, license_summary: item.license_summary,
+      source_type: item.source_type, publication_scope: item.publication_scope, access_mode: item.access_mode, publisher_display_name: item.publisher_display_name,
+      my_access_status: item.my_access_status || null, usable_by_current_researcher: questionnaireCanUse(item),
+    }));
+    const canReadItems = selectedQuestionnaire ? questionnaireCanUse(selectedQuestionnaire) : false;
+    publishCopilotContext({
+      surface: "questionnaire",
+      label: builderOpen ? "Questionnaire Library · Custom Questionnaire Builder" : selectedQuestionnaire ? `Questionnaire Library · ${selectedQuestionnaire.name}` : "Questionnaire Library",
+      publicContext: {
+        module: "Questionnaire Library",
+        mode: builderOpen ? "custom_builder" : selectedQuestionnaire ? "questionnaire_detail" : "catalogue",
+        filters: { search, category: categoryFilter, licence: licenceFilter },
+        catalogue,
+        selected_questionnaire: selectedQuestionnaire ? {
+          ...(catalogue.find((item) => item.id === selectedQuestionnaire.id) || {}),
+          version: selectedVersion ? { id: selectedVersion.id, version_label: selectedVersion.version_label, participant_instructions: selectedVersion.participant_instructions, researcher_instructions: selectedVersion.researcher_instructions, response_scale_description: selectedVersion.response_scale_description, scoring_summary: selectedVersion.scoring_summary } : null,
+          items: canReadItems ? items.map((item) => ({ position: item.position, prompt: item.prompt, subscale: item.subscale, reverse_scored: item.reverse_scored, response_type: item.response_type, response_options: item.response_options, required: item.required })) : [],
+          item_content_available: canReadItems,
+          references: references.map((item) => ({ citation: item.citation, url: item.url })),
+          resources: resources.map((item) => ({ resource_type: item.resource_type, title: item.title, source_name: item.source_name, is_official: item.is_official, download_allowed: item.download_allowed, access_note: item.access_note })),
+        } : null,
+        custom_builder: builderOpen ? {
+          live_unsaved_draft: true, name: builderName, acronym: builderAcronym, category: builderCategory, description: builderDescription, constructs: builderConstructs,
+          population: builderPopulation, estimated_minutes: builderEstimatedMinutes, recall_period: builderRecallPeriod, languages: builderLanguages,
+          participant_instructions: builderParticipantInstructions, researcher_instructions: builderResearcherInstructions, scoring_summary: builderScoringSummary,
+          scoring_method: builderScoringMethod, scoring_formula: builderScoringFormula, missing_data_rule: builderMissingRule, randomize_items: builderRandomizeItems,
+          rights_confirmed: builderRightsConfirmed, publication_mode: builderPublicationMode, publisher_name: builderPublisherName, publisher_affiliation: builderPublisherAffiliation,
+          publisher_url: builderPublisherUrl, blocks: builderBlocks, items: builderItems, available_item_types: itemTypeDefinitions,
+        } : null,
+        guidance_contract: {
+          prefer_existing_measure_when_scientifically_appropriate: true, can_compare_available_measures_by_construct_population_time_and_rights: true,
+          can_help_design_custom_questionnaire: true, can_explain_item_types_blocks_subscales_reverse_scoring_logic_and_missing_data: true, can_apply_changes: false,
+          validation_boundary: "An AI-assisted or researcher-created questionnaire is not psychometrically validated merely because it has a scoring configuration. Do not claim validation, norms, reliability, validity or diagnostic meaning unless independently established.",
+          rights_boundary: "Respect licence/access metadata and never reveal restricted item text when the researcher does not have access.",
+        },
+      },
+    });
+    return () => deactivateCopilotContext("questionnaire");
+  }, [
+    builderAcronym, builderBlocks, builderCategory, builderConstructs, builderDescription, builderEstimatedMinutes, builderItems, builderLanguages, builderMissingRule, builderName, builderOpen,
+    builderParticipantInstructions, builderPopulation, builderPublicationMode, builderPublisherAffiliation, builderPublisherName, builderPublisherUrl, builderRandomizeItems, builderRecallPeriod,
+    builderResearcherInstructions, builderRightsConfirmed, builderScoringFormula, builderScoringMethod, builderScoringSummary, categoryFilter, items, licenceFilter, questionnaires, references, resources, search, selectedQuestionnaire, selectedVersion,
+  ]);
 
   const optionItemTypes = new Set([
     "likert", "frequency", "intensity", "yes_no", "true_false",
@@ -23962,6 +24091,9 @@ export default function ResearcherWorkspace() {
       case "cognitive":
         return <CognitiveLab />;
 
+      case "references":
+        return <ReferenceManager />;
+
       case "writing":
         return (
           <ResearchWritingWorkspace
@@ -24035,6 +24167,8 @@ export default function ResearcherWorkspace() {
       "Search the research catalogue, review administration and scoring, open manuals and official resources, and verify questionnaire usage rights.",
     cognitive:
       "Create reusable cognitive task definitions, start from PsyLattice templates, and prepare versioned tasks for experiments and longitudinal research.",
+    references:
+      "Build a global research library, organise papers into collections, verify DOI metadata, and link references across studies without duplicating them.",
     writing:
       "Build and organise thesis and paper drafts in nested visual folders, write in a paged academic editor, apply format presets, and use consent-gated AI writing support.",
     ambulatory:
@@ -24230,7 +24364,7 @@ export default function ResearcherWorkspace() {
         {/* Sidebar */}
 
         <aside
-          className={`fixed bottom-3 left-3 top-[92px] z-40 hidden overflow-y-auto rounded-[28px] border border-slate-200/90 bg-white/95 p-3 shadow-[0_18px_46px_rgba(15,23,42,0.085),0_2px_10px_rgba(8,145,178,0.045)] backdrop-blur-xl transition-[width] duration-200 lg:block ${
+          className={`fixed bottom-3 left-3 top-[92px] z-40 hidden overflow-y-auto rounded-[28px] border border-slate-200/90 bg-white/95 p-3 shadow-[0_18px_46px_rgba(15,23,42,0.085),0_2px_10px_rgba(8,145,178,0.045)] backdrop-blur-xl transition-[width] duration-200 [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden lg:block ${
             sidebarCollapsed ? "w-[76px]" : "w-[250px]"
           }`}
         >
@@ -24346,7 +24480,9 @@ export default function ResearcherWorkspace() {
             </div>
           ))}
 
-          <SidebarAccountCard collapsed={sidebarCollapsed} />
+          <div className="sticky bottom-0 z-20 mt-2">
+            <SidebarAccountCard collapsed={sidebarCollapsed} />
+          </div>
         </aside>
 
         {/* Main content */}

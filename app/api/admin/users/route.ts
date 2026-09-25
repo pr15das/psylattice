@@ -5,35 +5,54 @@ import { adminErrorResponse, requireAdmin } from "@/lib/admin/server";
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
 
-function cleanSearch(value: string) {
-  return value.trim().replace(/[,%()]/g, " ").replace(/\s+/g, " ").slice(0, 120);
+const PLANS = new Set(["free", "study-pass", "pro-monthly", "pro-annual"]);
+const UUID_PATTERN =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+
+function safeSearch(value: string) {
+  // PostgREST `.or()` uses commas/parentheses as syntax. Strip those control
+  // characters rather than letting an Admin search string alter the filter.
+  return value.trim().replace(/[,%()]/g, " ").replace(/\s+/g, " ").slice(0, 160);
 }
 
 export async function GET(request: NextRequest) {
   try {
     await requireAdmin();
     const admin = billingAdmin();
-    const page = Math.max(1, Number(request.nextUrl.searchParams.get("page") || 1));
-    const pageSize = Math.min(100, Math.max(10, Number(request.nextUrl.searchParams.get("pageSize") || 40)));
-    const rawSearch = cleanSearch(request.nextUrl.searchParams.get("q") || "");
-    const plan = request.nextUrl.searchParams.get("plan") || "all";
+
+    const page = Math.max(1, Math.floor(Number(request.nextUrl.searchParams.get("page") || 1)));
+    const pageSize = Math.min(
+      100,
+      Math.max(10, Math.floor(Number(request.nextUrl.searchParams.get("pageSize") || 50))),
+    );
+    const rawSearch = String(request.nextUrl.searchParams.get("q") || "");
+    const search = safeSearch(rawSearch);
+    const plan = String(request.nextUrl.searchParams.get("plan") || "all");
 
     let query = admin
       .from("psylattice_admin_account_directory")
       .select("*", { count: "exact" })
       .order("created_at", { ascending: false });
 
-    if (plan !== "all" && ["free", "study-pass", "pro-monthly", "pro-annual"].includes(plan)) {
+    if (plan !== "all") {
+      if (!PLANS.has(plan)) {
+        return NextResponse.json(
+          { ok: false, error: "Choose a supported plan filter." },
+          { status: 400 },
+        );
+      }
       query = query.eq("effective_plan", plan);
     }
 
-    if (rawSearch) {
-      if (/^[0-9a-f]{8}-[0-9a-f-]{27,}$/i.test(rawSearch)) {
-        query = query.eq("user_id", rawSearch);
-      } else {
-        const like = `*${rawSearch}*`;
-        query = query.or(`email.ilike.${like},full_name.ilike.${like},institution_name.ilike.${like}`);
-      }
+    if (search) {
+      const pattern = `%${search}%`;
+      const filters = [
+        `email.ilike.${pattern}`,
+        `full_name.ilike.${pattern}`,
+        `institution_name.ilike.${pattern}`,
+      ];
+      if (UUID_PATTERN.test(search)) filters.push(`user_id.eq.${search}`);
+      query = query.or(filters.join(","));
     }
 
     const from = (page - 1) * pageSize;
@@ -45,14 +64,14 @@ export async function GET(request: NextRequest) {
       {
         ok: true,
         users: data || [],
+        total: count || 0,
         page,
         pageSize,
-        total: count || 0,
       },
       { headers: { "Cache-Control": "private, no-store" } },
     );
   } catch (error) {
-    console.error("Admin users list failed:", error);
+    console.error("Admin user list failed:", error);
     const safe = adminErrorResponse(error);
     return NextResponse.json({ ok: false, error: safe.message }, { status: safe.status });
   }

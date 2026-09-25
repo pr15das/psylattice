@@ -7,6 +7,8 @@ export type PsyLatticeCopilotSurface =
   | "study_builder"
   | "data_explorer"
   | "cognitive"
+  | "cognitive_builder"
+  | "questionnaire"
   | "ambulatory"
   | "export"
   | "workspace";

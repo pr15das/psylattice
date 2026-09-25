@@ -46,6 +46,7 @@ import {
 } from "@/lib/research/cardSorting";
 import { bartSettingsFromTaskConfig } from "@/lib/research/bart";
 import { mentalRotationSettingsFromTaskConfig, mentalRotationSvgDataUrl } from "@/lib/research/mentalRotation";
+import { deactivateCopilotContext, publishCopilotContext } from "@/lib/research/copilotBridge";
 
 type CognitiveTask = {
   id: string;
@@ -1642,6 +1643,141 @@ export default function CognitiveTaskBuilder({
   const bartTask = !!version && isBartTaskConfig(version.task_config);
   const mentalRotationTask = !!version && isMentalRotationTaskConfig(version.task_config);
   const dedicatedLockedTask = corsiTask || cardSortTask || bartTask || mentalRotationTask;
+
+  useEffect(() => {
+    if (!task || !version) {
+      publishCopilotContext({
+        surface: "cognitive_builder",
+        label: "Cognitive Task Builder · loading",
+        publicContext: { module: "Cognitive Task Builder", loading: true, task_id: taskId },
+      });
+      return () => deactivateCopilotContext("cognitive_builder");
+    }
+
+    const dedicatedRuntime = stopSignalTask
+      ? "stop_signal"
+      : corsiTask
+        ? "corsi"
+        : cardSortTask
+          ? "card_sorting"
+          : bartTask
+            ? "bart"
+            : mentalRotationTask
+              ? "mental_rotation"
+              : "generic_builder";
+
+    const blockContext = blocks.map((block) => ({
+      id: block.local_id,
+      block_key: block.block_key,
+      name: block.name,
+      block_type: block.block_type,
+      position: block.position,
+      repeat_count: block.repeat_count,
+      continue_rule: block.continue_rule,
+      config: block.config,
+      components: block.components.map((component) => ({
+        id: component.local_id,
+        component_key: component.component_key,
+        component_type: component.component_type,
+        position: component.position,
+        config: component.config,
+      })),
+      trial_count: block.trials.length,
+      trials: block.trials.slice(0, 250).map((trial) => ({
+        id: trial.local_id,
+        position: trial.position,
+        condition_label: trial.condition_label,
+        variables: trial.variables,
+        weight: trial.weight,
+        enabled: trial.enabled,
+      })),
+      trial_rows_truncated: block.trials.length > 250,
+    }));
+
+    publishCopilotContext({
+      surface: "cognitive_builder",
+      label: `Cognitive Task Builder · ${task.title}`,
+      publicContext: {
+        module: "Cognitive Task Builder",
+        live_unsaved_draft: true,
+        dirty,
+        preview_open: previewOpen,
+        editor_tab: editorTab,
+        dedicated_runtime: dedicatedRuntime,
+        task: {
+          id: task.id,
+          title: task.title,
+          description: task.description,
+          domain: task.domain,
+          source_template_id: task.source_template_id,
+          template_key: task.template_key,
+        },
+        version: {
+          id: version.id,
+          task_id: version.task_id,
+          version_number: version.version_number,
+          version_label: version.version_label,
+          status: version.status,
+          participant_instructions: version.participant_instructions,
+          task_config: version.task_config,
+          randomization_config: version.randomization_config,
+          scoring_config: version.scoring_config,
+          timing_config: version.timing_config,
+          output_config: version.output_config,
+          device_config: version.device_config,
+        },
+        available_builder_controls: {
+          editor_tabs: ["paradigm", "timeline", "trials", "randomization", "scoring"],
+          block_types: BLOCK_TYPES,
+          component_types: COMPONENTS.map((item) => ({ type: item.type, label: item.label })),
+          domains: DOMAINS.map(([value, label]) => ({ value, label })),
+        },
+        selected_block_id: selectedBlockId || null,
+        selected_component_id: selectedComponentId || null,
+        selected_block: selectedBlock
+          ? blockContext.find((block) => block.id === selectedBlock.local_id) || null
+          : null,
+        selected_component: selectedComponent
+          ? {
+              id: selectedComponent.local_id,
+              component_key: selectedComponent.component_key,
+              component_type: selectedComponent.component_type,
+              position: selectedComponent.position,
+              config: selectedComponent.config,
+            }
+          : null,
+        blocks: blockContext,
+        guidance_contract: {
+          can_explain_each_control: true,
+          can_compare_current_configuration_to_research_goal: true,
+          can_recommend_exact_parameter_changes: true,
+          can_explain_trial_logic_step_by_step: true,
+          can_explain_preview_and_pilot_workflow: true,
+          can_apply_changes: false,
+          reason: "This phase is guidance-only. The researcher must make configuration changes in the builder.",
+        },
+      },
+    });
+
+    return () => deactivateCopilotContext("cognitive_builder");
+  }, [
+    bartTask,
+    blocks,
+    cardSortTask,
+    corsiTask,
+    dirty,
+    editorTab,
+    mentalRotationTask,
+    previewOpen,
+    selectedBlock,
+    selectedBlockId,
+    selectedComponent,
+    selectedComponentId,
+    stopSignalTask,
+    task,
+    taskId,
+    version,
+  ]);
 
   function updateMentalRotationSetting(key: string, value: unknown) {
     if (!version) return;

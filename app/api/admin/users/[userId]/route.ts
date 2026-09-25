@@ -23,6 +23,7 @@ export async function GET(
       transactionsResult,
       grantsResult,
       notesResult,
+      accessResult,
     ] = await Promise.all([
       admin
         .from("psylattice_admin_account_directory")
@@ -32,7 +33,7 @@ export async function GET(
       admin
         .from("research_billing_accounts")
         .select(
-          "user_id, plan_tier, plan_status, razorpay_subscription_id, current_period_start, current_period_end, billing_access_until, last_successful_charge_at, last_payment_failure_at, last_provider_event, last_provider_event_at, billing_issue_code, ai_bonus_units, email_bonus, media_bonus_bytes, cancel_at_period_end, subscription_cancelled_at, provider_last_synced_at",
+          "user_id, plan_tier, plan_status, razorpay_subscription_id, current_period_start, current_period_end, ai_bonus_units, email_bonus, media_bonus_bytes, cancel_at_period_end, subscription_cancelled_at, provider_last_synced_at",
         )
         .eq("user_id", userId)
         .maybeSingle(),
@@ -70,6 +71,11 @@ export async function GET(
         .eq("user_id", userId)
         .order("created_at", { ascending: false })
         .limit(100),
+      admin
+        .from("psylattice_account_access")
+        .select("user_id, status, suspended_until, public_message, actioned_by, actioned_at, updated_at")
+        .eq("user_id", userId)
+        .maybeSingle(),
     ]);
 
     if (accountResult.error) throw accountResult.error;
@@ -81,6 +87,7 @@ export async function GET(
     if (transactionsResult.error) throw transactionsResult.error;
     if (grantsResult.error) throw grantsResult.error;
     if (notesResult.error) throw notesResult.error;
+    if (accessResult.error) throw accessResult.error;
 
     const creatorIds = Array.from(new Set((notesResult.data || []).map((row) => row.created_by).filter(Boolean)));
     const { data: creators, error: creatorError } = creatorIds.length
@@ -106,6 +113,7 @@ export async function GET(
           ...row,
           creator: row.created_by ? creatorMap.get(row.created_by) || null : null,
         })),
+        accessControl: accessResult.data || null,
       },
       { headers: { "Cache-Control": "private, no-store" } },
     );

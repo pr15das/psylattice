@@ -58,6 +58,11 @@ import type {
   AnalysisAiStudyNavigationTarget,
 } from "@/components/AnalysisAiAssistant";
 import { publishCopilotContext, deactivateCopilotContext } from "@/lib/research/copilotBridge";
+import {
+  deletePersistedAnalysisRecord,
+  loadPersistedAnalysisRecords,
+  persistAnalysisRecord,
+} from "@/lib/research/analysisRecordsClient";
 
 import {
   analysisLevelLabel,
@@ -2215,6 +2220,32 @@ export default function AnalysisLab({
       // Records remain available for the current session if browser storage is unavailable.
     }
   }, [analysisRecords, recordsHydrated]);
+
+  useEffect(() => {
+    if (!recordsHydrated || !selectedStudyId) return;
+
+    let cancelled = false;
+
+    void loadPersistedAnalysisRecords<SavedAnalysisRecord>(selectedStudyId)
+      .then((remoteRecords) => {
+        if (cancelled || remoteRecords.length === 0) return;
+
+        setAnalysisRecords((current) => {
+          const remoteIds = new Set(remoteRecords.map((record) => record.id));
+          return [
+            ...remoteRecords,
+            ...current.filter((record) => !remoteIds.has(record.id)),
+          ].slice(0, ANALYSIS_RECORD_LIMIT);
+        });
+      })
+      .catch((error) => {
+        console.error("Could not hydrate study-linked analysis records:", error);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [recordsHydrated, selectedStudyId]);
 
   const sourceRows = sourceMode === "csv" ? csvRows : rows;
   const sourceCodebook = sourceMode === "csv" ? [] : codebook;
@@ -5968,7 +5999,7 @@ export default function AnalysisLab({
     };
   }
 
-  function saveCurrentAnalysisRecord() {
+  async function saveCurrentAnalysisRecord() {
     const primaryTable = activePrimaryTableSpec();
     if (!primaryTable) {
       setCopyStatus("Finish the analysis before saving a record");
@@ -6025,8 +6056,39 @@ export default function AnalysisLab({
 
     setAnalysisRecords((current) => [record, ...current.filter((item) => item.id !== record.id)].slice(0, ANALYSIS_RECORD_LIMIT));
     setRecordsOpen(true);
-    setCopyStatus("Analysis record saved");
-    window.setTimeout(() => setCopyStatus(""), 1900);
+
+    if (record.source.mode === "study" && record.source.studyId) {
+      try {
+        await persistAnalysisRecord(record.source.studyId, record);
+        setCopyStatus("Analysis record saved to study");
+      } catch (error) {
+        console.error("Could not sync analysis record to study:", error);
+        setCopyStatus("Saved locally · study sync failed");
+      }
+    } else {
+      setCopyStatus("Analysis record saved locally");
+    }
+
+    window.setTimeout(() => setCopyStatus(""), 2400);
+  }
+
+  async function deleteAnalysisRecord(record: SavedAnalysisRecord) {
+    if (record.source.mode === "study" && record.source.studyId) {
+      try {
+        await deletePersistedAnalysisRecord(record.source.studyId, record.id);
+      } catch (error) {
+        console.error("Could not delete synced analysis record:", error);
+        setCopyStatus("Could not delete the synced record");
+        window.setTimeout(() => setCopyStatus(""), 2200);
+        return;
+      }
+    }
+
+    setAnalysisRecords((current) =>
+      current.filter((item) => item.id !== record.id),
+    );
+    setCopyStatus("Analysis record deleted");
+    window.setTimeout(() => setCopyStatus(""), 1800);
   }
 
   async function copyAnalysisRecord(record: SavedAnalysisRecord) {
@@ -10699,7 +10761,7 @@ export default function AnalysisLab({
               )}
               <button
                 type="button"
-                onClick={saveCurrentAnalysisRecord}
+                onClick={() => void saveCurrentAnalysisRecord()} data-psylattice-study-analysis-sync="v1"
                 disabled={!activePrimaryTableSpec()}
                 title="Save a reproducible snapshot of this analysis setup and its current formatted outputs"
                 className="flex items-center gap-1.5 rounded-full border border-cyan-200 bg-cyan-50 px-3 py-2 text-[9px] font-semibold text-cyan-900 shadow-[0_4px_14px_rgba(8,145,178,.06)] disabled:cursor-not-allowed disabled:opacity-40"
@@ -10865,7 +10927,7 @@ export default function AnalysisLab({
                 <div className="px-5 py-8 text-center">
                   <Save className="mx-auto h-6 w-6 text-slate-300" />
                   <p className="mt-2 text-[10px] font-semibold text-slate-700">No saved analysis records yet</p>
-                  <p className="mx-auto mt-1 max-w-lg text-[8px] leading-4 text-slate-400">Finish an analysis and choose <span className="font-semibold text-slate-600">Save record</span>. PsyLattice will retain the setup and result tables in this browser.</p>
+                  <p className="mx-auto mt-1 max-w-lg text-[8px] leading-4 text-slate-400">Finish an analysis and choose <span className="font-semibold text-slate-600">Save record</span>. PsyLattice keeps records locally and syncs study-data records to the study so Study Health and future reporting audits can use them.</p>
                 </div>
               ) : (
                 <div className="max-h-[360px] space-y-2 overflow-y-auto p-3 sm:p-4">
@@ -10896,7 +10958,7 @@ export default function AnalysisLab({
                             <button type="button" onClick={() => void copyAnalysisRecord(record)} className="flex items-center gap-1 rounded-full border border-slate-200 bg-white px-2.5 py-1.5 text-[8px] font-semibold text-slate-600"><Copy className="h-3 w-3" />Copy report</button>
                             <button type="button" onClick={() => downloadAnalysisRecord(record)} className="flex items-center gap-1 rounded-full border border-slate-200 bg-white px-2.5 py-1.5 text-[8px] font-semibold text-slate-600"><Download className="h-3 w-3" />JSON</button>
                             <button type="button" onClick={() => restoreAnalysisRecord(record)} disabled={!sameDataset} className="flex items-center gap-1 rounded-full border border-cyan-200 bg-cyan-50 px-2.5 py-1.5 text-[8px] font-semibold text-cyan-800 disabled:cursor-not-allowed disabled:opacity-35"><RotateCcw className="h-3 w-3" />Load setup</button>
-                            <button type="button" onClick={() => setAnalysisRecords((current) => current.filter((item) => item.id !== record.id))} title="Delete record" className="rounded-full border border-slate-200 bg-white p-1.5 text-slate-400 hover:border-rose-200 hover:text-rose-600"><Trash2 className="h-3 w-3" /></button>
+                            <button type="button" onClick={() => void deleteAnalysisRecord(record)} title="Delete record" className="rounded-full border border-slate-200 bg-white p-1.5 text-slate-400 hover:border-rose-200 hover:text-rose-600"><Trash2 className="h-3 w-3" /></button>
                           </div>
                         </div>
                         <div className="mt-2 flex flex-wrap gap-1.5">

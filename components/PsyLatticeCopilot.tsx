@@ -29,7 +29,6 @@ import {
 } from "lucide-react";
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import {
-  clearCopilotContexts,
   getCopilotContextSnapshot,
   subscribeCopilotContext,
   type PsyLatticeCopilotContextEnvelope,
@@ -37,6 +36,7 @@ import {
 import ResearchAiEnvironmentSelector, {
   type ResearchAiEnvironment,
 } from "@/components/ResearchAiEnvironmentSelector";
+import ResearchAiSuggestions from "@/components/ResearchAiSuggestions";
 
 type CopilotAction = {
   type: "navigate";
@@ -169,13 +169,13 @@ function scopedEnvironmentStorageKey(base: string, scope = "default") {
 }
 
 const TAB_OPTIONS: Array<{
-  value: "chat" | "plan" | "context" | "permissions";
+  value: "chat" | "plan" | "suggestions" | "permissions";
   label: string;
   icon: LucideIcon;
 }> = [
   { value: "chat", label: "Chat", icon: MessageCircle },
   { value: "plan", label: "Research plan", icon: ListChecks },
-  { value: "context", label: "Context", icon: Database },
+  { value: "suggestions", label: "Suggestions", icon: Sparkles },
   { value: "permissions", label: "Permissions", icon: ShieldCheck },
 ];
 
@@ -580,7 +580,7 @@ export default function PsyLatticeCopilot({
   onNavigate?: (target: string) => void;
 }) {
   const [open, setOpen] = useState(false);
-  const [tab, setTab] = useState<"chat" | "plan" | "context" | "permissions">("chat");
+  const [tab, setTab] = useState<"chat" | "plan" | "suggestions" | "permissions">("chat");
   const [permissions, setPermissions] = useState<Permissions>(DEFAULT_PERMISSIONS);
   const [contexts, setContexts] = useState<Record<string, PsyLatticeCopilotContextEnvelope>>({});
   const [messages, setMessages] = useState<ChatMessage[]>([]);
@@ -2132,88 +2132,23 @@ export default function PsyLatticeCopilot({
               </div>
             )}
 
-            {tab === "context" && (
-              <div className="min-h-0 flex-1 overflow-y-auto p-4">
-                <div className="rounded-2xl border border-slate-200 bg-slate-50 p-3">
-                  <p className="text-[9px] font-semibold text-slate-900">Current location</p>
-                  <p className="mt-1 text-[9px] text-slate-500">{surfaceLabel(currentScreen)}</p>
-                </div>
-                {pinnedMessages.length > 0 && (
-                  <div className="mt-3 rounded-2xl border border-violet-200 bg-[linear-gradient(180deg,rgba(250,245,255,.72),rgba(255,255,255,.94))] p-3.5">
-                    <div className="flex items-center gap-2">
-                      <Pin className="h-3.5 w-3.5 text-violet-700" />
-                      <p className="text-[10px] font-semibold text-violet-950">Pinned messages</p>
-                    </div>
-                    <p className="mt-1 text-[8.5px] leading-4 text-violet-800/70">Pinned messages keep the same appearance they had in Chat, stay protected from bulk deletion, and remain available as background continuity.</p>
-                    <div className="mt-4 space-y-5">
-                      {pinnedMessages.slice(0, 24).map((message) => (
-                        <div key={message.id} className="research-assistant-soft-card">
-                          {message.role === "user" ? (
-                            <div className="ml-auto max-w-[82%]">
-                              <div className="rounded-[18px] bg-slate-950 px-4 py-3 text-[13px] leading-[1.65] text-white shadow-sm ring-2 ring-violet-300/60">
-                                {message.content}
-                              </div>
-                              <div className="mt-1 flex justify-end">
-                                <span className="inline-flex items-center gap-1 rounded-lg bg-violet-50 px-2 py-1 text-[8px] font-semibold text-violet-700"><Pin className="h-2.5 w-2.5" />Pinned</span>
-                              </div>
-                            </div>
-                          ) : (
-                            <div className="w-full">
-                              <div className="flex items-start gap-3">
-                                <div className="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-xl border border-slate-200 bg-white shadow-sm">
-                                  <AiProviderMark provider={selectedProvider} size="sm" />
-                                </div>
-                                <div className="min-w-0 flex-1">
-                                  <div className="rounded-xl bg-violet-50/60 px-1 py-0.5 ring-1 ring-violet-200">
-                                    <MarkdownMessage content={message.content} />
-                                  </div>
-                                  <div className="mt-1.5"><span className="inline-flex items-center gap-1 rounded-lg bg-violet-50 px-2 py-1 text-[8px] font-semibold text-violet-700"><Pin className="h-2.5 w-2.5" />Pinned</span></div>
-                                </div>
-                              </div>
-                            </div>
-                          )}
-                          <button type="button" onClick={() => { setTab("chat"); setHistoryPanelOpen(true); void openSavedConversation(message.conversation_id); }} className="mt-2 text-[8px] font-semibold text-slate-400 hover:text-slate-700">Open in chat · {message.conversation_title.replace(/^Research Assistant ·\s*/, "")}</button>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                )}
-                <div className="mt-3 space-y-2">
-                  {(Object.values(contexts) as PsyLatticeCopilotContextEnvelope[]).length === 0 && (
-                    <p className="rounded-2xl border border-slate-200 bg-white p-4 text-[9px] text-slate-500">
-                      No live browser module has published context yet. With permission, the server can still load owned study and Thesis Builder records when you ask a question.
-                    </p>
-                  )}
-                  {(Object.values(contexts) as PsyLatticeCopilotContextEnvelope[]).map((item) => {
-                    const allowed = permissionForSurface(item.surface, permissions);
-                    return (
-                      <div key={item.surface} className="rounded-2xl border border-slate-200 bg-white p-3">
-                        <div className="flex items-center justify-between gap-2">
-                          <div className="min-w-0">
-                            <p className="truncate text-[9px] font-semibold text-slate-800">{item.label}</p>
-                            <p className="mt-0.5 truncate text-[8px] text-slate-400">
-                              {item.studyTitle || "Workspace context"} · {item.active ? "Live" : "Last known"}
-                            </p>
-                          </div>
-                          <span className={`rounded-full px-2 py-1 text-[7px] font-semibold ${allowed ? "bg-cyan-50 text-cyan-700" : "bg-slate-100 text-slate-400"}`}>
-                            {allowed ? "Permitted" : "Blocked"}
-                          </span>
-                        </div>
-                      </div>
-                    );
-                  })}
-                </div>
-                <button
-                  type="button"
-                  onClick={() => {
-                    clearCopilotContexts();
-                    setContexts({});
-                  }}
-                  className="mt-4 text-[8px] font-semibold text-slate-400 hover:text-slate-700"
-                >
-                  Clear last-known browser context
-                </button>
-              </div>
+            {tab === "suggestions" && (
+              <section data-psylattice-suggestions="v1" className="min-h-0 flex-1 overflow-y-auto">
+                <ResearchAiSuggestions
+                  studyId={primaryStudy?.id || ""}
+                  studyTitle={primaryStudy?.title || ""}
+                  researchPlan={researchPlan}
+                  navigationEnabled={permissions.navigationActions}
+                  onNavigate={(target) =>
+                    executeAction({
+                      type: "navigate",
+                      target,
+                      label: "Open",
+                    })
+                  }
+                  onOpenResearchPlan={() => setTab("plan")}
+                />
+              </section>
             )}
 
             {tab === "permissions" && (

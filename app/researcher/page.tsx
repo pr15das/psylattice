@@ -30,6 +30,7 @@ import PsyLatticeCopilot from "@/components/PsyLatticeCopilot";
 import ResearchWritingWorkspace from "@/components/ResearchWritingWorkspace";
 import ReferenceManager from "@/components/ReferenceManager";
 import ResearchStudyAssociations from "@/components/ResearchStudyAssociations";
+import StudyHealthPanel from "@/components/StudyHealthPanel";
 import AnalysisLab from "@/components/AnalysisLab";
 import IntegratedDatasetBuilder from "@/components/IntegratedDatasetBuilder";
 import { buildIntegratedDatasetPreview } from "@/lib/research/integratedDataset";
@@ -1482,6 +1483,16 @@ function Studies({
                 }`}
               />
             </div>
+          </div>
+
+          <div
+            className="mt-6"
+            data-psylattice-study-health="v1"
+          >
+            <StudyHealthPanel
+              studyId={selectedStudy.id}
+              onNavigate={changeScreen}
+            />
           </div>
 
           <div className="mt-6 border-t border-slate-100 pt-5">

@@ -31,6 +31,7 @@ import ResearchWritingWorkspace from "@/components/ResearchWritingWorkspace";
 import ReferenceManager from "@/components/ReferenceManager";
 import ResearchStudyAssociations from "@/components/ResearchStudyAssociations";
 import StudyHealthPanel from "@/components/StudyHealthPanel";
+import StudyTeamPermissions from "@/components/StudyTeamPermissions";
 import AnalysisLab from "@/components/AnalysisLab";
 import IntegratedDatasetBuilder from "@/components/IntegratedDatasetBuilder";
 import { buildIntegratedDatasetPreview } from "@/lib/research/integratedDataset";
@@ -24146,7 +24147,7 @@ export default function ResearcherWorkspace() {
         return <EthicsConsent />;
 
       case "team":
-        return <TeamPermissions />;
+        return <StudyTeamPermissions />;
 
       case "billing":
         return <PlansAndBilling />;

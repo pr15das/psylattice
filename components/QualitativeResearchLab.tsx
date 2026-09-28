@@ -5,6 +5,8 @@ import {
   BookOpenText,
   Check,
   ChevronDown,
+  ChevronLeft,
+  ChevronRight,
   Download,
   FileText,
   FolderSearch,
@@ -5526,6 +5528,7 @@ function CodingTextView({
   codes: QualitativeCode[];
   suggestions: QualitativeCodingSuggestion[];
 }) {
+  const [showCodingStripes, setShowCodingStripes] = useState(true);
   const codeMap = new Map(codes.map((code) => [code.id, code]));
   const points = new Set<number>([0, text.length]);
 
@@ -5578,8 +5581,14 @@ function CodingTextView({
         </span>
       </div>
 
-      <div className="grid gap-3 lg:grid-cols-[minmax(0,1fr)_160px]">
-        <div className="min-h-[560px] whitespace-pre-wrap rounded-2xl border border-slate-200 bg-white px-6 py-6 font-serif text-[15px] leading-7 text-slate-800">
+      <div
+        className={`grid gap-3 ${
+          showCodingStripes
+            ? "lg:grid-cols-[minmax(0,1fr)_180px]"
+            : "lg:grid-cols-[minmax(0,1fr)_42px]"
+        }`}
+      >
+        <div className="h-[clamp(600px,72vh,900px)] overflow-y-auto overscroll-contain whitespace-pre-wrap rounded-2xl border border-slate-200 bg-white px-8 py-7 font-serif text-[16px] leading-8 text-slate-800 [scrollbar-gutter:stable]">
           {boundaries.slice(0, -1).map((start, index) => {
             const end = boundaries[index + 1];
             const segment = text.slice(start, end);
@@ -5670,11 +5679,36 @@ function CodingTextView({
           })}
         </div>
 
-        <div className="hidden rounded-2xl border border-slate-200 bg-slate-50/70 p-2.5 lg:block">
-          <p className="text-[7px] font-bold uppercase tracking-[.1em] text-slate-400">
-            Coding stripes
-          </p>
-          <div className="mt-2 max-h-[535px] space-y-1.5 overflow-y-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+        <div className="hidden overflow-hidden rounded-2xl border border-slate-200 bg-slate-50/70 lg:block">
+          <div
+            className={`flex items-center ${
+              showCodingStripes
+                ? "justify-between px-2.5 py-2.5"
+                : "justify-center py-2.5"
+            }`}
+          >
+            {showCodingStripes && (
+              <p className="text-[7px] font-bold uppercase tracking-[.1em] text-slate-400">
+                Coding stripes
+              </p>
+            )}
+            <button
+              type="button"
+              onClick={() => setShowCodingStripes((value) => !value)}
+              className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg border border-slate-200 bg-white text-slate-500 shadow-sm hover:border-cyan-200 hover:text-cyan-700"
+              title={showCodingStripes ? "Hide coding stripes" : "Show coding stripes"}
+              aria-label={showCodingStripes ? "Hide coding stripes" : "Show coding stripes"}
+            >
+              {showCodingStripes ? (
+                <ChevronRight className="h-3.5 w-3.5" />
+              ) : (
+                <ChevronLeft className="h-3.5 w-3.5" />
+              )}
+            </button>
+          </div>
+
+          {showCodingStripes && (
+            <div className="h-[clamp(545px,67vh,845px)] space-y-1.5 overflow-y-auto overscroll-contain px-2.5 pb-2.5 [scrollbar-width:thin]">
             {evidenceRows.length === 0 ? (
               <p className="py-4 text-[7px] leading-3.5 text-slate-400">
                 No coded or suggested passages in this source.
@@ -5720,7 +5754,8 @@ function CodingTextView({
                 </div>
               ))
             )}
-          </div>
+            </div>
+          )}
         </div>
       </div>
     </div>
@@ -5773,6 +5808,8 @@ export default function QualitativeResearchLab({
   const [workspaceMode, setWorkspaceMode] = useState<"workspace" | "analysis" | "explore" | "synthesis" | "reliability">("workspace");
   const [activeCoderIdentityId, setActiveCoderIdentityId] = useState("");
   const [rightPanel, setRightPanel] = useState<"codes" | "case" | "memos">("codes");
+  const [leftPanelCollapsed, setLeftPanelCollapsed] = useState(false);
+  const [rightPanelCollapsed, setRightPanelCollapsed] = useState(false);
   const [showImportDialog, setShowImportDialog] = useState(false);
   const [importTargetMode, setImportTargetMode] = useState<"existing" | "participant" | "standalone">("standalone");
   const [importCaseId, setImportCaseId] = useState("");
@@ -7036,8 +7073,8 @@ export default function QualitativeResearchLab({
             </div>
             <p className="mt-1 text-[10px] leading-4 text-slate-500">
               Link qualitative cases to PsyLattice participants or keep them
-              standalone. Participant linkage becomes the bridge for later
-              mixed-methods analysis.
+              standalone. Collapse either side panel—or use Focus workspace—to
+              give the transcript substantially more working room.
             </p>
           </div>
 
@@ -7139,6 +7176,30 @@ export default function QualitativeResearchLab({
                 Import data
               </button>
             )}
+
+            <button
+              type="button"
+              onClick={() => {
+                const restorePanels = leftPanelCollapsed && rightPanelCollapsed;
+                setLeftPanelCollapsed(!restorePanels);
+                setRightPanelCollapsed(!restorePanels);
+              }}
+              className="inline-flex items-center justify-center gap-1.5 rounded-xl border border-violet-200 bg-violet-50 px-3 py-2.5 text-[8.5px] font-semibold text-violet-800 hover:border-violet-300"
+              title={
+                leftPanelCollapsed && rightPanelCollapsed
+                  ? "Restore side panels"
+                  : "Maximise document workspace"
+              }
+            >
+              {leftPanelCollapsed && rightPanelCollapsed ? (
+                <Minimize2 className="h-3.5 w-3.5" />
+              ) : (
+                <Maximize2 className="h-3.5 w-3.5" />
+              )}
+              {leftPanelCollapsed && rightPanelCollapsed
+                ? "Restore panels"
+                : "Focus workspace"}
+            </button>
 
             <button
               type="button"
@@ -7247,14 +7308,50 @@ export default function QualitativeResearchLab({
             onOpenEvidence={openAnalysisEvidence}
           />
         ) : (
-        <div className="grid min-h-[680px] gap-4 xl:grid-cols-[270px_minmax(0,1fr)_310px]">
-          <aside className="overflow-hidden rounded-[24px] border border-slate-200 bg-white shadow-sm">
-            <div className="border-b border-slate-100 p-3.5">
+        <div
+          className={`grid min-h-[760px] gap-3 transition-[grid-template-columns] duration-200 ${
+            leftPanelCollapsed && rightPanelCollapsed
+              ? "xl:grid-cols-[46px_minmax(0,1fr)_46px]"
+              : leftPanelCollapsed
+                ? "xl:grid-cols-[46px_minmax(0,1fr)_310px]"
+                : rightPanelCollapsed
+                  ? "xl:grid-cols-[270px_minmax(0,1fr)_46px]"
+                  : "xl:grid-cols-[270px_minmax(0,1fr)_310px]"
+          }`}
+        >
+          <aside className="relative overflow-hidden rounded-[24px] border border-slate-200 bg-white shadow-sm">
+            {leftPanelCollapsed && (
+              <div className="flex min-h-[720px] flex-col items-center gap-3 py-3">
+                <button
+                  type="button"
+                  onClick={() => setLeftPanelCollapsed(false)}
+                  className="flex h-9 w-9 items-center justify-center rounded-xl border border-cyan-200 bg-cyan-50 text-cyan-700 shadow-sm hover:border-cyan-300"
+                  title="Show cases panel"
+                  aria-label="Show cases panel"
+                >
+                  <ChevronRight className="h-4 w-4" />
+                </button>
+                <span className="mt-1 rotate-180 [writing-mode:vertical-rl] text-[7px] font-bold uppercase tracking-[.15em] text-slate-400">
+                  Cases
+                </span>
+              </div>
+            )}
+            <div className={`${leftPanelCollapsed ? "hidden" : "block"} border-b border-slate-100 p-3.5`}>
               <div className="flex items-center justify-between">
                 <div>
                   <p className="text-[10px] font-semibold text-slate-900">Cases</p>
                   <p className="mt-0.5 text-[7.5px] text-slate-400">Participant-linked or standalone</p>
                 </div>
+                <div className="flex items-center gap-1.5">
+                  <button
+                    type="button"
+                    onClick={() => setLeftPanelCollapsed(true)}
+                    className="flex h-8 w-8 items-center justify-center rounded-xl border border-slate-200 bg-white text-slate-500 hover:border-cyan-200 hover:text-cyan-700"
+                    title="Minimize cases panel"
+                    aria-label="Minimize cases panel"
+                  >
+                    <ChevronLeft className="h-3.5 w-3.5" />
+                  </button>
                 <button
                   type="button"
                   onClick={() => setShowCaseForm((value) => !value)}
@@ -7262,6 +7359,7 @@ export default function QualitativeResearchLab({
                 >
                   {showCaseForm ? <X className="h-3.5 w-3.5" /> : <Plus className="h-3.5 w-3.5" />}
                 </button>
+                </div>
               </div>
               <div className="relative mt-3">
                 <Search className="pointer-events-none absolute left-2.5 top-1/2 h-3 w-3 -translate-y-1/2 text-slate-400" />
@@ -7274,7 +7372,7 @@ export default function QualitativeResearchLab({
               </div>
             </div>
 
-            {showCaseForm && (
+            {!leftPanelCollapsed && showCaseForm && (
               <form onSubmit={createCase} className="border-b border-cyan-100 bg-cyan-50/35 p-3.5">
                 <div className="grid grid-cols-2 gap-1.5">
                   {(["participant", "standalone"] as const).map((mode) => (
@@ -7327,7 +7425,7 @@ export default function QualitativeResearchLab({
               </form>
             )}
 
-            <div className="border-b border-slate-100 p-3">
+            <div className={`${leftPanelCollapsed ? "hidden" : "block"} border-b border-slate-100 p-3`}>
               <button
                 type="button"
                 disabled={busy === "sync"}
@@ -7339,7 +7437,7 @@ export default function QualitativeResearchLab({
               </button>
             </div>
 
-            <div className="max-h-[540px] overflow-y-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+            <div className={`${leftPanelCollapsed ? "hidden" : "block"} max-h-[650px] overflow-y-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden`}>
               {visibleCases.length === 0 ? (
                 <div className="p-5 text-center text-[8.5px] text-slate-400">No qualitative cases yet.</div>
               ) : (
@@ -7377,7 +7475,7 @@ export default function QualitativeResearchLab({
             </div>
           </aside>
 
-          <main className="overflow-hidden rounded-[24px] border border-slate-200 bg-white shadow-sm">
+          <main className="min-w-0 overflow-hidden rounded-[24px] border border-slate-200 bg-white shadow-sm">
             {!selectedCase ? (
               <div className="flex min-h-[620px] items-center justify-center p-8 text-center">
                 <div className="w-full max-w-lg">
@@ -7686,9 +7784,9 @@ export default function QualitativeResearchLab({
                         onSelect={captureSelection}
                         onMouseUp={captureSelection}
                         onKeyUp={captureSelection}
-                        rows={22}
+                        rows={28}
                         spellCheck
-                        className="w-full resize-y rounded-2xl border border-slate-200 px-5 py-5 font-serif text-[15px] leading-7 text-slate-800 outline-none focus:border-cyan-300 focus:ring-4 focus:ring-cyan-50"
+                        className="min-h-[760px] w-full resize-y rounded-2xl border border-slate-200 px-8 py-7 font-serif text-[16px] leading-8 text-slate-800 outline-none focus:border-cyan-300 focus:ring-4 focus:ring-cyan-50"
                       />
                       ) : (
                         <CodingTextView
@@ -7769,29 +7867,58 @@ export default function QualitativeResearchLab({
             )}
           </main>
 
-          <aside className="overflow-hidden rounded-[24px] border border-slate-200 bg-white shadow-sm">
-            <div className="grid grid-cols-3 border-b border-slate-100 bg-slate-50/50 p-2">
-              {([
-                ["codes", "Codes"],
-                ["case", "Case"],
-                ["memos", "Memos"],
-              ] as const).map(([key, label]) => (
+          <aside className="relative overflow-hidden rounded-[24px] border border-slate-200 bg-white shadow-sm">
+            {rightPanelCollapsed && (
+              <div className="flex min-h-[720px] flex-col items-center gap-3 py-3">
                 <button
-                  key={key}
                   type="button"
-                  onClick={() => setRightPanel(key)}
-                  className={`rounded-lg px-2 py-2 text-[8px] font-semibold ${
-                    rightPanel === key
-                      ? "bg-white text-slate-950 shadow-sm"
-                      : "text-slate-400 hover:text-slate-700"
-                  }`}
+                  onClick={() => setRightPanelCollapsed(false)}
+                  className="flex h-9 w-9 items-center justify-center rounded-xl border border-violet-200 bg-violet-50 text-violet-700 shadow-sm hover:border-violet-300"
+                  title="Show details panel"
+                  aria-label="Show details panel"
                 >
-                  {label}
+                  <ChevronLeft className="h-4 w-4" />
                 </button>
-              ))}
-            </div>
+                <span className="mt-1 [writing-mode:vertical-rl] text-[7px] font-bold uppercase tracking-[.15em] text-slate-400">
+                  {rightPanel === "codes" ? "Codes" : rightPanel === "case" ? "Case" : "Memos"}
+                </span>
+              </div>
+            )}
+            {!rightPanelCollapsed && (
+              <div className="flex items-center gap-2 border-b border-slate-100 bg-slate-50/50 p-2">
+                <div className="grid min-w-0 flex-1 grid-cols-3">
+                  {([
+                    ["codes", "Codes"],
+                    ["case", "Case"],
+                    ["memos", "Memos"],
+                  ] as const).map(([key, label]) => (
+                    <button
+                      key={key}
+                      type="button"
+                      onClick={() => setRightPanel(key)}
+                      className={`rounded-lg px-2 py-2 text-[8px] font-semibold ${
+                        rightPanel === key
+                          ? "bg-white text-slate-950 shadow-sm"
+                          : "text-slate-400 hover:text-slate-700"
+                      }`}
+                    >
+                      {label}
+                    </button>
+                  ))}
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setRightPanelCollapsed(true)}
+                  className="flex h-8 w-8 shrink-0 items-center justify-center rounded-xl border border-slate-200 bg-white text-slate-500 hover:border-violet-200 hover:text-violet-700"
+                  title="Minimize details panel"
+                  aria-label="Minimize details panel"
+                >
+                  <ChevronRight className="h-3.5 w-3.5" />
+                </button>
+              </div>
+            )}
 
-            {rightPanel === "case" && (
+            {!rightPanelCollapsed && rightPanel === "case" && (
               <div className="max-h-[720px] space-y-4 overflow-y-auto p-4 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
                 <section>
                   <div className="flex items-center gap-2">
@@ -8017,7 +8144,7 @@ export default function QualitativeResearchLab({
               </div>
             )}
 
-            {rightPanel === "codes" && (
+            {!rightPanelCollapsed && rightPanel === "codes" && (
               <div className="max-h-[720px] overflow-y-auto p-4 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
                 <div className="flex items-center gap-2">
                   <Tags className="h-3.5 w-3.5 text-cyan-700" />
@@ -8101,7 +8228,7 @@ export default function QualitativeResearchLab({
               </div>
             )}
 
-            {rightPanel === "memos" && (
+            {!rightPanelCollapsed && rightPanel === "memos" && (
               <div className="max-h-[720px] overflow-y-auto p-4 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
                 <div className="flex items-center gap-2">
                   <NotebookPen className="h-3.5 w-3.5 text-violet-700" />

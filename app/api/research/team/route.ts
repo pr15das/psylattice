@@ -15,6 +15,7 @@ const ROLE_DEFAULTS: Record<StudyRole, Record<string, boolean>> = {
     participants: true,
     data_explorer: true,
     analysis: true,
+    qualitative: true,
     thesis: true,
     study_health: true,
     exports: false,
@@ -24,6 +25,7 @@ const ROLE_DEFAULTS: Record<StudyRole, Record<string, boolean>> = {
     can_manage_structure: false,
     can_close_recruitment: false,
     can_withdraw_participants: false,
+    can_manage_qualitative_structure: false,
   },
   researcher: {
     study_builder: true,
@@ -31,6 +33,7 @@ const ROLE_DEFAULTS: Record<StudyRole, Record<string, boolean>> = {
     participants: true,
     data_explorer: true,
     analysis: true,
+    qualitative: true,
     thesis: true,
     study_health: true,
     exports: false,
@@ -40,6 +43,7 @@ const ROLE_DEFAULTS: Record<StudyRole, Record<string, boolean>> = {
     can_manage_structure: false,
     can_close_recruitment: false,
     can_withdraw_participants: false,
+    can_manage_qualitative_structure: false,
   },
   analyst: {
     study_builder: false,
@@ -47,6 +51,7 @@ const ROLE_DEFAULTS: Record<StudyRole, Record<string, boolean>> = {
     participants: false,
     data_explorer: true,
     analysis: true,
+    qualitative: true,
     thesis: false,
     study_health: true,
     exports: true,
@@ -56,6 +61,7 @@ const ROLE_DEFAULTS: Record<StudyRole, Record<string, boolean>> = {
     can_manage_structure: false,
     can_close_recruitment: false,
     can_withdraw_participants: false,
+    can_manage_qualitative_structure: false,
   },
   viewer: {
     study_builder: true,
@@ -63,6 +69,7 @@ const ROLE_DEFAULTS: Record<StudyRole, Record<string, boolean>> = {
     participants: false,
     data_explorer: false,
     analysis: false,
+    qualitative: false,
     thesis: true,
     study_health: true,
     exports: false,
@@ -72,6 +79,7 @@ const ROLE_DEFAULTS: Record<StudyRole, Record<string, boolean>> = {
     can_manage_structure: false,
     can_close_recruitment: false,
     can_withdraw_participants: false,
+    can_manage_qualitative_structure: false,
   },
 };
 
@@ -131,10 +139,12 @@ function normalizePermissions(
     base.can_manage_structure = false;
     base.can_close_recruitment = false;
     base.can_withdraw_participants = false;
+    base.can_manage_qualitative_structure = false;
   }
   if (!base.study_builder) base.can_manage_structure = false;
   if (!base.recruitment) base.can_close_recruitment = false;
   if (!base.participants) base.can_withdraw_participants = false;
+  if (!base.qualitative) base.can_manage_qualitative_structure = false;
 
   return base;
 }

@@ -8,6 +8,7 @@ import {
   ArrowLeft,
   BarChart3,
   BookOpen,
+  BookOpenText,
   BrainCircuit,
   Database,
   FileDown,
@@ -32,6 +33,7 @@ import SharedStudyBuilder from "@/components/SharedStudyBuilder";
 import SharedRecruitmentWorkspace from "@/components/SharedRecruitmentWorkspace";
 import SharedParticipantsWorkspace from "@/components/SharedParticipantsWorkspace";
 import SharedExportWorkspace from "@/components/SharedExportWorkspace";
+import SharedQualitativeWorkspace from "@/components/SharedQualitativeWorkspace";
 
 type AccessPayload = {
   allowed: boolean;
@@ -51,6 +53,7 @@ type SharedScreen =
   | "participants"
   | "explorer"
   | "analysis"
+  | "qualitative"
   | "writing"
   | "health"
   | "exports";
@@ -105,6 +108,13 @@ const NAVIGATION: NavItem[] = [
     permission: "analysis",
     icon: BarChart3,
     description: "Statistical analysis tools for this shared study.",
+  },
+  {
+    id: "qualitative",
+    label: "Qualitative Lab",
+    permission: "qualitative",
+    icon: BookOpenText,
+    description: "Shared qualitative coding, analysis, synthesis and review for this study.",
   },
   {
     id: "writing",
@@ -261,7 +271,7 @@ export default function SharedResearchWorkspace() {
 
   if (loading) {
     return (
-      <main className="min-h-screen bg-[#f4f8fa]">
+      <main className="min-h-screen bg-[#f4f8fb]">
         <div className="flex min-h-screen items-center justify-center">
           <div className="flex items-center gap-3 rounded-2xl border border-cyan-200 bg-white px-5 py-4 text-sm text-stone-600 shadow-sm">
             <Loader2 className="h-4 w-4 animate-spin text-cyan-600" />
@@ -274,7 +284,7 @@ export default function SharedResearchWorkspace() {
 
   if (error || !access) {
     return (
-      <main className="min-h-screen bg-[#f4f8fa] px-5 py-10">
+      <main className="min-h-screen bg-[#f4f8fb] px-5 py-10">
         <div className="mx-auto max-w-xl rounded-[28px] border border-violet-200 bg-white p-7 shadow-[0_24px_80px_rgba(15,23,42,.08)]">
           <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-violet-50 text-violet-700">
             <LockKeyhole className="h-5 w-5" />
@@ -444,6 +454,12 @@ export default function SharedResearchWorkspace() {
                 <SharedDataAnalysisWorkspace studyId={studyId} mode="explorer" />
               ) : screen === "analysis" ? (
                 <SharedDataAnalysisWorkspace studyId={studyId} mode="analysis" />
+              ) : screen === "qualitative" ? (
+                <SharedQualitativeWorkspace
+                  studyId={studyId}
+                  studyTitle={access.study_title}
+                  permissions={access.permissions || {}}
+                />
               ) : screen === "writing" ? (
                 <SharedThesisReview studyId={studyId} />
               ) : screen === "exports" ? (

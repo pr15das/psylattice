@@ -33,7 +33,6 @@ import ResearchStudyAssociations from "@/components/ResearchStudyAssociations";
 import StudyHealthPanel from "@/components/StudyHealthPanel";
 import StudyTeamPermissions from "@/components/StudyTeamPermissions";
 import QualitativeResearchLab from "@/components/QualitativeResearchLab";
-import MixedMethodsLab from "@/components/MixedMethodsLab";
 import AnalysisLab from "@/components/AnalysisLab";
 import IntegratedDatasetBuilder from "@/components/IntegratedDatasetBuilder";
 import { buildIntegratedDatasetPreview } from "@/lib/research/integratedDataset";
@@ -74,7 +73,6 @@ type Screen =
   | "data"
   | "explorer"
   | "analysis"
-  | "mixed"
   | "exports"
   | "ethics"
   | "team"
@@ -101,7 +99,6 @@ const navigation: {
   { id: "data", label: "Data Dashboard", group: "Data" },
   { id: "explorer", label: "Data Explorer", group: "Data" },
   { id: "analysis", label: "Analysis Lab", group: "Data" },
-  { id: "mixed", label: "Mixed Methods", group: "Data" },
   { id: "exports", label: "Export Data", group: "Data" },
 
   { id: "ethics", label: "Ethics & Consent", group: "Governance" },
@@ -125,7 +122,6 @@ const sidebarIcons: Record<Screen, LucideIcon> = {
   data: BarChart3,
   explorer: Database,
   analysis: BarChart3,
-  mixed: Workflow,
   exports: FileDown,
   ethics: ShieldCheck,
   team: Users,
@@ -24211,9 +24207,6 @@ export default function ResearcherWorkspace() {
       case "analysis":
         return <AnalysisLabWorkspace changeScreen={setScreen} />;
 
-      case "mixed":
-        return <MixedMethodsLab />;
-
       case "exports":
         return <ExportData />;
 
@@ -24262,8 +24255,6 @@ export default function ResearcherWorkspace() {
       "Inspect participant observations and study variables before analysis.",
     analysis:
       "Run deterministic statistical analyses on PsyLattice study data or an external dataset in a dedicated analysis workspace.",
-    mixed:
-      "Integrate participant-level quantitative results with qualitative cases, themes, framework summaries and coded evidence.",
     exports:
       "Prepare clean research datasets for statistical analysis.",
     ethics:

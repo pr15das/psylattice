@@ -4,6 +4,7 @@ import {
   Activity,
   ArrowUpRight,
   BarChart3,
+  BookOpenText,
   Check,
   ChevronDown,
   Clock3,
@@ -105,6 +106,7 @@ const ROLE_DEFAULTS: Record<StudyRole, Record<string, boolean>> = {
     participants: true,
     data_explorer: true,
     analysis: true,
+    qualitative: true,
     thesis: true,
     study_health: true,
     exports: false,
@@ -114,6 +116,7 @@ const ROLE_DEFAULTS: Record<StudyRole, Record<string, boolean>> = {
     can_manage_structure: false,
     can_close_recruitment: false,
     can_withdraw_participants: false,
+    can_manage_qualitative_structure: false,
   },
   researcher: {
     study_builder: true,
@@ -121,6 +124,7 @@ const ROLE_DEFAULTS: Record<StudyRole, Record<string, boolean>> = {
     participants: true,
     data_explorer: true,
     analysis: true,
+    qualitative: true,
     thesis: true,
     study_health: true,
     exports: false,
@@ -130,6 +134,7 @@ const ROLE_DEFAULTS: Record<StudyRole, Record<string, boolean>> = {
     can_manage_structure: false,
     can_close_recruitment: false,
     can_withdraw_participants: false,
+    can_manage_qualitative_structure: false,
   },
   analyst: {
     study_builder: false,
@@ -137,6 +142,7 @@ const ROLE_DEFAULTS: Record<StudyRole, Record<string, boolean>> = {
     participants: false,
     data_explorer: true,
     analysis: true,
+    qualitative: true,
     thesis: false,
     study_health: true,
     exports: true,
@@ -146,6 +152,7 @@ const ROLE_DEFAULTS: Record<StudyRole, Record<string, boolean>> = {
     can_manage_structure: false,
     can_close_recruitment: false,
     can_withdraw_participants: false,
+    can_manage_qualitative_structure: false,
   },
   viewer: {
     study_builder: true,
@@ -153,6 +160,7 @@ const ROLE_DEFAULTS: Record<StudyRole, Record<string, boolean>> = {
     participants: false,
     data_explorer: false,
     analysis: false,
+    qualitative: false,
     thesis: true,
     study_health: true,
     exports: false,
@@ -162,6 +170,7 @@ const ROLE_DEFAULTS: Record<StudyRole, Record<string, boolean>> = {
     can_manage_structure: false,
     can_close_recruitment: false,
     can_withdraw_participants: false,
+    can_manage_qualitative_structure: false,
   },
 };
 
@@ -171,6 +180,7 @@ const MODULES = [
   { key: "participants", label: "Participants", icon: Users },
   { key: "data_explorer", label: "Data Explorer", icon: Database },
   { key: "analysis", label: "Analysis Lab", icon: BarChart3 },
+  { key: "qualitative", label: "Qualitative Lab", icon: BookOpenText },
   { key: "thesis", label: "Thesis Builder", icon: FileText },
   { key: "study_health", label: "Study Health", icon: ShieldCheck },
   { key: "exports", label: "Exports", icon: Copy },
@@ -273,6 +283,12 @@ const ADVANCED_PERMISSIONS = [
     description: "Withdraw participants while retaining collected data.",
     module: "participants",
   },
+  {
+    key: "can_manage_qualitative_structure",
+    label: "Qualitative structural changes",
+    description: "Archive, merge or split codes and change qualitative project structure.",
+    module: "qualitative",
+  },
 ] as const;
 
 function permissionDependencies(value: Record<string, boolean>) {
@@ -281,10 +297,12 @@ function permissionDependencies(value: Record<string, boolean>) {
     next.can_manage_structure = false;
     next.can_close_recruitment = false;
     next.can_withdraw_participants = false;
+    next.can_manage_qualitative_structure = false;
   }
   if (!next.study_builder) next.can_manage_structure = false;
   if (!next.recruitment) next.can_close_recruitment = false;
   if (!next.participants) next.can_withdraw_participants = false;
+  if (!next.qualitative) next.can_manage_qualitative_structure = false;
   return next;
 }
 

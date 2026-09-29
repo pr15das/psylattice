@@ -6,7 +6,7 @@ import { useEffect, useState } from "react";
 import PsyLatticeLogo from "@/components/PsyLatticeLogo";
 import { createClient } from "@/lib/supabase/client";
 
-type AuthMode = "signin" | "signup";
+type AuthMode = "signin" | "signup" | "forgot";
 
 const workspaces = [
   {
@@ -36,12 +36,30 @@ export default function SignInPage() {
   const [fullName, setFullName] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [showPassword, setShowPassword] = useState(false);
 
   const [submitting, setSubmitting] = useState(false);
   const [authError, setAuthError] = useState("");
   const [authMessage, setAuthMessage] = useState("");
 
   useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const resetError = params.get("error");
+
+    if (resetError) {
+      const messages: Record<string, string> = {
+        invalid_password_reset_link:
+          "That password reset link is invalid or incomplete. Request a new link below.",
+        password_reset_callback_failed:
+          "That password reset link could not be verified or has expired. Request a new link below.",
+      };
+
+      setAuthError(
+        messages[resetError] ||
+          "Authentication could not be completed. Please try again."
+      );
+    }
+
     async function redirectExistingSession() {
       const supabase = createClient();
 
@@ -59,8 +77,60 @@ export default function SignInPage() {
 
   function switchMode(nextMode: AuthMode) {
     setMode(nextMode);
+    setPassword("");
+    setShowPassword(false);
     setAuthError("");
     setAuthMessage("");
+  }
+
+  async function handleForgotPassword(
+    event: React.FormEvent<HTMLFormElement>
+  ) {
+    event.preventDefault();
+
+    if (submitting) return;
+
+    setAuthError("");
+    setAuthMessage("");
+
+    const normalizedEmail = email.trim().toLowerCase();
+
+    if (!normalizedEmail) {
+      setAuthError("Enter the email address for your PsyLattice account.");
+      return;
+    }
+
+    setSubmitting(true);
+
+    const supabase = createClient();
+    const redirectTo = `${window.location.origin}/auth/callback/password-reset`;
+
+    const { error } = await supabase.auth.resetPasswordForEmail(
+      normalizedEmail,
+      { redirectTo }
+    );
+
+    if (error) {
+      if (error.message.toLowerCase().includes("rate")) {
+        setAuthError(
+          "Too many reset requests were made. Please wait a moment and try again."
+        );
+      } else {
+        setAuthError(
+          "We could not send the reset email right now. Please try again."
+        );
+      }
+
+      setSubmitting(false);
+      return;
+    }
+
+    // Keep this message deliberately generic so the form does not reveal
+    // whether an email address is registered with PsyLattice.
+    setAuthMessage(
+      "If a PsyLattice account exists for that email address, a password reset link has been sent. Check your inbox and spam folder."
+    );
+    setSubmitting(false);
   }
 
   async function ensureProfile(
@@ -352,40 +422,59 @@ export default function SignInPage() {
                 <h2 className="text-2xl font-semibold tracking-tight">
                   {mode === "signin"
                     ? "Sign in to PsyLattice"
-                    : "Create your PsyLattice account"}
+                    : mode === "signup"
+                      ? "Create your PsyLattice account"
+                      : "Reset your password"}
                 </h2>
 
                 <p className="mt-2 text-sm leading-6 text-slate-500">
                   {mode === "signin"
                     ? "One login gives you access to all three PsyLattice workspaces."
-                    : "Your account automatically includes Self, Researcher and Clinician access."}
+                    : mode === "signup"
+                      ? "Your account automatically includes Self, Researcher and Clinician access."
+                      : "Enter your account email and we will send you a secure reset link."}
                 </p>
               </div>
 
               <div className="mt-6">
                 <p className="mb-2 text-[11px] font-semibold uppercase tracking-[0.12em] text-slate-400">
-                  {mode === "signin" ? "Available after sign in" : "Included with your account"}
+                  {mode === "forgot"
+                    ? "Password recovery"
+                    : mode === "signin"
+                      ? "Available after sign in"
+                      : "Included with your account"}
                 </p>
-                <div className="grid gap-2 sm:grid-cols-3">
-                  {["Self", "Researcher", "Clinician"].map((workspace) => (
-                    <div
-                      key={workspace}
-                      className="flex items-center gap-2 rounded-full border border-cyan-200 bg-cyan-50/55 px-3 py-2.5 shadow-[0_5px_14px_rgba(8,145,178,0.07)]"
-                    >
-                      <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full border border-cyan-300 bg-white text-[11px] font-bold text-cyan-800 shadow-[0_2px_6px_rgba(8,145,178,0.10)]">
-                        ✓
-                      </span>
-                      <span className="text-xs font-semibold text-slate-800">
-                        {workspace}
-                      </span>
-                    </div>
-                  ))}
-                </div>
+                {mode === "forgot" ? (
+                  <div className="rounded-2xl border border-cyan-100 bg-cyan-50/50 px-4 py-3 text-sm leading-6 text-slate-600">
+                    We will email a single-use recovery link. For your security,
+                    PsyLattice will not confirm whether an address is registered.
+                  </div>
+                ) : (
+                  <div className="grid gap-2 sm:grid-cols-3">
+                    {["Self", "Researcher", "Clinician"].map((workspace) => (
+                      <div
+                        key={workspace}
+                        className="flex items-center gap-2 rounded-full border border-cyan-200 bg-cyan-50/55 px-3 py-2.5 shadow-[0_5px_14px_rgba(8,145,178,0.07)]"
+                      >
+                        <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full border border-cyan-300 bg-white text-[11px] font-bold text-cyan-800 shadow-[0_2px_6px_rgba(8,145,178,0.10)]">
+                          ✓
+                        </span>
+                        <span className="text-xs font-semibold text-slate-800">
+                          {workspace}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                )}
               </div>
 
               <form
                 onSubmit={
-                  mode === "signin" ? handleSignIn : handleSignUp
+                  mode === "signin"
+                    ? handleSignIn
+                    : mode === "signup"
+                      ? handleSignUp
+                      : handleForgotPassword
                 }
                 className="mt-6 space-y-4"
               >
@@ -417,27 +506,64 @@ export default function SignInPage() {
                   />
                 </label>
 
-                <label className="block">
-                  <span className="text-sm font-medium">Password</span>
-                  <input
-                    type="password"
-                    autoComplete={
-                      mode === "signin"
-                        ? "current-password"
-                        : "new-password"
-                    }
-                    value={password}
-                    onChange={(event) =>
-                      setPassword(event.target.value)
-                    }
-                    placeholder={
-                      mode === "signup"
-                        ? "At least 8 characters"
-                        : "Your password"
-                    }
-                    className="mt-2 w-full rounded-full border border-slate-200 bg-white px-4 py-3 text-sm shadow-[0_6px_18px_rgba(15,23,42,0.06)] outline-none transition focus:border-cyan-300 focus:ring-4 focus:ring-cyan-100/70"
-                  />
-                </label>
+                {mode !== "forgot" && (
+                  <label className="block">
+                    <span className="text-sm font-medium">Password</span>
+                    <div className="relative mt-2">
+                      <input
+                        type={showPassword ? "text" : "password"}
+                        autoComplete={
+                          mode === "signin"
+                            ? "current-password"
+                            : "new-password"
+                        }
+                        value={password}
+                        onChange={(event) =>
+                          setPassword(event.target.value)
+                        }
+                        placeholder={
+                          mode === "signup"
+                            ? "At least 8 characters"
+                            : "Your password"
+                        }
+                        className="w-full rounded-full border border-slate-200 bg-white px-4 py-3 pr-12 text-sm shadow-[0_6px_18px_rgba(15,23,42,0.06)] outline-none transition focus:border-cyan-300 focus:ring-4 focus:ring-cyan-100/70"
+                      />
+                      <button
+                        type="button"
+                        onClick={() => setShowPassword((visible) => !visible)}
+                        className="absolute inset-y-0 right-1 flex w-10 items-center justify-center rounded-full text-slate-400 transition hover:text-slate-700 focus:outline-none focus:ring-2 focus:ring-cyan-200"
+                        aria-label={showPassword ? "Hide password" : "Show password"}
+                        aria-pressed={showPassword}
+                      >
+                        {showPassword ? (
+                          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" className="h-5 w-5" aria-hidden="true">
+                            <path d="M3 3l18 18" strokeLinecap="round" />
+                            <path d="M10.6 10.7a2 2 0 0 0 2.7 2.7" strokeLinecap="round" />
+                            <path d="M9.9 4.3A10.8 10.8 0 0 1 12 4c5.3 0 9 4.6 9 8a8.7 8.7 0 0 1-2.1 4" strokeLinecap="round" />
+                            <path d="M6.2 6.2C4.2 7.6 3 9.8 3 12c0 3.4 3.7 8 9 8 1.5 0 2.9-.4 4.1-1" strokeLinecap="round" />
+                          </svg>
+                        ) : (
+                          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" className="h-5 w-5" aria-hidden="true">
+                            <path d="M2.8 12s3.5-6 9.2-6 9.2 6 9.2 6-3.5 6-9.2 6-9.2-6-9.2-6Z" />
+                            <circle cx="12" cy="12" r="2.7" />
+                          </svg>
+                        )}
+                      </button>
+                    </div>
+                  </label>
+                )}
+
+                {mode === "signin" && (
+                  <div className="flex justify-end">
+                    <button
+                      type="button"
+                      onClick={() => switchMode("forgot")}
+                      className="text-sm font-semibold text-cyan-800 transition hover:text-cyan-950 hover:underline"
+                    >
+                      Forgot password?
+                    </button>
+                  </div>
+                )}
 
                 {authError && (
                   <div className="flex items-start gap-3 px-1 py-1">
@@ -465,12 +591,26 @@ export default function SignInPage() {
                   {submitting
                     ? mode === "signin"
                       ? "Signing in..."
-                      : "Creating account..."
+                      : mode === "signup"
+                        ? "Creating account..."
+                        : "Sending reset link..."
                     : mode === "signin"
                       ? "Sign in"
-                      : "Create PsyLattice account"}
+                      : mode === "signup"
+                        ? "Create PsyLattice account"
+                        : "Send reset link"}
                 </button>
               </form>
+
+              {mode === "forgot" && (
+                <button
+                  type="button"
+                  onClick={() => switchMode("signin")}
+                  className="mt-3 w-full rounded-full border border-slate-200 bg-white px-5 py-3 text-sm font-semibold text-slate-600 transition hover:border-cyan-200 hover:text-cyan-900"
+                >
+                  Back to sign in
+                </button>
+              )}
 
               <p className="mt-5 text-center text-xs leading-5 text-slate-400">
                 By continuing, you agree to PsyLattice's{" "}

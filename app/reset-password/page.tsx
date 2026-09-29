@@ -11,10 +11,13 @@ export default function ResetPasswordPage() {
 
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
+  const [showPassword, setShowPassword] = useState(false);
+  const [showConfirmPassword, setShowConfirmPassword] = useState(false);
   const [checkingSession, setCheckingSession] = useState(true);
   const [submitting, setSubmitting] = useState(false);
   const [errorMessage, setErrorMessage] = useState("");
   const [success, setSuccess] = useState(false);
+  const [sessionValid, setSessionValid] = useState(false);
 
   useEffect(() => {
     async function checkRecoverySession() {
@@ -29,6 +32,9 @@ export default function ResetPasswordPage() {
         setErrorMessage(
           "This password reset link is invalid or has expired. Request a new reset link from the sign-in page."
         );
+        setSessionValid(false);
+      } else {
+        setSessionValid(true);
       }
 
       setCheckingSession(false);
@@ -72,13 +78,22 @@ export default function ResetPasswordPage() {
       return;
     }
 
-    setSuccess(true);
     setPassword("");
     setConfirmPassword("");
-    setSubmitting(false);
+    setShowPassword(false);
+    setShowConfirmPassword(false);
 
-    // End the recovery session so the user signs in again with the new password.
-    await supabase.auth.signOut();
+    // End the temporary recovery session so the user explicitly signs in
+    // again with the new password. A password update has already succeeded
+    // at this point, so a sign-out failure should not undo that success.
+    const { error: signOutError } = await supabase.auth.signOut({ scope: "local" });
+
+    if (signOutError) {
+      console.error("Could not clear the local recovery session:", signOutError);
+    }
+
+    setSuccess(true);
+    setSubmitting(false);
   }
 
   return (
@@ -159,28 +174,76 @@ export default function ResetPasswordPage() {
               >
                 <label className="block">
                   <span className="text-sm font-medium">New password</span>
-                  <input
-                    type="password"
-                    autoComplete="new-password"
-                    value={password}
-                    onChange={(event) => setPassword(event.target.value)}
-                    placeholder="At least 8 characters"
-                    disabled={Boolean(errorMessage && !password && !confirmPassword)}
-                    className="mt-2 w-full rounded-xl border border-slate-200 px-4 py-3 text-sm outline-none transition focus:border-cyan-700 focus:ring-2 focus:ring-cyan-100 disabled:bg-slate-50"
-                  />
+                  <div className="relative mt-2">
+                    <input
+                      type={showPassword ? "text" : "password"}
+                      autoComplete="new-password"
+                      value={password}
+                      onChange={(event) => setPassword(event.target.value)}
+                      placeholder="At least 8 characters"
+                      disabled={!sessionValid || submitting}
+                      className="w-full rounded-xl border border-slate-200 px-4 py-3 pr-12 text-sm outline-none transition focus:border-cyan-700 focus:ring-2 focus:ring-cyan-100 disabled:bg-slate-50"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setShowPassword((visible) => !visible)}
+                      disabled={!sessionValid || submitting}
+                      className="absolute inset-y-0 right-1 flex w-10 items-center justify-center rounded-lg text-slate-400 transition hover:text-slate-700 focus:outline-none focus:ring-2 focus:ring-cyan-200 disabled:cursor-not-allowed disabled:opacity-40"
+                      aria-label={showPassword ? "Hide new password" : "Show new password"}
+                      aria-pressed={showPassword}
+                    >
+                      {showPassword ? (
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" className="h-5 w-5" aria-hidden="true">
+                          <path d="M3 3l18 18" strokeLinecap="round" />
+                          <path d="M10.6 10.7a2 2 0 0 0 2.7 2.7" strokeLinecap="round" />
+                          <path d="M9.9 4.3A10.8 10.8 0 0 1 12 4c5.3 0 9 4.6 9 8a8.7 8.7 0 0 1-2.1 4" strokeLinecap="round" />
+                          <path d="M6.2 6.2C4.2 7.6 3 9.8 3 12c0 3.4 3.7 8 9 8 1.5 0 2.9-.4 4.1-1" strokeLinecap="round" />
+                        </svg>
+                      ) : (
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" className="h-5 w-5" aria-hidden="true">
+                          <path d="M2.8 12s3.5-6 9.2-6 9.2 6 9.2 6-3.5 6-9.2 6-9.2-6-9.2-6Z" />
+                          <circle cx="12" cy="12" r="2.7" />
+                        </svg>
+                      )}
+                    </button>
+                  </div>
                 </label>
 
                 <label className="block">
                   <span className="text-sm font-medium">Confirm new password</span>
-                  <input
-                    type="password"
-                    autoComplete="new-password"
-                    value={confirmPassword}
-                    onChange={(event) => setConfirmPassword(event.target.value)}
-                    placeholder="Enter it again"
-                    disabled={Boolean(errorMessage && !password && !confirmPassword)}
-                    className="mt-2 w-full rounded-xl border border-slate-200 px-4 py-3 text-sm outline-none transition focus:border-cyan-700 focus:ring-2 focus:ring-cyan-100 disabled:bg-slate-50"
-                  />
+                  <div className="relative mt-2">
+                    <input
+                      type={showConfirmPassword ? "text" : "password"}
+                      autoComplete="new-password"
+                      value={confirmPassword}
+                      onChange={(event) => setConfirmPassword(event.target.value)}
+                      placeholder="Enter it again"
+                      disabled={!sessionValid || submitting}
+                      className="w-full rounded-xl border border-slate-200 px-4 py-3 pr-12 text-sm outline-none transition focus:border-cyan-700 focus:ring-2 focus:ring-cyan-100 disabled:bg-slate-50"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setShowConfirmPassword((visible) => !visible)}
+                      disabled={!sessionValid || submitting}
+                      className="absolute inset-y-0 right-1 flex w-10 items-center justify-center rounded-lg text-slate-400 transition hover:text-slate-700 focus:outline-none focus:ring-2 focus:ring-cyan-200 disabled:cursor-not-allowed disabled:opacity-40"
+                      aria-label={showConfirmPassword ? "Hide confirmation password" : "Show confirmation password"}
+                      aria-pressed={showConfirmPassword}
+                    >
+                      {showConfirmPassword ? (
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" className="h-5 w-5" aria-hidden="true">
+                          <path d="M3 3l18 18" strokeLinecap="round" />
+                          <path d="M10.6 10.7a2 2 0 0 0 2.7 2.7" strokeLinecap="round" />
+                          <path d="M9.9 4.3A10.8 10.8 0 0 1 12 4c5.3 0 9 4.6 9 8a8.7 8.7 0 0 1-2.1 4" strokeLinecap="round" />
+                          <path d="M6.2 6.2C4.2 7.6 3 9.8 3 12c0 3.4 3.7 8 9 8 1.5 0 2.9-.4 4.1-1" strokeLinecap="round" />
+                        </svg>
+                      ) : (
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" className="h-5 w-5" aria-hidden="true">
+                          <path d="M2.8 12s3.5-6 9.2-6 9.2 6 9.2 6-3.5 6-9.2 6-9.2-6-9.2-6Z" />
+                          <circle cx="12" cy="12" r="2.7" />
+                        </svg>
+                      )}
+                    </button>
+                  </div>
                 </label>
 
                 {errorMessage && (
@@ -193,7 +256,7 @@ export default function ResetPasswordPage() {
 
                 <button
                   type="submit"
-                  disabled={submitting || Boolean(errorMessage && !password && !confirmPassword)}
+                  disabled={submitting || !sessionValid}
                   className="w-full rounded-xl bg-slate-950 px-5 py-3.5 text-sm font-semibold text-white transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-50"
                 >
                   {submitting ? "Updating password..." : "Update password"}

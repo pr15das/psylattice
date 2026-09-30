@@ -182,9 +182,9 @@ function PricingTimelineVisual() {
       <path d="M105 136H795" stroke="url(#wk-price-line)" strokeWidth="5" strokeLinecap="round" opacity=".55" />
 
       {[
-        [140, "EARLY", "₹299", "1–30 Sep 2026"],
-        [450, "STANDARD", "₹399", "1–24 Oct 2026"],
-        [760, "FINAL", "₹599", "25 Oct–7 Nov 2026"],
+        [140, "EARLY", "₹299", "Now–15 Oct 2026"],
+        [450, "STANDARD", "₹399", "16–31 Oct 2026"],
+        [760, "FINAL", "₹599", "1–7 Nov 2026"],
       ].map(([x, top, price, caption]) => (
         <g key={String(top)}>
           <circle cx={Number(x)} cy="136" r="18" fill="#ffffff" stroke="#0e7490" strokeWidth="4" />
@@ -396,9 +396,9 @@ export default function WorkshopLanding() {
             <PricingTimelineVisual />
             <div className="grid gap-3 md:grid-cols-3">
               {[
-                { price: "₹299", title: "Early registration", text: "1 September – 30 September 2026" },
-                { price: "₹399", title: "Standard registration", text: "1 October – 24 October 2026" },
-                { price: "₹599", title: "Final registration", text: "25 October – 7 November 2026" },
+                { price: "₹299", title: "Early registration", text: "Now – 15 October 2026" },
+                { price: "₹399", title: "Standard registration", text: "16 October – 31 October 2026" },
+                { price: "₹599", title: "Final registration", text: "1 November – 7 November 2026" },
               ].map((item) => (
                 <div key={item.price} className="rounded-2xl border border-slate-200 bg-[#f8fbfb] p-5">
                   <p className="text-3xl font-semibold tracking-[-.04em] text-slate-950">{item.price}</p>

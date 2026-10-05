@@ -5819,6 +5819,7 @@ export default function QualitativeResearchLab({
   const [isImportDragging, setIsImportDragging] = useState(false);
 
   const [caseQuery, setCaseQuery] = useState("");
+  const [expandedCaseIds, setExpandedCaseIds] = useState<string[]>([]);
   const [selectedCaseId, setSelectedCaseId] = useState("");
   const [selectedSourceId, setSelectedSourceId] = useState("");
   const [selectedCodeId, setSelectedCodeId] = useState("");
@@ -6046,13 +6047,21 @@ export default function QualitativeResearchLab({
   );
   const visibleCases = useMemo(() => {
     const needle = caseQuery.trim().toLowerCase();
-    return (data?.cases || []).filter((item) =>
-      !needle
-        ? true
-        : `${item.name} ${item.case_key} ${item.classification}`
-            .toLowerCase()
-            .includes(needle),
-    );
+    return (data?.cases || []).filter((item) => {
+      if (!needle) return true;
+      const participant = item.participant_id
+        ? data?.participants.find((entry) => entry.id === item.participant_id)
+        : null;
+      const caseMatch = `${item.name} ${item.case_key} ${item.classification} ${participant?.public_id || ""}`
+        .toLowerCase()
+        .includes(needle);
+      const materialMatch = (data?.sources || []).some(
+        (source) =>
+          source.case_id === item.id &&
+          `${source.title} ${source.source_type}`.toLowerCase().includes(needle),
+      );
+      return caseMatch || materialMatch;
+    });
   }, [data, caseQuery]);
   const caseSources = useMemo(
     () => (data?.sources || []).filter((source) => source.case_id === selectedCaseId),
@@ -6196,8 +6205,41 @@ export default function QualitativeResearchLab({
   function chooseCase(caseId: string) {
     if (editorDirty && !window.confirm("Discard unsaved source edits?")) return;
     setSelectedCaseId(caseId);
+    setExpandedCaseIds((previous) =>
+      previous.includes(caseId) ? previous : [...previous, caseId],
+    );
     setSelectedSourceId(
       (data?.sources || []).find((source) => source.case_id === caseId)?.id || "",
+    );
+  }
+
+  function toggleCaseExpanded(caseId: string) {
+    setExpandedCaseIds((previous) =>
+      previous.includes(caseId)
+        ? previous.filter((id) => id !== caseId)
+        : [...previous, caseId],
+    );
+  }
+
+  function chooseSource(caseId: string, sourceId: string) {
+    if (editorDirty && !window.confirm("Discard unsaved source edits?")) return;
+    setSelectedCaseId(caseId);
+    setSelectedSourceId(sourceId);
+    setShowSourceForm(false);
+    setExpandedCaseIds((previous) =>
+      previous.includes(caseId) ? previous : [...previous, caseId],
+    );
+  }
+
+  function beginSourceForCase(caseId: string) {
+    if (editorDirty && !window.confirm("Discard unsaved source edits?")) return;
+    setSelectedCaseId(caseId);
+    setShowSourceForm(true);
+    setSourceTitle("");
+    setSourceType("transcript");
+    setSourceContent("");
+    setExpandedCaseIds((previous) =>
+      previous.includes(caseId) ? previous : [...previous, caseId],
     );
   }
 
@@ -6218,6 +6260,9 @@ export default function QualitativeResearchLab({
       setCaseName("");
       setCaseParticipantId("");
       setSelectedCaseId(result.case.id);
+      setExpandedCaseIds((previous) =>
+        previous.includes(result.case.id) ? previous : [...previous, result.case.id],
+      );
       setNotice(result.existing ? "That participant already has a qualitative case." : "Qualitative case created.");
       await loadStudy();
     } catch (failure) {
@@ -6292,7 +6337,7 @@ export default function QualitativeResearchLab({
       setSourceType("transcript");
       setSourceContent("");
       setSelectedSourceId(result.source.id);
-      setNotice("Qualitative source created.");
+      setNotice("Text material added to this case.");
       await loadStudy();
     } catch (failure) {
       setError(failure instanceof Error ? failure.message : "The source could not be created.");
@@ -7340,7 +7385,7 @@ export default function QualitativeResearchLab({
               <div className="flex items-center justify-between">
                 <div>
                   <p className="text-[10px] font-semibold text-slate-900">Cases</p>
-                  <p className="mt-0.5 text-[7.5px] text-slate-400">Participant-linked or standalone</p>
+                  <p className="mt-0.5 text-[7.5px] text-slate-400">Participant-linked or standalone · materials nested below</p>
                 </div>
                 <div className="flex items-center gap-1.5">
                   <button
@@ -7366,7 +7411,7 @@ export default function QualitativeResearchLab({
                 <input
                   value={caseQuery}
                   onChange={(event) => setCaseQuery(event.target.value)}
-                  placeholder="Search cases"
+                  placeholder="Search cases & materials"
                   className="w-full rounded-xl border border-slate-200 py-2 pl-8 pr-2 text-[9px] outline-none focus:border-cyan-300"
                 />
               </div>
@@ -7445,30 +7490,110 @@ export default function QualitativeResearchLab({
                   const participant = item.participant_id
                     ? data.participants.find((p) => p.id === item.participant_id)
                     : null;
-                  const sourceCount = data.sources.filter((source) => source.case_id === item.id).length;
+                  const sources = data.sources.filter((source) => source.case_id === item.id);
+                  const expanded = expandedCaseIds.includes(item.id) || Boolean(caseQuery.trim());
+                  const activeCase = selectedCaseId === item.id;
                   return (
-                    <button
-                      key={item.id}
-                      type="button"
-                      onClick={() => chooseCase(item.id)}
-                      className={`w-full border-b border-slate-100 px-3.5 py-3 text-left ${
-                        selectedCaseId === item.id ? "bg-cyan-50/70" : "bg-white hover:bg-slate-50"
-                      }`}
-                    >
-                      <div className="flex items-start gap-2.5">
-                        <span className={`mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-xl ${
-                          participant ? "bg-cyan-100 text-cyan-700" : "bg-violet-100 text-violet-700"
-                        }`}>
-                          {participant ? <UserRound className="h-3.5 w-3.5" /> : <BookOpenText className="h-3.5 w-3.5" />}
-                        </span>
-                        <span className="min-w-0">
-                          <span className="block truncate text-[9px] font-semibold text-slate-900">{item.name}</span>
-                          <span className="mt-0.5 block text-[7.5px] text-slate-400">
-                            {participant ? participant.public_id : "Standalone case"} · {sourceCount} source{sourceCount === 1 ? "" : "s"}
-                          </span>
-                        </span>
+                    <div key={item.id} className="border-b border-slate-100">
+                      <div className={`flex items-center gap-1.5 px-2 py-2 ${
+                        activeCase ? "bg-cyan-50/70" : "bg-white hover:bg-slate-50"
+                      }`}>
+                        <button
+                          type="button"
+                          onClick={() => toggleCaseExpanded(item.id)}
+                          className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg text-slate-400 hover:bg-white hover:text-slate-700"
+                          title={expanded ? "Collapse materials" : "Show materials"}
+                          aria-label={expanded ? "Collapse materials" : "Show materials"}
+                        >
+                          {expanded ? <ChevronDown className="h-3.5 w-3.5" /> : <ChevronRight className="h-3.5 w-3.5" />}
+                        </button>
+
+                        <button
+                          type="button"
+                          onClick={() => chooseCase(item.id)}
+                          className="min-w-0 flex-1 rounded-lg px-1 py-1.5 text-left"
+                        >
+                          <div className="flex items-start gap-2.5">
+                            <span className={`mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-xl ${
+                              participant ? "bg-cyan-100 text-cyan-700" : "bg-violet-100 text-violet-700"
+                            }`}>
+                              {participant ? <UserRound className="h-3.5 w-3.5" /> : <BookOpenText className="h-3.5 w-3.5" />}
+                            </span>
+                            <span className="min-w-0 flex-1">
+                              <span className="block truncate text-[9px] font-semibold text-slate-900">{item.name}</span>
+                              <span className="mt-0.5 block truncate text-[7px] text-slate-400">
+                                {participant ? participant.public_id : "Standalone case"} · {sources.length} material{sources.length === 1 ? "" : "s"}
+                              </span>
+                            </span>
+                          </div>
+                        </button>
+
+                        {!readOnly && (
+                          <button
+                            type="button"
+                            onClick={() => beginSourceForCase(item.id)}
+                            className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg border border-transparent text-slate-400 hover:border-cyan-200 hover:bg-white hover:text-cyan-700"
+                            title="Add text material"
+                            aria-label="Add text material"
+                          >
+                            <Plus className="h-3.5 w-3.5" />
+                          </button>
+                        )}
                       </div>
-                    </button>
+
+                      {expanded && (
+                        <div className="bg-slate-50/35 pb-2 pl-11 pr-2">
+                          {sources.length === 0 ? (
+                            <button
+                              type="button"
+                              disabled={readOnly}
+                              onClick={() => !readOnly && beginSourceForCase(item.id)}
+                              className="w-full rounded-lg border border-dashed border-slate-200 px-3 py-2 text-left text-[7px] text-slate-400 disabled:cursor-default"
+                            >
+                              No text materials yet{readOnly ? "." : " · Add one"}
+                            </button>
+                          ) : (
+                            <div className="space-y-1">
+                              {sources.map((source) => {
+                                const active = selectedSourceId === source.id;
+                                const words = wordTokens(source.content_text || "").length;
+                                return (
+                                  <button
+                                    key={source.id}
+                                    type="button"
+                                    onClick={() => chooseSource(item.id, source.id)}
+                                    className={`flex w-full items-center gap-2 rounded-lg border px-2.5 py-2 text-left ${
+                                      active
+                                        ? "border-cyan-200 bg-white text-cyan-900 shadow-sm"
+                                        : "border-transparent bg-transparent text-slate-600 hover:border-slate-200 hover:bg-white"
+                                    }`}
+                                  >
+                                    <FileText className={`h-3.5 w-3.5 shrink-0 ${active ? "text-cyan-700" : "text-slate-400"}`} />
+                                    <span className="min-w-0 flex-1">
+                                      <span className="block truncate text-[7.8px] font-semibold">{source.title}</span>
+                                      <span className="mt-0.5 block text-[6.5px] text-slate-400">
+                                        {words.toLocaleString()} words
+                                      </span>
+                                    </span>
+                                  </button>
+                                );
+                              })}
+                            </div>
+                          )}
+
+                          {!readOnly && sources.length > 0 && (
+                            <button
+                              type="button"
+                              onClick={() => beginSourceForCase(item.id)}
+                              className="mt-1.5 inline-flex items-center gap-1 px-1 py-1 text-[7px] font-semibold text-cyan-700"
+                            >
+                              <Plus className="h-3 w-3" />
+                              Add material
+                            </button>
+                          )}
+                        </div>
+                      )}
+                    </div>
                   );
                 })
               )}
@@ -7480,37 +7605,13 @@ export default function QualitativeResearchLab({
               <div className="flex min-h-[620px] items-center justify-center p-8 text-center">
                 <div className="w-full max-w-lg">
                   <span className="mx-auto flex h-12 w-12 items-center justify-center rounded-2xl bg-cyan-50 text-cyan-700">
-                    <FolderUp className="h-5 w-5" />
+                    <UserRound className="h-5 w-5" />
                   </span>
                   <p className="mt-4 text-[12px] font-semibold text-slate-800">
-                    Import qualitative data
+                    Select a case or participant
                   </p>
                   <p className="mx-auto mt-1 max-w-sm text-[9px] leading-4 text-slate-400">
-                    Upload PDF, DOCX, TXT or Markdown files and decide whether they belong
-                    to an existing case, a study participant, or a new standalone case.
-                  </p>
-
-                  {!readOnly && allowImport && (
-                    <button
-                      type="button"
-                      onClick={() => openImportDialog()}
-                      className="mt-4 inline-flex items-center justify-center gap-2 rounded-xl bg-slate-950 px-5 py-3 text-[9px] font-semibold text-white shadow-sm"
-                    >
-                      <FolderUp className="h-3.5 w-3.5" />
-                      Choose files to import
-                    </button>
-                  )}
-
-                  <div className="my-5 flex items-center gap-3">
-                    <span className="h-px flex-1 bg-slate-100" />
-                    <span className="text-[7px] font-semibold uppercase tracking-[.12em] text-slate-300">
-                      or
-                    </span>
-                    <span className="h-px flex-1 bg-slate-100" />
-                  </div>
-
-                  <p className="text-[8.5px] leading-4 text-slate-400">
-                    Create or select a case from the left panel to type a transcript manually.
+                    Choose a case from the left. Its transcripts and other text materials are nested directly underneath it and open here for editing, coding and analysis.
                   </p>
                 </div>
               </div>
@@ -7550,33 +7651,12 @@ export default function QualitativeResearchLab({
                           className="inline-flex items-center justify-center gap-1.5 rounded-xl bg-slate-950 px-3 py-2 text-[8px] font-semibold text-white"
                         >
                           <Plus className="h-3 w-3" />
-                          Add source
+                          Add material
                         </button>
                       )}
                     </div>
                   </div>
 
-                  {caseSources.length > 0 && (
-                    <div className="mt-3 flex gap-2 overflow-x-auto pb-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
-                      {caseSources.map((source) => (
-                        <button
-                          key={source.id}
-                          type="button"
-                          onClick={() => {
-                            if (editorDirty && !window.confirm("Discard unsaved source edits?")) return;
-                            setSelectedSourceId(source.id);
-                          }}
-                          className={`shrink-0 rounded-xl border px-3 py-2 text-[8px] font-semibold ${
-                            selectedSourceId === source.id
-                              ? "border-cyan-300 bg-cyan-50 text-cyan-800"
-                              : "border-slate-200 bg-white text-slate-500"
-                          }`}
-                        >
-                          {source.title}
-                        </button>
-                      ))}
-                    </div>
-                  )}
                 </div>
 
                 {showSourceForm && (
@@ -7585,7 +7665,7 @@ export default function QualitativeResearchLab({
                       <input
                         value={sourceTitle}
                         onChange={(event) => setSourceTitle(event.target.value)}
-                        placeholder="Source title"
+                        placeholder="Material title"
                         required
                         className="rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-[9px] outline-none focus:border-cyan-300"
                       />
@@ -7604,9 +7684,12 @@ export default function QualitativeResearchLab({
                       rows={7}
                       className="mt-3 w-full resize-y rounded-xl border border-slate-200 bg-white px-3 py-3 text-[10px] leading-5 outline-none focus:border-cyan-300"
                     />
+                    <div className="mt-1.5 flex justify-end text-[7px] font-medium text-slate-400">
+                      {wordTokens(sourceContent).length.toLocaleString()} words
+                    </div>
                     <div className="mt-3 flex justify-end gap-2">
                       <button type="button" onClick={() => setShowSourceForm(false)} className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-[8px] font-semibold text-slate-500">Cancel</button>
-                      <button type="submit" disabled={busy === "source"} className="rounded-xl bg-slate-950 px-3 py-2 text-[8px] font-semibold text-white disabled:opacity-50">Create source</button>
+                      <button type="submit" disabled={busy === "source"} className="rounded-xl bg-slate-950 px-3 py-2 text-[8px] font-semibold text-white disabled:opacity-50">Add material</button>
                     </div>
                   </form>
                 )}
@@ -7615,7 +7698,7 @@ export default function QualitativeResearchLab({
                   <div className="flex min-h-[500px] items-center justify-center text-center">
                     <div>
                       <FileText className="mx-auto h-6 w-6 text-slate-300" />
-                      <p className="mt-3 text-[10px] font-semibold text-slate-700">Add a qualitative source</p>
+                      <p className="mt-3 text-[10px] font-semibold text-slate-700">Add a text material</p>
                     </div>
                   </div>
                 ) : (
@@ -7687,6 +7770,9 @@ export default function QualitativeResearchLab({
                             Imported from {selectedSource.original_filename}
                           </span>
                         )}
+                        <span className="text-[7px] font-semibold text-slate-400">
+                          {wordTokens(editorContent).length.toLocaleString()} words
+                        </span>
                       </div>
                     </div>
 

@@ -24,6 +24,7 @@ import {
   Sparkles,
   Table2,
   Tags,
+  Trash2,
   Unlink,
   UserRound,
   Network,
@@ -6317,6 +6318,108 @@ export default function QualitativeResearchLab({
     }
   }
 
+  async function deleteCase(item: QualitativeCase) {
+    if (!studyId || busy) return;
+    if (editorDirty) {
+      setError("Save or discard the current material edits before deleting a case.");
+      return;
+    }
+
+    const materials = (data?.sources || []).filter(
+      (source) => source.case_id === item.id,
+    );
+    const codedReferences = (data?.codings || []).filter(
+      (coding) => coding.case_id === item.id,
+    ).length;
+    const participantMessage = item.participant_id
+      ? "\n\nThe linked study participant will NOT be deleted."
+      : "";
+    const confirmed = window.confirm(
+      `Delete case “${item.name}”?\n\nThis permanently removes ${materials.length} material${materials.length === 1 ? "" : "s"}, ${codedReferences} coded reference${codedReferences === 1 ? "" : "s"}, and related annotations, memos, AI suggestions, coder assignments and qualitative links.${participantMessage}\n\nThis cannot be undone.`,
+    );
+    if (!confirmed) return;
+
+    const busyKey = `delete-case:${item.id}`;
+    setBusy(busyKey);
+    setError("");
+    setNotice("");
+    try {
+      await post({
+        operation: "delete_case",
+        studyId,
+        caseId: item.id,
+      });
+      setExpandedCaseIds((previous) =>
+        previous.filter((caseId) => caseId !== item.id),
+      );
+      if (selectedCaseId === item.id) {
+        setSelectedCaseId("");
+        setSelectedSourceId("");
+        setEditorDirty(false);
+      }
+      setNotice(
+        item.participant_id
+          ? "Qualitative case deleted. The linked study participant was kept."
+          : "Qualitative case deleted.",
+      );
+      await loadStudy();
+    } catch (failure) {
+      setError(
+        failure instanceof Error ? failure.message : "The case could not be deleted.",
+      );
+    } finally {
+      setBusy("");
+    }
+  }
+
+  async function deleteSource(source: QualitativeSource) {
+    if (!studyId || busy) return;
+    if (editorDirty && selectedSourceId !== source.id) {
+      setError("Save or discard the current material edits before deleting another material.");
+      return;
+    }
+
+    const codedReferences = (data?.codings || []).filter(
+      (coding) => coding.source_id === source.id,
+    ).length;
+    const annotations = (data?.annotations || []).filter(
+      (annotation) => annotation.source_id === source.id,
+    ).length;
+    const unsavedWarning =
+      editorDirty && selectedSourceId === source.id
+        ? "\n\nAny unsaved edits to this material will also be lost."
+        : "";
+    const confirmed = window.confirm(
+      `Delete material “${source.title}”?\n\nThis permanently removes its text, ${codedReferences} coded reference${codedReferences === 1 ? "" : "s"}, ${annotations} annotation${annotations === 1 ? "" : "s"}, and related memos, AI suggestions, coder assignments and qualitative links.${unsavedWarning}\n\nThis cannot be undone.`,
+    );
+    if (!confirmed) return;
+
+    const busyKey = `delete-source:${source.id}`;
+    setBusy(busyKey);
+    setError("");
+    setNotice("");
+    try {
+      await post({
+        operation: "delete_source",
+        studyId,
+        sourceId: source.id,
+      });
+      if (selectedSourceId === source.id) {
+        setSelectedSourceId("");
+        setEditorDirty(false);
+        setSelection({ start: 0, end: 0, text: "" });
+      }
+      setNotice("Text material deleted.");
+      await loadStudy();
+    } catch (failure) {
+      setError(
+        failure instanceof Error ? failure.message : "The material could not be deleted.",
+      );
+    } finally {
+      setBusy("");
+    }
+  }
+
   async function createSource(event: FormEvent) {
     event.preventDefault();
     if (!studyId || !selectedCase || busy) return;
@@ -7539,6 +7642,22 @@ export default function QualitativeResearchLab({
                             <Plus className="h-3.5 w-3.5" />
                           </button>
                         )}
+                        {!readOnly && canManageStructure && (
+                          <button
+                            type="button"
+                            disabled={busy === `delete-case:${item.id}`}
+                            onClick={() => void deleteCase(item)}
+                            className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg border border-transparent text-slate-300 hover:border-rose-200 hover:bg-rose-50 hover:text-rose-600 disabled:opacity-40"
+                            title="Delete case"
+                            aria-label={`Delete case ${item.name}`}
+                          >
+                            {busy === `delete-case:${item.id}` ? (
+                              <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                            ) : (
+                              <Trash2 className="h-3.5 w-3.5" />
+                            )}
+                          </button>
+                        )}
                       </div>
 
                       {expanded && (
@@ -7558,24 +7677,44 @@ export default function QualitativeResearchLab({
                                 const active = selectedSourceId === source.id;
                                 const words = wordTokens(source.content_text || "").length;
                                 return (
-                                  <button
+                                  <div
                                     key={source.id}
-                                    type="button"
-                                    onClick={() => chooseSource(item.id, source.id)}
-                                    className={`flex w-full items-center gap-2 rounded-lg border px-2.5 py-2 text-left ${
+                                    className={`flex w-full items-center rounded-lg border ${
                                       active
                                         ? "border-cyan-200 bg-white text-cyan-900 shadow-sm"
                                         : "border-transparent bg-transparent text-slate-600 hover:border-slate-200 hover:bg-white"
                                     }`}
                                   >
-                                    <FileText className={`h-3.5 w-3.5 shrink-0 ${active ? "text-cyan-700" : "text-slate-400"}`} />
-                                    <span className="min-w-0 flex-1">
-                                      <span className="block truncate text-[7.8px] font-semibold">{source.title}</span>
-                                      <span className="mt-0.5 block text-[6.5px] text-slate-400">
-                                        {words.toLocaleString()} words
+                                    <button
+                                      type="button"
+                                      onClick={() => chooseSource(item.id, source.id)}
+                                      className="flex min-w-0 flex-1 items-center gap-2 px-2.5 py-2 text-left"
+                                    >
+                                      <FileText className={`h-3.5 w-3.5 shrink-0 ${active ? "text-cyan-700" : "text-slate-400"}`} />
+                                      <span className="min-w-0 flex-1">
+                                        <span className="block truncate text-[7.8px] font-semibold">{source.title}</span>
+                                        <span className="mt-0.5 block text-[6.5px] text-slate-400">
+                                          {words.toLocaleString()} words
+                                        </span>
                                       </span>
-                                    </span>
-                                  </button>
+                                    </button>
+                                    {!readOnly && canManageStructure && (
+                                      <button
+                                        type="button"
+                                        disabled={busy === `delete-source:${source.id}`}
+                                        onClick={() => void deleteSource(source)}
+                                        className="mr-1 flex h-7 w-7 shrink-0 items-center justify-center rounded-lg text-slate-300 hover:bg-rose-50 hover:text-rose-600 disabled:opacity-40"
+                                        title="Delete material"
+                                        aria-label={`Delete material ${source.title}`}
+                                      >
+                                        {busy === `delete-source:${source.id}` ? (
+                                          <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                                        ) : (
+                                          <Trash2 className="h-3.5 w-3.5" />
+                                        )}
+                                      </button>
+                                    )}
+                                  </div>
                                 );
                               })}
                             </div>

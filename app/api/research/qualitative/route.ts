@@ -251,6 +251,55 @@ const QUALITATIVE_ENTITY_TABLES: Record<string, string> = {
   annotation: "qualitative_annotations",
 };
 
+async function deleteQualitativeRelationshipReferences(
+  admin: ReturnType<typeof researchAdmin>,
+  ownerUserId: string,
+  studyId: string,
+  entityType: string,
+  entityIds: string[],
+) {
+  const ids = entityIds.filter(validUuid);
+  if (ids.length === 0) return;
+
+  const { error: fromError } = await admin
+    .from("qualitative_relationships")
+    .delete()
+    .eq("owner_user_id", ownerUserId)
+    .eq("study_id", studyId)
+    .eq("from_type", entityType)
+    .in("from_id", ids);
+  if (fromError) throw fromError;
+
+  const { error: toError } = await admin
+    .from("qualitative_relationships")
+    .delete()
+    .eq("owner_user_id", ownerUserId)
+    .eq("study_id", studyId)
+    .eq("to_type", entityType)
+    .in("to_id", ids);
+  if (toError) throw toError;
+}
+
+async function deleteQualitativeSetItems(
+  admin: ReturnType<typeof researchAdmin>,
+  ownerUserId: string,
+  studyId: string,
+  itemType: "case" | "source",
+  itemIds: string[],
+) {
+  const ids = itemIds.filter(validUuid);
+  if (ids.length === 0) return;
+
+  const { error } = await admin
+    .from("qualitative_set_items")
+    .delete()
+    .eq("owner_user_id", ownerUserId)
+    .eq("study_id", studyId)
+    .eq("item_type", itemType)
+    .in("item_id", ids);
+  if (error) throw error;
+}
+
 async function qualitativeEntityExists(
   admin: ReturnType<typeof researchAdmin>,
   ownerUserId: string,
@@ -828,6 +877,176 @@ export async function POST(request: NextRequest) {
 
       if (error) throw error;
       return reply({ ok: true, case: data });
+    }
+
+    if (operation === "delete_source") {
+      const sourceId = text(body?.sourceId, 80);
+      if (!validUuid(sourceId)) {
+        return reply({ ok: false, error: "A valid sourceId is required." }, 400);
+      }
+
+      const { data: source, error: sourceError } = await admin
+        .from("qualitative_sources")
+        .select("id,case_id,title")
+        .eq("id", sourceId)
+        .eq("study_id", studyId)
+        .eq("owner_user_id", user.id)
+        .maybeSingle();
+      if (sourceError) throw sourceError;
+      if (!source) {
+        return reply({ ok: false, error: "That qualitative material could not be found." }, 404);
+      }
+
+      const [codingResult, annotationResult, memoResult] = await Promise.all([
+        admin
+          .from("qualitative_codings")
+          .select("id")
+          .eq("study_id", studyId)
+          .eq("owner_user_id", user.id)
+          .eq("source_id", sourceId),
+        admin
+          .from("qualitative_annotations")
+          .select("id")
+          .eq("study_id", studyId)
+          .eq("owner_user_id", user.id)
+          .eq("source_id", sourceId),
+        admin
+          .from("qualitative_memos")
+          .select("id")
+          .eq("study_id", studyId)
+          .eq("owner_user_id", user.id)
+          .eq("source_id", sourceId),
+      ]);
+      if (codingResult.error) throw codingResult.error;
+      if (annotationResult.error) throw annotationResult.error;
+      if (memoResult.error) throw memoResult.error;
+
+      await deleteQualitativeSetItems(admin, user.id, studyId, "source", [sourceId]);
+      await deleteQualitativeRelationshipReferences(admin, user.id, studyId, "source", [sourceId]);
+      await deleteQualitativeRelationshipReferences(
+        admin,
+        user.id,
+        studyId,
+        "coding",
+        (codingResult.data || []).map((row) => row.id),
+      );
+      await deleteQualitativeRelationshipReferences(
+        admin,
+        user.id,
+        studyId,
+        "annotation",
+        (annotationResult.data || []).map((row) => row.id),
+      );
+      await deleteQualitativeRelationshipReferences(
+        admin,
+        user.id,
+        studyId,
+        "memo",
+        (memoResult.data || []).map((row) => row.id),
+      );
+
+      const { error: deleteError } = await admin
+        .from("qualitative_sources")
+        .delete()
+        .eq("id", sourceId)
+        .eq("study_id", studyId)
+        .eq("owner_user_id", user.id);
+      if (deleteError) throw deleteError;
+
+      return reply({
+        ok: true,
+        deletedSourceId: sourceId,
+        caseId: source.case_id,
+      });
+    }
+
+    if (operation === "delete_case") {
+      const caseId = text(body?.caseId, 80);
+      if (!validUuid(caseId)) {
+        return reply({ ok: false, error: "A valid caseId is required." }, 400);
+      }
+
+      const qualitativeCase = await caseForStudy(
+        admin,
+        user.id,
+        studyId,
+        caseId,
+      );
+      if (!qualitativeCase) {
+        return reply({ ok: false, error: "That qualitative case could not be found." }, 404);
+      }
+
+      const [sourceResult, codingResult, annotationResult, memoResult] = await Promise.all([
+        admin
+          .from("qualitative_sources")
+          .select("id")
+          .eq("study_id", studyId)
+          .eq("owner_user_id", user.id)
+          .eq("case_id", caseId),
+        admin
+          .from("qualitative_codings")
+          .select("id")
+          .eq("study_id", studyId)
+          .eq("owner_user_id", user.id)
+          .eq("case_id", caseId),
+        admin
+          .from("qualitative_annotations")
+          .select("id")
+          .eq("study_id", studyId)
+          .eq("owner_user_id", user.id)
+          .eq("case_id", caseId),
+        admin
+          .from("qualitative_memos")
+          .select("id")
+          .eq("study_id", studyId)
+          .eq("owner_user_id", user.id)
+          .eq("case_id", caseId),
+      ]);
+      if (sourceResult.error) throw sourceResult.error;
+      if (codingResult.error) throw codingResult.error;
+      if (annotationResult.error) throw annotationResult.error;
+      if (memoResult.error) throw memoResult.error;
+
+      const sourceIds = (sourceResult.data || []).map((row) => row.id);
+      await deleteQualitativeSetItems(admin, user.id, studyId, "case", [caseId]);
+      await deleteQualitativeSetItems(admin, user.id, studyId, "source", sourceIds);
+      await deleteQualitativeRelationshipReferences(admin, user.id, studyId, "case", [caseId]);
+      await deleteQualitativeRelationshipReferences(admin, user.id, studyId, "source", sourceIds);
+      await deleteQualitativeRelationshipReferences(
+        admin,
+        user.id,
+        studyId,
+        "coding",
+        (codingResult.data || []).map((row) => row.id),
+      );
+      await deleteQualitativeRelationshipReferences(
+        admin,
+        user.id,
+        studyId,
+        "annotation",
+        (annotationResult.data || []).map((row) => row.id),
+      );
+      await deleteQualitativeRelationshipReferences(
+        admin,
+        user.id,
+        studyId,
+        "memo",
+        (memoResult.data || []).map((row) => row.id),
+      );
+
+      const { error: deleteError } = await admin
+        .from("qualitative_cases")
+        .delete()
+        .eq("id", caseId)
+        .eq("study_id", studyId)
+        .eq("owner_user_id", user.id);
+      if (deleteError) throw deleteError;
+
+      return reply({
+        ok: true,
+        deletedCaseId: caseId,
+        participantId: qualitativeCase.participant_id || null,
+      });
     }
 
     if (operation === "create_source") {

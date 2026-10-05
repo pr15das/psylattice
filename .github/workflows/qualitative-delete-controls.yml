@@ -1,0 +1,36 @@
+name: Qualitative delete controls patch
+
+on:
+  push:
+    branches: [qualitative-cases-materials]
+    paths:
+      - scripts/add_qualitative_delete_controls.py
+      - .github/workflows/qualitative-delete-controls.yml
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: qualitative-cases-materials
+          fetch-depth: 0
+
+      - name: Add safe case and material deletion
+        run: python3 scripts/add_qualitative_delete_controls.py
+
+      - name: Commit patched Qualitative Lab
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add components/QualitativeResearchLab.tsx app/api/research/qualitative/route.ts
+          git diff --cached --check
+          if git diff --cached --quiet; then
+            echo "No changes to commit"
+            exit 0
+          fi
+          git commit -m "Add safe case and material deletion"
+          git push origin HEAD:qualitative-cases-materials
